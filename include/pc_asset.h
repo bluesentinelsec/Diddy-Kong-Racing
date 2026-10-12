@@ -18,9 +18,9 @@
  * Windows. It replaces the previous in-place byteswap helpers.
  */
 
+#include "types.h"
 #include <stddef.h>
 #include <stdint.h>
-#include "types.h"
 
 // Big-endian scalar readers over a byte image.
 static inline u16 pc_be16(const void *base, size_t off) {
@@ -63,7 +63,8 @@ typedef struct PcField {
     u16 kind;    // enum PcFieldKind
 } PcField;
 
-#define PCU_FIELD(T, field, diskOff, count, kind) { (u16) offsetof(T, field), (u16) (diskOff), (u16) (count), (u16) (kind) }
+#define PCU_FIELD(T, field, diskOff, count, kind) \
+    { (u16) offsetof(T, field), (u16) (diskOff), (u16) (count), (u16) (kind) }
 #define PCU_END { 0, 0, 0, 0xFFFF }
 
 // Memory moves usable from game code, which sees the N64 libc stubs rather than

@@ -1,0 +1,23 @@
+# Doxygen configuration for the Diddy Kong Racing PC port. Documents the host
+# platform layer and the port's own headers; the decompiled game sources are
+# documented in their own project. Run `make doc`; output lands in docs/html.
+
+PROJECT_NAME           = "Diddy Kong Racing PC port"
+PROJECT_BRIEF          = "Native host layer for the Diddy Kong Racing decompilation"
+OUTPUT_DIRECTORY       = docs
+INPUT                  = README.md linux include/pc_asset.h include/pc_swap.h tests
+FILE_PATTERNS          = *.c *.h *.md *.vert *.frag
+EXTENSION_MAPPING      = vert=C frag=C
+USE_MDFILE_AS_MAINPAGE = README.md
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+OPTIMIZE_OUTPUT_FOR_C  = YES
+JAVADOC_AUTOBRIEF      = YES
+SOURCE_BROWSER         = YES
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+HAVE_DOT               = NO
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO

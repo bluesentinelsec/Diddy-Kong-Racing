@@ -19,6 +19,7 @@ set(DKR_VERSION "us_v80" CACHE STRING "ROM version the assets were extracted fro
 set_property(CACHE DKR_VERSION PROPERTY STRINGS us_v77 us_v80)
 option(DKR_EEPROM_PRESET_100 "Seed a fresh save file with a 100%-completion image instead of an erased one" OFF)
 option(DKR_SANITIZE "Build with AddressSanitizer" OFF)
+option(DKR_BUILD_TESTS "Build the unit tests (run with ctest)" OFF)
 set(DKR_MAIN_POOL_MB 16 CACHE STRING "Size of the game's main memory pool, in MiB")
 
 if(DKR_VERSION STREQUAL "us_v77")
@@ -229,4 +230,14 @@ if(NOT WIN32)
 endif()
 if(DKR_LINK_FLAGS)
     target_link_options(dkracing PRIVATE ${DKR_LINK_FLAGS})
+endif()
+
+# --- Unit tests ----------------------------------------------------------------
+if(DKR_BUILD_TESTS)
+    enable_testing()
+    add_executable(test_pc_asset tests/test_pc_asset.c linux/pc_asset.c)
+    target_include_directories(test_pc_asset PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/include/PR
+                               ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_compile_definitions(test_pc_asset PRIVATE TARGET_PC _LANGUAGE_C)
+    add_test(NAME pc_asset COMMAND test_pc_asset)
 endif()

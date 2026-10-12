@@ -57,10 +57,13 @@ jobs:
             git
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DDKR_BUILD_TESTS=ON
 
       - name: Build
         run: cmake --build build
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
 
       - name: Check the binary is self-contained
         run: |

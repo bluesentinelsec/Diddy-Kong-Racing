@@ -186,7 +186,7 @@ void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes) {
 // Boot globals (normally set up by the PIF/boot code)
 // ---------------------------------------------------------------------------
 void *osRomBase = (void *) 0xB0000000;
-s32 osTvType = 1; // 0 = PAL, 1 = NTSC, 2 = MPAL
+s32 osTvType = 1;    // 0 = PAL, 1 = NTSC, 2 = MPAL
 s32 osResetType = 0; // cold boot
 s32 osAppNMIBuffer[16] = { 0 };
 
@@ -443,10 +443,14 @@ void isv_printf(const char *fmt, ...) {
 // ---------------------------------------------------------------------------
 // Cache management (no caches to manage on the host)
 // ---------------------------------------------------------------------------
-void osWritebackDCache(void *vaddr, s32 size) {}
-void osWritebackDCacheAll(void) {}
-void osInvalDCache(void *vaddr, s32 size) {}
-void osInvalICache(void *vaddr, s32 size) {}
+void osWritebackDCache(void *vaddr, s32 size) {
+}
+void osWritebackDCacheAll(void) {
+}
+void osInvalDCache(void *vaddr, s32 size) {
+}
+void osInvalICache(void *vaddr, s32 size) {
+}
 
 // ---------------------------------------------------------------------------
 // Interrupt management (single-threaded host: nothing to mask)
@@ -454,7 +458,8 @@ void osInvalICache(void *vaddr, s32 size) {}
 s32 __osDisableInt(void) {
     return 0;
 }
-void __osRestoreInt(s32 mask) {}
+void __osRestoreInt(s32 mask) {
+}
 u32 osSetIntMask(u32 mask) {
     return 0;
 }
@@ -470,11 +475,13 @@ u32 osGetCount(void) {
     u64 ns = (u64) ts.tv_sec * 1000000000ull + (u64) ts.tv_nsec;
     return (u32) (ns * 3 / 64);
 }
-void __osSetCompare(u32 value) {}
+void __osSetCompare(u32 value) {
+}
 u32 __osGetSR(void) {
     return 0;
 }
-void __osSetSR(u32 value) {}
+void __osSetSR(u32 value) {
+}
 u32 __osSetFpcCsr(u32 value) {
     return 0;
 }
@@ -485,7 +492,8 @@ u32 __osSetFpcCsr(u32 value) {
 u32 __osProbeTLB(void *vaddr) {
     return 0;
 }
-void osMapTLBRdb(void) {}
+void osMapTLBRdb(void) {
+}
 
 // ---------------------------------------------------------------------------
 // Exception / hardware-interrupt plumbing (was exceptasm.s data)
@@ -507,10 +515,14 @@ s32 (*__osHwIntTable[8])(void) = { 0 };
 // Empty stubs for now, same as the OoT port's bring-up state — the real
 // scheduler replacement is its own milestone.
 // ---------------------------------------------------------------------------
-void __osEnqueueThread(void **queue, void *thread) {}
-void __osEnqueueAndYield(void **queue) {}
+void __osEnqueueThread(void **queue, void *thread) {
+}
+void __osEnqueueAndYield(void **queue) {
+}
 void *__osPopThread(void **queue) {
     return 0;
 }
-void __osDispatchThread(void) {}
-void __osCleanupThread(void) {}
+void __osDispatchThread(void) {
+}
+void __osCleanupThread(void) {
+}

@@ -25,10 +25,10 @@ DKR_GL_FUNCS(DKR_GL_DEFINE)
 #undef DKR_GL_DEFINE
 
 const char *dkr_gl_load(void *(*getProc)(const char *name)) {
-#define DKR_GL_RESOLVE(ret, name, args)             \
-    dkr_##name = (dkr_##name##_t) getProc(#name);   \
-    if (dkr_##name == NULL) {                       \
-        return #name;                               \
+#define DKR_GL_RESOLVE(ret, name, args)           \
+    dkr_##name = (dkr_##name##_t) getProc(#name); \
+    if (dkr_##name == NULL) {                     \
+        return #name;                             \
     }
     DKR_GL_FUNCS(DKR_GL_RESOLVE)
 #undef DKR_GL_RESOLVE
@@ -57,8 +57,8 @@ static GLint sAttrPos, sAttrUV, sAttrFog, sAttrColor;
 static GLint sUniScreen, sUniTex, sUniTexMode, sUniEnvColor, sUniFogEnable, sUniFogColor, sUniAlphaRef;
 
 // Shadowed uniform state, so a redundant gfx_set_* costs nothing.
-static int sTexMode = 1;      // what the shader does with the texel (0/1/2)
-static int sTexBound = 0;     // whether a texture is bound (gates sTexMode)
+static int sTexMode = 1;  // what the shader does with the texel (0/1/2)
+static int sTexBound = 0; // whether a texture is bound (gates sTexMode)
 static int sFogEnable = -1;
 static float sFogColor[4] = { -1, -1, -1, -1 };
 static float sEnvColor[4] = { -1, -1, -1, -1 };
@@ -120,7 +120,8 @@ static int create_context(int width, int height) {
     const GlConfig *order[2];
     int i;
 
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || (defined(__linux__) && (defined(__arm__) || defined(__aarch64__)))
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || \
+    (defined(__linux__) && (defined(__arm__) || defined(__aarch64__)))
     // Mesa's V3D (Raspberry Pi) exposes GL ES 3.1 but only desktop GL 3.1.
     order[0] = &es30;
     order[1] = &core33;
@@ -142,8 +143,9 @@ static int create_context(int width, int height) {
 // ---------------------------------------------------------------------------
 
 static GLuint compile_shader(GLenum type, const char *body, unsigned int bodyLen) {
-    const char *prelude = sIsES ? "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n"
-                                : "#version 330 core\n";
+    const char *prelude =
+        sIsES ? "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n"
+              : "#version 330 core\n";
     const GLchar *sources[2] = { prelude, body };
     GLint lengths[2] = { (GLint) strlen(prelude), (GLint) bodyLen };
     GLuint shader = glCreateShader(type);
@@ -271,7 +273,8 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
     glEnableVertexAttribArray(sAttrUV);
     glVertexAttribPointer(sAttrUV, 2, GL_FLOAT, GL_FALSE, sizeof(GfxGpuVert), (const void *) offsetof(GfxGpuVert, u));
     glEnableVertexAttribArray(sAttrFog);
-    glVertexAttribPointer(sAttrFog, 1, GL_FLOAT, GL_FALSE, sizeof(GfxGpuVert), (const void *) offsetof(GfxGpuVert, fog));
+    glVertexAttribPointer(sAttrFog, 1, GL_FLOAT, GL_FALSE, sizeof(GfxGpuVert),
+                          (const void *) offsetof(GfxGpuVert, fog));
     glEnableVertexAttribArray(sAttrColor);
     glVertexAttribPointer(sAttrColor, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(GfxGpuVert),
                           (const void *) offsetof(GfxGpuVert, r));
@@ -287,7 +290,7 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
     glDepthFunc(GL_LESS);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDisable(GL_CULL_FACE); // the interpreter culls in screen space itself
+    glDisable(GL_CULL_FACE);       // the interpreter culls in screen space itself
     glPolygonOffset(-1.0f, -1.0f); // nearer is smaller here: pull decals towards zero
     gfx_set_alpha_test(0.0f);
     gfx_set_texenv_modulate();

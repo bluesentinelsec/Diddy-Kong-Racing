@@ -100,3 +100,6 @@ amap
 !.github/
 !.github/workflows/
 !.github/workflows/*.yml
+
+# Doxygen output (make doc)
+docs/html/

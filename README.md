@@ -1,246 +1,129 @@
-# Diddy Kong Racing
-
-![Overworld](/media/screenshot1.png)
-![Whale Bay](/media/screenshot2.png)
-![Walrus Cove](/media/screenshot3.png)
-![Hot Top Volcano](/media/screenshot4.png)
-
-tldr for dreamcast
-
-`put baserom.z64 in baseroms folder`
-
-`make setup`
-
-`make extract`
-
-`make build_assets`
-
-`make -f Makefile.dc -j8`
-
-Dreamcast audio uses the pinned [AICAflow runtime](dreamcast/AICAFLOW.md)
-submodule. Clone with `--recurse-submodules`, or initialise submodules before
-building.
-
-
-for n64:
-
-`make -j8 COMPILER=gcc`
-
-`make -j8 COMPILER=ido NM=1`
-
-Linux port:
-
-`make build_assets`
-
-`make -f Makefile.pc -j8`
-
-
-
-This repo contains a work-in-progress decompilation of Diddy Kong Racing for the N64. You will need to have a original copy of the ROM to extract the game's assets.
-
-All versions are supported, and the US 1.0 version (SHA1 = 0cb115d8716dbbc2922fda38e533b9fe63bb9670) of the game is the default if not specified.
-
-<!-- README_SCORE_SUMMARY_BEGIN -->
-As of June 21, 2026, this is our current score:
-
-&emsp;&emsp;&emsp;&emsp;Decomp progress [us.v77]: 97.75%
-
-&emsp;&emsp;&emsp;&emsp;Documentation progress: 65.69%
-<!-- README_SCORE_SUMMARY_END -->
-
----
-
-
-## Setup
-
-
-### Dependencies
-
-<details>
-
-<summary> Ubuntu / Debian based Linux distros </summary>
-
-`sudo apt install build-essential pkg-config git python3 python3-pip binutils-mips-linux-gnu python3-venv libpcre2-dev libpcre2-8-0`
-
-- `build-essential` / `pkg-config` are helper packages needed for make.
-- `git` is used for version control.
-- Python 3.10 or newer is needed to run the build scripts. `make -f Makefile.dc`
-  automatically prefers a suitable interpreter; override it with `PYTHON=/path/to/python3`
-  when necessary.
-- `libpcre2-dev` and `libpcre2-8-0` are not technically required, but will speedup extracting/building some assets significantly.
-- `gcc-mips-linux-gnu` is optionally used if compiling NON_MATCHING with COMPILER=gcc
-
-</details>
-
-<details>
-
-<summary> Arch based Linux distros </summary>
-
-`sudo pacman -Syu --needed base-devel pkgconf git python python-pip python-virtualenv pcre2 yay`
-
-For binutils you should install this package from the AUR: https://aur.archlinux.org/packages/mips64-elf-binutils
-
-- `base-devel` / `pkgconf` are helper packages needed for make.
-- `git` is used for version control.
-- `python` is needed to run python scripts
-- `pcre2` is not technically required, but will speedup extracting/building some assets significantly.
-- `yay` is not required, but is useful for installing packages from the AUR like the binutils.
-    - `yay -Syu mips64-elf-binutils`
-
-    
-</details>
-
-<details>
-
-<summary> MacOS </summary>
-
-1. Install homebrew from here: https://brew.sh/
-2. Install make and pcre2 using homebrew: `brew install make pcre2`
-3. When running make, you MUST use `gmake` not `make`
-    - For example, instead of doing `make setup` you would use `gmake setup`.
-    
-</details>
-
-<details>
-
-<summary> Windows </summary>
-
-Windows is not natively supported. We recommend using a linux distro under the Windows Subsystem for Linux (WSL)
-
-</details>
-
-### Notes
-- gcc needs to be version 8.0 or higher.
-- make needs to be version 4.2 or higher.
-
-### Building
-
-1. Install the dependencies above for your system. Click on the text to reveal the instructions.
-2. Place the ROM file within the `baseroms` directory.  
-   **a.** The name of the ROM file does not matter. It will be detected automatically from an sha1 checksum.
-3. Grab tools: `git submodule update --init --recursive`
-4. Run `make setup` to install the IDO compiler, python venv, and packages required.
-5. Run `make extract` to run splat to extract all required files from the baserom.
-6. Run `make` in the main directory.  
-   **a.** Use the `-jN` argument to use `N` number of threads to speed up building. For example, if you have a system with 4 cores / 4 threads, you should do `make -j4`.
-
-Note: If you are on MacOS, remember to use `gmake` instead of `make`!
-
----
-
-### Building other versions
-
-To build other versions of the ROM, just specifcy the region and version in the make command. All examples are below:
-Baserom|REGION|VERSION|Command
----|--|---|-
-US 1.0 | US | v77 | `make REGION=us VERSION=v77`
-PAL 1.0 | PAL | v77 | `make REGION=pal VERSION=v77`
-JPN 1.0 | JPN | v79 | `make REGION=jpn VERSION=v79`
-US 1.1 | US | v80 | `make REGION=us VERSION=v80`
-PAL 1.1 | PAL | v80 | `make REGION=pal VERSION=v80`
-
-## Modding
-
-If you are modifying the code in the repo, then you should add `NON_MATCHING=1` to the make command.  
-Example: `make NON_MATCHING=1 -j4`
-
-The `NON_MATCHING` define will include the functions that don't exactly match one-to-one, but should be no different functionality-wise. If you do notice any bugs that occur in a `NON_MATCHING` build that are not in the vanilla game, then please file an issue describing the bug. It would be helpful if you can track down which function is causing the bug, but that is not required.
-
-## Style Guide
-
-The style guide for the project can be found here: https://docs.google.com/document/d/1euQf8nwynGcCZL1MfoMaLs-XRvx3ejjj8fIfykUZ-NQ
-
-If you see variables/functions/structs/etc. that doesn't follow these rules, then file an issue and we'll try to fix them.
-
-## Scripts
-
-There are some useful scripts that should be kept in mind when working on this repo.
-
----
-
-#### `./extract.sh <version>`
-
-This script will extract all the assets from a DKR ROM and place them into `/assets/` folder according to the config file within the `/extract-ver/` folder. The version parameter should either be `us_1.0`, `us_1.1`, `eu_1.0`, `eu_1.1`, or `jp`.
-
-Example: `./extract.sh us_1.0`
-
----
-
-#### `./diff.sh <function_name>`
-
-Compares the assembly output of a function from a built ROM to the base ROM. Useful for decompiling.
-
-Example: `./diff.sh menu_init`
-
----
-
-#### `./rename.sh <old_name> <new_name>`
-
-This script will rename an existing symbol, file name, and/or folder name within the repo with a new one.
-
-Example: `./rename.sh D_A4001000 SP_IMEM`
-
----
-
-#### `./score.sh`
-
-Prints out the current completion percentage of the decomp. You do need to have an `OK` build for this to work properly.
-
-The scoring is split into 2 sections:
-
-1. Assembly to C Decompilation (Adventure One)
-2. Cleanup and Documentation (Adventure Two)
-
-Show scores for Adventure One & Adventure Two: `./score.sh`  
-Show score for Adventure One only: `./score.sh -a 1`  
-Show score for Adventure Two only: `./score.sh -a 2`  
-Show score for another version (default: us.v77): `./score.sh -v VERSION`  
-Show score percentage summary: `./score.sh -s`  
-Show score without libultra progress in Adventure One: `./score.sh --nolib`  
-Show top files remaining (default: 10): `./score.sh -t TOP`  
-Show treemap view in a file (default: treemap.html): `./score.sh --treemap TREEMAP`  
-
-To make progress in Adventure 2, a function must be properly named (must not start with `func_`) and also include a doxygen comment above it.
-
-For example:
-
-```c
-/**
- * Returns 1 if Drumstick is available to use, or 0 if not.
- */
-s32 is_drumstick_unlocked(void) {
-    return gActiveMagicCodes & 2;
-}
+# Diddy Kong Racing - PC port
+
+A native port of Diddy Kong Racing (Nintendo 64, 1997) to Windows, macOS and
+Linux, built from the [community decompilation](https://github.com/DavidSM64/Diddy-Kong-Racing)
+by way of [Bruceleeto's PC/Dreamcast port](https://github.com/Bruceleeto/Diddy-Kong-Racing).
+The game logic is the decompiled C; this repository adds the host layer: an
+interpreter for the F3DDKR display lists, a shader renderer (OpenGL 3.3 core or
+OpenGL ES 3.0), an interpreter for the RSP audio microcode, and SDL3 for the
+window, input and sound.
+
+It runs as a single self-contained executable on 64-bit and 32-bit hosts,
+including the Raspberry Pi 5.
+
+**No game data is in this repository.** You need your own copy of the US 1.1
+ROM to produce the asset files the executable loads (see *Assets*).
+
+## Building
+
+Requirements: CMake 3.24+, a C compiler (clang, GCC or MinGW-w64), git, and on
+Linux the usual SDL build dependencies (X11, Wayland, ALSA/PulseAudio
+development packages; see `.github/workflows/pc.yml` for the exact list). SDL3
+itself is fetched and built automatically and linked statically.
+
+```
+make            # debug build  -> build/debug/dkracing
+make release    # optimized    -> build/release/dkracing
 ```
 
-<!-- README_SCORE_BEGIN -->
-As of June 21, 2026, this is our current score:
+Other targets:
+
+| Target        | What it does                                                          |
+| ------------- | --------------------------------------------------------------------- |
+| `make run`    | debug build, then run windowed (`RUN_ARGS` to change the flags)       |
+| `make test`   | build and run the unit tests with ctest                               |
+| `make fmt`    | clang-format the port's own sources (the decomp keeps its formatting) |
+| `make doc`    | Doxygen HTML documentation into `docs/html`                           |
+| `make assets` | extract and pack the game assets from the ROM in `baseroms/`          |
+| `make clean`  | remove all build output                                               |
+
+The Makefile is a thin wrapper; the build itself is CMake, so this works too:
+
 ```
- ======================================================
-    ADVENTURE ONE (ASM -> C Decompilation) [us.v77]
- ------- 97.75% Complete (98.35% NON_MATCHING) --------
-              # Decompiled functions: 1847
-            # Handwritten ASM functions: 85
-               # GLOBAL_ASM remaining: 5
-              # NON_MATCHING functions: 3
-           # NON_EQUIVALENT WIP functions: 2
- -------------------- Game Status ---------------------
-       Balloons: 47/47, Keys: 4/4, Trophies: 4/5
-         T.T. Amulets: 4/4, Wizpig Amulets: 4/4
- ------------------------------------------------------
- We are racing in the rematch against Wizpig. (Lap 2/3)
- ======================================================
-         ADVENTURE TWO (Cleanup & Documentation)
- ------------------ 65.69% Complete -------------------
-              # Documented functions: 1280
-             # Undocumented remaining: 278
-            # Functions named `func_*`: 144
-           # Functions without comments: 278
- -------------------- Game Status ---------------------
-       Balloons: 31/47, Keys: 3/4, Trophies: 3/5
-         T.T. Amulets: 3/4, Wizpig Amulets: 3/4
- ------------------------------------------------------
-      We are racing in Windmill Plains. (Lap 2/3)
- ======================================================
+cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release
+cmake --build build/release -j
 ```
-<!-- README_SCORE_END -->
+
+CMake options: `DKR_VERSION` (`us_v80`, the default, or `us_v77`),
+`DKR_SDL3_TAG` (the SDL release to build), `DKR_SANITIZE=ON` for an
+AddressSanitizer build, `DKR_BUILD_TESTS=ON` for the test executables,
+`DKR_EEPROM_PRESET_100=ON` to start new save files 100% complete.
+
+Cross-building a 32-bit binary on a 64-bit Raspberry Pi:
+`cmake -S . -B build/pi -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-armhf.cmake`.
+
+## Assets
+
+The executable loads two files, `assets/assets.bin` and `assets/assets.lut.bin`,
+from the working directory or from the directory it lives in. They are produced
+from your ROM by the decompilation's tooling, which needs Python 3 and the MIPS
+binutils (`binutils-mips-linux-gnu` on Debian, see `Makefile.n64`):
+
+```
+cp /path/to/your/rom.z64 baseroms/
+make assets
+```
+
+This writes the two asset files and regenerates `include/asset_enums.h`.
+Supported ROMs are identified by SHA-1; US 1.1 is the one this port is tested
+with.
+
+## Running
+
+```
+./build/release/dkracing [options]
+```
+
+| Flag                | Effect                                                         |
+| ------------------- | -------------------------------------------------------------- |
+| `--windowed`, `-w`  | start in a window instead of borderless fullscreen            |
+| `--fullscreen`      | start fullscreen (the default)                                 |
+| `--scale N`         | window size as a multiple of the 320x240 frame (default 3)     |
+| `--help`, `-h`      | print the options                                              |
+
+F11 toggles fullscreen while running; Escape quits. The window is resizable and
+the image keeps its 4:3 aspect.
+
+Environment variables:
+
+| Variable              | Effect                                                   |
+| --------------------- | -------------------------------------------------------- |
+| `DKR_DUMP_FRAME=<n>`  | write frame *n* to `dkr_frame_<n>.ppm` in the current directory (for testing without a screen) |
+
+Saves are kept in the per-user data directory as `eeprom.bin`:
+`~/Library/Application Support/bluesentinelsec/DiddyKongRacing/` on macOS,
+`~/.local/share/bluesentinelsec/DiddyKongRacing/` on Linux, and
+`%APPDATA%\bluesentinelsec\DiddyKongRacing\` on Windows.
+
+## Controls
+
+| N64        | Keyboard        | Gamepad (Xbox layout)          |
+| ---------- | --------------- | ------------------------------ |
+| Stick      | arrows or WASD  | left stick                     |
+| A          | X               | A, or right trigger            |
+| B          | C               | B, or left trigger             |
+| Z          | Z               | X                              |
+| R          | Space           | right bumper                   |
+| L          | Q               | left bumper                    |
+| Start      | Enter           | Menu                           |
+| C buttons  | I J K L         | right stick (Y is also C-up)   |
+| D-pad      |                 | D-pad                          |
+
+Gamepads can be plugged in while the game is running.
+
+## Layout
+
+- `linux/` - the host layer: `main.c` (display-list interpreter and frame loop),
+  `gfx.c` (SDL3 window and shader renderer), `audio_hle.c` (RSP audio
+  interpreter), `audio.c`, `input.c`, `reimpl.c` (libultra replacements, asset
+  loading, saves), `pc_asset.c` (64-bit-safe asset unpacking), `shaders/`.
+- `src/`, `libultra/`, `include/` - the decompiled game and its SDK, with
+  `TARGET_PC` sections where the port diverges.
+- `tests/` - unit tests for the host layer (`make test`).
+- `Makefile.n64` - the decompilation's own build and asset pipeline.
+
+## License
+
+The host layer in this repository is provided under the terms in `LICENSE.md`.
+Diddy Kong Racing is the property of its rights holders; this project contains
+no game assets and requires a legitimately obtained ROM.

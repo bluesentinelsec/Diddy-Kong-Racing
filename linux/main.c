@@ -1,9 +1,9 @@
+#include <f3ddkr.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ultra64.h>
 #include <structs.h>
-#include <f3ddkr.h>
+#include <ultra64.h>
 
 #include "gfx.h"
 
@@ -96,8 +96,8 @@ s32 pc_retrace_wait(void) {
 #define N64_SCREEN_H 240
 #define WINDOW_SCALE 3
 
-#define GFX_MAX_VERTS 64    // the RSP's internal vertex array
-#define GFX_MAX_DEPTH 16    // display-list recursion guard
+#define GFX_MAX_VERTS 64 // the RSP's internal vertex array
+#define GFX_MAX_DEPTH 16 // display-list recursion guard
 #define GFX_MAX_TRI_VERTS 8192
 
 // A vertex in clip space — post-matrix, pre-divide. Kept unprojected because
@@ -173,19 +173,19 @@ static void apply_clip_rect(void) {
 static GfxTriVert sTriVerts[GFX_MAX_TRI_VERTS];
 static s32 sTriVertCount = 0;
 
-static uintptr_t sTimgAddr = 0;  // G_SETTIMG — wherever the DL last pointed
-static uintptr_t sTexAddr = 0;   // the image a G_LOADBLOCK/G_LOADTILE actually loaded
-static s32 sTexSwapped = 0; // that load had dxt == 0 — see decode_texture()
-static u8 sTileFmt = 0;    // G_SETTILE — G_IM_FMT_*
-static u8 sTileSiz = 0;    //             G_IM_SIZ_*
+static uintptr_t sTimgAddr = 0; // G_SETTIMG — wherever the DL last pointed
+static uintptr_t sTexAddr = 0;  // the image a G_LOADBLOCK/G_LOADTILE actually loaded
+static s32 sTexSwapped = 0;     // that load had dxt == 0 — see decode_texture()
+static u8 sTileFmt = 0;         // G_SETTILE — G_IM_FMT_*
+static u8 sTileSiz = 0;         //             G_IM_SIZ_*
 static u8 sTilePalette = 0;
 static u8 sTileCmS = 0; // the raw 2-bit clamp/mirror fields, not booleans
 static u8 sTileCmT = 0;
 static u16 sTileWidth = 0; // G_SETTILESIZE
 static u16 sTileHeight = 0;
-static u16 sTileUls = 0;   //               the tile's origin within the image
+static u16 sTileUls = 0; //               the tile's origin within the image
 static u16 sTileUlt = 0;
-static uintptr_t sTlutAddr = 0;  // G_LOADTLUT — palette for the CI formats
+static uintptr_t sTlutAddr = 0; // G_LOADTLUT — palette for the CI formats
 
 // RDP colour state. Only the 2D path reads these: the triangles get their colour
 // from the vertices, but a rectangle has no vertex colours, so its colour comes
@@ -201,9 +201,9 @@ static uintptr_t sTlutAddr = 0;  // G_LOADTLUT — palette for the CI formats
 #define GFX_GEOMETRY_MODE_INIT (G_SHADE | G_SHADING_SMOOTH | G_ZBUFFER)
 static u32 sGeometryMode = GFX_GEOMETRY_MODE_INIT;
 
-static u32 sOtherModeH = 0;      // G_SETOTHERMODE_H / G_RDPSETOTHERMODE
-static u32 sOtherModeL = 0;      // G_SETOTHERMODE_L / G_RDPSETOTHERMODE
-static u32 sCombineW0 = 0;       // G_SETCOMBINE — the two mux words
+static u32 sOtherModeH = 0; // G_SETOTHERMODE_H / G_RDPSETOTHERMODE
+static u32 sOtherModeL = 0; // G_SETOTHERMODE_L / G_RDPSETOTHERMODE
+static u32 sCombineW0 = 0;  // G_SETCOMBINE — the two mux words
 static u32 sCombineW1 = 0;
 static u8 sPrimColor[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
 static u8 sEnvColor[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
@@ -316,7 +316,7 @@ static void mtx_to_float(const Mtx *m, f32 out[4][4]) {
  * map through the viewport.
  */
 static void load_vertex(GfxVertex *dst, const Vertex *v, const f32 *anchor) {
-    const f32 (*m)[4] = sMatrices[sCurMatrix];
+    const f32(*m)[4] = sMatrices[sCurMatrix];
     f32 x = v->x, y = v->y, z = v->z;
     s32 i;
 
@@ -363,7 +363,6 @@ static void handle_vertex(u32 w0, uintptr_t w1) {
         // anchor pushed just before the billboard matrix.
         load_vertex(&sVerts[dstIdx + i], &src[i], sBillboard ? sVerts[0].clip : NULL);
     }
-
 }
 
 /** Expand an N64 RGBA5551 texel (big-endian in the asset) to RGBA8888. */
@@ -1110,12 +1109,30 @@ static void draw_2d_quad(f32 x0, f32 y0, f32 x1, f32 y1, f32 u0, f32 v0, f32 u1,
     GfxTriVert q[6];
     s32 i;
 
-    q[0].x = x0; q[0].y = y0; q[0].u = u0; q[0].v = v0;
-    q[1].x = x1; q[1].y = y0; q[1].u = u1; q[1].v = v0;
-    q[2].x = x1; q[2].y = y1; q[2].u = u1; q[2].v = v1;
-    q[3].x = x0; q[3].y = y0; q[3].u = u0; q[3].v = v0;
-    q[4].x = x1; q[4].y = y1; q[4].u = u1; q[4].v = v1;
-    q[5].x = x0; q[5].y = y1; q[5].u = u0; q[5].v = v1;
+    q[0].x = x0;
+    q[0].y = y0;
+    q[0].u = u0;
+    q[0].v = v0;
+    q[1].x = x1;
+    q[1].y = y0;
+    q[1].u = u1;
+    q[1].v = v0;
+    q[2].x = x1;
+    q[2].y = y1;
+    q[2].u = u1;
+    q[2].v = v1;
+    q[3].x = x0;
+    q[3].y = y0;
+    q[3].u = u0;
+    q[3].v = v0;
+    q[4].x = x1;
+    q[4].y = y1;
+    q[4].u = u1;
+    q[4].v = v1;
+    q[5].x = x0;
+    q[5].y = y1;
+    q[5].u = u0;
+    q[5].v = v1;
 
     for (i = 0; i < 6; i++) {
         q[i].z = 0.0f;

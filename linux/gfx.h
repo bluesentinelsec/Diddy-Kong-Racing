@@ -1,7 +1,6 @@
 #ifndef LINUX_GFX_H
 #define LINUX_GFX_H
 
-
 typedef struct {
     float x, y, z, w;
     float u, v;
