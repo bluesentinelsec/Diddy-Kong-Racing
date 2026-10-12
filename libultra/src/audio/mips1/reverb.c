@@ -21,6 +21,11 @@
 #include "synthInternals.h"
 #include <os.h>
 #include <os_internal.h>
+#ifdef TARGET_PC
+#include <stdio.h>
+#include <stdlib.h>
+#include "trace.h"
+#endif
 #include <stdio.h>
 #include <assert.h>
 #include "initfx.h"
@@ -102,7 +107,7 @@ Acmd *alFxPull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset,
     for (i = 0; i < r->section_count; i++) {
 	d  = &r->delay[i];  /* get the ALDelay structure */
 #ifdef TARGET_PC
-    { extern int pc_trace_active(void); extern long pc_trace_frame(void); extern char *getenv(const char *); extern int fprintf(void *, const char *, ...); extern void *stderr;
+    {
       if (pc_trace_active() && getenv("DKR_TRACE_REVERB") && (pc_trace_frame() + 1 == 575 || pc_trace_frame() + 1 == 576))
         fprintf(stderr, "REVERB f%ld sec%d d.in=%u d.out=%u rsdelta=%d outCount=%d\n", pc_trace_frame() + 1, i, d->input, d->output, d->rsdelta, outCount); }
 #endif
@@ -357,7 +362,7 @@ Acmd *_loadBuffer(ALFx *r, s16 *curr_ptr, s32 buff, s32 count, Acmd *p)
         __osError(ERR_ALMODDELAYOVERFLOW, 1, delay_end - curr_ptr);
 #endif
 #ifdef TARGET_PC
-    { extern int pc_trace_active(void); extern long pc_trace_frame(void); extern char *getenv(const char *); extern int fprintf(void *, const char *, ...); extern void *stderr;
+    {
       if (pc_trace_active() && getenv("DKR_TRACE_REVERB") && (pc_trace_frame() + 1 == 575 || pc_trace_frame() + 1 == 576))
         fprintf(stderr, "REVERB f%ld len=%u in=%ld cur=%ld count=%d\n", pc_trace_frame() + 1, r->length, (long) (r->input - r->base), (long) (curr_ptr - r->base), count); }
 #endif
