@@ -5,6 +5,9 @@
 #include "objects.h"
 #include "PR/libaudio.h"
 #include "video.h"
+#ifdef TARGET_PC
+extern void pc_trace_event(const char *fmt, ...);
+#endif
 
 #define SOUND_PARAM_DURATION(m) (m->velocityMax * 33333)
 #define SOUND_PARAM_NEXT_SOUND(m) (m->velocityMin + (m->keyMin & 0xC0) * 4)
@@ -208,6 +211,9 @@ void sndp_handle_event(SoundPlayer *sndp, ALSndpEvent *event) {
                 config.unityPitch = 0;
 
                 limitReached = sndp->maxActiveSounds <= gNumActiveSounds;
+#ifdef TARGET_PC
+                pc_trace_event("sndp_play_evt prio=%d limit=%d active=%d flags=%x", soundState->priority, limitReached, gNumActiveSounds, soundState->flags);
+#endif
 
                 if (!limitReached || (soundState->flags & SOUND_FLAG_RETRIGGER)) {
                     // Allocate a voice for the sound
@@ -694,6 +700,9 @@ ALSoundState *sndp_play_with_priority(ALBank *bank, s16 sndIndx, u8 priority, AL
         return NULL;
     }
 
+#ifdef TARGET_PC
+    pc_trace_event("sndp_play snd=%d prio=%d active=%d", sndIndx, priority, gNumActiveSounds);
+#endif
     do {
         sound = bank->instArray[0]->soundArray[sndIndx - 1];
         soundState = sndp_allocate(bank, sound);

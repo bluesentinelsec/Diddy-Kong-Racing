@@ -44,6 +44,9 @@
 #include "cseqp.h"
 #include "cseq.h"
 #include "synthInternals.h"
+#ifdef TARGET_PC
+extern void pc_trace_event(const char *fmt, ...);
+#endif
 
 /************ .rodata ************/
 const char D_800E6C20[] = "CSP: oh oh \n";
@@ -597,6 +600,9 @@ void __CSPHandleMIDIMsg(ALCSPlayer_Custom *seqp, ALEvent *event)
                 pan   = __vsPan(vstate, (ALSeqPlayer*)seqp);
                 vol   = __vsVol(vstate, (ALSeqPlayer*)seqp);
                 deltaTime  = sound->envelope->attackTime;
+#ifdef TARGET_PC
+                pc_trace_event("csp_noteon chan=%d key=%d vel=%d", chan, byte1, byte2);
+#endif
                 
                 alSynStartVoiceParams(seqp->drvr, voice, sound->wavetable,
                                       pitch, vol, pan, fxmix, deltaTime);
