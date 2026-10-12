@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include "input.h"
+#include <SDL3/SDL.h>
 
 typedef signed char s8;
 typedef signed int s32;
@@ -59,13 +60,35 @@ static u32 sAssetLutSize = 0;
 static u8 *sAssetsBin = NULL;
 static u32 sAssetsBinSize = 0;
 
-static u8 *pc_load_file(const char *path, u32 *sizeOut) {
+// Opens `path` relative to the working directory, or failing that relative to
+// the directory holding the executable, so a build can be launched by double-
+// clicking it with assets/ sitting next to it.
+static FILE *pc_open_asset(const char *path) {
     FILE *f = fopen(path, "rb");
+    const char *base;
+    char full[2048];
+
+    if (f != NULL) {
+        return f;
+    }
+    base = SDL_GetBasePath();
+    if (base == NULL) {
+        return NULL;
+    }
+    snprintf(full, sizeof(full), "%s%s", base, path);
+    return fopen(full, "rb");
+}
+
+static u8 *pc_load_file(const char *path, u32 *sizeOut) {
+    FILE *f = pc_open_asset(path);
     long size;
     u8 *buf;
 
     if (f == NULL) {
-        fprintf(stderr, "ASSETS: cannot open %s (run from the repo root, and build the N64 assets first)\n", path);
+        fprintf(stderr,
+                "ASSETS: cannot open %s. Put the assets/ folder next to the executable (or run from the "
+                "directory that holds it); it is produced by the decomp's `make build_assets` from your ROM.\n",
+                path);
         exit(1);
     }
     fseek(f, 0, SEEK_END);
@@ -249,8 +272,6 @@ void osContGetReadData(PCContPad *pads) {
 #ifdef EEPROM_PRESET_100
 #include "eeprom_preset.h"
 #endif
-
-#include <SDL3/SDL.h>
 
 static u8 gEeprom[PC_EEPROM_BYTES];
 static s32 gEepromReady = 0;
