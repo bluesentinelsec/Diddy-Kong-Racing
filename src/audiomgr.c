@@ -520,7 +520,20 @@ static void __amHandleDoneMsg(UNUSED AudioInfo *info) {
  *
  *****************************************************************************/
 #ifdef TARGET_PC
+extern int pc_trace_debug(const char *env);
+extern long pc_trace_frame(void);
+extern void pc_trace_printf(const char *fmt, ...);
+static ALDMAAddr __amDMA_real(s32 addr, s32 len, UNUSED void *state);
 static ALDMAAddr __amDMA(s32 addr, s32 len, UNUSED void *state) {
+    ALDMAAddr r = __amDMA_real(addr, len, state);
+    if (pc_trace_debug("DKR_TRACE_DMA") && (pc_trace_frame() + 1 == 575 || pc_trace_frame() + 1 == 576)) {
+        extern u8 gAudioHeapStack[];
+        pc_trace_printf("DMA f%ld addr=%08x len=%d ret&15=%u buf0&15=%u heap&31=%u\n", pc_trace_frame() + 1, (unsigned) addr, len,
+                        (unsigned) (r & 15), (unsigned) ((uintptr_t) dmaBuffs[0].ptr & 15), (unsigned) ((uintptr_t) gAudioHeapStack & 31));
+    }
+    return r;
+}
+static ALDMAAddr __amDMA_real(s32 addr, s32 len, UNUSED void *state) {
 #else
 static s32 __amDMA(s32 addr, s32 len, UNUSED void *state) {
 #endif
