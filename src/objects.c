@@ -2106,12 +2106,24 @@ UNUSED s32 func_8000E558(Object *arg0) {
     if (arg0->level_entry == NULL) {
         return TRUE;
     }
+#ifdef TARGET_PC
     temp_v0 = (ptrint_t) arg0->level_entry;
+#else
+    temp_v0 = (s32) arg0->level_entry;
+#endif
+#ifdef TARGET_PC
     new_var2 = (ptrint_t) gObjectMapSpawnList[0];
+#else
+    new_var2 = (s32) gObjectMapSpawnList[0];
+#endif
     if ((temp_v0 >= new_var2) && (((gObjectMapSize[0] * 8) + new_var2) >= temp_v0)) {
         return FALSE;
     }
+#ifdef TARGET_PC
     new_var = (ptrint_t) gObjectMapSpawnList[1];
+#else
+    new_var = (s32) gObjectMapSpawnList[1];
+#endif
     // Why even bother with this check?
     if (temp_v0 >= new_var && temp_v0 <= ((gObjectMapSize[1] * 8) + new_var)) {
         return TRUE;
@@ -2136,12 +2148,28 @@ void func_8000E5EC(LevelObjectEntryCommon *arg0) {
 
     size = arg0->size & 0x3F;
 
+#ifdef TARGET_PC
     sp30[0] = (ptrint_t) gObjectMapSpawnList[0] + gObjectMapSize[0];
+#else
+    sp30[0] = (s32) gObjectMapSpawnList[0] + gObjectMapSize[0];
+#endif
+#ifdef TARGET_PC
     sp30[1] = (ptrint_t) gObjectMapSpawnList[1] + gObjectMapSize[1];
+#else
+    sp30[1] = (s32) gObjectMapSpawnList[1] + gObjectMapSize[1];
+#endif
 
+#ifdef TARGET_PC
     if ((ptrint_t) arg0 >= (ptrint_t) gObjectMapSpawnList[0] && (ptrint_t) arg0 < sp30[0]) {
+#else
+    if ((s32) arg0 >= (s32) gObjectMapSpawnList[0] && (s32) arg0 < sp30[0]) {
+#endif
         sp1C = 0;
+#ifdef TARGET_PC
     } else if ((ptrint_t) arg0 >= (ptrint_t) gObjectMapSpawnList[1] && (ptrint_t) arg0 < sp30[1]) {
+#else
+    } else if ((s32) arg0 >= (s32) gObjectMapSpawnList[1] && (s32) arg0 < sp30[1]) {
+#endif
         sp1C = 1;
     }
 #ifdef AVOID_UB
@@ -2151,7 +2179,11 @@ void func_8000E5EC(LevelObjectEntryCommon *arg0) {
 #endif
 
     dst = (u8 *) arg0;
+#ifdef TARGET_PC
     src = (u8 *) ((ptrint_t) arg0 + size);
+#else
+    src = (u8 *) ((s32) arg0 + size);
+#endif
     end = sp30[sp1C];
     if ((uintptr_t) src < (uintptr_t) end) {
         do {
@@ -2163,9 +2195,21 @@ void func_8000E5EC(LevelObjectEntryCommon *arg0) {
     for (i = 0; i < gObjectCount; i++) {
         Object *obj = gObjPtrList[i];
         if (obj != NULL && obj->level_entry != NULL) {
+#ifdef TARGET_PC
             if ((ptrint_t) arg0 < (ptrint_t) obj->level_entry && (ptrint_t) obj->level_entry < end) {
+#else
+            if ((s32) arg0 < (s32) obj->level_entry && (s32) obj->level_entry < end) {
+#endif
+#ifdef TARGET_PC
                 obj->level_entry = (LevelObjectEntry *) ((ptrint_t) obj->level_entry - size);
+#else
+                obj->level_entry = (LevelObjectEntry *) ((s32) obj->level_entry - size);
+#endif
+#ifdef TARGET_PC
             } else if ((ptrint_t) arg0 == (ptrint_t) obj->level_entry) {
+#else
+            } else if ((s32) arg0 == (s32) obj->level_entry) {
+#endif
                 obj->level_entry = NULL;
             }
         }
@@ -6994,7 +7038,11 @@ void race_check_finish(s32 updateRate) {
                     if (curRacer->raceFinished == FALSE) {
                         if (curRacer->playerIndex >= 0) {
                             set_active_camera(curRacer->playerIndex);
+#ifdef TARGET_PC
                             camera = (ptrint_t) cam_get_active_camera_no_cutscenes();
+#else
+                            camera = (s32) cam_get_active_camera_no_cutscenes();
+#endif
                             // we need the camera to be a s32 for the WAIT_ON_IOBUSY anti tamper call to work
                             // but we *know* that cam_get_active_camera_no_cutscenes returns a Camera pointer so this
                             // should be safe

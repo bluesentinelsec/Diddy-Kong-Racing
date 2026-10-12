@@ -260,9 +260,21 @@ void main_game_loop(void) {
     if (gScreenStatus == MESG_SKIP_BUFFER_SWAP) {
         gCurrDisplayList = gDisplayLists[gSPTaskNum];
         rsp_segment(&gCurrDisplayList, SEGMENT_MAIN, 0x00000000);
+#ifdef TARGET_PC
         rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (ptrint_t) gVideoCurrFramebuffer);
+#else
+        rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (s32) gVideoCurrFramebuffer);
+#endif
+#ifdef TARGET_PC
         rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (ptrint_t) gVideoLastDepthBuffer);
+#else
+        rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (s32) gVideoLastDepthBuffer);
+#endif
+#ifdef TARGET_PC
         rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (ptrint_t) gVideoCurrFramebuffer - VI_OFFSET); // Unused
+#else
+        rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (s32) gVideoCurrFramebuffer - VI_OFFSET); // Unused
+#endif
     }
     if (gDrawFrameTimer == 0) {
         gfxtask_run_xbus(gDisplayLists[gSPTaskNum], gCurrDisplayList, 0);
@@ -279,9 +291,21 @@ void main_game_loop(void) {
     gGameCurrTriList = gTriangleHeap[gSPTaskNum];
 
     rsp_segment(&gCurrDisplayList, SEGMENT_MAIN, 0x00000000);
+#ifdef TARGET_PC
     rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (ptrint_t) gVideoLastFramebuffer);
+#else
+    rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (s32) gVideoLastFramebuffer);
+#endif
+#ifdef TARGET_PC
     rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (ptrint_t) gVideoLastDepthBuffer);
+#else
+    rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (s32) gVideoLastDepthBuffer);
+#endif
+#ifdef TARGET_PC
     rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (ptrint_t) gVideoLastFramebuffer - VI_OFFSET); // Unused
+#else
+    rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (s32) gVideoLastFramebuffer - VI_OFFSET); // Unused
+#endif
     rsp_init(&gCurrDisplayList);
     rdp_init(&gCurrDisplayList);
     bgdraw_render(&gCurrDisplayList, &gGameCurrMatrix, TRUE);

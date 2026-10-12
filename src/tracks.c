@@ -2016,9 +2016,17 @@ void render_level_segment(s32 segmentId, s32 nonOpaque) {
         do { // Fakematch
             numberVertices = (batchInfo + 1)->verticesOffset - batchInfo->verticesOffset;
             numberTriangles = (batchInfo + 1)->facesOffset - numberTriangles;
+#ifdef TARGET_PC
             vertices = (ptrint_t) &segment->vertices[batchInfo->verticesOffset];
+#else
+            vertices = (s32) &segment->vertices[batchInfo->verticesOffset];
+#endif
         } while (0);
+#ifdef TARGET_PC
         triangles = (ptrint_t) &segment->triangles[batchInfo->facesOffset];
+#else
+        triangles = (s32) &segment->triangles[batchInfo->facesOffset];
+#endif
         texOffset = batchInfo->texOffset << 14;
         levelHeaderIndex = (batchFlags >> 28) & 7;
         if (levelHeaderIndex != (batchInfo->verticesOffset * 0)) {
@@ -3146,17 +3154,33 @@ void generate_track(s32 modelId) {
         gCurrentLevelModel->textures[k].texture =
             load_texture(((s32) gCurrentLevelModel->textures[k].texture) | 0x8000);
     }
+#ifdef TARGET_PC
     j = (ptrint_t) gCurrentLevelModel + gCurrentLevelModel->modelSize;
+#else
+    j = (s32) gCurrentLevelModel + gCurrentLevelModel->modelSize;
+#endif
     for (k = 0; k < gCurrentLevelModel->numberOfSegments; k++) {
         gCurrentLevelModel->segments[k].unk10 = (s16 *) j;
+#ifdef TARGET_PC
         j = (ptrint_t) align16(((u8 *) (gCurrentLevelModel->segments[k].numberOfTriangles * 2)) + j);
+#else
+        j = (s32) align16(((u8 *) (gCurrentLevelModel->segments[k].numberOfTriangles * 2)) + j);
+#endif
         gCurrentLevelModel->segments[k].collisionPlanes = (f32 *) j;
+#ifdef TARGET_PC
         j = (ptrint_t) & ((u8 *) j)[track_init_collision(&gCurrentLevelModel->segments[k])];
+#else
+        j = (s32) & ((u8 *) j)[track_init_collision(&gCurrentLevelModel->segments[k])];
+#endif
         func_8002C954(&gCurrentLevelModel->segments[k], &gCurrentLevelModel->segmentsBoundingBoxes[k], k);
         gCurrentLevelModel->segments[k].unk30 = 0;
         gCurrentLevelModel->segments[k].unk34 = (s16 *) j;
         func_8002C71C(&gCurrentLevelModel->segments[k]);
+#ifdef TARGET_PC
         j = (ptrint_t) align16(((u8 *) (gCurrentLevelModel->segments[k].unk32 * 2)) + j);
+#else
+        j = (s32) align16(((u8 *) (gCurrentLevelModel->segments[k].unk32 * 2)) + j);
+#endif
     }
 #ifdef TARGET_PC
     temp_s4 = (s32) (j - (ptrint_t) gCurrentLevelModel);
@@ -3514,10 +3538,18 @@ void trackMakeAbsolute(unk8002D30C_a0 *arg0, s32 arg1) {
             return;
         }
         if (arg0->unk04) {
+#ifdef TARGET_PC
             arg0->unk04 = (unk8002D30C_a0 *) ((ptrint_t) arg0->unk04 + arg1);
+#else
+            arg0->unk04 = (unk8002D30C_a0 *) ((s32) arg0->unk04 + arg1);
+#endif
         }
         if (arg0->unk08) {
+#ifdef TARGET_PC
             arg0->unk08 = (unk8002D30C_a0 *) ((ptrint_t) arg0->unk08 + arg1);
+#else
+            arg0->unk08 = (unk8002D30C_a0 *) ((s32) arg0->unk08 + arg1);
+#endif
         }
 
         trackMakeAbsolute(arg0->unk04, arg1);
