@@ -1,0 +1,75 @@
+name: PC build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-24.04
+            artifact: dkracing-linux-x86_64
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+            artifact: dkracing-linux-arm64
+          - name: macOS arm64
+            os: macos-15
+            artifact: dkracing-macos-arm64
+          - name: Windows x86_64 (MinGW)
+            os: windows-latest
+            artifact: dkracing-windows-x86_64
+    defaults:
+      run:
+        shell: ${{ startsWith(matrix.os, 'windows') && 'msys2 {0}' || 'bash' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev libudev-dev libdbus-1-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
+            libxss-dev libxtst-dev libxinerama-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl-dev libgl-dev libdrm-dev libgbm-dev libibus-1.0-dev
+
+      - name: Install build dependencies (Windows)
+        if: startsWith(matrix.os, 'windows')
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            git
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Check the binary is self-contained
+        run: |
+          ls -la build/dkracing* 
+          if command -v ldd >/dev/null; then ldd build/dkracing* | grep -i sdl && exit 1 || true; fi
+          if command -v otool >/dev/null; then otool -L build/dkracing | grep -i sdl && exit 1 || true; fi
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: build/dkracing*

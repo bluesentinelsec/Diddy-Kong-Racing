@@ -95,3 +95,8 @@ amap
 /bonus/dkr_music_player/cdrom/
 /bonus/dkr_music_player/include/songs.h
 /captures/
+
+# GitHub Actions workflows (the upstream rule above ignores every dot-directory)
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
