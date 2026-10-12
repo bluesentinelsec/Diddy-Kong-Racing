@@ -28,7 +28,11 @@ u32 *gAssetsLookupTable;
 /*******************************/
 
 // These are both defined in the generated dkr.ld file.
+#ifdef TARGET_PC
+#include "pc_rom.h" // the same two ROM offsets, as constants
+#else
 extern u8 __ASSETS_LUT_START[], __ASSETS_LUT_END[];
+#endif
 
 #ifdef TARGET_PC
 #ifdef TARGET_PC

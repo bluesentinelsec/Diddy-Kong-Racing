@@ -35,8 +35,7 @@ u64 rspF3DDKRDataFifoStart[1] = { 0 };
 // Linker-script symbols (placed by the N64 linker script; static here)
 // ---------------------------------------------------------------------------
 // Becomes the real asset LUT/data location once the PC asset loader exists.
-u8 __ASSETS_LUT_START[1] = { 0 };
-u8 __ASSETS_LUT_END[1] = { 0 };
+#include "pc_rom.h"
 u8 *__ROM_END; // cheat-menu checksum bound
 u8 *main_BSS_START[1] = { 0 };
 
