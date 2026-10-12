@@ -17,7 +17,7 @@ project(dkracing C)
 
 set(DKR_VERSION "us_v80" CACHE STRING "ROM version the assets were extracted from (us_v77, us_v80)")
 set_property(CACHE DKR_VERSION PROPERTY STRINGS us_v77 us_v80)
-option(DKR_EEPROM_PRESET_100 "Seed the RAM-backed EEPROM with a 100% save instead of an erased one" ON)
+option(DKR_EEPROM_PRESET_100 "Seed a fresh save file with a 100%-completion image instead of an erased one" OFF)
 option(DKR_SANITIZE "Build with AddressSanitizer" OFF)
 set(DKR_MAIN_POOL_MB 16 CACHE STRING "Size of the game's main memory pool, in MiB")
 

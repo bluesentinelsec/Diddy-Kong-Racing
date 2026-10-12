@@ -237,9 +237,12 @@ void osContGetReadData(PCContPad *pads) {
     input_host_read(&pads[0].button, &pads[0].stick_x, &pads[0].stick_y);
 }
 
-// EEPROM_TYPE_4K is 512 bytes / 64 eight-byte blocks. Backed by RAM, so writes
-// survive the session but not the process. Build with -DEEPROM_PRESET_100 to
-// seed it from a 100%-completion image instead of erased 0xFF.
+// EEPROM_TYPE_4K is 512 bytes / 64 eight-byte blocks. Persisted as
+// eeprom.bin in the per-user preference directory SDL provides (on macOS
+// ~/Library/Application Support/..., on Linux ~/.local/share/..., on Windows
+// %APPDATA%\...). Every write goes straight to disk, since the game writes a
+// few blocks at a time and only on save. Build with -DEEPROM_PRESET_100 to seed
+// a fresh file from a 100%-completion image instead of erased 0xFF.
 #define PC_EEPROM_BLOCKS 64
 #define PC_EEPROM_BYTES (PC_EEPROM_BLOCKS * 8)
 
@@ -247,19 +250,76 @@ void osContGetReadData(PCContPad *pads) {
 #include "eeprom_preset.h"
 #endif
 
+#include <SDL3/SDL.h>
+
 static u8 gEeprom[PC_EEPROM_BYTES];
 static s32 gEepromReady = 0;
+static char gEepromPath[1024];
+
+static void eeprom_flush(void) {
+    char tmp[sizeof(gEepromPath) + 8];
+    FILE *f;
+
+    if (gEepromPath[0] == '\0') {
+        return;
+    }
+    // Write to a temp file and rename, so a crash mid-write cannot truncate the save.
+    snprintf(tmp, sizeof(tmp), "%s.tmp", gEepromPath);
+    f = fopen(tmp, "wb");
+    if (f == NULL) {
+        fprintf(stderr, "SAVE: cannot write %s\n", tmp);
+        return;
+    }
+    if (fwrite(gEeprom, 1, PC_EEPROM_BYTES, f) != PC_EEPROM_BYTES) {
+        fprintf(stderr, "SAVE: short write to %s\n", tmp);
+    }
+    fclose(f);
+    if (rename(tmp, gEepromPath) != 0) {
+        // Windows refuses to rename over an existing file.
+        remove(gEepromPath);
+        if (rename(tmp, gEepromPath) != 0) {
+            fprintf(stderr, "SAVE: cannot replace %s\n", gEepromPath);
+        }
+    }
+}
 
 static void eeprom_init(void) {
+    char *pref;
+    FILE *f;
+
     if (gEepromReady) {
         return;
     }
     gEepromReady = 1;
+
 #ifdef EEPROM_PRESET_100
     memcpy(gEeprom, gEepromPreset, PC_EEPROM_BYTES);
 #else
     memset(gEeprom, 0xFF, PC_EEPROM_BYTES); // erased
 #endif
+
+    pref = SDL_GetPrefPath("bluesentinelsec", "DiddyKongRacing");
+    if (pref == NULL) {
+        fprintf(stderr, "SAVE: no preference directory (%s); progress will not be kept\n", SDL_GetError());
+        return;
+    }
+    snprintf(gEepromPath, sizeof(gEepromPath), "%seeprom.bin", pref);
+    SDL_free(pref);
+
+    f = fopen(gEepromPath, "rb");
+    if (f != NULL) {
+        u8 image[PC_EEPROM_BYTES];
+        size_t n = fread(image, 1, PC_EEPROM_BYTES, f);
+        fclose(f);
+        if (n == PC_EEPROM_BYTES) {
+            memcpy(gEeprom, image, PC_EEPROM_BYTES);
+            printf("SAVE: loaded %s\n", gEepromPath);
+            return;
+        }
+        fprintf(stderr, "SAVE: %s is not a %d-byte EEPROM image; starting fresh\n", gEepromPath, PC_EEPROM_BYTES);
+    }
+    printf("SAVE: new game data at %s\n", gEepromPath);
+    eeprom_flush();
 }
 
 s32 osEepromProbe(void *mq) {
@@ -280,9 +340,12 @@ s32 osEepromRead(void *mq, u8 address, u8 *buffer) {
 s32 osEepromWrite(void *mq, u8 address, u8 *buffer) {
     eeprom_init();
     if (address < PC_EEPROM_BLOCKS) {
-        memcpy(&gEeprom[address * 8], buffer, 8);
+        if (memcmp(&gEeprom[address * 8], buffer, 8) != 0) {
+            memcpy(&gEeprom[address * 8], buffer, 8);
+            eeprom_flush();
+        }
     }
-    return 0; // accepted, not persisted to disk (yet)
+    return 0;
 }
 
 s32 osPfsInit(void *mq, void *pfs, s32 channel) {
