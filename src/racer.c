@@ -4836,7 +4836,7 @@ void func_8004F7F4(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Rac
             update_car_velocity_offground(racerObj, racer, updateRate, updateRateF);
         }
         if (racer->unk1C != 0) {
-            sndp_stop((SoundHandle) (s32) racer->unk1C); // type cast required to match
+            sndp_stop((SoundHandle) (uintptr_t) racer->unk1C); // type cast required to match
             racer->unk1C = 0;
         }
         if (racer->buoyancy != 0.0f && racer->vehicleIDPrev != VEHICLE_BUBBLER) {
@@ -5299,23 +5299,23 @@ void func_80050A28(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateR
                 sound_play_spatial(SOUND_CAR_SLIDE, obj->trans.x_position, obj->trans.y_position, obj->trans.z_position,
                                    &racer->unk10);
             } else {
-                audspat_calculate_echo((SoundHandle) (s32) racer->unk10, obj->trans.x_position, obj->trans.y_position,
+                audspat_calculate_echo((SoundHandle) (uintptr_t) racer->unk10, obj->trans.x_position, obj->trans.y_position,
                                        obj->trans.z_position); // type cast required to match
             }
             if (racer->unk14) {
-                sndp_stop((SoundHandle) (s32) racer->unk14); // type cast required to match
+                sndp_stop((SoundHandle) (uintptr_t) racer->unk14); // type cast required to match
             }
         } else {
             if (racer->unk10) {
-                sndp_stop((SoundHandle) (s32) racer->unk10); // type cast required to match
+                sndp_stop((SoundHandle) (uintptr_t) racer->unk10); // type cast required to match
             }
         }
     } else {
         if (racer->unk10) {
-            sndp_stop((SoundHandle) (s32) racer->unk10); // type cast required to match
+            sndp_stop((SoundHandle) (uintptr_t) racer->unk10); // type cast required to match
         }
         if (racer->unk14) {
-            sndp_stop((SoundHandle) (s32) racer->unk14); // type cast required to match
+            sndp_stop((SoundHandle) (uintptr_t) racer->unk14); // type cast required to match
         }
     }
     // Velocity of steering input
@@ -5494,7 +5494,7 @@ void func_80050A28(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateR
         sound_play(surfaceType, &racer->unk18);
     }
     if (racer->unk18 != 0 && (surfaceType == SOUND_NONE || racer->velocity > -2.0)) {
-        sndp_stop((SoundHandle) (s32) racer->unk18); // type cast required to match
+        sndp_stop((SoundHandle) (uintptr_t) racer->unk18); // type cast required to match
     }
     // Apply a bobbing effect when on grass and sand.
     if (racer->velocity < -2.0 && sp68 >= 4) {
@@ -5950,13 +5950,13 @@ void update_car_velocity_offground(Object *obj, Object_Racer *racer, s32 updateR
         racer->x_rotation_vel += (angle >> 3); //!@Delta
     }
     if (racer->unk18) {
-        sndp_stop((SoundHandle) (s32) racer->unk18); // type cast required to match
+        sndp_stop((SoundHandle) (uintptr_t) racer->unk18); // type cast required to match
     }
     if (racer->unk10) {
-        sndp_stop((SoundHandle) (s32) racer->unk10); // type cast required to match
+        sndp_stop((SoundHandle) (uintptr_t) racer->unk10); // type cast required to match
     }
     if (racer->unk14) {
-        sndp_stop((SoundHandle) (s32) racer->unk14); // type cast required to match
+        sndp_stop((SoundHandle) (uintptr_t) racer->unk14); // type cast required to match
     }
     if (racer->unk1FE == 1 || racer->unk1FE == 3) {
         racer->unk1E8 = racer->steerAngle;
@@ -6227,7 +6227,9 @@ void func_80053750(Object *objRacer, Object_Racer *racer, f32 updateRateF) {
             }
             objRacer->particleEmittersEnabled |= OBJ_EMIT_11 | OBJ_EMIT_12;
         }
-        temp_f0 = someObj->trans.y_position; // Fake
+#ifndef TARGET_PC
+        temp_f0 = someObj->trans.y_position; // Fake (dead read; someObj can be stale here)
+#endif
         for (i = 0; i < 4; i++) {
             someObj = objRacer->attachPoints->obj[i];
             if (!(racer->unk1E3 & flags)) {
@@ -8388,7 +8390,7 @@ s32 timetrial_load_player_ghost(s32 controllerID, s32 mapId, s16 arg2, s16 *char
 s32 load_tt_ghost(s32 ghostOffset, s32 size, s16 *outTime) {
     GhostHeader *ghost = mempool_alloc_safe(size, COLOUR_TAG_RED);
     if (ghost != NULL) {
-        asset_load(ASSET_TTGHOSTS, (u32) ghost, ghostOffset, size);
+        asset_load(ASSET_TTGHOSTS, (uintptr_t) ghost, ghostOffset, size);
         if (gGhostData[GHOST_STAFF] != NULL) {
             mempool_free(gGhostData[GHOST_STAFF]);
         }

@@ -81,6 +81,7 @@ SRC_FILES := \
 	linux/gfx.c \
 	linux/input.c \
 	linux/reimpl.c \
+	linux/pc_asset.c \
 	src/asset_loading.c \
 	src/audio.c \
 	src/audiomgr.c \

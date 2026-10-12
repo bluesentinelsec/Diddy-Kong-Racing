@@ -210,9 +210,18 @@ typedef struct {
  * Generic Acmd Packet
  */
 
+/* Host builds (TARGET_PC): w1 carries host pointers (DMA sources, ADPCM state),
+ * so the words are pointer-sized; the HLE audio interpreter reads them back. */
+#ifdef TARGET_PC
+#include <stdint.h>
+typedef uintptr_t AcmdWord;
+#else
+typedef unsigned int AcmdWord;
+#endif
+
 typedef struct {
-	unsigned int w0;
-	unsigned int w1;
+	AcmdWord w0;
+	AcmdWord w1;
 } Awords;
 
 typedef union {
@@ -274,7 +283,7 @@ typedef short ENVMIX_STATE[40];
 	Acmd *_a = (Acmd *)pkt;						\
 									\
 	_a->words.w0 = _SHIFTL(A_ADPCM, 24, 8) | _SHIFTL(f, 16, 8);     \
-	_a->words.w1 = (unsigned int)(s);				\
+	_a->words.w1 = (AcmdWord)(s);				\
 }
 
 #define	aPoleFilter(pkt, f, g, s)					\
@@ -283,7 +292,7 @@ typedef short ENVMIX_STATE[40];
 									\
 	_a->words.w0 = (_SHIFTL(A_POLEF, 24, 8) | _SHIFTL(f, 16, 8) |	\
 			_SHIFTL(g, 0, 16)); 				\
-	_a->words.w1 = (unsigned int)(s);				\
+	_a->words.w1 = (AcmdWord)(s);				\
 }
 
 #define	aClearBuffer(pkt, d, c)						\
@@ -291,7 +300,7 @@ typedef short ENVMIX_STATE[40];
 	Acmd *_a = (Acmd *)pkt;						\
 									\
 	_a->words.w0 = _SHIFTL(A_CLEARBUFF, 24, 8) | _SHIFTL(d, 0, 24);	\
-	_a->words.w1 = (unsigned int)(c);				\
+	_a->words.w1 = (AcmdWord)(c);				\
 }
 
 #define	aEnvMixer(pkt, f, s)						\
@@ -299,7 +308,7 @@ typedef short ENVMIX_STATE[40];
 	Acmd *_a = (Acmd *)pkt;						\
 									\
 	_a->words.w0 = _SHIFTL(A_ENVMIXER, 24, 8) | _SHIFTL(f, 16, 8);	\
-	_a->words.w1 = (unsigned int)(s);				\
+	_a->words.w1 = (AcmdWord)(s);				\
 }
 
 #define	aInterleave(pkt, l, r)						\
@@ -315,7 +324,7 @@ typedef short ENVMIX_STATE[40];
 	Acmd *_a = (Acmd *)pkt;						\
 									\
 	_a->words.w0 = _SHIFTL(A_LOADBUFF, 24, 8);			\
-	_a->words.w1 = (unsigned int)(s);				\
+	_a->words.w1 = (AcmdWord)(s);				\
 }
 
 #define	aMix(pkt, f, g, i, o)						\
@@ -333,7 +342,7 @@ typedef short ENVMIX_STATE[40];
 									\
 	_a->words.w0 = (_SHIFTL(A_PAN, 24, 8) | _SHIFTL(f, 16, 8) |	\
 			_SHIFTL(d, 0, 16)); 				\
-	_a->words.w1 = (unsigned int)(s);				\
+	_a->words.w1 = (AcmdWord)(s);				\
 }
 
 #define	aResample(pkt, f, p, s)						\
@@ -342,7 +351,7 @@ typedef short ENVMIX_STATE[40];
 									\
 	_a->words.w0 = (_SHIFTL(A_RESAMPLE, 24, 8) | _SHIFTL(f, 16, 8) |\
 			_SHIFTL(p, 0, 16)); 				\
-	_a->words.w1 = (unsigned int)(s);				\
+	_a->words.w1 = (AcmdWord)(s);				\
 }
 
 #define	aSaveBuffer(pkt, s)						\
@@ -350,7 +359,7 @@ typedef short ENVMIX_STATE[40];
 	Acmd *_a = (Acmd *)pkt;						\
 									\
 	_a->words.w0 = _SHIFTL(A_SAVEBUFF, 24, 8);			\
-	_a->words.w1 = (unsigned int)(s);				\
+	_a->words.w1 = (AcmdWord)(s);				\
 }
 
 #define	aSegment(pkt, s, b)						\
@@ -383,7 +392,7 @@ typedef short ENVMIX_STATE[40];
 {                                                                       \
         Acmd *_a = (Acmd *)pkt;                                         \
         _a->words.w0 = _SHIFTL(A_SETLOOP, 24, 8);                       \
-        _a->words.w1 = (unsigned int)(a);                               \
+        _a->words.w1 = (AcmdWord)(a);                               \
 }
     
 #define	aDMEMMove(pkt, i, o, c)						\
@@ -399,7 +408,7 @@ typedef short ENVMIX_STATE[40];
 	Acmd *_a = (Acmd *)pkt;						\
 									\
 	_a->words.w0 = _SHIFTL(A_LOADADPCM, 24, 8) | _SHIFTL(c, 0, 24);	\
-        _a->words.w1 = (unsigned int) d;                                \
+        _a->words.w1 = (AcmdWord) d;                                \
 }
 
 #endif /* _LANGUAGE_C */

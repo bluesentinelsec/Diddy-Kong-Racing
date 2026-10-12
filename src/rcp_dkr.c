@@ -204,7 +204,7 @@ s32 gfxtask_run_xbus(Gfx *dlBegin, Gfx *dlEnd, UNUSED s32 recvMesg) {
     // same done-message shape the scheduler would (two words, [1] = 0 means
     // "not yielded").
     {
-        static s32 pcTaskDoneMsg[2] = { 0, 0 };
+        static OSMesg pcTaskDoneMsg[2] = { NULL, NULL }; // read back as OSMesg[2]: pointer-sized words
         extern void pc_gfx_task_submit(void *dlBegin, void *dlEnd);
         pc_gfx_task_submit(dlBegin, dlEnd);
         osSendMesg(&gGfxTaskMesgQueue, pcTaskDoneMsg, OS_MESG_BLOCK);
@@ -382,7 +382,7 @@ s32 gfxtask_wait(void) {
     }
     osRecvMesg(&gGfxTaskMesgQueue, (OSMesg) &mesg, OS_MESG_BLOCK);
     gGfxTaskIsRunning = FALSE;
-    return (s32) mesg[1];
+    return (s32) (uintptr_t) mesg[1];
 }
 
 /**

@@ -173,28 +173,28 @@ void waves_alloc(void) {
     allocSize = ((gWaveController.subdivisions + 1) << 2) * (gWaveController.subdivisions + 1);
     D_800E304C[0] = mempool_alloc_safe(allocSize * ARRAY_COUNT(D_800E304C), COLOUR_TAG_CYAN);
     for (i = 1; i < ARRAY_COUNT(D_800E304C); i++) {
-        D_800E304C[i] = (f32 *) (((u32) D_800E304C[0]) + (allocSize * i));
+        D_800E304C[i] = (f32 *) (((uintptr_t) D_800E304C[0]) + (allocSize * i));
     }
     temp = (gWaveController.subdivisions + 1);
     allocSize = (temp * 250 * (gWaveController.subdivisions + 1));
     if (gWavePlayerCount != 2) { // 1 player
         gWaveVertices[0] = (Vertex *) mempool_alloc_safe(allocSize << 1, COLOUR_TAG_CYAN);
-        gWaveVertices[1] = (Vertex *) (((u32) gWaveVertices[0]) + allocSize);
+        gWaveVertices[1] = (Vertex *) (((uintptr_t) gWaveVertices[0]) + allocSize);
     } else { // 2 Player
         gWaveVertices[0] = (Vertex *) mempool_alloc_safe(allocSize << 2, COLOUR_TAG_CYAN);
-        gWaveVertices[1] = (Vertex *) (((u32) gWaveVertices[0]) + allocSize);
-        gWaveVertices[2] = (Vertex *) (((u32) gWaveVertices[1]) + allocSize);
-        gWaveVertices[3] = (Vertex *) (((u32) gWaveVertices[2]) + allocSize);
+        gWaveVertices[1] = (Vertex *) (((uintptr_t) gWaveVertices[0]) + allocSize);
+        gWaveVertices[2] = (Vertex *) (((uintptr_t) gWaveVertices[1]) + allocSize);
+        gWaveVertices[3] = (Vertex *) (((uintptr_t) gWaveVertices[2]) + allocSize);
     }
     allocSize = (gWaveController.subdivisions * 32) * gWaveController.subdivisions;
     if (gWavePlayerCount != 2) { // 1 Player
         gWaveTriangles[0] = mempool_alloc_safe(allocSize << 1, COLOUR_TAG_CYAN);
-        gWaveTriangles[1] = (Triangle *) (((u32) gWaveTriangles[0]) + allocSize);
+        gWaveTriangles[1] = (Triangle *) (((uintptr_t) gWaveTriangles[0]) + allocSize);
     } else { // 2 Player
         gWaveTriangles[0] = (Triangle *) mempool_alloc_safe(allocSize << 2, COLOUR_TAG_CYAN);
-        gWaveTriangles[1] = (Triangle *) (((u32) gWaveTriangles[0]) + allocSize);
-        gWaveTriangles[2] = (Triangle *) (((u32) gWaveTriangles[1]) + allocSize);
-        gWaveTriangles[3] = (Triangle *) (((u32) gWaveTriangles[2]) + allocSize);
+        gWaveTriangles[1] = (Triangle *) (((uintptr_t) gWaveTriangles[0]) + allocSize);
+        gWaveTriangles[2] = (Triangle *) (((uintptr_t) gWaveTriangles[1]) + allocSize);
+        gWaveTriangles[3] = (Triangle *) (((uintptr_t) gWaveTriangles[2]) + allocSize);
     }
     gWaveTextureHeader = load_texture(gWaveController.textureId);
 }
@@ -1459,7 +1459,7 @@ void func_800BBF78(LevelModel *model) {
     );
     // clang-format on
 
-    gWaveGenList = (WaveGen *) ((u32) gWaveModel + model->numberOfSegments * sizeof(LevelModel_Alternate));
+    gWaveGenList = (WaveGen *) ((uintptr_t) gWaveModel + model->numberOfSegments * sizeof(LevelModel_Alternate));
     gWaveGenObjs = (Object **) (gWaveGenList + sizeof(WaveGen *) * 8);
     D_800E3184 = (unk800E3184 *) (gWaveGenObjs + 32);
 

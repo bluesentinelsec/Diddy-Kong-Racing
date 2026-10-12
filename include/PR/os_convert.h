@@ -72,13 +72,14 @@ extern "C" {
 
 /* OS_K?_TO_PHYSICAL macro bug fix for CodeWarrior */
 #ifdef TARGET_PC
+#include <stdint.h>
 
 /* On PC there are no CPU segments — pass pointers through unchanged. Same as
  * the K0_TO_PHYS family in PR/R4300.h. The display lists the game builds are
  * full of OS_K0_TO_PHYSICAL()'d pointers (matrices, vertices, viewports); on
  * the host those have to stay dereferenceable addresses. */
-#define	OS_K0_TO_PHYSICAL(x)	(u32)(x)
-#define	OS_K1_TO_PHYSICAL(x)	(u32)(x)
+#define	OS_K0_TO_PHYSICAL(x)	(uintptr_t)(x)
+#define	OS_K1_TO_PHYSICAL(x)	(uintptr_t)(x)
 #define	OS_PHYSICAL_TO_K0(x)	(void *)(x)
 #define	OS_PHYSICAL_TO_K1(x)	(void *)(x)
 
@@ -113,7 +114,12 @@ extern "C" {
 
 /* Address translation routines and macros */
 
+#ifdef TARGET_PC
+#include <stdint.h>
+extern uintptr_t	 osVirtualToPhysical(void *);
+#else
 extern u32		 osVirtualToPhysical(void *);
+#endif
 extern void *		 osPhysicalToVirtual(u32);
 
 

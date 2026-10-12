@@ -37,15 +37,9 @@ typedef struct AudioInfo_s {
 } AudioInfo;
 
 #ifdef TARGET_PC
-// amCreateAudioMgr only alHeapAllocs 120 bytes per AudioInfo, but the struct is
-// 152. Retail has the same overrun: `msg` lands at offset 120, one byte past the
-// allocation, and is never read or written by anything (see the TODO above — the
-// completion message is passed as &info->data instead). So the invariant that
-// actually matters is that everything LIVE — data, frameSamples, task — fits
-// inside the 120 bytes, i.e. msg begins exactly at the end of them. If the host
-// ever lays these out differently, the three output buffers start scribbling on
-// each other.
-_Static_assert(offsetof(struct AudioInfo_s, msg) == 120, "AudioInfo's live fields no longer fit the 120-byte alloc");
+// amCreateAudioMgr allocates 120 bytes per AudioInfo on N64 (the trailing `msg`
+// field is never used, so retail gets away with the overrun). Host layouts
+// differ, so the PC build allocates the whole struct instead; see below.
 #endif
 
 typedef struct {
@@ -108,7 +102,7 @@ static s32 gLastAudioFrameSamples = 0;
 #ifdef TARGET_PC
 // linux/reimpl.c — "ROM" reads served from the loaded asset image, and the shared
 // byteswap helper (asset sub-tables come back as raw big-endian u32s).
-extern void pc_dmacopy(u32 romOffset, u32 ramAddress, s32 numBytes);
+extern void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes);
 extern void pc_swap32_buf(void *buf, u32 numBytes);
 
 // linux/audio_hle.c — the aspMain microcode's replacement: a C interpreter of the
@@ -127,7 +121,7 @@ static void pc_audio_submit(Acmd *cmdList, s32 cmdLen, s16 *out, s32 frameSample
 
 /**** private routines ****/
 static void __amMain(UNUSED void *arg);
-static s32 __amDMA(s32 addr, s32 len, void *state);
+static ALDMAAddr __amDMA(s32 addr, s32 len, void *state);
 static ALDMAproc __amDmaNew(AMDMAState **state);
 static u32 __amHandleFrameMsg(AudioInfo *info, AudioInfo *lastInfo);
 static void __amHandleDoneMsg(AudioInfo *info);
@@ -182,7 +176,7 @@ void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
 #endif
         assetSize = assetAudioTable[ASSET_AUDIO_9] - assetAudioTable[ASSET_AUDIO_8];
         asset8 = mempool_alloc_safe(assetSize, COLOUR_TAG_CYAN);
-        asset_load(ASSET_AUDIO, (u32) asset8, assetAudioTable[ASSET_AUDIO_8], assetSize);
+        asset_load(ASSET_AUDIO, (uintptr_t) asset8, assetAudioTable[ASSET_AUDIO_8], assetSize);
 #ifdef TARGET_PC
         // The AL_FX_CUSTOM reverb params: a flat array of big-endian s32s
         // (section_count, length, then five per delay section — see alFxNew in
@@ -255,8 +249,15 @@ void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
 
     /**** initialize the done messages ****/
     for (i = 0; i < NUM_ACMD_LISTS + 1; i++) {
+#ifdef TARGET_PC
+        // Retail indexes past ACMDList into the audioInfo array that follows it;
+        // say so explicitly (and allocate the whole host-sized struct).
+        __am.audioInfo[i] = (AudioInfo *) alHeapAlloc(c->heap, 1, sizeof(AudioInfo));
+        ((Acmd *) __am.audioInfo[i])->words.w0 = (uintptr_t) asset;
+#else
         __am.ACMDList[i + NUM_ACMD_LISTS] = (Acmd *) alHeapAlloc(c->heap, 1, 120);
         __am.ACMDList[i + NUM_ACMD_LISTS]->words.w0 = (uintptr_t) asset;
+#endif
         asset += maxFrameSize;
     }
 
@@ -310,7 +311,7 @@ void am_audio_frame_pc(void) {
         return; // audio_init hasn't run yet
     }
 
-    info = (AudioInfo *) __am.ACMDList[(audFrameCt % 3) + 2];
+    info = __am.audioInfo[audFrameCt % 3];
     __amHandleFrameMsg(info, lastInfo);
     __amHandleDoneMsg(info);
     lastInfo = info;
@@ -491,7 +492,7 @@ static void __amHandleDoneMsg(UNUSED AudioInfo *info) {
  * __clearAudioDMA routine.
  *
  *****************************************************************************/
-static s32 __amDMA(s32 addr, s32 len, UNUSED void *state) {
+static ALDMAAddr __amDMA(s32 addr, s32 len, UNUSED void *state) {
     void *foundBuffer;
     s32 delta, addrEnd, buffEnd;
     AMDMABuffer *dmaPtr, *lastDmaPtr;
@@ -512,7 +513,7 @@ static s32 __amDMA(s32 addr, s32 len, UNUSED void *state) {
         } else if (addrEnd <= buffEnd) {      /* yes, found a buffer with samples */
             dmaPtr->lastFrame = audFrameCt;   /* mark it used */
             foundBuffer = dmaPtr->ptr + addr - dmaPtr->startAddr;
-            return (int) osVirtualToPhysical(foundBuffer);
+            return (ALDMAAddr) osVirtualToPhysical(foundBuffer);
         }
         lastDmaPtr = dmaPtr;
         dmaPtr = (AMDMABuffer *) dmaPtr->node.next;
@@ -533,7 +534,7 @@ static s32 __amDMA(s32 addr, s32 len, UNUSED void *state) {
      */
     if (!dmaPtr) {
         stubbed_printf("OH DEAR - No audio DMA buffers left\n");
-        return (int) osVirtualToPhysical(lastDmaPtr->ptr) + delta;
+        return (ALDMAAddr) osVirtualToPhysical(lastDmaPtr->ptr) + delta;
     }
 
     dmaState.firstFree = (AMDMABuffer *) dmaPtr->node.next;
@@ -567,14 +568,14 @@ static s32 __amDMA(s32 addr, s32 len, UNUSED void *state) {
     // receive once per DMA issued — skipping it would make every frame report
     // "Dma not done". (RAW16 sample data was already swapped in the asset image at
     // bank-load time; ADPCM is a byte stream. See docs/audio.md.)
-    pc_dmacopy((u32) addr, (u32) foundBuffer, DMA_BUFFER_LENGTH);
+    pc_dmacopy((u32) (uintptr_t) addr, (uintptr_t) foundBuffer, DMA_BUFFER_LENGTH);
     osSendMesg(&audDMAMessageQ, (OSMesg) &audDMAIOMesgBuf[nextDMA++], OS_MESG_NOBLOCK);
 #else
     osPiStartDma(&audDMAIOMesgBuf[nextDMA++], OS_MESG_PRI_HIGH, OS_READ, addr, foundBuffer, DMA_BUFFER_LENGTH,
                  &audDMAMessageQ);
 #endif
 
-    return (int) osVirtualToPhysical(foundBuffer) + delta;
+    return (ALDMAAddr) osVirtualToPhysical(foundBuffer) + delta;
 }
 
 /******************************************************************************

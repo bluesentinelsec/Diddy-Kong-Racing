@@ -47,8 +47,16 @@
 
 #define OBJECT_MAP_SIZE 0x3000
 #define MAX_CHECKPOINTS 60
+#ifdef TARGET_PC
+#define OBJECT_POOL_SIZE (0x15800 * 3) // host objects carry 8-byte pointers
+#else
 #define OBJECT_POOL_SIZE 0x15800
+#endif
+#ifdef TARGET_PC
+#define OBJECT_BLUEPRINT_SIZE (0x800 * 3)
+#else
 #define OBJECT_BLUEPRINT_SIZE 0x800
+#endif
 #define OBJECT_SLOT_COUNT 512
 #define OBJECT_COLLISION_COUNT 20
 #define AINODE_COUNT 128
@@ -57,7 +65,7 @@
 #define BOOST_TRI_COUNT 8
 
 #ifndef _ALIGN16
-#define _ALIGN16(a) (((u32) (a) & ~0xF) + 0x10)
+#define _ALIGN16(a) (((uintptr_t) (a) & ~0xF) + 0x10)
 #endif
 
 #define SET_SHIFT_AND_MASK(varShift, varMask, x) \
@@ -239,6 +247,9 @@ s32 D_8011AD60;
 s32 *gAssetsObjectHeadersTable;
 s32 gAssetsObjectHeadersTableLength;
 s32 *gAssetsMiscSection;
+#ifdef TARGET_PC
+static Object_Boost sPcBoostTable[NUMBER_OF_CHARACTERS]; // ASSET_MISC_20 unpacked for the host
+#endif
 s32 *gAssetsMiscTable;
 s32 D_8011AD74;
 Gfx *D_8011AD78[10];
@@ -359,9 +370,9 @@ void racerfx_alloc(s32 numberOfVertices, s32 numberOfTriangles) {
 
     gBoostTris[0] = (Triangle *) mempool_alloc_safe(
         ((numberOfTriangles * sizeof(Triangle)) + (numberOfVertices * sizeof(Vertex))) * 2, COLOUR_TAG_BLUE);
-    gBoostTris[1] = (Triangle *) ((u32) gBoostTris[0] + numberOfTriangles * sizeof(Triangle));
-    gBoostVerts[0] = (Vertex *) ((u32) gBoostTris[1] + numberOfTriangles * sizeof(Triangle));
-    gBoostVerts[1] = (Vertex *) ((u32) gBoostVerts[0] + numberOfVertices * sizeof(Vertex));
+    gBoostTris[1] = (Triangle *) ((uintptr_t) gBoostTris[0] + numberOfTriangles * sizeof(Triangle));
+    gBoostVerts[0] = (Vertex *) ((uintptr_t) gBoostTris[1] + numberOfTriangles * sizeof(Triangle));
+    gBoostVerts[1] = (Vertex *) ((uintptr_t) gBoostVerts[0] + numberOfVertices * sizeof(Vertex));
     gBoostVertCount = numberOfVertices;
     gNumOfBoostVerts = 0;
     gBoostTriCount = numberOfTriangles;
@@ -763,7 +774,7 @@ void allocate_object_pools(void) {
         gAssetsObjectHeadersTableLength++;
     }
     gAssetsObjectHeadersTableLength--;
-    gLoadedObjectHeaders = mempool_alloc_safe(gAssetsObjectHeadersTableLength * 4, COLOUR_TAG_WHITE);
+    gLoadedObjectHeaders = mempool_alloc_safe(gAssetsObjectHeadersTableLength * sizeof(ObjectHeader *), COLOUR_TAG_WHITE);
     gObjectHeaderReferences = mempool_alloc_safe(gAssetsObjectHeadersTableLength, COLOUR_TAG_WHITE);
 
     for (i = 0; i < gAssetsObjectHeadersTableLength; i++) {
@@ -782,17 +793,20 @@ void allocate_object_pools(void) {
 
         // ASSET_MISC_20: the 10 Object_Boost racer-FX entries read by
         // racerfx_alloc — 27 f32s of boost data plus sprite/texture ids per
-        // entry. The trailing fields (unk70..tex) are runtime state.
+        // entry, then runtime state (unk70..tex) including two pointers. The
+        // host struct is wider than the 0x80-byte image, so the entries are
+        // unpacked into sPcBoostTable and get_misc_asset hands that out.
         {
-            Object_Boost *boost = (Object_Boost *) &gAssetsMiscSection[gAssetsMiscTable[ASSET_MISC_20]];
-            s32 n;
-            _Static_assert(sizeof(Object_Boost) == 0x80, "Object_Boost layout drifted from N64");
-            _Static_assert(__builtin_offsetof(Object_Boost, spriteId) == 0x6C,
-                           "Object_Boost layout drifted from N64");
-            for (n = 0; n < NUMBER_OF_CHARACTERS; n++) {
-                pc_swap32_buf(&boost[n], 0x6C);        // car/hovercraft/flying boost data, 27 x f32
-                PC_SWAP16_AT(&boost[n], spriteId, 4);  // spriteId, textureId
-            }
+            static const PcField sBoostFields[] = {
+                PCU_FIELD(Object_Boost, carBoostData, 0x00, 27, PCU_U32),
+                PCU_FIELD(Object_Boost, spriteId, 0x6C, 2, PCU_U16),
+                PCU_FIELD(Object_Boost, unk70, 0x70, 4, PCU_BYTES),
+                PCU_FIELD(Object_Boost, unk74, 0x74, 1, PCU_U32),
+                PCU_FIELD(Object_Boost, sprite, 0x78, 2, PCU_PTR),
+                PCU_END,
+            };
+            pc_unpack_array(sPcBoostTable, sizeof(Object_Boost), &gAssetsMiscSection[gAssetsMiscTable[ASSET_MISC_20]],
+                            0x80, NUMBER_OF_CHARACTERS, sBoostFields);
         }
 
         // ASSET_MISC_SHIELD_DATA: the RacerShieldGfx table read by
@@ -846,7 +860,7 @@ void allocate_object_pools(void) {
     decrypt_magic_codes(
         &gAssetsMiscSection[gAssetsMiscTable[ASSET_MISC_MAGIC_CODES]],
         (gAssetsMiscTable[ASSET_MISC_TITLE_SCREEN_DEMO_IDS] - gAssetsMiscTable[ASSET_MISC_MAGIC_CODES]) *
-            sizeof(s32 *));
+            sizeof(s32)); // index delta -> bytes (the N64 source spelled this sizeof(s32 *))
     gObjPtrList = mempool_alloc_safe(sizeof(uintptr_t) * OBJECT_SLOT_COUNT, COLOUR_TAG_BLUE);
     gFirstTimeFinish = 0;
     gTimeTrialEnabled = 0;
@@ -991,32 +1005,43 @@ void free_all_objects(void) {
 }
 
 #ifdef TARGET_PC
-// ObjectHeader is a big-endian asset overlay: header fields swapped before the
-// offset->pointer fixups below, then the pointed-to arrays. The ObjectHeader24
-// union at 0x08 stays byte order (its u32 reading in lights.c has a PC-side
-// byte read instead). Helpers in linux/reimpl.c.
-extern void pc_swap16_buf(void *buf, u32 numBytes);
-extern void pc_swap32_buf(void *buf, u32 numBytes);
+// ObjectHeader is loaded from a 0x78-byte big-endian image followed by the
+// arrays it references (model ids, vehicle part ids/indices, particle entries,
+// light sources). The image is loaded OBJECT_HEADER_PC_DELTA bytes into the
+// allocation so the host-sized header fits in front of it; the header is
+// unpacked over the front and its offsets rebased so the game's existing
+// offset->pointer fixups land on the arrays. The ObjectHeader24 union at 0x08
+// stays byte order (its u32 reading in lights.c has a PC-side byte read).
+#define OBJECT_HEADER_DISK_SIZE 0x78
+#define OBJECT_HEADER_PC_DELTA (sizeof(ObjectHeader) - OBJECT_HEADER_DISK_SIZE)
 
-_Static_assert(sizeof(ObjectHeader) == 0x78, "ObjectHeader layout drifted from N64");
-_Static_assert(__builtin_offsetof(ObjectHeader, modelIds) == 0x10, "ObjectHeader layout drifted from N64");
-_Static_assert(__builtin_offsetof(ObjectHeader, unk24) == 0x24, "ObjectHeader layout drifted from N64");
-_Static_assert(__builtin_offsetof(ObjectHeader, flags) == 0x30, "ObjectHeader layout drifted from N64");
-_Static_assert(__builtin_offsetof(ObjectHeader, shadeAngleY) == 0x3E, "ObjectHeader layout drifted from N64");
-_Static_assert(__builtin_offsetof(ObjectHeader, unk52) == 0x52, "ObjectHeader layout drifted from N64");
-_Static_assert(__builtin_offsetof(ObjectHeader, internalName) == 0x60, "ObjectHeader layout drifted from N64");
-_Static_assert(sizeof(ObjectHeader24) == 0x18, "ObjectHeader24 layout drifted from N64");
-_Static_assert(__builtin_offsetof(ObjectHeader24, homeX) == 0x0C, "ObjectHeader24 layout drifted from N64");
+static const PcField sObjectHeaderFields[] = {
+    PCU_FIELD(ObjectHeader, unk0, 0x00, 4, PCU_U32),      // unk0, shadowScale, unk8, scale
+    PCU_FIELD(ObjectHeader, modelIds, 0x10, 4, PCU_PTR),  // modelIds..objectParticles
+    PCU_FIELD(ObjectHeader, pad20, 0x20, 1, PCU_U32),
+    PCU_FIELD(ObjectHeader, unk24, 0x24, 1, PCU_PTR),
+    PCU_FIELD(ObjectHeader, shadeAmbient, 0x28, 2, PCU_U32),
+    PCU_FIELD(ObjectHeader, flags, 0x30, 5, PCU_U16),       // flags..unk38
+    PCU_FIELD(ObjectHeader, unk3A, 0x3A, 4, PCU_BYTES),
+    PCU_FIELD(ObjectHeader, shadeAngleY, 0x3E, 10, PCU_U16), // shadeAngleY..unk50
+    PCU_FIELD(ObjectHeader, unk52, 0x52, 14, PCU_BYTES),     // unk52..pad5E
+    PCU_FIELD(ObjectHeader, internalName, 0x60, 16, PCU_BYTES),
+    PCU_FIELD(ObjectHeader, unk70, 0x70, 8, PCU_BYTES),
+    PCU_END,
+};
 
-static void pc_swap_loaded_object_header(ObjectHeader *header) {
+static void pc_unpack_object_header(ObjectHeader *header) {
+    u8 *disk = (u8 *) header + OBJECT_HEADER_PC_DELTA;
     s32 i;
 
-    pc_swap32_buf(header, 0x10);            // unk0, shadowScale, unk8, scale
-    PC_SWAP32_AT(header, modelIds, 0x10); // 4 offset words (modelIds..objectParticles)
-    PC_SWAP32_AT(header, unk24, 4);       // unk24 offset (pad20 skipped)
-    PC_SWAP32_AT(header, shadeAmbient, 8);
-    PC_SWAP16_AT(header, flags, 10);       // flags..unk38
-    PC_SWAP16_AT(header, shadeAngleY, 20); // shadeAngleY..unk50
+    pc_unpack(header, sizeof(ObjectHeader), disk, OBJECT_HEADER_DISK_SIZE, sObjectHeaderFields);
+
+    // Offsets are relative to the image; rebase them onto the host header.
+    header->modelIds = (s32 *) ((uintptr_t) header->modelIds + OBJECT_HEADER_PC_DELTA);
+    header->vehiclePartIds = (s32 *) ((uintptr_t) header->vehiclePartIds + OBJECT_HEADER_PC_DELTA);
+    header->vehiclePartIndices = (s8 *) ((uintptr_t) header->vehiclePartIndices + OBJECT_HEADER_PC_DELTA);
+    header->objectParticles = (ObjHeaderParticleEntry *) ((uintptr_t) header->objectParticles + OBJECT_HEADER_PC_DELTA);
+    header->unk24 = (ObjectHeader24 *) ((uintptr_t) header->unk24 + OBJECT_HEADER_PC_DELTA);
 
     // Pointed-to arrays, still offsets here — swap via the header base.
     pc_swap32_buf((u8 *) header + (uintptr_t) header->modelIds, header->numberOfModelIds * 4);
@@ -1047,11 +1072,15 @@ ObjectHeader *load_object_header(s32 index) {
     }
     assetOffset = gAssetsObjectHeadersTable[index];
     size = gAssetsObjectHeadersTable[index + 1] - assetOffset;
+#ifdef TARGET_PC
+    address = mempool_alloc_pool((MemoryPoolSlot *) gObjectMemoryPool, size + OBJECT_HEADER_PC_DELTA);
+    if (address != NULL) {
+        asset_load(ASSET_OBJECTS, (uintptr_t) address + OBJECT_HEADER_PC_DELTA, assetOffset, size);
+        pc_unpack_object_header(address);
+#else
     address = mempool_alloc_pool((MemoryPoolSlot *) gObjectMemoryPool, size);
     if (address != NULL) {
-        asset_load(ASSET_OBJECTS, (u32) address, assetOffset, size);
-#ifdef TARGET_PC
-        pc_swap_loaded_object_header(address);
+        asset_load(ASSET_OBJECTS, (uintptr_t) address, assetOffset, size);
 #endif
         address->unk24 = (ObjectHeader24 *) ((uintptr_t) address + (uintptr_t) address->unk24);
         address->objectParticles =
@@ -1104,7 +1133,7 @@ static void pc_swap_spawn_entry_fields(u8 *entryBytes) {
     LevelObjectEntry *entry = (LevelObjectEntry *) entryBytes;
     s32 objType = entryBytes[0] | ((entryBytes[1] & 0x80) << 1);
     s16 headerType = gAssetsLvlObjTranslationTable[objType];
-    ObjectHeader tmpHeader;
+    u8 tmpHeader[OBJECT_HEADER_DISK_SIZE];
     s8 behavior;
 
     if (headerType >= gAssetsObjectHeadersTableLength) {
@@ -1114,8 +1143,8 @@ static void pc_swap_spawn_entry_fields(u8 *entryBytes) {
     // stack buffer: going through load_object_header/try_free_object_header
     // here would push a mempool free per entry onto the deferred-free queue,
     // which never drains during level load and overflows on dense maps.
-    asset_load(ASSET_OBJECTS, (u32) &tmpHeader, gAssetsObjectHeadersTable[headerType], sizeof(ObjectHeader));
-    behavior = tmpHeader.behaviorId;
+    asset_load(ASSET_OBJECTS, (uintptr_t) tmpHeader, gAssetsObjectHeadersTable[headerType], OBJECT_HEADER_DISK_SIZE);
+    behavior = (s8) tmpHeader[0x54]; // ObjectHeader.behaviorId
 
     switch (behavior) {
         case BHV_RACER:
@@ -1220,7 +1249,7 @@ void track_spawn_objects(s32 mapID, s32 index) {
     D_8011AD3E = 0;
     mem = mempool_alloc_safe(OBJECT_MAP_SIZE, COLOUR_TAG_BLUE);
     gObjectMap[index] = mem;
-    gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + sizeof(uintptr_t));
+    gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + 4);
     gObjectMapSize[index] = NULL;
     gObjectMapID[index] = mapID;
     objMapTable = (u32 *) asset_table_load(ASSET_LEVEL_OBJECT_MAPS_TABLE);
@@ -1243,7 +1272,7 @@ void track_spawn_objects(s32 mapID, s32 index) {
         compressedAsset = (u8 *) mem;
         compressedAsset =
             ((compressedAsset + gzip_size_uncompressed(ASSET_LEVEL_OBJECT_MAPS, assetOffset)) - (0, assetSize)) + 0x20;
-        asset_load(ASSET_LEVEL_OBJECT_MAPS, (u32) compressedAsset, assetOffset, assetSize);
+        asset_load(ASSET_LEVEL_OBJECT_MAPS, (uintptr_t) compressedAsset, assetOffset, assetSize);
         gzip_inflate(compressedAsset, (u8 *) mem);
 #ifdef TARGET_PC
         {
@@ -1255,7 +1284,7 @@ void track_spawn_objects(s32 mapID, s32 index) {
             extern void pc_swap16_buf(void *buf, u32 numBytes);
             extern void pc_swap32_buf(void *buf, u32 numBytes);
             _Static_assert(sizeof(LevelObjectEntryCommon) == 8, "LevelObjectEntryCommon layout drifted from N64");
-            u8 *entry = (u8 *) (gObjectMap[index] + sizeof(uintptr_t));
+            u8 *entry = (u8 *) (gObjectMap[index] + 4);
             s32 entryOffset;
             s32 entrySize;
             pc_swap32_buf(mem, 4);
@@ -1268,14 +1297,14 @@ void track_spawn_objects(s32 mapID, s32 index) {
         }
 #endif
         mempool_free(objMapTable);
-        gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + sizeof(uintptr_t));
+        gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + 4);
         gObjectMapSize[index] = *mem;
         gObjectMapIndex = index;
         for (var_s0 = 0; var_s0 < gObjectMapSize[index]; var_s0 += temp_t3) {
             spawn_object((LevelObjectEntryCommon *) gObjectMapSpawnList[index], OBJECT_SPAWN_UNK01);
             gObjectMapSpawnList[index] = &gObjectMapSpawnList[index][temp_t3 = gObjectMapSpawnList[index][1] & 0x3F];
         }
-        gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + sizeof(uintptr_t));
+        gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + 4);
         gCollisionObjectCount = 0;
         gNumFinishedRacers = 1;
         if (gPathUpdateOff == FALSE) {
@@ -2019,17 +2048,17 @@ UNUSED void func_8000E4E8(s32 index) {
 }
 
 UNUSED s32 func_8000E558(Object *arg0) {
-    s32 temp_v0;
-    s32 new_var, new_var2;
+    ptrint_t temp_v0;
+    ptrint_t new_var, new_var2;
     if (arg0->level_entry == NULL) {
         return TRUE;
     }
-    temp_v0 = (s32) arg0->level_entry;
-    new_var2 = (s32) gObjectMapSpawnList[0];
+    temp_v0 = (ptrint_t) arg0->level_entry;
+    new_var2 = (ptrint_t) gObjectMapSpawnList[0];
     if ((temp_v0 >= new_var2) && (((gObjectMapSize[0] * 8) + new_var2) >= temp_v0)) {
         return FALSE;
     }
-    new_var = (s32) gObjectMapSpawnList[1];
+    new_var = (ptrint_t) gObjectMapSpawnList[1];
     // Why even bother with this check?
     if (temp_v0 >= new_var && temp_v0 <= ((gObjectMapSize[1] * 8) + new_var)) {
         return TRUE;
@@ -2040,8 +2069,8 @@ UNUSED s32 func_8000E558(Object *arg0) {
 void func_8000E5EC(LevelObjectEntryCommon *arg0) {
     u8 *src;
     u8 *dst;
-    s32 end;
-    s32 sp30[2];
+    ptrint_t end;
+    ptrint_t sp30[2];
     s32 size;
     s32 i;
     s32 pad;
@@ -2049,12 +2078,12 @@ void func_8000E5EC(LevelObjectEntryCommon *arg0) {
 
     size = arg0->size & 0x3F;
 
-    sp30[0] = (s32) gObjectMapSpawnList[0] + gObjectMapSize[0];
-    sp30[1] = (s32) gObjectMapSpawnList[1] + gObjectMapSize[1];
+    sp30[0] = (ptrint_t) gObjectMapSpawnList[0] + gObjectMapSize[0];
+    sp30[1] = (ptrint_t) gObjectMapSpawnList[1] + gObjectMapSize[1];
 
-    if ((s32) arg0 >= (s32) gObjectMapSpawnList[0] && (s32) arg0 < sp30[0]) {
+    if ((ptrint_t) arg0 >= (ptrint_t) gObjectMapSpawnList[0] && (ptrint_t) arg0 < sp30[0]) {
         sp1C = 0;
-    } else if ((s32) arg0 >= (s32) gObjectMapSpawnList[1] && (s32) arg0 < sp30[1]) {
+    } else if ((ptrint_t) arg0 >= (ptrint_t) gObjectMapSpawnList[1] && (ptrint_t) arg0 < sp30[1]) {
         sp1C = 1;
     }
 #ifdef AVOID_UB
@@ -2064,21 +2093,21 @@ void func_8000E5EC(LevelObjectEntryCommon *arg0) {
 #endif
 
     dst = (u8 *) arg0;
-    src = (u8 *) ((s32) arg0 + size);
+    src = (u8 *) ((ptrint_t) arg0 + size);
     end = sp30[sp1C];
-    if ((u32) src < (u32) end) {
+    if ((uintptr_t) src < (uintptr_t) end) {
         do {
             *dst++ = *src++;
-        } while ((u32) src != (u32) end);
+        } while ((uintptr_t) src != (uintptr_t) end);
     }
     gObjectMapSize[sp1C] -= size;
 
     for (i = 0; i < gObjectCount; i++) {
         Object *obj = gObjPtrList[i];
         if (obj != NULL && obj->level_entry != NULL) {
-            if ((s32) arg0 < (s32) obj->level_entry && (s32) obj->level_entry < end) {
-                obj->level_entry = (LevelObjectEntry *) ((s32) obj->level_entry - size);
-            } else if ((s32) arg0 == (s32) obj->level_entry) {
+            if ((ptrint_t) arg0 < (ptrint_t) obj->level_entry && (ptrint_t) obj->level_entry < end) {
+                obj->level_entry = (LevelObjectEntry *) ((ptrint_t) obj->level_entry - size);
+            } else if ((ptrint_t) arg0 == (ptrint_t) obj->level_entry) {
                 obj->level_entry = NULL;
             }
         }
@@ -2095,7 +2124,7 @@ void func_8000E79C(u8 *arg0, u8 *arg1) {
     u8 *var_a2;
     s32 i;
     s32 j;
-    s32 k;
+    uintptr_t k;
 
     arg0Value = arg0[1] & 0x3F;
     arg0Value2 = arg0Value;
@@ -2107,8 +2136,8 @@ void func_8000E79C(u8 *arg0, u8 *arg1) {
     if (arg1Value < arg0Value2) {
         var_a2 = arg0 + arg1Value;
         var_t0 = arg0 + arg0Value2;
-        k = (u32) var_a3;
-        while (((u32) var_t0) < (u32) k) {
+        k = (uintptr_t) var_a3;
+        while (((uintptr_t) var_t0) < k) {
             *var_a2 = *var_t0;
             var_a2++;
             var_t0++;
@@ -2117,8 +2146,8 @@ void func_8000E79C(u8 *arg0, u8 *arg1) {
         var_a2 = var_a3 + arg1Value;
         var_a2 -= arg0Value2;
         var_t0 = var_a3;
-        k = (u32) (arg0 + arg1Value);
-        while ((u32) k < ((u32) var_a2)) {
+        k = (uintptr_t) (arg0 + arg1Value);
+        while (k < ((uintptr_t) var_a2)) {
             var_a2--;
             var_t0--;
             *var_a2 = *var_t0;
@@ -2393,7 +2422,7 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
         address += sizeOfobj;
         if (sizeOfobj == 0) {
             if (D_8011AE50 != NULL) {
-                tex_free((TextureHeader *) (s32) D_8011AE50);
+                tex_free(D_8011AE50);
             }
             objFreeAssets(curObj, assetCount, objType);
             try_free_object_header(headerType);
@@ -2424,18 +2453,18 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
 
     if (curObj->header->numLightSources > 0) {
         curObj->lightData = (ObjectLight **) address;
-        address += curObj->header->numLightSources * 4;
+        address += curObj->header->numLightSources * sizeof(ObjectLight *);
     }
 
-    sizeOfobj = (s32) address - (s32) curObj;
+    sizeOfobj = (s32) ((uintptr_t) address - (uintptr_t) curObj);
     prevObj = curObj;
     curObj = mempool_alloc_pool((MemoryPoolSlot *) gObjectMemoryPool, sizeOfobj);
     if (curObj == NULL) {
         if (D_8011AE50 != NULL) {
-            tex_free((TextureHeader *) (s32) D_8011AE50);
+            tex_free(D_8011AE50);
         }
         if (D_8011AE54 != NULL) {
-            tex_free((TextureHeader *) (s32) D_8011AE54);
+            tex_free(D_8011AE54);
         }
         objFreeAssets(prevObj, assetCount, objType);
         try_free_object_header(headerType);
@@ -2507,10 +2536,10 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
     }
     if (curObj->header->attachPointCount > 0 && curObj->header->attachPointCount < 10 && obj_init_attachpoint(curObj)) {
         if (D_8011AE50 != NULL) {
-            tex_free((TextureHeader *) (s32) D_8011AE50);
+            tex_free(D_8011AE50);
         }
         if (D_8011AE54 != NULL) {
-            tex_free((TextureHeader *) (s32) D_8011AE54);
+            tex_free(D_8011AE54);
         }
         objFreeAssets(curObj, assetCount, objType);
         try_free_object_header(headerType);
@@ -2538,19 +2567,19 @@ void objFreeAssets(Object *obj, s32 count, s32 objType) {
     if (objType == OBJECT_MODEL_TYPE_3D_MODEL) { // 3D model
         for (i = 0; i < count; i++) {
             if (obj->modelInstances[i] != NULL) {
-                free_3d_model((ModelInstance *) (s32) obj->modelInstances[i]);
+                free_3d_model((ModelInstance *) obj->modelInstances[i]);
             }
         }
     } else if (objType == OBJECT_MODEL_TYPE_MISC) {
         for (i = 0; i < count; i++) {
             if (obj->textures[i] != NULL) {
-                tex_free((TextureHeader *) (s32) obj->textures[i]);
+                tex_free((TextureHeader *) obj->textures[i]);
             }
         }
     } else { // Sprite
         for (i = 0; i < count; i++) {
             if (obj->sprites[i] != NULL) {
-                sprite_free((Sprite *) (s32) obj->sprites[i]);
+                sprite_free((Sprite *) obj->sprites[i]);
             }
         }
     }
@@ -2736,11 +2765,18 @@ Object *obj_spawn_attachment(s32 objID) {
     }
     objHeader = load_object_header(objID);
     if (objHeader == NULL) {
+        stubbed_printf("obj_spawn_attachment(%d): header load failed\n", objID);
         return NULL;
     }
+#ifdef TARGET_PC
+    // The N64 source spells sizeof(Object) as 0x80 and a model pointer as 4 bytes.
+    objSize = (objHeader->numberOfModelIds * sizeof(ModelInstance *)) + sizeof(Object);
+#else
     objSize = (objHeader->numberOfModelIds * 4) + 0x80;
+#endif
     object = (Object *) mempool_alloc(objSize, COLOUR_TAG_BLUE);
     if (object == NULL) {
+        stubbed_printf("obj_spawn_attachment(%d): object alloc of %d bytes failed\n", objID, objSize);
         try_free_object_header(objID);
         return NULL;
     }
@@ -2779,6 +2815,8 @@ Object *obj_spawn_attachment(s32 objID) {
         }
     }
     if (failedToLoadModel) {
+        stubbed_printf("obj_spawn_attachment(%d): model/sprite load failed (type %d, %d ids)\n", objID, modelType,
+                       numModelIds);
         objFreeAssets(object, numModelIds, modelType);
         try_free_object_header(objID);
         mempool_free(object);
@@ -3028,19 +3066,19 @@ void obj_destroy(Object *obj, s32 arg1) {
     if (obj->behaviorId == i) {
         racer = obj->racer;
         if (racer->unk18 != NULL) {
-            sndp_stop((SoundHandle) (s32) racer->unk18); // type cast required to match
+            sndp_stop((SoundHandle) (uintptr_t) racer->unk18); // type cast required to match
         }
         if (racer->unk10 != NULL) {
-            sndp_stop((SoundHandle) (s32) racer->unk10); // type cast required to match
+            sndp_stop((SoundHandle) (uintptr_t) racer->unk10); // type cast required to match
         }
         if (racer->unk14 != NULL) {
-            sndp_stop((SoundHandle) (s32) racer->unk14); // type cast required to match
+            sndp_stop((SoundHandle) (uintptr_t) racer->unk14); // type cast required to match
         }
         if (racer->unk1C != NULL) {
-            sndp_stop((SoundHandle) (s32) racer->unk1C); // type cast required to match
+            sndp_stop((SoundHandle) (uintptr_t) racer->unk1C); // type cast required to match
         }
         if (racer->unk20 != NULL) {
-            sndp_stop((SoundHandle) (s32) racer->unk20); // type cast required to match
+            sndp_stop((SoundHandle) (uintptr_t) racer->unk20); // type cast required to match
         }
         if (racer->soundMask != NULL) {
             audspat_point_stop(racer->soundMask);
@@ -6482,7 +6520,7 @@ void race_check_finish(s32 updateRate) {
     s8 sp5C[4];
     s8 someBool2;
     s8 flags[3];
-    s32 camera;
+    ptrint_t camera;
 
     currentLevelHeader = level_header();
     settings = get_settings();
@@ -6791,7 +6829,7 @@ void race_check_finish(s32 updateRate) {
                     if (curRacer->raceFinished == FALSE) {
                         if (curRacer->playerIndex >= 0) {
                             set_active_camera(curRacer->playerIndex);
-                            camera = (s32) cam_get_active_camera_no_cutscenes();
+                            camera = (ptrint_t) cam_get_active_camera_no_cutscenes();
                             // we need the camera to be a s32 for the WAIT_ON_IOBUSY anti tamper call to work
                             // but we *know* that cam_get_active_camera_no_cutscenes returns a Camera pointer so this
                             // should be safe
@@ -8584,6 +8622,11 @@ s32 *get_misc_asset(s32 index) {
     if (index < 0 || index >= gAssetsMiscTableLength) {
         return gAssetsMiscSection;
     }
+#ifdef TARGET_PC
+    if (index == ASSET_MISC_20) {
+        return (s32 *) sPcBoostTable; // host-layout copy, see obj_init
+    }
+#endif
     return (s32 *) &gAssetsMiscSection[gAssetsMiscTable[index]];
 }
 
@@ -8615,8 +8658,10 @@ void pc_swap_misc_f32_once(s32 index) {
     }
     sSwapped[index] = TRUE;
 
-    start = (u8 *) get_misc_asset(index);
-    end = (u8 *) get_misc_asset(index + 1);
+    // Address the raw section directly: get_misc_asset(ASSET_MISC_20) returns
+    // the host-side boost table, which is not adjacent to anything here.
+    start = (u8 *) &gAssetsMiscSection[gAssetsMiscTable[index]];
+    end = (u8 *) &gAssetsMiscSection[gAssetsMiscTable[index + 1]];
     if (end <= start) {
         return;
     }
@@ -10580,18 +10625,18 @@ s32 get_object_property_size(Object *obj, void *obj64) {
             ret = sizeof(Object_MidiChannelSet);
             break;
         case BHV_BUTTERFLY:
-            temp_v0 = 0x10 - ((s32) obj64 & 0xF);
-            obj->butterfly = (Object_Butterfly *) ((s32) obj64 + temp_v0);
+            temp_v0 = 0x10 - (s32) ((uintptr_t) obj64 & 0xF);
+            obj->butterfly = (Object_Butterfly *) ((uintptr_t) obj64 + temp_v0);
             ret = (temp_v0 + sizeof(Object_Butterfly));
             break;
         case BHV_FISH:
-            temp_v0 = 0x10 - ((s32) obj64 & 0xF);
-            obj->fish = (Object_Fish *) ((s32) obj64 + temp_v0);
+            temp_v0 = 0x10 - (s32) ((uintptr_t) obj64 & 0xF);
+            obj->fish = (Object_Fish *) ((uintptr_t) obj64 + temp_v0);
             ret = (temp_v0 + sizeof(Object_Fish));
             break;
         case BHV_CHARACTER_FLAG:
-            temp_v0 = 0x10 - ((s32) obj64 & 0xF);
-            obj->characterFlagModel = (CharacterFlagModel *) ((s32) obj64 + temp_v0);
+            temp_v0 = 0x10 - (s32) ((uintptr_t) obj64 & 0xF);
+            obj->characterFlagModel = (CharacterFlagModel *) ((uintptr_t) obj64 + temp_v0);
             ret = (temp_v0 + sizeof(CharacterFlagModel));
             break;
         case BHV_UNK_5E:

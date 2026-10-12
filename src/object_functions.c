@@ -3723,7 +3723,7 @@ void obj_loop_door(Object *doorObj, s32 updateRate) {
         } else {
             door->openDir = DOOR_CLOSED;
             if (door->soundMask != NULL) {
-                audspat_point_stop((AudioPoint *) (s32) door->soundMask);
+                audspat_point_stop((AudioPoint *) door->soundMask);
                 door->soundMask = NULL;
             }
         }
@@ -3862,7 +3862,7 @@ void obj_loop_ttdoor(Object *obj, s32 updateRate) {
                                            obj->trans.z_position, AUDIO_POINT_FLAG_1, &ttDoor->soundMask);
         }
     } else if (ttDoor->soundMask != NULL) {
-        audspat_point_stop((AudioPoint *) ((s32) ttDoor->soundMask));
+        audspat_point_stop((AudioPoint *) ttDoor->soundMask);
         ttDoor->soundMask = NULL;
     }
     obj->interactObj->distance = 0xFF;

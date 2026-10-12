@@ -2,6 +2,11 @@
 #include "PR/R4300.h"
 #include "PRinternal/osint.h"
 
+#ifdef TARGET_PC
+uintptr_t osVirtualToPhysical(void* addr) {
+    return (uintptr_t) addr;
+}
+#else
 u32 osVirtualToPhysical(void* addr) {
 #ifdef TARGET_PC
     /* No MMU segments and no RCP on the host: "physical" addresses are handed to
@@ -20,3 +25,4 @@ u32 osVirtualToPhysical(void* addr) {
     }
 #endif
 }
+#endif

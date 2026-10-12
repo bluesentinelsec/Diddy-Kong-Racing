@@ -107,33 +107,8 @@ u32 pc_asset_lut_size(void) {
     return sAssetLutSize;
 }
 
-// Byteswap a buffer of big-endian u32s in place (asset offset tables etc.).
-// Endianness of asset *contents* is handled per parse site — this is the
-// helper those sites share.
-void pc_swap32_buf(void *buf, u32 numBytes) {
-    u8 *p = buf;
-    u32 i;
-
-    for (i = 0; i + 3 < numBytes; i += 4) {
-        u8 t0 = p[i + 0], t1 = p[i + 1];
-        p[i + 0] = p[i + 3];
-        p[i + 1] = p[i + 2];
-        p[i + 2] = t1;
-        p[i + 3] = t0;
-    }
-}
-
-// Same, for buffers of big-endian u16s.
-void pc_swap16_buf(void *buf, u32 numBytes) {
-    u8 *p = buf;
-    u32 i;
-
-    for (i = 0; i + 1 < numBytes; i += 2) {
-        u8 t = p[i];
-        p[i] = p[i + 1];
-        p[i + 1] = t;
-    }
-}
+// Byteswap helpers (pc_swap16_buf / pc_swap32_buf) live in linux/pc_asset.c.
+extern void pc_swap16_buf(void *buf, u32 numBytes);
 
 // Byteswap a region of the loaded asset image in place, addressed the way the
 // game addresses ROM. Audio's RAW16 sample data is big-endian s16 and is DMA'd
@@ -145,44 +120,43 @@ void pc_asset_swap16_region(u32 romOffset, u32 numBytes) {
 
     pc_assets_init();
 
-    if (romOffset < (u32) (uintptr_t) __ASSETS_LUT_END) {
-        fprintf(stderr, "AUDIO: raw16 swap outside the asset image (0x%X) — skipped\n", romOffset);
-        return;
-    }
+    // ROM addresses are host addresses of the __ASSETS_LUT_* stubs plus a file
+    // offset, truncated to 32 bits by the game. Modular subtraction recovers the
+    // file offset whatever the (possibly 64-bit) stub address was.
     offset = romOffset - (u32) (uintptr_t) __ASSETS_LUT_END;
-    if (offset + numBytes > sAssetsBinSize) {
-        fprintf(stderr, "AUDIO: raw16 swap past end of assets (0x%X + 0x%X) — skipped\n", offset, numBytes);
+    if (offset >= sAssetsBinSize || offset + numBytes > sAssetsBinSize) {
+        fprintf(stderr, "AUDIO: raw16 swap outside the asset image (0x%X + 0x%X) — skipped\n", romOffset, numBytes);
         return;
     }
     pc_swap16_buf(sAssetsBin + offset, numBytes);
 }
 
-void pc_dmacopy(u32 romOffset, u32 ramAddress, s32 numBytes) {
+void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes) {
+    u32 offset;
+
     pc_assets_init();
 
     if (romOffset == (u32) (uintptr_t) __ASSETS_LUT_START) {
         if ((u32) numBytes > sAssetLutSize) {
             numBytes = sAssetLutSize;
         }
-        memcpy((void *) (uintptr_t) ramAddress, sAssetLut, numBytes);
+        memcpy((void *) ramAddress, sAssetLut, numBytes);
         return;
     }
 
-    if (romOffset >= (u32) (uintptr_t) __ASSETS_LUT_END) {
-        u32 offset = romOffset - (u32) (uintptr_t) __ASSETS_LUT_END;
-        if (offset < sAssetsBinSize) {
-            if (offset + numBytes > sAssetsBinSize) {
-                fprintf(stderr, "ASSETS: read past end (offset 0x%X + 0x%X > 0x%X), clamped\n", offset, numBytes,
-                        sAssetsBinSize);
-                numBytes = sAssetsBinSize - offset;
-            }
-            memcpy((void *) (uintptr_t) ramAddress, sAssetsBin + offset, numBytes);
-            return;
+    offset = romOffset - (u32) (uintptr_t) __ASSETS_LUT_END;
+    if (offset < sAssetsBinSize) {
+        if (offset + numBytes > sAssetsBinSize) {
+            fprintf(stderr, "ASSETS: read past end (offset 0x%X + 0x%X > 0x%X), clamped\n", offset, numBytes,
+                    sAssetsBinSize);
+            numBytes = sAssetsBinSize - offset;
         }
+        memcpy((void *) ramAddress, sAssetsBin + offset, numBytes);
+        return;
     }
 
     fprintf(stderr, "ASSETS: dmacopy from unknown ROM address 0x%X (%d bytes) — zero-filled\n", romOffset, numBytes);
-    memset((void *) (uintptr_t) ramAddress, 0, numBytes);
+    memset((void *) ramAddress, 0, numBytes);
 }
 
 // ---------------------------------------------------------------------------

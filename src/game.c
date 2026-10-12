@@ -28,36 +28,49 @@
 #include "pc_swap.h"
 
 #ifdef TARGET_PC
-// Big-endian asset offset tables (helper in linux/reimpl.c).
-extern void pc_swap32_buf(void *buf, u32 numBytes);
-extern void pc_swap16_buf(void *buf, u32 numBytes);
+// LevelHeader is loaded from a 0xC4-byte big-endian N64 image and unpacked
+// into the host struct (see pc_asset.h). AILevelTable (0x20) is inline s8 data
+// read by aitable_init, so everything from 0x20 up to `geometry` is copied raw
+// and contiguous from the pointer slot. unk74/unkA4/pulseLightData hold asset
+// indices that the game converts to pointers after load.
+#define LEVEL_HEADER_DISK_SIZE 0xC4
+static const PcField sLevelHeaderFields[] = {
+    PCU_FIELD(LevelHeader, world, 0x00, 8, PCU_BYTES),
+    PCU_FIELD(LevelHeader, course_height, 0x08, 1, PCU_U32),
+    PCU_FIELD(LevelHeader, unkC, 0x0C, 20, PCU_BYTES),
+    PCU_FIELD(LevelHeader, AILevelTable, 0x20, 20, PCU_BYTES),
+    PCU_FIELD(LevelHeader, geometry, 0x34, 8, PCU_U16),
+    PCU_FIELD(LevelHeader, unk44, 0x44, 16, PCU_BYTES),
+    PCU_FIELD(LevelHeader, instruments, 0x54, 1, PCU_U16),
+    PCU_FIELD(LevelHeader, waveSubdivisons, 0x56, 4, PCU_BYTES),
+    PCU_FIELD(LevelHeader, waveSineHeight0, 0x5A, 1, PCU_U16),
+    PCU_FIELD(LevelHeader, waveSineStep1, 0x5C, 2, PCU_BYTES),
+    PCU_FIELD(LevelHeader, waveSineHeight1, 0x5E, 6, PCU_U16),
+    PCU_FIELD(LevelHeader, waveUVScaleX, 0x6A, 4, PCU_BYTES),
+    PCU_FIELD(LevelHeader, waveViewDist, 0x6E, 1, PCU_U16),
+    PCU_FIELD(LevelHeader, wavesXlu, 0x70, 4, PCU_BYTES),
+    PCU_FIELD(LevelHeader, unk74, 0x74, 7, PCU_SPTR),
+    PCU_FIELD(LevelHeader, weatherEnable, 0x90, 2, PCU_U16),
+    PCU_FIELD(LevelHeader, weatherIntensity, 0x94, 2, PCU_BYTES),
+    PCU_FIELD(LevelHeader, weatherVelX, 0x96, 3, PCU_U16),
+    PCU_FIELD(LevelHeader, cameraFOV, 0x9C, 8, PCU_BYTES),
+    PCU_FIELD(LevelHeader, unkA4, 0xA4, 1, PCU_SPTR),
+    PCU_FIELD(LevelHeader, unkA8, 0xA8, 2, PCU_U16),
+    PCU_FIELD(LevelHeader, pulseLightData, 0xAC, 1, PCU_SPTR),
+    PCU_FIELD(LevelHeader, unkB0, 0xB0, 1, PCU_U16),
+    PCU_FIELD(LevelHeader, unkB2, 0xB2, 8, PCU_BYTES),
+    PCU_FIELD(LevelHeader, unkBA, 0xBA, 1, PCU_U16),
+    PCU_FIELD(LevelHeader, unkBC, 0xBC, 8, PCU_BYTES),
+    PCU_END,
+};
 
-// LevelHeader is a big-endian asset overlay. AILevelTable (0x20) is read as
-// inline s8 data by aitable_init, and 0x70 holds two u8s (the union's pointer
-// half is only ever indexed from 1, landing in unk74) — neither gets swapped.
-// unk74/unkA4/pulseLightData hold asset-index words converted after load.
-_Static_assert(sizeof(LevelHeader) == 0xC4, "LevelHeader layout drifted from N64");
-_Static_assert(__builtin_offsetof(LevelHeader, geometry) == 0x34, "LevelHeader layout drifted from N64");
-_Static_assert(__builtin_offsetof(LevelHeader, waveSineHeight1) == 0x5E, "LevelHeader layout drifted from N64");
-_Static_assert(__builtin_offsetof(LevelHeader, unk74) == 0x74, "LevelHeader layout drifted from N64");
-_Static_assert(__builtin_offsetof(LevelHeader, weatherEnable) == 0x90, "LevelHeader layout drifted from N64");
-_Static_assert(__builtin_offsetof(LevelHeader, unkBA) == 0xBA, "LevelHeader layout drifted from N64");
+// Load the level header at asset offset `offset` into `dst`, a host-sized
+// LevelHeader allocation.
+static void pc_load_level_header(LevelHeader *dst, s32 offset) {
+    u8 disk[LEVEL_HEADER_DISK_SIZE];
 
-static void pc_swap_level_header(LevelHeader *header) {
-    PC_SWAP32_AT(header, course_height, 4);
-    PC_SWAP16_AT(header, geometry, 16);         // geometry..fogB, 8 x s16
-    PC_SWAP16_AT(header, instruments, 2);
-    PC_SWAP16_AT(header, waveSineHeight0, 2);
-    PC_SWAP16_AT(header, waveSineHeight1, 12);  // waveSineHeight1..waveTexID, 6 x s16
-    PC_SWAP16_AT(header, waveViewDist, 2);
-    pc_swap32_buf(header->unk74, 0x1C);           // 7 misc-asset indices
-    PC_SWAP16_AT(header, weatherEnable, 4);     // weatherEnable, weatherType
-    PC_SWAP16_AT(header, weatherVelX, 6);       // weatherVelX/Y/Z
-    PC_SWAP32_AT(header, unkA4, 4);             // texture id
-    PC_SWAP16_AT(header, unkA8, 4);             // unkA8, unkAA
-    PC_SWAP32_AT(header, pulseLightData, 4);    // misc-asset index
-    PC_SWAP16_AT(header, unkB0, 2);
-    PC_SWAP16_AT(header, unkBA, 2);
+    asset_load(ASSET_LEVEL_HEADERS, (uintptr_t) disk, offset, LEVEL_HEADER_DISK_SIZE);
+    pc_unpack(dst, sizeof(LevelHeader), disk, LEVEL_HEADER_DISK_SIZE, sLevelHeaderFields);
 }
 #endif
 
@@ -124,9 +137,10 @@ void level_global_init(void) {
     gCurrentLevelHeader = (LevelHeader *) header;
     gNumberOfWorlds = -1;
     for (i = 0; i < gNumberOfLevelHeaders; i++) {
-        asset_load(ASSET_LEVEL_HEADERS, (u32) gCurrentLevelHeader, gTempAssetTable[i], sizeof(LevelHeader));
 #ifdef TARGET_PC
-        pc_swap_level_header(gCurrentLevelHeader);
+        pc_load_level_header(gCurrentLevelHeader, gTempAssetTable[i]);
+#else
+        asset_load(ASSET_LEVEL_HEADERS, (uintptr_t) gCurrentLevelHeader, gTempAssetTable[i], sizeof(LevelHeader));
 #endif
         if (gNumberOfWorlds < gCurrentLevelHeader->world) {
             gNumberOfWorlds = gCurrentLevelHeader->world;
@@ -162,7 +176,7 @@ void level_global_init(void) {
     size = gTempAssetTable[i] - gTempAssetTable[0];
     gLevelNames = mempool_alloc_safe(i * sizeof(s32), COLOUR_TAG_YELLOW);
     gTempLevelNames = mempool_alloc_safe(size, COLOUR_TAG_YELLOW);
-    asset_load(ASSET_LEVEL_NAMES, (u32) gTempLevelNames, 0, size);
+    asset_load(ASSET_LEVEL_NAMES, (uintptr_t) gTempLevelNames, 0, size);
     for (size = 0; size < i; size++) {
         gLevelNames[size] = (char *) &gTempLevelNames[gTempAssetTable[size]];
     }
@@ -434,10 +448,12 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
 
     offset = gTempAssetTable[levelId];
     size = gTempAssetTable[levelId + 1] - offset;
-    gCurrentLevelHeader = (LevelHeader *) mempool_alloc_safe(size, COLOUR_TAG_YELLOW);
-    asset_load(ASSET_LEVEL_HEADERS, (u32) gCurrentLevelHeader, offset, size);
 #ifdef TARGET_PC
-    pc_swap_level_header(gCurrentLevelHeader);
+    gCurrentLevelHeader = (LevelHeader *) mempool_alloc_safe(sizeof(LevelHeader), COLOUR_TAG_YELLOW);
+    pc_load_level_header(gCurrentLevelHeader, offset);
+#else
+    gCurrentLevelHeader = (LevelHeader *) mempool_alloc_safe(size, COLOUR_TAG_YELLOW);
+    asset_load(ASSET_LEVEL_HEADERS, (uintptr_t) gCurrentLevelHeader, offset, size);
 #endif
     D_800DD330 = 0;
     prevLevelID = levelId;
@@ -506,10 +522,12 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
         mempool_free(gCurrentLevelHeader);
         offset = gTempAssetTable[levelId];
         size = gTempAssetTable[levelId + 1] - offset;
-        gCurrentLevelHeader = mempool_alloc_safe(size, COLOUR_TAG_YELLOW);
-        asset_load(ASSET_LEVEL_HEADERS, (u32) gCurrentLevelHeader, offset, size);
 #ifdef TARGET_PC
-        pc_swap_level_header(gCurrentLevelHeader);
+        gCurrentLevelHeader = mempool_alloc_safe(sizeof(LevelHeader), COLOUR_TAG_YELLOW);
+        pc_load_level_header(gCurrentLevelHeader, offset);
+#else
+        gCurrentLevelHeader = mempool_alloc_safe(size, COLOUR_TAG_YELLOW);
+        asset_load(ASSET_LEVEL_HEADERS, (uintptr_t) gCurrentLevelHeader, offset, size);
 #endif
     }
     mempool_free(gTempAssetTable);
@@ -822,7 +840,7 @@ void aitable_init(s8 *aiLevelTable) {
     temp2 = gTempAssetTable[aiLevel];
     temp = gTempAssetTable[aiLevel + 1] - temp2;
     gAIBehaviourTable = mempool_alloc_safe(temp, COLOUR_TAG_YELLOW);
-    asset_load(ASSET_AI_BEHAVIOUR, (u32) gAIBehaviourTable, temp2, temp);
+    asset_load(ASSET_AI_BEHAVIOUR, (uintptr_t) gAIBehaviourTable, temp2, temp);
     mempool_free(gTempAssetTable);
 }
 

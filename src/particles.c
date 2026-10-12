@@ -60,6 +60,9 @@ ParticleDescriptor **gParticlesAssetTable = NULL;
 s32 gParticleBehavioursAssetTableCount = 0;
 s32 *gParticleBehavioursAssets = NULL;
 ParticleBehaviour **gParticleBehavioursAssetTable = NULL;
+#ifdef TARGET_PC
+static ParticleBehaviour *sPcBehaviours = NULL; // host-layout behaviours, see init_particle_assets
+#endif
 ColourRGBA gParticleOverrideColor[2] = { { { { 0 } } }, { { { 0 } } } };
 
 Triangle gLineParticleTriangles[5] = {
@@ -235,6 +238,12 @@ void free_particle_vertices_triangles(void) {
  * Unload all assets related to particles.
  */
 void free_particle_assets(void) {
+#ifdef TARGET_PC
+    if (sPcBehaviours != NULL) {
+        mempool_free(sPcBehaviours);
+        sPcBehaviours = NULL;
+    }
+#endif
     if (gParticlesAssets != NULL) {
         mempool_free(gParticlesAssets);
         gParticlesAssets = NULL;
@@ -254,83 +263,53 @@ void free_particle_assets(void) {
 }
 
 #ifdef TARGET_PC
-// Particle assets are big-endian (see docs/linux_port.md). Descriptors and
-// behaviours are mixed-width structs, so they get field-wise swaps.
-//
-// The swaps (and the game's struct-overlay reads) are only correct if the
-// host lays these structs out exactly like the N64 compiler did — proven at
-// build time against the headers' documented offsets:
-_Static_assert(sizeof(ParticleDescriptor) == 0x18, "ParticleDescriptor layout drifted from N64");
-_Static_assert(__builtin_offsetof(ParticleDescriptor, scale) == 0x10, "ParticleDescriptor layout drifted from N64");
-_Static_assert(sizeof(ParticleBehaviour) == 0xA0, "ParticleBehaviour layout drifted from N64");
-_Static_assert(__builtin_offsetof(ParticleBehaviour, velocityModifierRange) == 0x74,
-               "ParticleBehaviour layout drifted from N64");
-_Static_assert(__builtin_offsetof(ParticleBehaviour, colourLoop) == 0x9C, "ParticleBehaviour layout drifted from N64");
-_Static_assert(sizeof(ColorLoopEntry) == 0x8, "ColorLoopEntry layout drifted from N64");
+// Particle assets are big-endian. ParticleDescriptor carries no pointers and is
+// swapped in place; ParticleBehaviour ends in a pointer slot (colourLoop), so
+// behaviours are unpacked into a host-layout array (sPcBehaviours) that the
+// table points at instead of the raw image.
+#define PARTICLE_BEHAVIOUR_DISK_SIZE 0xA0
 
-extern void pc_swap32_buf(void *buf, u32 numBytes);
+static const PcField sParticleDescriptorFields[] = {
+    PCU_FIELD(ParticleDescriptor, kind, 0x00, 2, PCU_BYTES),
+    PCU_FIELD(ParticleDescriptor, flags, 0x02, 5, PCU_U16), // flags, textureID, textureFrameStep, lifeTime, lifeTimeRange
+    PCU_FIELD(ParticleDescriptor, opacity, 0x0C, 2, PCU_BYTES),
+    PCU_FIELD(ParticleDescriptor, opacityTimer, 0x0E, 1, PCU_U16),
+    PCU_FIELD(ParticleDescriptor, scale, 0x10, 1, PCU_U32),
+    PCU_FIELD(ParticleDescriptor, colour, 0x14, 4, PCU_BYTES),
+    PCU_END,
+};
 
-static void pc_swap16p(void *p) {
-    u8 *b = p;
-    u8 t = b[0];
-    b[0] = b[1];
-    b[1] = t;
-}
+static const PcField sParticleBehaviourFields[] = {
+    PCU_FIELD(ParticleBehaviour, flags, 0x00, 1, PCU_U32),
+    PCU_FIELD(ParticleBehaviour, emitterPos, 0x04, 3, PCU_U32),
+    PCU_FIELD(ParticleBehaviour, sourceDistance, 0x10, 1, PCU_U32),
+    PCU_FIELD(ParticleBehaviour, sourceRotation, 0x14, 3, PCU_U16),
+    PCU_FIELD(ParticleBehaviour, maxParticlesFromSamePos, 0x1A, 1, PCU_U16),
+    PCU_FIELD(ParticleBehaviour, sourceAngularVelocity, 0x1C, 3, PCU_U16),
+    PCU_FIELD(ParticleBehaviour, emissionDirection, 0x22, 3, PCU_U16),
+    PCU_FIELD(ParticleBehaviour, maxParticlesInSameDir, 0x28, 1, PCU_U16),
+    PCU_FIELD(ParticleBehaviour, emissionDirAngularVelocity, 0x2A, 3, PCU_U16),
+    PCU_FIELD(ParticleBehaviour, velocityModifier, 0x30, 3, PCU_U32),
+    PCU_FIELD(ParticleBehaviour, emissionSpeed, 0x3C, 1, PCU_U32),
+    PCU_FIELD(ParticleBehaviour, spawnInterval, 0x40, 2, PCU_U16), // spawnInterval, burstCount
+    PCU_FIELD(ParticleBehaviour, rotation, 0x44, 3, PCU_U16),
+    PCU_FIELD(ParticleBehaviour, angularVelocity, 0x4A, 3, PCU_U16),
+    PCU_FIELD(ParticleBehaviour, scale, 0x50, 3, PCU_U32), // scale, scaleVelocity, movementParam
+    PCU_FIELD(ParticleBehaviour, randomizationFlags, 0x5C, 2, PCU_U32), // randomizationFlags, sourceDistanceRange
+    PCU_FIELD(ParticleBehaviour, sourceDirRange, 0x64, 3, PCU_U16),
+    PCU_FIELD(ParticleBehaviour, emissionDirRange, 0x6A, 3, PCU_U16),
+    PCU_FIELD(ParticleBehaviour, emissionSpeedRange, 0x70, 1, PCU_U32),
+    PCU_FIELD(ParticleBehaviour, velocityModifierRange, 0x74, 3, PCU_U32),
+    PCU_FIELD(ParticleBehaviour, rotationRange, 0x80, 3, PCU_U16),
+    PCU_FIELD(ParticleBehaviour, angularVelocityRange, 0x86, 3, PCU_U16),
+    PCU_FIELD(ParticleBehaviour, scaleRange, 0x8C, 3, PCU_U32), // scaleRange, scaleVelocityRange, movementParamRange
+    PCU_FIELD(ParticleBehaviour, colourRangeR, 0x98, 4, PCU_BYTES),
+    PCU_FIELD(ParticleBehaviour, colourLoop, 0x9C, 1, PCU_SPTR), // misc-asset index until converted below
+    PCU_END,
+};
 
 static void pc_swap32p(void *p) {
     pc_swap32_buf(p, 4);
-}
-
-static void pc_swap16_range(void *p, s32 count) {
-    s32 i;
-    for (i = 0; i < count; i++) {
-        pc_swap16p((u8 *) p + i * 2);
-    }
-}
-
-static void pc_swap_particle_descriptor(ParticleDescriptor *d) {
-    pc_swap16p(&d->flags);
-    pc_swap16p(&d->textureID);
-    pc_swap16p(&d->textureFrameStep);
-    pc_swap16p(&d->lifeTime);
-    pc_swap16p(&d->lifeTimeRange);
-    pc_swap16p(&d->opacityTimer);
-    pc_swap32p(&d->scale);
-    // kind/movementType/opacity/opacityVel/colour are u8.
-}
-
-static void pc_swap_particle_behaviour(ParticleBehaviour *b) {
-    pc_swap32p(&b->flags);
-    PC_SWAP32_AT(b, emitterPos, 12);
-    pc_swap32p(&b->sourceDistance);
-    pc_swap16_range(&b->sourceRotation, 3);
-    pc_swap16p(&b->maxParticlesFromSamePos);
-    pc_swap16_range(&b->sourceAngularVelocity, 3);
-    pc_swap16_range(&b->emissionDirection, 3);
-    pc_swap16p(&b->maxParticlesInSameDir);
-    pc_swap16_range(&b->emissionDirAngularVelocity, 3);
-    PC_SWAP32_AT(b, velocityModifier, 12);
-    pc_swap32p(&b->emissionSpeed);
-    pc_swap16p(&b->spawnInterval);
-    pc_swap16p(&b->burstCount);
-    pc_swap16_range(&b->rotation, 3);
-    pc_swap16_range(&b->angularVelocity, 3);
-    pc_swap32p(&b->scale);
-    pc_swap32p(&b->scaleVelocity);
-    pc_swap32p(&b->movementParam);
-    pc_swap32p(&b->randomizationFlags);
-    pc_swap32p(&b->sourceDistanceRange);
-    pc_swap16_range(&b->sourceDirRange, 3);
-    pc_swap16_range(&b->emissionDirRange, 3);
-    pc_swap32p(&b->emissionSpeedRange);
-    PC_SWAP32_AT(b, velocityModifierRange, 12);
-    pc_swap16_range(&b->rotationRange, 3);
-    pc_swap16_range(&b->angularVelocityRange, 3);
-    pc_swap32p(&b->scaleRange);
-    pc_swap32p(&b->scaleVelocityRange);
-    pc_swap32p(&b->movementParamRange);
-    // colourRangeR/G/B/A are u8.
-    pc_swap32p(&b->colourLoop); // still the asset-local offset at this point
 }
 
 // Colour loops live in the shared misc asset and can be referenced by more
@@ -374,9 +353,10 @@ void init_particle_assets(void) {
     s32 i;
 
     free_particle_assets();
-    gParticlesAssetTable = (ParticleDescriptor **) asset_table_load(ASSET_PARTICLES_TABLE);
 #ifdef TARGET_PC
-    pc_swap32_buf(gParticlesAssetTable, asset_table_size(ASSET_PARTICLES_TABLE));
+    gParticlesAssetTable = (ParticleDescriptor **) asset_table_load_pointers(ASSET_PARTICLES_TABLE);
+#else
+    gParticlesAssetTable = (ParticleDescriptor **) asset_table_load(ASSET_PARTICLES_TABLE);
 #endif
     gParticlesAssetTableCount = -1;
     while (((s32) gParticlesAssetTable[gParticlesAssetTableCount + 1]) != -1) {
@@ -387,13 +367,14 @@ void init_particle_assets(void) {
     for (i = 0; i < gParticlesAssetTableCount; i++) {
         gParticlesAssetTable[i] = (ParticleDescriptor *) (((u8 *) gParticlesAssets) + ((s32) gParticlesAssetTable[i]));
 #ifdef TARGET_PC
-        pc_swap_particle_descriptor(gParticlesAssetTable[i]);
+        pc_swap_record(gParticlesAssetTable[i], sizeof(ParticleDescriptor), sParticleDescriptorFields);
 #endif
     }
 
-    gParticleBehavioursAssetTable = (ParticleBehaviour **) asset_table_load(ASSET_PARTICLE_BEHAVIORS_TABLE);
 #ifdef TARGET_PC
-    pc_swap32_buf(gParticleBehavioursAssetTable, asset_table_size(ASSET_PARTICLE_BEHAVIORS_TABLE));
+    gParticleBehavioursAssetTable = (ParticleBehaviour **) asset_table_load_pointers(ASSET_PARTICLE_BEHAVIORS_TABLE);
+#else
+    gParticleBehavioursAssetTable = (ParticleBehaviour **) asset_table_load(ASSET_PARTICLE_BEHAVIORS_TABLE);
 #endif
     gParticleBehavioursAssetTableCount = -1;
     while (((s32) gParticleBehavioursAssetTable[gParticleBehavioursAssetTableCount + 1]) != -1) {
@@ -401,11 +382,20 @@ void init_particle_assets(void) {
     }
 
     gParticleBehavioursAssets = (s32 *) asset_table_load(ASSET_PARTICLE_BEHAVIORS);
+#ifdef TARGET_PC
+    sPcBehaviours = mempool_alloc_safe(
+        (gParticleBehavioursAssetTableCount > 0 ? gParticleBehavioursAssetTableCount : 1) * sizeof(ParticleBehaviour),
+        COLOUR_TAG_GREY);
+#endif
     for (i = 0; i < gParticleBehavioursAssetTableCount; i++) {
+#ifdef TARGET_PC
+        pc_unpack(&sPcBehaviours[i], sizeof(ParticleBehaviour),
+                  (u8 *) gParticleBehavioursAssets + (uintptr_t) gParticleBehavioursAssetTable[i],
+                  PARTICLE_BEHAVIOUR_DISK_SIZE, sParticleBehaviourFields);
+        gParticleBehavioursAssetTable[i] = &sPcBehaviours[i];
+#else
         gParticleBehavioursAssetTable[i] =
             (ParticleBehaviour *) (((u8 *) gParticleBehavioursAssets) + ((s32) gParticleBehavioursAssetTable[i]));
-#ifdef TARGET_PC
-        pc_swap_particle_behaviour(gParticleBehavioursAssetTable[i]);
 #endif
         if (((u32) gParticleBehavioursAssetTable[i]->colourLoop) != 0xFFFFFFFF) {
             gParticleBehavioursAssetTable[i]->colourLoop =
@@ -567,7 +557,7 @@ void init_particle_buffers(s32 maxTriangleParticles, s32 maxRectangleParticles, 
             gParticleDummyCount++;
         }
 
-        gParticleDummys = mempool_alloc_safe(gParticleDummyCount * 4, COLOUR_TAG_BLUE);
+        gParticleDummys = mempool_alloc_safe(gParticleDummyCount * sizeof(Sprite *), COLOUR_TAG_BLUE);
         for (i = 0; i < gParticleDummyCount; i++) {
             gParticleDummys[i] = (Sprite *) tex_load_sprite(assetBuffer[i] & 0x3FFF, 1);
         }

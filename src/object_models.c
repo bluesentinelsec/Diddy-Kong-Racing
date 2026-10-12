@@ -24,7 +24,11 @@ s32 gRenderSceneFuncLength = 1980;
 /************ .bss ************/
 
 s32 *gObjectModelTable;
+#ifdef TARGET_PC
+uintptr_t *gModelCache; // id / pointer pairs: pointer-sized on the host
+#else
 s32 *gModelCache; // A table of two entries. The first half is the model ID, while the second half is the model data.
+#endif
 s32 *D_8011D628;
 s32 gModelCacheCount;
 s32 gNumModelIDs;
@@ -86,38 +90,89 @@ void allocate_object_model_pools(void) {
 }
 
 #ifdef TARGET_PC
-// Inflated object models are big-endian, same layout family as the level model
-// (see tracks.c): header swapped before its offsets become pointers, then the
-// vertex/triangle/batch/attach arrays. Helpers in linux/reimpl.c.
-extern void pc_swap16_buf(void *buf, u32 numBytes);
-extern void pc_swap32_buf(void *buf, u32 numBytes);
+// Inflated object models are big-endian: a 0x80-byte header whose offsets point
+// at the vertex/triangle/batch/attach arrays in the same image. On the host the
+// image is placed OBJECT_MODEL_PC_DELTA bytes into the allocation so a
+// host-sized header fits in front, and the TextureInfo table (one pointer per
+// entry) is rebuilt in host layout after the image. The header's offsets are
+// rebased so the game's existing offset->pointer fixups land on the arrays.
+#define OBJECT_MODEL_DISK_SIZE 0x80
+#define OBJECT_MODEL_PC_DELTA (sizeof(ObjectModel) - OBJECT_MODEL_DISK_SIZE)
+#define TEXTURE_INFO_DISK_SIZE 8
+#define PC_ALIGN16(x) (((x) + 15) & ~15)
 
-_Static_assert(sizeof(ObjectModel) == 0x80, "ObjectModel layout drifted from N64");
-_Static_assert(__builtin_offsetof(ObjectModel, numberOfAttachPoints) == 0x18, "ObjectModel layout drifted from N64");
-_Static_assert(__builtin_offsetof(ObjectModel, collisionSpheresSize) == 0x20, "ObjectModel layout drifted from N64");
-_Static_assert(__builtin_offsetof(ObjectModel, batches) == 0x38, "ObjectModel layout drifted from N64");
-_Static_assert(__builtin_offsetof(ObjectModel, animatedVertexIndices) == 0x4C, "ObjectModel layout drifted from N64");
+static const PcField sObjectModelFields[] = {
+    PCU_FIELD(ObjectModel, textures, 0x00, 6, PCU_PTR), // textures..attachPoints
+    PCU_FIELD(ObjectModel, numberOfAttachPoints, 0x18, 2, PCU_U16),
+    PCU_FIELD(ObjectModel, collisionSpheres, 0x1C, 1, PCU_PTR),
+    PCU_FIELD(ObjectModel, collisionSpheresSize, 0x20, 5, PCU_U16), // ..numberOfBatches
+    PCU_FIELD(ObjectModel, pad2A, 0x2A, 2, PCU_BYTES),
+    PCU_FIELD(ObjectModel, fileSize, 0x2C, 1, PCU_U32),
+    PCU_FIELD(ObjectModel, references, 0x30, 2, PCU_U16),
+    PCU_FIELD(ObjectModel, pad34, 0x34, 4, PCU_BYTES),
+    PCU_FIELD(ObjectModel, batches, 0x38, 1, PCU_PTR),
+    PCU_FIELD(ObjectModel, unk3C, 0x3C, 1, PCU_U32),
+    PCU_FIELD(ObjectModel, normals, 0x40, 2, PCU_PTR), // normals, animations
+    PCU_FIELD(ObjectModel, numberOfAnimations, 0x48, 2, PCU_U16),
+    PCU_FIELD(ObjectModel, animatedVertexIndices, 0x4C, 1, PCU_PTR),
+    PCU_FIELD(ObjectModel, hasAnimatedTexture, 0x50, 2, PCU_U16),
+    PCU_FIELD(ObjectModel, pad, 0x54, 0x2C, PCU_BYTES),
+    PCU_END,
+};
 
-static void pc_swap_object_model(ObjectModel *mdl) {
+static u8 *sPcModelDisk;    // inflated N64 image of the model being loaded
+static s32 sPcModelDiskSize;
+
+// Inflate model `assetOffset` (compressed size `compSize`) into host scratch.
+static void pc_object_model_inflate(s32 assetOffset, s32 compSize) {
+    u8 *comp = pc_alloc(compSize);
+
+    sPcModelDiskSize = gzip_size_uncompressed(ASSET_OBJECT_MODELS, assetOffset);
+    sPcModelDisk = pc_alloc(sPcModelDiskSize + 16);
+    asset_load(ASSET_OBJECT_MODELS, (uintptr_t) comp, assetOffset, compSize);
+    gzip_inflate(comp, sPcModelDisk);
+    pc_free(comp);
+}
+
+static s32 pc_object_model_alloc_size(void) {
+    s32 numTextures = pc_be16(sPcModelDisk, 0x22);
+    return (s32) (PC_ALIGN16(OBJECT_MODEL_PC_DELTA + sPcModelDiskSize) + numTextures * sizeof(TextureInfo));
+}
+
+#define PC_REBASE(field, T) mdl->field = (T) ((uintptr_t) mdl->field + OBJECT_MODEL_PC_DELTA)
+
+// Lay the inflated image out as a host model at `mdl` and release the scratch.
+static void pc_unpack_object_model(ObjectModel *mdl) {
+    u8 *image = (u8 *) mdl + OBJECT_MODEL_PC_DELTA;
+    TextureInfo *texInfo;
+    u32 texOff;
     s32 i;
 
-    // Header: offsets that become pointers, counts, sizes.
-    pc_swap32_buf(mdl, 0xC); // textures, vertices, triangles
-    PC_SWAP32_AT(mdl, attachPoints, 4);
-    PC_SWAP16_AT(mdl, numberOfAttachPoints, 4); // numberOfAttachPoints, unk1A
-    PC_SWAP32_AT(mdl, collisionSpheres, 4);
-    PC_SWAP16_AT(mdl, collisionSpheresSize, 10); // collisionSpheresSize..numberOfBatches
-    PC_SWAP32_AT(mdl, fileSize, 4);
-    PC_SWAP32_AT(mdl, batches, 4);
-    PC_SWAP32_AT(mdl, unk3C, 4);
-    PC_SWAP16_AT(mdl, numberOfAnimations, 4); // numberOfAnimations, numberOfAnimatedVertices
-    PC_SWAP32_AT(mdl, animatedVertexIndices, 4);
-    PC_SWAP16_AT(mdl, hasAnimatedTexture, 2);
+    pc_memcpy(image, sPcModelDisk, sPcModelDiskSize);
+    pc_unpack(mdl, sizeof(ObjectModel), image, OBJECT_MODEL_DISK_SIZE, sObjectModelFields);
+    texOff = (u32) (uintptr_t) mdl->textures;
 
-    // Arrays, still offsets here — swap via the model base.
+    // Image-relative offsets -> host-header-relative (the game adds the base).
+    PC_REBASE(vertices, Vertex *);
+    PC_REBASE(triangles, Triangle *);
+    PC_REBASE(attachPoints, s16 *);
+    PC_REBASE(collisionSpheres, s16 *);
+    PC_REBASE(batches, TriangleBatchInfo *);
+    PC_REBASE(animatedVertexIndices, s32 *);
+
+    // TextureInfo entries are 8 bytes on disk and wider on the host.
+    texInfo = (TextureInfo *) ((u8 *) mdl + PC_ALIGN16(OBJECT_MODEL_PC_DELTA + sPcModelDiskSize)); // pointer-aligned
     for (i = 0; i < mdl->numberOfTextures; i++) {
-        pc_swap32_buf(&((TextureInfo *) ((u8 *) mdl + (uintptr_t) mdl->textures))[i].texture, 4);
+        const u8 *e = image + texOff + i * TEXTURE_INFO_DISK_SIZE;
+        texInfo[i].texture = (TextureHeader *) (uintptr_t) pc_be32(e, 0); // texture id until load_texture
+        texInfo[i].width = e[4];
+        texInfo[i].height = e[5];
+        texInfo[i].format = e[6];
+        texInfo[i].surfaceType = (s8) e[7];
     }
+    mdl->textures = (TextureInfo *) (uintptr_t) ((u8 *) texInfo - (u8 *) mdl);
+
+    // Array contents, still addressed by offset here.
     for (i = 0; i < mdl->numberOfVertices; i++) {
         pc_swap16_buf(&((Vertex *) ((u8 *) mdl + (uintptr_t) mdl->vertices))[i], 6); // x, y, z
     }
@@ -134,7 +189,11 @@ static void pc_swap_object_model(ObjectModel *mdl) {
     // Despite the s32* declaration, obj_animate reads this as an s16 slot map
     // with one entry per model vertex.
     pc_swap16_buf((u8 *) mdl + (uintptr_t) mdl->animatedVertexIndices, mdl->numberOfVertices * 2);
+
+    pc_free(sPcModelDisk);
+    sPcModelDisk = NULL;
 }
+#undef PC_REBASE
 #endif
 
 /**
@@ -194,9 +253,18 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
 
     temp_s0 = gObjectModelTable[modelID];
     sp48 = gObjectModelTable[modelID + 1] - temp_s0;
+#ifdef TARGET_PC
+    pc_object_model_inflate(temp_s0, sp48);
+    modelSize = pc_object_model_alloc_size();
+#else
     modelSize = gzip_size_uncompressed(ASSET_OBJECT_MODELS, temp_s0) + sizeof(ObjectModel);
+#endif
     objMdl = (ObjectModel *) mempool_alloc(modelSize, COLOUR_TAG_RED);
     if (objMdl == NULL) {
+#ifdef TARGET_PC
+        pc_free(sPcModelDisk);
+        sPcModelDisk = NULL;
+#endif
 #if VERSION >= VERSION_79
         if (var_a2) {
             D_8011D634++;
@@ -207,11 +275,12 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
 #endif
         return NULL;
     }
+#ifdef TARGET_PC
+    pc_unpack_object_model(objMdl);
+#else
     compressedData = (u32) ((u8 *) objMdl + modelSize) - sp48;
     asset_load(ASSET_OBJECT_MODELS, compressedData, temp_s0, sp48);
     gzip_inflate((u8 *) compressedData, (u8 *) objMdl);
-#ifdef TARGET_PC
-    pc_swap_object_model(objMdl);
 #endif
     objMdl->textures = (TextureInfo *) ((s32) objMdl->textures + (u8 *) objMdl);
     objMdl->vertices = (Vertex *) ((s32) objMdl->vertices + (u8 *) objMdl);
@@ -247,7 +316,7 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
             instance = model_instance_init(objMdl, flags);
             if (instance != NULL) {
                 gModelCache[ASSETCACHE_ID(cacheIndex)] = modelID;
-                gModelCache[ASSETCACHE_PTR(cacheIndex)] = (s32) objMdl;
+                gModelCache[ASSETCACHE_PTR(cacheIndex)] = (uintptr_t) objMdl;
                 if (gModelCacheCount < MODEL_LOADED_MAX) {
                     instance->animUpdateTimer = 0;
                     return instance;
@@ -970,7 +1039,7 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
     s32 assetSize;
     s32 i;
     s32 i2;
-    u32 animAddress;
+    uintptr_t animAddress;
     s32 *temp;
 
     start = gAnimationTable[modelID];
@@ -985,7 +1054,7 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
         }
     }
     model->numberOfAnimations = end - start;
-    allocAnimData = (ObjectModel_44 *) mempool_alloc(model->numberOfAnimations * 8, COLOUR_TAG_RED);
+    allocAnimData = (ObjectModel_44 *) mempool_alloc(model->numberOfAnimations * sizeof(ObjectModel_44), COLOUR_TAG_RED);
     model->animations = allocAnimData;
     if (allocAnimData == NULL) {
         return 1;
@@ -1006,7 +1075,7 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
             model->animations = NULL;
             return 1;
         }
-        animAddress = (u32) (model->animations[i].animData + size) - assetSize;
+        animAddress = (uintptr_t) (model->animations[i].animData + size) - assetSize;
         asset_load(ASSET_OBJECT_ANIMATIONS, animAddress, assetOffset, assetSize);
         gzip_inflate((u8 *) animAddress, (u8 *) model->animations[i].anim);
         temp = model->animations[i].anim;

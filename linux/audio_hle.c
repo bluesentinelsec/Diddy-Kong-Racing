@@ -1,4 +1,5 @@
 
+#include <PR/abi.h>
 #include <string.h>
 
 typedef signed char s8;
@@ -44,7 +45,11 @@ typedef signed long long s64;
 // ---------------------------------------------------------------------------
 // RSP state
 // ---------------------------------------------------------------------------
-static u8 sDmem[DMEM_SIZE];
+// Guard pages after DMEM: the ADPCM decoder emits whole 16-sample frames, which
+// may run up to 15 samples past the requested count; on the RSP that lands in
+// scratch DMEM, here it must not land in the variables that follow this array.
+#define DMEM_GUARD 256
+static u8 sDmem[DMEM_SIZE + DMEM_GUARD];
 
 static u16 sIn, sOut, sCount;            // SETBUFF, no flags
 static u16 sDryRight, sWetLeft, sWetRight; // SETBUFF | A_AUX
@@ -53,12 +58,12 @@ static s16 sTarget[2];
 static s32 sRate[2];
 static s16 sDry, sWet;
 static s16 sTable[512]; // ADPCM codebook, also POLEF coefficients
-static u32 sLoopAddr;
+static uintptr_t sLoopAddr;
 
 // Identity "physical" addresses: osVirtualToPhysical is identity on the host, so a
 // DMA address in the command list is just a host pointer.
-static void *rdram(u32 addr) {
-    return (void *) (unsigned long) addr;
+static void *rdram(uintptr_t addr) {
+    return (void *) addr;
 }
 
 static s16 clamp16(s32 v) {
@@ -76,11 +81,23 @@ static s16 *dmem16(u32 addr) {
     return (s16 *) &sDmem[addr & (DMEM_SIZE - 2)];
 }
 
+// Clamp a sample count so that `buf + n` stays inside DMEM.
+static s32 dmem_clamp(s32 n, const s16 *buf) {
+    const u8 *end = sDmem + DMEM_SIZE;
+    if ((const u8 *) buf >= end) {
+        return 0;
+    }
+    if ((const u8 *) (buf + n) > end) {
+        n = (s32) ((end - (const u8 *) buf) / 2);
+    }
+    return n;
+}
+
 // ---------------------------------------------------------------------------
 // Opcodes
 // ---------------------------------------------------------------------------
 
-static void op_setbuff(u32 w0, u32 w1) {
+static void op_setbuff(u32 w0, uintptr_t w1) {
     u8 flags = (w0 >> 16) & 0xFF;
 
     if (flags & A_AUX) {
@@ -97,7 +114,7 @@ static void op_setbuff(u32 w0, u32 w1) {
     }
 }
 
-static void op_setvol(u32 w0, u32 w1) {
+static void op_setvol(u32 w0, uintptr_t w1) {
     u8 flags = (w0 >> 16) & 0xFF;
     s16 v = (s16) (w0 & 0xFFFF);
     u16 t = (w1 >> 16) & 0xFFFF;
@@ -116,7 +133,7 @@ static void op_setvol(u32 w0, u32 w1) {
     }
 }
 
-static void op_clearbuff(u32 w0, u32 w1) {
+static void op_clearbuff(u32 w0, uintptr_t w1) {
     u32 addr = w0 & 0xFFFFFF;
     u32 count = w1 & 0xFFFF;
 
@@ -126,7 +143,7 @@ static void op_clearbuff(u32 w0, u32 w1) {
     memset(&sDmem[addr], 0, count);
 }
 
-static void op_dmemmove(u32 w0, u32 w1) {
+static void op_dmemmove(u32 w0, uintptr_t w1) {
     u32 src = w0 & 0xFFFFFF;
     u32 dst = (w1 >> 16) & 0xFFFF;
     u32 count = w1 & 0xFFFF;
@@ -137,7 +154,7 @@ static void op_dmemmove(u32 w0, u32 w1) {
     memmove(&sDmem[dst], &sDmem[src], count); // may overlap
 }
 
-static void op_loadbuff(u32 w1) {
+static void op_loadbuff(uintptr_t w1) {
     u32 count = sCount;
 
     if (sIn + count > DMEM_SIZE) {
@@ -148,7 +165,7 @@ static void op_loadbuff(u32 w1) {
     memcpy(&sDmem[sIn], rdram(w1), count);
 }
 
-static void op_savebuff(u32 w1) {
+static void op_savebuff(uintptr_t w1) {
     u32 count = sCount;
 
     if (sOut + count > DMEM_SIZE) {
@@ -157,7 +174,7 @@ static void op_savebuff(u32 w1) {
     memcpy(rdram(w1), &sDmem[sOut], count);
 }
 
-static void op_loadadpcm(u32 w0, u32 w1) {
+static void op_loadadpcm(u32 w0, uintptr_t w1) {
     // aLoadADPCM(pkt, c, d): count in w0 (24 bits), DRAM address in w1. Count is in
     // BYTES; the table is s16 entries. Doubles as the POLEF coefficient load
     // (alFilterNew does aLoadADPCM(32, fccoef)).
@@ -177,7 +194,7 @@ static void op_loadadpcm(u32 w0, u32 w1) {
 }
 
 // A_MIXER: out += in * gain, saturating. gain is s16 (0x7fff == ~1.0).
-static void op_mix(u32 w0, u32 w1) {
+static void op_mix(u32 w0, uintptr_t w1) {
     s16 gain = (s16) (w0 & 0xFFFF);
     u16 dmemi = (w1 >> 16) & 0xFFFF;
     u16 dmemo = w1 & 0xFFFF;
@@ -194,7 +211,7 @@ static void op_mix(u32 w0, u32 w1) {
 // A_INTERLEAVE: weave two mono buffers into stereo at `out`. Writes 2*count bytes
 // (alSavePull sets count to the MONO byte count, then re-sets it to count<<2 before
 // the SAVEBUFF that follows).
-static void op_interleave(u32 w1) {
+static void op_interleave(uintptr_t w1) {
     u16 leftAddr = (w1 >> 16) & 0xFFFF;
     u16 rightAddr = w1 & 0xFFFF;
     const s16 *l = dmem16(leftAddr);
@@ -264,7 +281,7 @@ static const s16 sResampleTable[64][4] = {
 //          boundary is a discontinuity (i.e. a click)
 //   [4]    the fractional phase
 // ---------------------------------------------------------------------------
-static void op_resample(u32 w0, u32 w1) {
+static void op_resample(u32 w0, uintptr_t w1) {
     u8 flags = (w0 >> 16) & 0xFF;
     u32 pitch = (w0 & 0xFFFF) << 1; // 16.16 step per output sample
     s16 *state = rdram(w1);
@@ -288,6 +305,7 @@ static void op_resample(u32 w0, u32 w1) {
     // buffer, so the filter window is continuous across command lists.
 #define RESAMPLE_TAP(i) (((i) < 4) ? hist[i] : src[(i) - 4])
 
+    n = dmem_clamp(n, dst);
     for (k = 0; k < n; k++) {
         const s16 *tbl = sResampleTable[accu >> 10]; // 64 phases
         s32 sample = ((RESAMPLE_TAP(pos + 0) * tbl[0] + 0x4000) >> 15) +
@@ -322,7 +340,7 @@ static void op_resample(u32 w0, u32 w1) {
 // so A_LOOP can load it straight from there. That shared layout is why this is a
 // fixed format and not ours to choose.
 // ---------------------------------------------------------------------------
-static void op_adpcm(u32 w0, u32 w1) {
+static void op_adpcm(u32 w0, uintptr_t w1) {
     u8 flags = (w0 >> 16) & 0xFF;
     s16 *state = rdram(w1);
     const u8 *src = &sDmem[sIn];
@@ -399,6 +417,9 @@ static void op_adpcm(u32 w0, u32 w1) {
             // boundaries ((nframes+1)<<5 in alAdpcmPull) and consumes partial
             // frames via the history block above, so writing past outSamples up
             // to the frame edge is expected, not an overrun.
+            if ((u8 *) &dst[produced + 16] > sDmem + sizeof(sDmem)) {
+                break; // never write past DMEM (+ guard)
+            }
             for (i = 0; i < 16; i++) {
                 dst[produced + i] = frame[i];
             }
@@ -427,7 +448,7 @@ static void op_adpcm(u32 w0, u32 w1) {
 //   [6..7] rate L (16.16)      [8..9] rate R
 //   [10]   dry                 [11]   wet
 // ---------------------------------------------------------------------------
-static void op_envmixer(u32 w0, u32 w1) {
+static void op_envmixer(u32 w0, uintptr_t w1) {
     u8 flags = (w0 >> 16) & 0xFF;
     s16 *state = rdram(w1);
     const s16 *src = dmem16(sIn);
@@ -460,6 +481,14 @@ static void op_envmixer(u32 w0, u32 w1) {
         wet = state[11];
     }
 
+    // Never run past DMEM (+ guard), whatever the command claims.
+    n = dmem_clamp(n, src);
+    n = dmem_clamp(n, dryL);
+    n = dmem_clamp(n, dryR);
+    if (flags & A_AUX) {
+        n = dmem_clamp(n, wetL);
+        n = dmem_clamp(n, wetR);
+    }
     for (k = 0; k < n; k++) {
         s32 s = src[k];
         s32 vl = volAccu[0] >> 16;
@@ -523,7 +552,7 @@ static void op_envmixer(u32 w0, u32 w1) {
 // is exactly the one-pole recursion y[n] = gain·x[n] + fc·y[n-1]. Implement that
 // directly. Everything is Q14 (SCALE = 16384 in drvrnew.c; fgain = SCALE - fc, so
 // DC gain is unity).
-static void op_polef(u32 w0, u32 w1) {
+static void op_polef(u32 w0, uintptr_t w1) {
     u8 flags = (w0 >> 16) & 0xFF;
     s16 gain = (s16) (w0 & 0xFFFF);
     s16 *state = rdram(w1);
@@ -553,15 +582,15 @@ static void op_polef(u32 w0, u32 w1) {
 // The interpreter
 // ---------------------------------------------------------------------------
 void pc_audio_hle_run(void *cmdList, s32 cmdLen, void *outBuf, s32 frameSamples) {
-    const u32 *cmd = cmdList;
+    const Acmd *cmd = cmdList;
     s32 i;
 
     (void) outBuf;      // the list SAVEBUFFs into it itself
     (void) frameSamples;
 
     for (i = 0; i < cmdLen; i++) {
-        u32 w0 = cmd[2 * i + 0];
-        u32 w1 = cmd[2 * i + 1];
+        u32 w0 = (u32) cmd[i].words.w0;
+        uintptr_t w1 = cmd[i].words.w1; // pointer-sized: DMA sources and state buffers
         u32 op = w0 >> 24;
 
         switch (op) {

@@ -5,7 +5,7 @@
 #include "thread0_epc.h"
 
 #ifndef _ALIGN16
-#define _ALIGN16(a) (((u32) (a) & ~0xF) + 0x10)
+#define _ALIGN16(a) (((uintptr_t) (a) & ~0xF) + 0x10)
 #endif
 
 /************ .bss ************/
@@ -98,7 +98,7 @@ MemoryPoolSlot *mempool_init(MemoryPoolSlot *slots, s32 poolSize, s32 numSlots) 
     }
     firstSlot = &gMemoryPools[poolCount].slots[0];
     slots += numSlots;
-    if ((s32) slots & 0xF) {
+    if ((uintptr_t) slots & 0xF) {
         firstSlot->data = (u8 *) _ALIGN16(slots);
     } else {
         firstSlot->data = (u8 *) slots;
@@ -227,14 +227,14 @@ void *mempool_alloc_fixed(s32 size, u8 *address, u32 colorTag) {
         for (i = 0; i != MEMSLOT_NONE; i = curSlot->nextIndex) {
             curSlot = &slots[i];
             if (curSlot->flags == SLOT_FREE) {
-                if ((u32) address >= (u32) curSlot->data &&
-                    (u32) address + size <= (u32) curSlot->data + curSlot->size) {
+                if ((uintptr_t) address >= (uintptr_t) curSlot->data &&
+                    (uintptr_t) address + size <= (uintptr_t) curSlot->data + curSlot->size) {
                     if (address == (u8 *) curSlot->data) {
                         mempool_slot_assign(POOL_MAIN, i, size, 1, 0, colorTag);
                         interrupts_enable(intFlags);
                         return curSlot->data;
                     } else {
-                        i = mempool_slot_assign(POOL_MAIN, i, (u32) address - (u32) curSlot->data, 0, 1, colorTag);
+                        i = mempool_slot_assign(POOL_MAIN, i, (s32) ((uintptr_t) address - (uintptr_t) curSlot->data), 0, 1, colorTag);
                         mempool_slot_assign(POOL_MAIN, i, size, 1, 0, colorTag);
                         interrupts_enable(intFlags);
                         return (slots + i)->data;
@@ -589,9 +589,9 @@ s32 mempool_slot_assign(MemoryPools poolIndex, s32 slotIndex, s32 size, s32 slot
  * Official name: mmAlign16
  */
 u8 *align16(u8 *address) {
-    s32 remainder = (s32) address & 0xF;
+    s32 remainder = (s32) ((uintptr_t) address & 0xF);
     if (remainder > 0) {
-        address = (u8 *) (((s32) address - remainder) + 16);
+        address = (u8 *) (((uintptr_t) address - remainder) + 16);
     }
     return address;
 }
@@ -601,9 +601,9 @@ u8 *align16(u8 *address) {
  * Official name: mmAlign8
  */
 UNUSED u8 *align8(u8 *address) {
-    s32 remainder = (s32) address & 0x7;
+    s32 remainder = (s32) ((uintptr_t) address & 0x7);
     if (remainder > 0) {
-        address = (u8 *) (((s32) address - remainder) + 8);
+        address = (u8 *) (((uintptr_t) address - remainder) + 8);
     }
     return address;
 }
@@ -613,9 +613,9 @@ UNUSED u8 *align8(u8 *address) {
  * Official name: mmAlign4
  */
 UNUSED u8 *align4(u8 *address) {
-    s32 remainder = (s32) address & 0x3;
+    s32 remainder = (s32) ((uintptr_t) address & 0x3);
     if (remainder > 0) {
-        address = (u8 *) (((s32) address - remainder) + 4);
+        address = (u8 *) (((uintptr_t) address - remainder) + 4);
     }
     return address;
 }

@@ -49,15 +49,16 @@
  * Address conversion macros
  */
 #ifdef TARGET_PC
+#include <stdint.h>
 
 /* On PC there are no CPU segments — pass pointers through unchanged. */
-#define K0_TO_K1(x) ((u32) (x))
-#define K1_TO_K0(x) ((u32) (x))
-#define K0_TO_PHYS(x) ((u32) (x))
-#define K1_TO_PHYS(x) ((u32) (x))
-#define KDM_TO_PHYS(x) ((u32) (x))
-#define PHYS_TO_K0(x) ((u32) (x))
-#define PHYS_TO_K1(x) ((u32) (x))
+#define K0_TO_K1(x) ((uintptr_t) (x))
+#define K1_TO_K0(x) ((uintptr_t) (x))
+#define K0_TO_PHYS(x) ((uintptr_t) (x))
+#define K1_TO_PHYS(x) ((uintptr_t) (x))
+#define KDM_TO_PHYS(x) ((uintptr_t) (x))
+#define PHYS_TO_K0(x) ((uintptr_t) (x))
+#define PHYS_TO_K1(x) ((uintptr_t) (x))
 
 #define IS_KSEG0(x) (0)
 #define IS_KSEG1(x) (0)

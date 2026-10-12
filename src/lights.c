@@ -64,8 +64,8 @@ void lights_init(s32 count) {
     gActiveLights = (ObjectLight **) buffer;
     buffer += temp * sizeof(ObjectLight *);
     gActiveLightAttrs = (ObjectLight *) buffer;
-    gShadeBuffer = (ObjectLightShadeProperties *) ((u32) gActiveLightAttrs + temp * sizeof(ObjectLight));
-    gLightDirs = (Vec3f *) ((u32) gShadeBuffer + temp * sizeof(ObjectLightShadeProperties));
+    gShadeBuffer = (ObjectLightShadeProperties *) ((uintptr_t) gActiveLightAttrs + temp * sizeof(ObjectLight));
+    gLightDirs = (Vec3f *) ((uintptr_t) gShadeBuffer + temp * sizeof(ObjectLightShadeProperties));
     for (i = 0; i < gMaxLights; i++) {
         gActiveLights[i] = &gActiveLightAttrs[i];
     }

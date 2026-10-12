@@ -171,8 +171,8 @@ static void apply_clip_rect(void) {
 static GfxTriVert sTriVerts[GFX_MAX_TRI_VERTS];
 static s32 sTriVertCount = 0;
 
-static u32 sTimgAddr = 0;  // G_SETTIMG — wherever the DL last pointed
-static u32 sTexAddr = 0;   // the image a G_LOADBLOCK/G_LOADTILE actually loaded
+static uintptr_t sTimgAddr = 0;  // G_SETTIMG — wherever the DL last pointed
+static uintptr_t sTexAddr = 0;   // the image a G_LOADBLOCK/G_LOADTILE actually loaded
 static s32 sTexSwapped = 0; // that load had dxt == 0 — see decode_texture()
 static u8 sTileFmt = 0;    // G_SETTILE — G_IM_FMT_*
 static u8 sTileSiz = 0;    //             G_IM_SIZ_*
@@ -183,7 +183,7 @@ static u16 sTileWidth = 0; // G_SETTILESIZE
 static u16 sTileHeight = 0;
 static u16 sTileUls = 0;   //               the tile's origin within the image
 static u16 sTileUlt = 0;
-static u32 sTlutAddr = 0;  // G_LOADTLUT — palette for the CI formats
+static uintptr_t sTlutAddr = 0;  // G_LOADTLUT — palette for the CI formats
 
 // RDP colour state. Only the 2D path reads these: the triangles get their colour
 // from the vertices, but a rectangle has no vertex colours, so its colour comes
@@ -220,8 +220,8 @@ static s16 sFogOfs = 0;
 #define GFX_MAX_TEX_TEXELS (256 * 256)
 
 typedef struct {
-    u32 timg;
-    u32 tlut;
+    uintptr_t timg;
+    uintptr_t tlut;
     u8 fmt, siz, cmS, cmT;
     u8 swapped;
     u16 width, height;
@@ -258,8 +258,8 @@ static u8 sTexSwizzleBuf[GFX_MAX_TEX_TEXELS * 4]; // worst case: 32bpp
  * freed TLUT is just as stale.
  */
 void pc_gfx_invalidate_range(const void *addr, s32 size) {
-    u32 lo = (u32) addr;
-    u32 hi = lo + (u32) size;
+    uintptr_t lo = (uintptr_t) addr;
+    uintptr_t hi = lo + (uintptr_t) size;
     s32 i;
 
     for (i = 0; i < sTexCacheCount;) {
@@ -335,7 +335,7 @@ static void load_vertex(GfxVertex *dst, const Vertex *v, const f32 *anchor) {
     dst->a = v->a;
 }
 
-static void handle_vertex(u32 w0, u32 w1) {
+static void handle_vertex(u32 w0, uintptr_t w1) {
     const Vertex *src = (const Vertex *) w1;
     u32 params = (w0 >> 16) & 0xFF;
     s32 count = ((params >> 3) & 0x1F) + 1;
@@ -547,7 +547,7 @@ static u32 texture_current(void) {
 
     for (i = 0; i < sTexCacheCount; i++) {
         GfxTexture *t = &sTexCache[i];
-        if (t->timg == sTexAddr && t->tlut == (u32) tlut && t->fmt == sTileFmt && t->siz == sTileSiz &&
+        if (t->timg == sTexAddr && t->tlut == (uintptr_t) tlut && t->fmt == sTileFmt && t->siz == sTileSiz &&
             t->width == sTileWidth && t->height == sTileHeight && t->cmS == sTileCmS && t->cmT == sTileCmT &&
             t->swapped == (u8) sTexSwapped) {
             t->lastUsed = sGfxFrameCount;
@@ -589,7 +589,7 @@ static u32 texture_current(void) {
     {
         GfxTexture *t = &sTexCache[sTexCacheCount++];
         t->timg = sTexAddr;
-        t->tlut = (u32) tlut;
+        t->tlut = (uintptr_t) tlut;
         t->fmt = sTileFmt;
         t->siz = sTileSiz;
         t->swapped = (u8) sTexSwapped;
@@ -816,7 +816,7 @@ static void apply_render_mode(void) {
  * G_TRIN — DKR's polygon command. w1 points at an array of Triangles (vertex
  * indices plus UVs); shade each one from its vertex colours.
  */
-static void handle_polygon(u32 w0, u32 w1) {
+static void handle_polygon(u32 w0, uintptr_t w1) {
     const Triangle *tris = (const Triangle *) w1;
     u32 params = (w0 >> 16) & 0xFF;
     s32 count = (params >> 4) + 1;
@@ -1240,8 +1240,9 @@ static void run_dl(const Gfx *dl, s32 count, s32 depth) {
     }
 
     for (i = 0; count == 0 || i < count; i++) {
-        u32 w0 = dl[i].words.w0;
-        u32 w1 = dl[i].words.w1;
+        u32 w0 = (u32) dl[i].words.w0;
+        u32 w1 = (u32) dl[i].words.w1;
+        uintptr_t p1 = (uintptr_t) dl[i].words.w1; // for the words that carry a pointer
         u32 cmd = (w0 >> 24) & 0xFF;
 
         // The immediate-mode opcodes are negative ints in gbi.h (G_ENDDL is
@@ -1250,8 +1251,8 @@ static void run_dl(const Gfx *dl, s32 count, s32 depth) {
         switch (cmd) {
             case G_MTX: {
                 s32 slot = (((w0 >> 16) & 0xFF) >> 6) & 3;
-                if (w1 != 0 && slot < 3) {
-                    mtx_to_float((const Mtx *) w1, sMatrices[slot]);
+                if (p1 != 0 && slot < 3) {
+                    mtx_to_float((const Mtx *) p1, sMatrices[slot]);
                     sCurMatrix = slot;
                 }
                 break;
@@ -1277,8 +1278,8 @@ static void run_dl(const Gfx *dl, s32 count, s32 depth) {
                 // viewport was silently ignored: everything rendered at the
                 // 320x240 default, which looks right full-screen and falls apart
                 // the moment the game asks for a smaller one.
-                if (((w0 >> 16) & 0xFF) == G_MV_VIEWPORT && w1 != 0) {
-                    const Vp *vp = (const Vp *) w1;
+                if (((w0 >> 16) & 0xFF) == G_MV_VIEWPORT && p1 != 0) {
+                    const Vp *vp = (const Vp *) p1;
                     f32 halfW, halfH;
 
                     sVpScaleX = vp->vp.vscale[0] / 4.0f;
@@ -1300,22 +1301,22 @@ static void run_dl(const Gfx *dl, s32 count, s32 depth) {
                 break;
             }
             case G_VTX:
-                handle_vertex(w0, w1);
+                handle_vertex(w0, p1);
                 break;
             case G_TRIN:
-                handle_polygon(w0, w1);
+                handle_polygon(w0, p1);
                 break;
             case G_DL:
-                run_dl((const Gfx *) w1, 0, depth + 1);
+                run_dl((const Gfx *) p1, 0, depth + 1);
                 if (((w0 >> 16) & 0xFF) == G_DL_NOPUSH) {
                     return; // a branch, not a call
                 }
                 break;
             case G_DMADL:
-                run_dl((const Gfx *) w1, (w0 >> 16) & 0xFF, depth + 1);
+                run_dl((const Gfx *) p1, (w0 >> 16) & 0xFF, depth + 1);
                 break;
             case (u8) G_SETTIMG:
-                sTimgAddr = w1;
+                sTimgAddr = p1;
                 break;
             case (u8) G_SETTILE: {
                 // Only the tile the triangles actually render with matters.

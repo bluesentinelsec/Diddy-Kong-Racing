@@ -145,31 +145,32 @@ void load_fonts(void) {
 
 #ifdef TARGET_PC
     {
-        // Font asset is big-endian: leading u32 count, then FontData entries
-        // (u16 metrics + s16 textureID[32]; everything else u8/char, and
-        // texturePointers are filled at runtime).
-        // Host struct layout must match the N64's (see docs/linux_port.md):
-        _Static_assert(sizeof(FontData) == 0x400, "FontData layout drifted from N64");
-        _Static_assert(__builtin_offsetof(FontData, x) == 0x20, "FontData layout drifted from N64");
-        _Static_assert(__builtin_offsetof(FontData, textureID) == 0x40, "FontData layout drifted from N64");
-        _Static_assert(__builtin_offsetof(FontData, letter) == 0x100, "FontData layout drifted from N64");
-        _Static_assert(sizeof(FontCharData) == 0x8, "FontCharData layout drifted from N64");
-        extern void pc_swap16_buf(void *buf, u32 numBytes);
-        extern void pc_swap32_buf(void *buf, u32 numBytes);
+        // Font asset: big-endian u32 count, then 0x400-byte FontData entries whose
+        // texturePointers[32] are runtime pointers (wider on the host). Unpack into
+        // a host-layout array and drop the raw image.
+        static const PcField sFontFields[] = {
+            PCU_FIELD(FontData, unk0, 0x000, 1, PCU_U32),
+            PCU_FIELD(FontData, name, 0x004, 28, PCU_BYTES),
+            PCU_FIELD(FontData, x, 0x020, 4, PCU_U16), // x, y, charWidth, charHeight
+            PCU_FIELD(FontData, loadedFonts, 0x028, 24, PCU_BYTES),
+            PCU_FIELD(FontData, textureID, 0x040, 32, PCU_U16),
+            PCU_FIELD(FontData, texturePointers, 0x080, 32, PCU_PTR),
+            PCU_FIELD(FontData, letter, 0x100, 96 * 8, PCU_BYTES), // FontCharData is all u8
+            PCU_END,
+        };
         FontData *fonts;
 
-        pc_swap32_buf(fontAssetData, 4);
-        fonts = (FontData *) (fontAssetData + 1);
-        for (i = 0; i < (s32) *fontAssetData; i++) {
-            PC_SWAP16_AT(&fonts[i], x, 8); // x, y, charWidth, charHeight
-            pc_swap16_buf(fonts[i].textureID, sizeof(fonts[i].textureID));
-        }
+        gNumberOfFonts = (s32) pc_be32(fontAssetData, 0);
+        fonts = mempool_alloc_safe((gNumberOfFonts > 0 ? gNumberOfFonts : 1) * sizeof(FontData), COLOUR_TAG_YELLOW);
+        pc_unpack_array(fonts, sizeof(FontData), (u8 *) fontAssetData + 4, 0x400, gNumberOfFonts, sFontFields);
+        mempool_free(fontAssetData);
+        gFonts = fonts;
     }
-#endif
-
+#else
     gFonts = (FontData *) (fontAssetData); // ???
     gNumberOfFonts = *(fontAssetData);
     gFonts = (FontData *) (fontAssetData + 1);
+#endif
 
     for (i = 0; i < gNumberOfFonts; i++) {
         gFonts[i].loadedFonts[0] = 0;
@@ -1384,7 +1385,7 @@ void func_800C6464_C7064(void) {
     for (i = 0; i < 4; i++) {
         jpFontHeader = &D_8012C2A4_EE5E4[i];
         for (charIndex = 0; charIndex < JP_FONT_ARRAY_SIZE; charIndex++) {
-            asset_load(ASSET_JAPANESE_FONTS, (u32) jpFontData,
+            asset_load(ASSET_JAPANESE_FONTS, (uintptr_t) jpFontData,
                        jpFontHeader->offsetToData + (charIndex * jpFontHeader->bytesPerCharacter), 0x40);
             D_8012C2A8_EE5E8[i]->spacing[charIndex] = jpFontData->spacing;
         }
@@ -1501,7 +1502,7 @@ s32 func_800C68CC_C74CC(u16 arg0) {
                 }
             }
             asset = &D_8012C2C0_EE600[curIndex];
-            asset_load(ASSET_JAPANESE_FONTS, (u32) asset,
+            asset_load(ASSET_JAPANESE_FONTS, (uintptr_t) asset,
                        D_8012C2A4_EE5E4[fontInUse].offsetToData +
                            (D_8012C2A4_EE5E4[fontInUse].bytesPerCharacter * arg0),
                        D_8012C2A4_EE5E4[fontInUse].bytesPerCharacter);

@@ -256,9 +256,9 @@ void main_game_loop(void) {
     if (gScreenStatus == MESG_SKIP_BUFFER_SWAP) {
         gCurrDisplayList = gDisplayLists[gSPTaskNum];
         rsp_segment(&gCurrDisplayList, SEGMENT_MAIN, 0x00000000);
-        rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (s32) gVideoCurrFramebuffer);
-        rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (s32) gVideoLastDepthBuffer);
-        rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (s32) gVideoCurrFramebuffer - VI_OFFSET); // Unused
+        rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (ptrint_t) gVideoCurrFramebuffer);
+        rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (ptrint_t) gVideoLastDepthBuffer);
+        rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (ptrint_t) gVideoCurrFramebuffer - VI_OFFSET); // Unused
     }
     if (gDrawFrameTimer == 0) {
         gfxtask_run_xbus(gDisplayLists[gSPTaskNum], gCurrDisplayList, 0);
@@ -275,9 +275,9 @@ void main_game_loop(void) {
     gGameCurrTriList = gTriangleHeap[gSPTaskNum];
 
     rsp_segment(&gCurrDisplayList, SEGMENT_MAIN, 0x00000000);
-    rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (s32) gVideoLastFramebuffer);
-    rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (s32) gVideoLastDepthBuffer);
-    rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (s32) gVideoLastFramebuffer - VI_OFFSET); // Unused
+    rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (ptrint_t) gVideoLastFramebuffer);
+    rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (ptrint_t) gVideoLastDepthBuffer);
+    rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (ptrint_t) gVideoLastFramebuffer - VI_OFFSET); // Unused
     rsp_init(&gCurrDisplayList);
     rdp_init(&gCurrDisplayList);
     bgdraw_render(&gCurrDisplayList, &gGameCurrMatrix, TRUE);

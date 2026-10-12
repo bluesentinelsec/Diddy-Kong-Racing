@@ -19,7 +19,7 @@ extern f32 gCollisionNormalZ;
 extern s32 gHitWall;
 extern s32 gCollisionMode;
 
-extern s32 *gCollisionCandidates;
+extern ptrint_t *gCollisionCandidates; // tagged pointers: pointer-sized on the host
 extern s8 *gCollisionSurfaces;
 extern s32 gNumCollisionCandidates;
 
@@ -164,7 +164,7 @@ void generate_collision_candidates(s32 numPoints, Vec3f *origins, Vec3f *targets
                     continue;
                 }
 
-                gCollisionCandidates[j] = (s32) facet;
+                gCollisionCandidates[j] = (ptrint_t) facet;
                 gCollisionSurfaces[j] = surface;
                 j++;
 

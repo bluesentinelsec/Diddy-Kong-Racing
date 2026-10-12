@@ -12,7 +12,7 @@
 // have. Since collision.c is now the producer on every target, segments are
 // tagged with bit 0 instead — all candidates are at least 4-byte aligned, so
 // the bit is free on N64 and PC alike.
-#define COLLISION_SEGMENT_ENTRY(seg) (((s32) (seg)) | 1)
+#define COLLISION_SEGMENT_ENTRY(seg) (((ptrint_t) (seg)) | 1)
 #define COLLISION_ENTRY_IS_SEGMENT(entry) ((entry) & 1)
 #define COLLISION_ENTRY_SEGMENT(entry) ((LevelModelSegment *) ((entry) & ~1))
 

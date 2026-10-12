@@ -98,7 +98,11 @@ extern void     bzero(void *, size_t);
 
 /* Printf */
 
+#ifdef TARGET_PC
+#include <stdio.h> /* host sprintf may be a fortified macro; don't redeclare it */
+#else
 extern int sprintf(char *s, const char *format, ...);
+#endif
 extern void		osSyncPrintf(const char *fmt, ...);
 
 

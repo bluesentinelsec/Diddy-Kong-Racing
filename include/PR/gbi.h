@@ -995,7 +995,11 @@ typedef struct {
  * First 8 words are integer portion of the 4x4 matrix
  * Last 8 words are the fraction portion of the 4x4 matrix
  */
+#ifdef TARGET_PC
+typedef int	Mtx_t[4][4]; /* host: `long` may be 64-bit; the matrix is 16 x 32-bit words */
+#else
 typedef long	Mtx_t[4][4];
+#endif
 
 #ifdef GBI_FLOAT_MTX
 // Float matrix ABI: the 64 bytes hold 16 raw floats (see mtxf_to_mtx). 32-byte
@@ -1497,9 +1501,23 @@ typedef struct {
 /*
  * Generic Gfx Packet
  */
+/*
+ * Host builds (TARGET_PC): display lists are built at runtime and consumed by
+ * the HLE renderer, never by the RSP, and w1 frequently carries a host pointer.
+ * Make the words pointer-sized so a 64-bit address survives. The GfxWord cast
+ * below replaces the (GfxWord) casts in the packet macros for the same
+ * reason. The N64 build keeps the 32-bit words, so Gfx stays 64 bits there.
+ */
+#ifdef TARGET_PC
+#include <stdint.h>
+typedef uintptr_t GfxWord;
+#else
+typedef unsigned int GfxWord;
+#endif
+
 typedef struct {
-	unsigned int w0;
-	unsigned int w1;
+	GfxWord w0;
+	GfxWord w1;
 } Gwords;
 
 /*
@@ -1540,12 +1558,12 @@ typedef union {
 	Gfx *_g = (Gfx *)(pkt);						\
 									\
 	_g->words.w0 = _SHIFTL((c), 24, 8) | _SHIFTL((l), 0, 24);	\
-	_g->words.w1 = (unsigned int)(s);				\
+	_g->words.w1 = (GfxWord)(s);				\
 }
 
 #define	gsDma0p(c, s, l)						\
 {{									\
-	_SHIFTL((c), 24, 8) | _SHIFTL((l), 0, 24), (unsigned int)(s)	\
+	_SHIFTL((c), 24, 8) | _SHIFTL((l), 0, 24), (GfxWord)(s)	\
 }}
 
 #define	gDma1p(pkt, c, s, l, p)						\
@@ -1554,14 +1572,14 @@ typedef union {
 									\
 	_g->words.w0 = (_SHIFTL((c), 24, 8) | _SHIFTL((p), 16, 8) |	\
 			_SHIFTL((l), 0, 16));				\
-	_g->words.w1 = (unsigned int)(s);				\
+	_g->words.w1 = (GfxWord)(s);				\
 }
 
 #define	gsDma1p(c, s, l, p)						\
 {{									\
 	(_SHIFTL((c), 24, 8) | _SHIFTL((p), 16, 8) | 			\
 	 _SHIFTL((l), 0, 16)), 						\
-        (unsigned int)(s)						\
+        (GfxWord)(s)						\
 }}
 
 #define	gSPNoOp(pkt)		gDma0p(pkt, G_SPNOOP, 0, 0)
@@ -1602,12 +1620,12 @@ typedef union {
 	Gfx *_g = (Gfx *)(pkt);						\
 									\
 	_g->words.w0 = _SHIFTL((c), 24, 8);				\
-	_g->words.w1 = (unsigned int)(p0);				\
+	_g->words.w1 = (GfxWord)(p0);				\
 }
 
 #define	gsImmp1(c, p0)							\
 {{									\
-	_SHIFTL((c), 24, 8), (unsigned int)(p0)				\
+	_SHIFTL((c), 24, 8), (GfxWord)(p0)				\
 }}
 
 #define	gImmp2(pkt, c, p0, p1)						\
@@ -1644,13 +1662,13 @@ typedef union {
 									\
 	_g->words.w0 = (_SHIFTL((c), 24, 8)  | _SHIFTL((p0), 8, 16) |	\
 			_SHIFTL((p1), 0, 8));				\
-	_g->words.w1 = (unsigned int) (dat);				\
+	_g->words.w1 = (GfxWord) (dat);				\
 }
 
 #define	gsImmp21(c, p0, p1, dat)					\
 {{									\
 	_SHIFTL((c), 24, 8) | _SHIFTL((p0), 8, 16) | _SHIFTL((p1), 0, 8),\
-        (unsigned int) (dat)						\
+        (GfxWord) (dat)						\
 }}
 
 #define gMoveWd(pkt, index, offset, data)				\
@@ -1725,7 +1743,7 @@ typedef union {
 									\
 	_g->words.w0 = _SHIFTL(G_CULLDL, 24, 8) |			\
                        ((0x0f & (vstart))*40);				\
-	_g->words.w1 = (unsigned int)((0x0f & ((vend)+1))*40);		\
+	_g->words.w1 = (GfxWord)((0x0f & ((vend)+1))*40);		\
 }
 
 #define gsSPCullDisplayList(vstart,vend)				\
@@ -2138,12 +2156,12 @@ typedef union {
 	Gfx *_g = (Gfx *)(pkt);						\
 									\
 	_g->words.w0 = _SHIFTL(G_SETGEOMETRYMODE, 24, 8);		\
-	_g->words.w1 = (unsigned int)(word);				\
+	_g->words.w1 = (GfxWord)(word);				\
 }
 
 #define	gsSPSetGeometryMode(word)					\
 {{									\
-	_SHIFTL(G_SETGEOMETRYMODE, 24, 8), (unsigned int)(word)		\
+	_SHIFTL(G_SETGEOMETRYMODE, 24, 8), (GfxWord)(word)		\
 }}
 
 #define	gSPClearGeometryMode(pkt, word)					\
@@ -2151,12 +2169,12 @@ typedef union {
 	Gfx *_g = (Gfx *)(pkt);						\
 									\
 	_g->words.w0 = _SHIFTL(G_CLEARGEOMETRYMODE, 24, 8);		\
-	_g->words.w1 = (unsigned int)(word);				\
+	_g->words.w1 = (GfxWord)(word);				\
 }
 
 #define	gsSPClearGeometryMode(word)					\
 {{									\
-	_SHIFTL(G_CLEARGEOMETRYMODE, 24, 8), (unsigned int)(word)	\
+	_SHIFTL(G_CLEARGEOMETRYMODE, 24, 8), (GfxWord)(word)	\
 }}
 
 #define	gSPSetOtherMode(pkt, cmd, sft, len, data)			\
@@ -2165,13 +2183,13 @@ typedef union {
 									\
 	_g->words.w0 = (_SHIFTL(cmd, 24, 8) | _SHIFTL(sft, 8, 8) |	\
 			_SHIFTL(len, 0, 8));				\
-	_g->words.w1 = (unsigned int)(data);				\
+	_g->words.w1 = (GfxWord)(data);				\
 }
 
 #define	gsSPSetOtherMode(cmd, sft, len, data)				\
 {{									\
 	_SHIFTL(cmd, 24, 8) | _SHIFTL(sft, 8, 8) | _SHIFTL(len, 0, 8),	\
-	(unsigned int)(data)						\
+	(GfxWord)(data)						\
 }}
 
 /*
@@ -2271,14 +2289,14 @@ typedef union {
 									\
 	_g->words.w0 = _SHIFTL(cmd, 24, 8) | _SHIFTL(fmt, 21, 3) |	\
 		       _SHIFTL(siz, 19, 2) | _SHIFTL((width)-1, 0, 12);	\
-	_g->words.w1 = (unsigned int)(i);				\
+	_g->words.w1 = (GfxWord)(i);				\
 }
 
 #define	gsSetImage(cmd, fmt, siz, width, i)				\
 {{									\
 	_SHIFTL(cmd, 24, 8) | _SHIFTL(fmt, 21, 3) |			\
 	_SHIFTL(siz, 19, 2) | _SHIFTL((width)-1, 0, 12),		\
-	(unsigned int)(i)						\
+	(GfxWord)(i)						\
 }}
 
 #define	gDPSetColorImage(pkt, f, s, w, i)	gSetImage(pkt, G_SETCIMG, f, s, w, i)
@@ -2304,13 +2322,13 @@ typedef union {
 	Gfx *_g = (Gfx *)(pkt);						\
 									\
 	_g->words.w0 = _SHIFTL(G_SETCOMBINE, 24, 8) | _SHIFTL(muxs0, 0, 24);\
-	_g->words.w1 = (unsigned int)(muxs1);				\
+	_g->words.w1 = (GfxWord)(muxs1);				\
 }
 
 #define	gsDPSetCombine(muxs0, muxs1)					\
 {{									\
 	_SHIFTL(G_SETCOMBINE, 24, 8) | _SHIFTL(muxs0, 0, 24),		\
-	(unsigned int)(muxs1)						\
+	(GfxWord)(muxs1)						\
 }}
 
 #define	GCCc0w0(saRGB0, mRGB0, saA0, mA0)				\
@@ -2339,7 +2357,7 @@ typedef union {
 				       G_ACMUX_##Aa0, G_ACMUX_##Ac0) |	\
 			       GCCc1w0(G_CCMUX_##a1, G_CCMUX_##c1), 	\
 			       0, 24);					\
-	_g->words.w1 =	(unsigned int)(GCCc0w1(G_CCMUX_##b0, 		\
+	_g->words.w1 =	(GfxWord)(GCCc0w1(G_CCMUX_##b0, 		\
 					       G_CCMUX_##d0,		\
 					       G_ACMUX_##Ab0, 		\
 					       G_ACMUX_##Ad0) |		\
@@ -2358,7 +2376,7 @@ typedef union {
 	_SHIFTL(GCCc0w0(G_CCMUX_##a0, G_CCMUX_##c0,			\
 		       G_ACMUX_##Aa0, G_ACMUX_##Ac0) |			\
 	       GCCc1w0(G_CCMUX_##a1, G_CCMUX_##c1), 0, 24),		\
-	(unsigned int)(GCCc0w1(G_CCMUX_##b0, G_CCMUX_##d0,		\
+	(GfxWord)(GCCc0w1(G_CCMUX_##b0, G_CCMUX_##d0,		\
 			       G_ACMUX_##Ab0, G_ACMUX_##Ad0) |		\
 		       GCCc1w1(G_CCMUX_##b1, G_ACMUX_##Aa1,		\
 			       G_ACMUX_##Ac1, G_CCMUX_##d1,		\
@@ -2383,12 +2401,12 @@ typedef union {
 	Gfx *_g = (Gfx *)(pkt);						\
 									\
 	_g->words.w0 = _SHIFTL(c, 24, 8);				\
-	_g->words.w1 = (unsigned int)(d);				\
+	_g->words.w1 = (GfxWord)(d);				\
 }
 
 #define	gsDPSetColor(c, d)						\
 {{									\
-	_SHIFTL(c, 24, 8), (unsigned int)(d)				\
+	_SHIFTL(c, 24, 8), (GfxWord)(d)				\
 }}
 
 #define	DPRGBColor(pkt, cmd, r, g, b, a)				\
@@ -3733,15 +3751,15 @@ typedef union {
 }
 
 #define gsDPWord(wordhi, wordlo)			\
-    gsImmp1(G_RDPHALF_1, (unsigned int)(wordhi)),	\
-    gsImmp1(G_RDPHALF_2, (unsigned int)(wordlo))
+    gsImmp1(G_RDPHALF_1, (GfxWord)(wordhi)),	\
+    gsImmp1(G_RDPHALF_2, (GfxWord)(wordlo))
 
 #define gDPWord(pkt, wordhi, wordlo)      		\
 {							\
     Gfx *_g = (Gfx *)(pkt);				\
 							\
-    gImmp1(pkt, G_RDPHALF_1, (unsigned int)(wordhi));	\
-    gImmp1(pkt, G_RDPHALF_2, (unsigned int)(wordlo));	\
+    gImmp1(pkt, G_RDPHALF_1, (GfxWord)(wordhi));	\
+    gImmp1(pkt, G_RDPHALF_2, (GfxWord)(wordlo));	\
 }
 
 #define	gDPFullSync(pkt)	gDPNoParam(pkt, G_RDPFULLSYNC)

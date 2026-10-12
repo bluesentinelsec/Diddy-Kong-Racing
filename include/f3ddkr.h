@@ -172,7 +172,7 @@
 #define gSPPolygon(dl, ptr, numTris, texEnabled) {                                                                                  \
     Gfx *_g = (Gfx *)(dl);                                                                                                          \
     _g->words.w0 = _SHIFTL((((numTris) - 1) << 4) | (texEnabled), 16, 8) | _SHIFTL(G_TRIN, 24, 8) | _SHIFTL(((numTris)*16), 0, 16); \
-    _g->words.w1 = (unsigned int)(ptr);                                                                                             \
+    _g->words.w1 = (GfxWord)(ptr);                                                                                             \
 }
 
 #define numberOfGfxCommands(gfxCmds) (sizeof(gfxCmds) / sizeof(Gfx))
@@ -183,7 +183,7 @@
                                                                                    \
     _g->words.w0 = (_SHIFTL(G_DMADL, 24, 8) | _SHIFTL((numberOfCommands), 16, 8) | \
             _SHIFTL((numberOfCommands*8), 0, 16));                                 \
-    _g->words.w1 = (unsigned int)(address);                                        \
+    _g->words.w1 = (GfxWord)(address);                                        \
 }
 
 #define gDPSetPrimColorRGBA(pkt, rgba)             \
@@ -206,13 +206,13 @@
 	Gfx *_g = (Gfx *)(pkt);						\
 									\
 	_g->words.w0 = _SHIFTL(G_RDPSETOTHERMODE,24,8)|_SHIFTL(mode0,0,24);\
-	_g->words.w1 = (unsigned int)(mode1);				\
+	_g->words.w1 = (GfxWord)(mode1);				\
 }
 
 #define	gsDPSetOtherMode(mode0, mode1)					\
 {{									\
 	_SHIFTL(G_RDPSETOTHERMODE,24,8)|_SHIFTL(mode0,0,24),		\
-	(unsigned int)(mode1)						\
+	(GfxWord)(mode1)						\
 }}
 
 #endif

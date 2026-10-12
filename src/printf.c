@@ -958,7 +958,7 @@ void debug_text_print(Gfx **dList) {
     gDebugFixedWidthMode = FALSE;
     D_80127CB0 = gDebugTextX;
     D_80127CB2 = gDebugTextY;
-    while ((s32) buffer != (s32) gDebugPrintBufferEnd) {
+    while ((uintptr_t) buffer != (uintptr_t) gDebugPrintBufferEnd) {
         gDebugTextOn = FALSE;
         buffer += debug_text_parse(dList, buffer);
     }
@@ -967,7 +967,7 @@ void debug_text_print(Gfx **dList) {
     debug_text_origin();
     gDebugFontTexture = -1;
     gDebugFixedWidthMode = FALSE;
-    while ((s32) buffer != (s32) gDebugPrintBufferEnd) {
+    while ((uintptr_t) buffer != (uintptr_t) gDebugPrintBufferEnd) {
         gDebugTextOn = TRUE;
         buffer += debug_text_parse(dList, buffer);
     }

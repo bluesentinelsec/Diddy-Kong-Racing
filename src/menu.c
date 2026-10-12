@@ -1,3 +1,6 @@
+#ifdef TARGET_PC
+#include "pc_asset.h"
+#endif
 #include "menu.h"
 #include "asset_enums.h"
 #include "asset_loading.h"
@@ -1999,15 +2002,26 @@ void load_menu_text(s32 language) {
         return;
     }
 
-    asset_load(ASSET_MENU_TEXT, (u32) temp, langIndex, size);
 #ifdef TARGET_PC
     {
-        // The blob leads with a big-endian string-offset table; the loop below
-        // converts it to pointers. The strings after it are plain chars.
-        extern void pc_swap32_buf(void *buf, u32 numBytes);
-        pc_swap32_buf(gMenuText, gMenuTextLangTable[0] * 4);
+        // The blob leads with a big-endian string-offset table and the strings
+        // follow. On N64 it is loaded over the pointer table itself and the
+        // offsets are turned into pointers in place; host pointers are wider
+        // than the 4-byte entries, so keep the blob in its own buffer and point
+        // the table into it.
+        static u8 *sPcMenuTextBlob = NULL;
+        if (sPcMenuTextBlob != NULL) {
+            mempool_free(sPcMenuTextBlob);
+        }
+        sPcMenuTextBlob = mempool_alloc_safe(size, COLOUR_TAG_WHITE);
+        asset_load(ASSET_MENU_TEXT, (uintptr_t) sPcMenuTextBlob, langIndex, size);
+        for (langIndex = 0; langIndex < gMenuTextLangTable[0]; langIndex++) {
+            u32 offset = pc_be32(sPcMenuTextBlob, langIndex * 4);
+            gMenuText[langIndex] = (offset == 0xFFFFFFFF) ? NULL : (char *) sPcMenuTextBlob + offset;
+        }
     }
-#endif
+#else
+    asset_load(ASSET_MENU_TEXT, (uintptr_t) temp, langIndex, size);
 
     // TODO: Find a way to clean up the ugly hacks.
     // Fill up the lookup table with proper RAM addresses
@@ -2019,6 +2033,7 @@ void load_menu_text(s32 language) {
             gMenuText[langIndex] = &((char *) gMenuText)[(s32) (fake = menuText)];
         }
     }
+#endif
 
     menuText = gMenuText;
     gAudioOutputStrings[0] = menuText[ASSET_MENU_TEXT_STEREO];                       // "STEREO"
@@ -2189,12 +2204,12 @@ void func_8007FFEC(s32 numberOfPanels) {
 
     gWoodPanelTriangles[0] =
         (Triangle *) mempool_alloc_safe(((vertexSize + triangleCount) * 2) + menuGeometrySize, COLOUR_TAG_WHITE);
-    gWoodPanelTriangles[1] = (Triangle *) ((u32) gWoodPanelTriangles[0] + triangleCount);
+    gWoodPanelTriangles[1] = (Triangle *) ((uintptr_t) gWoodPanelTriangles[0] + triangleCount);
 
-    gMenuGeometry = (unk80080BC8 *) ((u32) gWoodPanelTriangles[1] + triangleCount);
+    gMenuGeometry = (unk80080BC8 *) ((uintptr_t) gWoodPanelTriangles[1] + triangleCount);
 
-    gWoodPanelVertices[0] = (Vertex *) ((u32) gMenuGeometry + menuGeometrySize);
-    gWoodPanelVertices[1] = (Vertex *) ((u32) gWoodPanelVertices[0] + vertexSize);
+    gWoodPanelVertices[0] = (Vertex *) ((uintptr_t) gMenuGeometry + menuGeometrySize);
+    gWoodPanelVertices[1] = (Vertex *) ((uintptr_t) gWoodPanelVertices[0] + vertexSize);
 
     panelIndex = 0;
     triangleCount = 0;
@@ -3374,7 +3389,7 @@ void menu_prefetch_next_title_demo_music(void) {
     pc_swap32_buf(offsets, asset_table_size(ASSET_LEVEL_HEADERS_TABLE));
 #endif
     if (demo[DEMO_LEVEL_ID] + 1 < count && offsets[demo[DEMO_LEVEL_ID] + 1] != (u32)-1) {
-        asset_load(ASSET_LEVEL_HEADERS, (u32)&sequence,
+        asset_load(ASSET_LEVEL_HEADERS, (uintptr_t) &sequence,
                    offsets[demo[DEMO_LEVEL_ID]] + __builtin_offsetof(LevelHeader, music), 1);
     }
     mempool_free(offsets);
@@ -5617,7 +5632,7 @@ void bootscreen_init_cpak(void) {
 
     // Fills in the table.
     for (i = 1; i < ARRAY_COUNT(gBootPakData); i++) {
-        gBootPakData[i] = (char *) (((u32) gBootPakData[0]) + (i * (CPAK_HEAP_SIZE / ARRAY_COUNT(gBootPakData))));
+        gBootPakData[i] = (char *) (((uintptr_t) gBootPakData[0]) + (i * (CPAK_HEAP_SIZE / ARRAY_COUNT(gBootPakData))));
     }
 
     // Only check cpak 0
@@ -6765,7 +6780,7 @@ void cheatmenu_checksum(void) {
             if (numBytes > size) {
                 numBytes = size;
             }
-            dmacopy(blockOffs, (u32) tempBuffer, numBytes);
+            dmacopy(blockOffs, (uintptr_t) tempBuffer, numBytes);
             numLeft -= numBytes;
 
             for (i = 0; i < numBytes; i++) {
@@ -8818,8 +8833,12 @@ void trackmenu_render_2D(s32 x, s32 y, char *hubName, char *trackName, s32 rectO
         opacity = 255;
     }
     if (hubName != gTrackMenuHubName) {
+#ifdef TARGET_PC
+        if (hubName == level_name(level_world_id(WORLD_SNOWFLAKE_MOUNTAIN))) {
+#else
         temp = (s32) level_name(level_world_id(WORLD_SNOWFLAKE_MOUNTAIN));
         if ((s32) hubName == temp) {
+#endif
             set_kerning(TRUE);
         }
         set_text_colour(0, 0, 0, 255, opacity / 2);
@@ -9247,11 +9266,17 @@ void trackmenu_setup_render(UNUSED s32 updateRate) {
             }
         }
 #endif
+#ifndef TARGET_PC
         i = (s32) level_name(gTrackIdForPreview);
+#endif
         set_text_font(ASSET_FONTS_BIGFONT);
         set_text_colour(192, 192, 255, 0, sMenuGuiOpacity);
         set_text_background_colour(0, 0, 0, 0);
+#ifdef TARGET_PC
+        draw_text(&sMenuCurrDisplayList, POS_CENTRED, 43, level_name(gTrackIdForPreview), ALIGN_MIDDLE_CENTER);
+#else
         draw_text(&sMenuCurrDisplayList, POS_CENTRED, 43, (char *) i, ALIGN_MIDDLE_CENTER); // Draw track name?
+#endif
         sp84 = gOptionBlinkTimer * 8;
         if (sp84 > 255) {
             sp84 = 511 - sp84;
@@ -13816,12 +13841,12 @@ void menu_asset_free(s32 assetID) {
                 mempool_free_timer(2);
             } else {
                 if ((*gAssetsMenuElementIds)[assetID] & ASSET_MASK_SPRITE) {
-                    sprite_free((Sprite *) (u32) gMenuAssets[assetID]);
+                    sprite_free((Sprite *) gMenuAssets[assetID]);
                 } else {
                     if ((*gAssetsMenuElementIds)[assetID] & ASSET_MASK_OBJECT) {
-                        free_object((Object *) (u32) gMenuAssets[assetID]);
+                        free_object((Object *) gMenuAssets[assetID]);
                     } else {
-                        free_3d_model((ModelInstance *) (u32) gMenuAssets[assetID]);
+                        free_3d_model((ModelInstance *) gMenuAssets[assetID]);
                     }
                 }
             }

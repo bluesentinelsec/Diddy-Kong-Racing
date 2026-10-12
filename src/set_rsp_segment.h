@@ -2,6 +2,7 @@
 #define _SET_RSP_SEGMENT_H_
 
 #include "PR/gbi.h"
+#include "types.h"
 #include <PR/ultratypes.h>
 
 /**
@@ -19,6 +20,6 @@ enum RSPSegments {
     SEGMENT_COUNT,
 };
 
-void rsp_segment(Gfx **dList, s32 segment, s32 base);
+void rsp_segment(Gfx **dList, s32 segment, ptrint_t base);
 
 #endif

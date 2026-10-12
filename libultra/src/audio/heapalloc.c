@@ -59,6 +59,15 @@ void *alHeapDBAlloc(u8 *file, s32 line, ALHeap *hp, s32 num, s32 size)
 #ifdef _DEBUG
         __osError(ERR_ALHEAPNOFREE, 1, size);
 #endif        
+#ifdef TARGET_PC
+        {
+            /* A silent NULL here turns into "random" small DMA addresses later;
+             * say so, and point at AUDIO_HEAP_SIZE. */
+            extern void isv_printf(const char *fmt, ...);
+            isv_printf("AUDIO: alHeapAlloc(%d x %d) failed: audio heap exhausted (%d of %d bytes used)\n", num, size,
+                       (int) (hp->cur - hp->base), hp->len);
+        }
+#endif
     }
 
     return ptr;

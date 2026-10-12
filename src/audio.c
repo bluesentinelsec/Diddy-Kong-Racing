@@ -230,12 +230,12 @@ void audio_init(OSSched *sc) {
     pc_swap32_buf(addrPtr, asset_table_size(ASSET_AUDIO_TABLE));
 #endif
     gSoundBank = (ALBankFile *) mempool_alloc_safe(addrPtr[ASSET_AUDIO_2] - addrPtr[ASSET_AUDIO_1], COLOUR_TAG_CYAN);
-    asset_load(ASSET_AUDIO, (u32) gSoundBank, addrPtr[ASSET_AUDIO_1], addrPtr[ASSET_AUDIO_2] - addrPtr[ASSET_AUDIO_1]);
+    asset_load(ASSET_AUDIO, (uintptr_t) gSoundBank, addrPtr[ASSET_AUDIO_1], addrPtr[ASSET_AUDIO_2] - addrPtr[ASSET_AUDIO_1]);
     alBnkfNew(gSoundBank, asset_rom_offset(ASSET_AUDIO, addrPtr[ASSET_AUDIO_2]));
 
     gSoundTableSize = addrPtr[ASSET_AUDIO_7] - addrPtr[ASSET_AUDIO_6];
     gSoundTable = (SoundData *) mempool_alloc_safe(gSoundTableSize, COLOUR_TAG_CYAN);
-    asset_load(ASSET_AUDIO, (u32) gSoundTable, addrPtr[ASSET_AUDIO_6], gSoundTableSize);
+    asset_load(ASSET_AUDIO, (uintptr_t) gSoundTable, addrPtr[ASSET_AUDIO_6], gSoundTableSize);
     gSoundCount = gSoundTableSize / sizeof(SoundData);
 #ifdef TARGET_PC
     // SoundData is 0x0A bytes of MIXED widths (u16 at 0, six u8s, u16 at 6), so a
@@ -250,14 +250,14 @@ void audio_init(OSSched *sc) {
 
     gSeqSoundTableSize = addrPtr[ASSET_AUDIO_6] - addrPtr[ASSET_AUDIO_5];
     gSeqSoundTable = (MusicData *) mempool_alloc_safe(gSeqSoundTableSize, COLOUR_TAG_CYAN);
-    asset_load(ASSET_AUDIO, (u32) gSeqSoundTable, addrPtr[ASSET_AUDIO_5], gSeqSoundTableSize);
+    asset_load(ASSET_AUDIO, (uintptr_t) gSeqSoundTable, addrPtr[ASSET_AUDIO_5], gSeqSoundTableSize);
     gSeqSoundCount = gSeqSoundTableSize / sizeof(MusicData);
 
     gSequenceBank = (ALBankFile *) mempool_alloc_safe(addrPtr[ASSET_AUDIO_0], COLOUR_TAG_CYAN);
-    asset_load(ASSET_AUDIO, (u32) gSequenceBank, 0, addrPtr[ASSET_AUDIO_0]);
+    asset_load(ASSET_AUDIO, (uintptr_t) gSequenceBank, 0, addrPtr[ASSET_AUDIO_0]);
     alBnkfNew(gSequenceBank, asset_rom_offset(ASSET_AUDIO, addrPtr[ASSET_AUDIO_0]));
     gSequenceTable = (ALSeqFile *) alHeapAlloc(&gALHeap, 1, 4);
-    asset_load(ASSET_AUDIO, (u32) gSequenceTable, addrPtr[ASSET_AUDIO_4], 4);
+    asset_load(ASSET_AUDIO, (uintptr_t) gSequenceTable, addrPtr[ASSET_AUDIO_4], 4);
 #ifdef TARGET_PC
     // This 4-byte peek reads seqCount straight out of the raw BE header to size
     // the real load below — it happens before alSeqFileNew (which does the full
@@ -268,13 +268,19 @@ void audio_init(OSSched *sc) {
 #endif
 
     seqfSize = (gSequenceTable->seqCount) * 8 + 4;
+#ifdef TARGET_PC
+    // ALSeqData is wider on the host; alSeqFileNew unpacks the image in place.
+    gSequenceTable = mempool_alloc_safe(offsetof(ALSeqFile, seqArray) + gSequenceTable->seqCount * sizeof(ALSeqData),
+                                        COLOUR_TAG_CYAN);
+#else
     gSequenceTable = mempool_alloc_safe(seqfSize, COLOUR_TAG_CYAN);
-    asset_load(ASSET_AUDIO, (u32) gSequenceTable, addrPtr[ASSET_AUDIO_4], seqfSize);
+#endif
+    asset_load(ASSET_AUDIO, (uintptr_t) gSequenceTable, addrPtr[ASSET_AUDIO_4], seqfSize);
     alSeqFileNew(gSequenceTable, asset_rom_offset(ASSET_AUDIO, addrPtr[ASSET_AUDIO_4]));
     gSeqLengthTable = (u32 *) mempool_alloc_safe((gSequenceTable->seqCount) * 4, COLOUR_TAG_CYAN);
 
     for (i = 0; i < gSequenceTable->seqCount; i++) {
-        pad = (u32) (gSequenceTable + 8 + i * 8); // Fakematch
+        pad = (u32) (uintptr_t) (gSequenceTable + 8 + i * 8); // Fakematch
         gSeqLengthTable[i] = gSequenceTable->seqArray[i].len;
         if (gSeqLengthTable[i] & 1) {
             gSeqLengthTable[i]++;
@@ -1358,7 +1364,7 @@ void music_sequence_init(ALCSPlayer *seqp, void *sequence, u8 *seqID, ALCSeq *se
     s32 i;
 
     if ((alCSPGetState(seqp) == AL_STOPPED) && (*seqID != 0)) {
-        asset_load(ASSET_AUDIO, (u32) sequence,
+        asset_load(ASSET_AUDIO, (uintptr_t) sequence,
                    gSequenceTable->seqArray[*seqID].offset - asset_rom_offset(ASSET_AUDIO, 0),
                    (s32) gSeqLengthTable[*seqID]);
 #ifdef TARGET_PC

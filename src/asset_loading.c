@@ -1,4 +1,7 @@
 #include "asset_loading.h"
+#ifdef TARGET_PC
+#include "pc_asset.h"
+#endif
 
 #include "common.h"
 #include "gzip.h"
@@ -30,7 +33,7 @@ extern u8 __ASSETS_LUT_START[], __ASSETS_LUT_END[];
 #ifdef TARGET_PC
 // linux/reimpl.c: assets served from assets/assets{,.lut}.bin on disk.
 extern u32 pc_asset_lut_size(void);
-extern void pc_dmacopy(u32 romOffset, u32 ramAddress, s32 numBytes);
+extern void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes);
 #endif
 
 /**
@@ -57,7 +60,7 @@ void pi_init(void) {
 #endif
     gAssetsLookupTable = (u32 *) mempool_alloc_safe(assetTableSize, COLOUR_TAG_GREY);
     mempool_locked_set((u8 *) gAssetsLookupTable);
-    dmacopy_internal((u32) __ASSETS_LUT_START, (u32) gAssetsLookupTable, (s32) assetTableSize);
+    dmacopy_internal((u32) (uintptr_t) __ASSETS_LUT_START, (uintptr_t) gAssetsLookupTable, (s32) assetTableSize);
 }
 
 /**
@@ -87,7 +90,7 @@ u32 *asset_table_load(u32 assetIndex) {
         return NULL;
     }
 
-    dmacopy_internal((u32) (start + __ASSETS_LUT_END), (u32) out, size);
+    dmacopy_internal((u32) (uintptr_t) (start + __ASSETS_LUT_END), (uintptr_t) out, size);
 
 #if VERSION >= VERSION_79
     osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
@@ -146,7 +149,7 @@ UNUSED u8 *asset_table_load_zipped(u32 assetIndex, s32 extraMemory) {
  * Loads an asset section to a specific memory address.
  * Returns the size of asset section.
  */
-UNUSED s32 asset_table_load_addr(u32 assetIndex, u32 address) {
+UNUSED s32 asset_table_load_addr(u32 assetIndex, uintptr_t address) {
     u32 start;
     s32 size;
     u32 *index;
@@ -164,7 +167,7 @@ UNUSED s32 asset_table_load_addr(u32 assetIndex, u32 address) {
     start = *index;
     size = *(index + 1) - start;
 
-    dmacopy_internal((u32) (start + __ASSETS_LUT_END), address, size);
+    dmacopy_internal((u32) (uintptr_t) (start + __ASSETS_LUT_END), address, size);
 
 #if VERSION >= VERSION_79
     osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
@@ -178,7 +181,7 @@ UNUSED s32 asset_table_load_addr(u32 assetIndex, u32 address) {
  * Returns the size argument.
  * Official name: piRomLoadSection
  */
-s32 asset_load(u32 assetIndex, u32 address, s32 assetOffset, s32 size) {
+s32 asset_load(u32 assetIndex, uintptr_t address, s32 assetOffset, s32 size) {
     u32 *index;
     s32 start;
 
@@ -195,7 +198,7 @@ s32 asset_load(u32 assetIndex, u32 address, s32 assetOffset, s32 size) {
     index = assetIndex + gAssetsLookupTable;
     start = *index + assetOffset;
 
-    dmacopy_internal((u32) (start + __ASSETS_LUT_END), address, size);
+    dmacopy_internal((u32) (uintptr_t) (start + __ASSETS_LUT_END), address, size);
 
 #if VERSION >= VERSION_79
     osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
@@ -203,6 +206,32 @@ s32 asset_load(u32 assetIndex, u32 address, s32 assetOffset, s32 size) {
 
     return size;
 }
+
+#ifdef TARGET_PC
+/**
+ * PC: some offset tables are reinterpreted by the game as arrays of pointers in
+ * place, which only works where a pointer is 4 bytes. Load such a table as a
+ * pointer-sized array holding the raw (zero-extended) big-endian entries; the
+ * game's "(s32) entry != -1" terminators and offset->pointer fixups then work.
+ */
+void **asset_table_load_pointers(u32 assetIndex) {
+    s32 numBytes = asset_table_size(assetIndex);
+    u32 *raw = asset_table_load(assetIndex);
+    s32 n = numBytes / 4;
+    s32 i;
+    void **out;
+
+    if (raw == NULL) {
+        return NULL;
+    }
+    out = mempool_alloc_safe((n > 0 ? n : 1) * sizeof(void *), COLOUR_TAG_GREY);
+    for (i = 0; i < n; i++) {
+        out[i] = (void *) (uintptr_t) (intptr_t) (s32) pc_be32(raw, i * 4); // sign-extend: -1 terminators
+    }
+    mempool_free(raw);
+    return out;
+}
+#endif
 
 /**
  * Returns a rom offset of an asset given its asset section and a local offset.
@@ -264,7 +293,7 @@ s32 asset_table_size(u32 assetIndex) {
  * Copies data from the game cartridge to a ram address.
  * Official name: romCopy
  */
-void dmacopy(u32 romOffset, u32 ramAddress, s32 numBytes) {
+void dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes) {
 #if VERSION >= VERSION_79
     OSMesg msg = NULL;
     osRecvMesg(&gDmaMutex, &msg, OS_MESG_BLOCK);
@@ -273,7 +302,7 @@ void dmacopy(u32 romOffset, u32 ramAddress, s32 numBytes) {
 }
 
 // Looks like v2 ROMs made an alternate version of this function, and this is the original.
-void dmacopy_internal(u32 romOffset, u32 ramAddress, s32 numBytes) {
+void dmacopy_internal(u32 romOffset, uintptr_t ramAddress, s32 numBytes) {
 #endif
 #ifdef TARGET_PC
     pc_dmacopy(romOffset, ramAddress, numBytes);

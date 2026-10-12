@@ -3306,7 +3306,7 @@ void minimap_init(LevelModel *model) {
     gMinimapBlue = model->minimapColor & 0xFF;
     load_sprite_info(model->minimapSpriteIndex, &gMinimapDotOffsetX, &gMinimapDotOffsetY, &sp2C, &sp2C, &sp2C);
     func_8007CA68(model->minimapSpriteIndex, 0, &D_80126D14, &D_80126D18, &sp2C);
-    model->minimapSpriteIndex = (s32) tex_load_sprite(model->minimapSpriteIndex, 1);
+    model->minimapSpriteIndex = (ptrint_t) tex_load_sprite(model->minimapSpriteIndex, 1);
 }
 
 /**

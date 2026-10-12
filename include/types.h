@@ -15,9 +15,18 @@ typedef u8 TriangleList;
 // (DC) already declares uintptr_t and sets this guard; redefining it is an
 // error under C23. Game code compiles against the N64 libc stubs, which never
 // declare it, so the typedef below still applies there.
+#ifdef TARGET_PC
+/* Host builds: pointers may be 64 bits wide, so take the real uintptr_t. */
+#include <stdint.h>
+/* Integer wide enough to hold an address: the game does address arithmetic
+ * through s32, which only works where pointers are 32 bits. */
+typedef uintptr_t ptrint_t;
+#else
+typedef s32 ptrint_t;
 #ifndef _UINTPTR_T_DECLARED
 typedef u32 uintptr_t;
 #define _UINTPTR_T_DECLARED
+#endif
 #endif
 
 #ifdef NON_MATCHING

@@ -124,6 +124,25 @@ void alSynNew(ALSynth *drvr, ALSynConfig *c)
     /*
      * build the parameter update list
      */
+#ifdef TARGET_PC
+    /* Host layouts: ALStartParamAlt (with its 8-byte wave pointer) outgrows
+     * ALParam, which the N64 sized identically. Size the free-list entries by
+     * the largest parameter struct so a start-voice update cannot spill into
+     * the next entry's link. */
+    {
+        s32 paramSize = sizeof(ALParam);
+        if (sizeof(ALStartParamAlt) > (size_t) paramSize) paramSize = sizeof(ALStartParamAlt);
+        if (sizeof(ALStartParam) > (size_t) paramSize) paramSize = sizeof(ALStartParam);
+        if (sizeof(ALFreeParam) > (size_t) paramSize) paramSize = sizeof(ALFreeParam);
+        params = alHeapAlloc(hp, c->maxUpdates, paramSize);
+        drvr->paramList = 0;
+        for (i = 0; i < c->maxUpdates; i++) {
+            paramPtr = (ALParam *) ((u8 *) params + i * paramSize);
+            paramPtr->next = drvr->paramList;
+            drvr->paramList = paramPtr;
+        }
+    }
+#else
     params = alHeapAlloc(hp, c->maxUpdates, sizeof(ALParam));
     drvr->paramList = 0;
     for (i = 0; i < c->maxUpdates; i++) {
@@ -131,6 +150,7 @@ void alSynNew(ALSynth *drvr, ALSynConfig *c)
         paramPtr->next = drvr->paramList;
         drvr->paramList = paramPtr;
     }
+#endif
     
     drvr->heap = hp;
 }

@@ -320,7 +320,7 @@ void set_current_text(s32 textID) {
                 break;
         }
 
-        asset_load(ASSET_GAME_TEXT_TABLE, (u32) (*gGameTextTable)->entries, (textID & (~1)) << 2, 16);
+        asset_load(ASSET_GAME_TEXT_TABLE, (uintptr_t) (*gGameTextTable)->entries, (textID & (~1)) << 2, 16);
 #ifdef TARGET_PC
         {
             // Each entry packs a flag in the top byte and a 24-bit offset below it,
@@ -335,14 +335,14 @@ void set_current_text(s32 textID) {
         size = (((s32) entries[(textID & 1) + 1]) & 0xFFFFFF) - (((s32) entries[textID & 1]) & 0xFFFFFF);
 
         if (temp) {
-            asset_load(ASSET_GAME_TEXT, (u32) gCurrentMessageText[D_8012A7D4], ((s32) entries[textID & 1]) ^ temp,
+            asset_load(ASSET_GAME_TEXT, (uintptr_t) gCurrentMessageText[D_8012A7D4], ((s32) entries[textID & 1]) ^ temp,
                        size);
             gCurrentTextProperties = gCurrentMessageText[D_8012A7D4];
             find_next_subtitle();
             D_8012A7D4 = (D_8012A7D4 + 1) & 1;
             return;
         }
-        asset_load(ASSET_GAME_TEXT, (u32) gGameTextTableEntries[D_8012A7A4], ((s32) entries[textID & 1]) ^ temp, size);
+        asset_load(ASSET_GAME_TEXT, (uintptr_t) gGameTextTableEntries[D_8012A7A4], ((s32) entries[textID & 1]) ^ temp, size);
         D_8012A7A0 = gGameTextTableEntries[D_8012A7A4];
         D_8012A7A4 = (D_8012A7A4 + 1) & 1;
         D_8012A788 = 0;
