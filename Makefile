@@ -24,7 +24,7 @@ RELEASE_DIR := build/release
 # keep their upstream formatting so merges stay easy.
 FORMAT_SOURCES := $(wildcard linux/*.c linux/*.h include/pc_asset.h tests/*.c tests/*.h)
 
-.PHONY: all debug release run test fmt doc assets clean
+.PHONY: golden golden-update all debug release run test fmt doc assets clean
 
 all: debug
 
@@ -43,8 +43,19 @@ $(RELEASE_DIR)/CMakeCache.txt:
 run: debug
 	./$(DEBUG_DIR)/dkracing $(RUN_ARGS)
 
+GOLDEN ?= tests/golden/us_v80.trace
+GOLDEN_FRAMES ?= 1800
+
 test: debug
 	ctest --test-dir $(DEBUG_DIR) --output-on-failure
+
+# Golden-trace check: run the game deterministically and compare per-frame hashes
+# of the renderer input and audio output with the committed trace (tests/golden.sh).
+golden: debug
+	tests/golden.sh $(DEBUG_DIR)/dkracing $(GOLDEN) $(GOLDEN_FRAMES)
+
+golden-update: debug
+	tests/golden.sh --update $(DEBUG_DIR)/dkracing $(GOLDEN) $(GOLDEN_FRAMES)
 
 fmt:
 	clang-format -i $(FORMAT_SOURCES)

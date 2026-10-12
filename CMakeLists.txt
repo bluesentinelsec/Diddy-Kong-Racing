@@ -83,6 +83,7 @@ set(DKR_PLATFORM_SOURCES
     linux/input.c
     linux/reimpl.c
     linux/pc_asset.c
+    linux/trace.c
 )
 
 set(DKR_GAME_SOURCES
@@ -170,6 +171,7 @@ if(DKR_EEPROM_PRESET_100)
 endif()
 
 set(DKR_C_FLAGS
+    -ffp-contract=off # no fused multiply-add: the N64 FPU has none, and hosts must agree bit for bit
     -fno-builtin
     -fno-common
     -fno-strict-aliasing

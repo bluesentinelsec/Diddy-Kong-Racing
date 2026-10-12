@@ -9,6 +9,7 @@
 
 #include "input.h"
 #include <SDL3/SDL.h>
+#include "trace.h"
 
 typedef signed char s8;
 typedef signed int s32;
@@ -319,6 +320,9 @@ static void eeprom_init(void) {
     memset(gEeprom, 0xFF, PC_EEPROM_BYTES); // erased
 #endif
 
+    if (pc_trace_active()) {
+        return; // a trace starts from an erased save and keeps nothing
+    }
     pref = SDL_GetPrefPath("bluesentinelsec", "DiddyKongRacing");
     if (pref == NULL) {
         fprintf(stderr, "SAVE: no preference directory (%s); progress will not be kept\n", SDL_GetError());
@@ -471,6 +475,9 @@ u32 osSetIntMask(u32 mask) {
 // 46875000 ticks/sec over 1e9 ns/sec = exactly 3/64 ticks per nanosecond.
 u32 osGetCount(void) {
     struct timespec ts;
+    if (pc_trace_active()) {
+        return pc_trace_count();
+    }
     clock_gettime(CLOCK_MONOTONIC, &ts);
     u64 ns = (u64) ts.tv_sec * 1000000000ull + (u64) ts.tv_nsec;
     return (u32) (ns * 3 / 64);

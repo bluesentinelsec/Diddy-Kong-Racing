@@ -7,6 +7,7 @@
 // manager against that.
 
 #include <SDL3/SDL.h>
+#include "trace.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -69,6 +70,9 @@ s32 osAiSetFrequency(u32 frequency) {
 
 // The game hands us the PCM the mixer produced for the *previous* frame.
 void osAiSetNextBuffer(void *buf, u32 size) {
+    if (buf != NULL && size != 0) {
+        pc_trace_audio(buf, size);
+    }
     if (!sAudioReady || buf == NULL || size == 0) {
         return;
     }
@@ -106,6 +110,9 @@ u32 osAiGetLength(void) {
     u32 used = pc_audio_queued();
     u32 oneFrame;
 
+    if (pc_trace_active()) {
+        return 0; // the mixer then produces the same sample count every tick
+    }
     if (frameSize == 0) {
         return used; // before amCreateAudioMgr has run
     }
@@ -131,7 +138,14 @@ void pc_audio_frame(void) {
     u32 target;
     s32 ticks = 0;
 
-    if (!sAudioReady || frameSize == 0) {
+    if (frameSize == 0) {
+        return;
+    }
+    if (pc_trace_active()) {
+        am_audio_frame_pc(); // exactly one tick per frame, device or no device
+        return;
+    }
+    if (!sAudioReady) {
         return;
     }
     target = frameSize * PC_AUDIO_BYTES_PER_SAMPLE * PC_AUDIO_TARGET_FRAMES;

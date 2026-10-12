@@ -9,6 +9,7 @@
 // GL ES profile.
 
 #include "gfx.h"
+#include "trace.h"
 #include "gl3_loader.h"
 
 #include <SDL3/SDL.h>
@@ -331,6 +332,7 @@ unsigned int gfx_create_texture(const void *rgba, int width, int height, int cmS
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_mode(cmS));
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_mode(cmT));
+    pc_trace_texture_create(id, rgba, width, height, cmS, cmT);
     return id;
 }
 
@@ -347,6 +349,7 @@ void gfx_bind_texture(unsigned int handle) {
     if (sWindow == NULL) {
         return;
     }
+    pc_trace_texture_bind(handle);
     if (handle == 0) {
         if (sTexBound) {
             sTexBound = 0;
@@ -367,6 +370,7 @@ void gfx_set_texture_filter(int point) {
     if (sWindow == NULL) {
         return;
     }
+    pc_trace_gfx_u32(0x100 | (point ? 1u : 0u));
     filter = point ? GL_NEAREST : GL_LINEAR;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
@@ -379,6 +383,8 @@ void gfx_set_texenv_blend(const unsigned char color[4]) {
     if (sWindow == NULL) {
         return;
     }
+    pc_trace_gfx_u32(0x200);
+    pc_trace_gfx(color, 4);
     c[0] = color[0] / 255.0f;
     c[1] = color[1] / 255.0f;
     c[2] = color[2] / 255.0f;
@@ -398,6 +404,7 @@ void gfx_set_texenv_modulate(void) {
     if (sWindow == NULL) {
         return;
     }
+    pc_trace_gfx_u32(0x300);
     if (sTexMode != 1) {
         sTexMode = 1;
         set_tex_mode_uniform();
@@ -411,6 +418,10 @@ void gfx_set_fog(int enable, const unsigned char color[4]) {
         return;
     }
     enable = enable ? 1 : 0;
+    pc_trace_gfx_u32(0x400 | (unsigned) enable);
+    if (enable) {
+        pc_trace_gfx(color, 4);
+    }
     if (enable != sFogEnable) {
         sFogEnable = enable;
         glUniform1i(sUniFogEnable, enable);
@@ -432,6 +443,8 @@ void gfx_set_alpha_test(float ref) {
     if (sWindow == NULL) {
         return;
     }
+    pc_trace_gfx_u32(0x500);
+    pc_trace_gfx_f32(ref);
     if (ref != sAlphaRef) {
         sAlphaRef = ref;
         glUniform1f(sUniAlphaRef, ref);
@@ -442,6 +455,7 @@ void gfx_set_depth_test(int enable) {
     if (sWindow == NULL) {
         return;
     }
+    pc_trace_gfx_u32(0x600 | (enable ? 1u : 0u));
     if (enable) {
         glEnable(GL_DEPTH_TEST);
     } else {
@@ -453,6 +467,7 @@ void gfx_set_depth_write(int enable) {
     if (sWindow == NULL) {
         return;
     }
+    pc_trace_gfx_u32(0x700 | (enable ? 1u : 0u));
     glDepthMask(enable ? GL_TRUE : GL_FALSE);
 }
 
@@ -460,6 +475,7 @@ void gfx_set_depth_offset(int enable) {
     if (sWindow == NULL) {
         return;
     }
+    pc_trace_gfx_u32(0x800 | (enable ? 1u : 0u));
     if (enable) {
         glEnable(GL_POLYGON_OFFSET_FILL);
     } else {
@@ -476,6 +492,11 @@ void gfx_set_scissor(float x0, float y0, float x1, float y1) {
     if (sWindow == NULL) {
         return;
     }
+    pc_trace_gfx_u32(0x900);
+    pc_trace_gfx_f32(x0);
+    pc_trace_gfx_f32(y0);
+    pc_trace_gfx_f32(x1);
+    pc_trace_gfx_f32(y1);
     sx = (float) sVpW / (float) sFbWidth;
     sy = (float) sVpH / (float) sFbHeight;
     // GL measures from the bottom-left, so y flips; offset into the letterbox.
@@ -497,6 +518,7 @@ void gfx_disable_scissor(void) {
     if (sWindow == NULL) {
         return;
     }
+    pc_trace_gfx_u32(0xA00);
     glEnable(GL_SCISSOR_TEST);
     glScissor(sVpX, sVpY, sVpW, sVpH);
 }
@@ -523,6 +545,9 @@ void gfx_draw_tris(const GfxTriVert *verts, int count) {
     if (sWindow == NULL || count <= 0) {
         return;
     }
+    pc_trace_gfx_u32(0xB00);
+    pc_trace_gfx_u32((uint32_t) count);
+    pc_trace_gfx(verts, (size_t) count * sizeof(*verts));
     while (done < count) {
         int n = count - done;
         if (n > GFX_MAX_BATCH_VERTS) {
@@ -593,6 +618,7 @@ void gfx_frame_end(void) {
         dump_frame();
     }
     SDL_GL_SwapWindow(sWindow);
+    pc_trace_frame_end();
 
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT || (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)) {

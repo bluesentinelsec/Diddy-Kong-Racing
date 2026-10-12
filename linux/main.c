@@ -6,6 +6,7 @@
 #include <ultra64.h>
 
 #include "gfx.h"
+#include "trace.h"
 
 // The game's main-thread entry (src/thread3_main.c): init_game() + the
 // main_game_loop() forever-loop. Called directly on the host thread, same as
@@ -1537,6 +1538,8 @@ static void print_usage(const char *prog) {
     printf("Usage: %s [options]\n"
            "  --windowed       start in a window instead of fullscreen (F11 toggles)\n"
            "  --scale N        window size as a multiple of 320x240 (default 3)\n"
+           "  --trace FILE     write a per-frame gfx/audio hash trace, then exit (see tests/golden.sh)\n"
+           "  --trace-frames N frames to trace (default 1800)\n"
            "  --help           this text\n"
            "Run from the directory that holds assets/.\n",
            prog);
@@ -1553,6 +1556,10 @@ int main(int argc, char **argv) {
             options.fullscreen = 1;
         } else if (strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
             options.scale = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--trace") == 0 && i + 1 < argc) {
+            pc_trace_configure(argv[++i], 0);
+        } else if (strcmp(argv[i], "--trace-frames") == 0 && i + 1 < argc) {
+            pc_trace_configure(NULL, atol(argv[++i]));
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             return 0;
@@ -1563,6 +1570,7 @@ int main(int argc, char **argv) {
         }
     }
     printf("=== DKR PC ===\n");
+    pc_trace_init();
     sHostThread.id = 3;
     sHostThread.priority = 10;
     __osRunningThread = &sHostThread;

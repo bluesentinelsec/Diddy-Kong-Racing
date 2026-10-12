@@ -3,6 +3,7 @@
 #include "input.h"
 
 #include <SDL3/SDL.h>
+#include "trace.h"
 
 // The CONT_* button bits from include/PR/os_cont.h, repeated here because this
 // file cannot include the N64 headers (see input.h).
@@ -155,6 +156,9 @@ void input_host_read(unsigned short *button, signed char *stickX, signed char *s
     *button = 0;
     *stickX = 0;
     *stickY = 0;
+    if (pc_trace_active()) {
+        return; // a trace replays with the controller untouched
+    }
 
     // The game polls the controller before the window opens, and the keyboard
     // state is only meaningful once the video subsystem is up.
