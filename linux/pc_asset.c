@@ -117,3 +117,19 @@ void pc_unpack_array(void *dst, size_t dstStride, const void *src, size_t srcStr
                   fields);
     }
 }
+
+// The game and libultra use the BSD string functions; Windows C runtimes lack
+// them. Provided here on Windows only, every other platform has them in libc.
+#if defined(_WIN32)
+void bcopy(const void *src, void *dst, size_t n) {
+    memmove(dst, src, n);
+}
+
+int bcmp(const void *a, const void *b, size_t n) {
+    return memcmp(a, b, n);
+}
+
+void bzero(void *p, size_t n) {
+    memset(p, 0, n);
+}
+#endif
