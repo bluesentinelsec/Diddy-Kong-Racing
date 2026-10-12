@@ -952,10 +952,10 @@ static void __setUsptFromTempo (ALCSPlayer *seqp, f32 tempo)
 {
     if (seqp->target)
 	seqp->uspt = (s32)((f32)tempo * seqp->target->qnpt);
-#ifdef TARGET_PC
-	{ union { f32 f; u32 u; } q; q.f = seqp->target->qnpt; pc_trace_event("csp_tempo tempo=%d qnpt=%08x uspt=%d", tempo, q.u, seqp->uspt); }
-#endif
     else
 	seqp->uspt = 488;		/* This is the initial value set by alSeqpNew. */
+#ifdef TARGET_PC
+    { union { f32 f; u32 u; } q; q.f = seqp->target ? seqp->target->qnpt : 0.0f; pc_trace_event("csp_tempo tempo=%d qnpt=%08x uspt=%d", (int) tempo, q.u, seqp->uspt); }
+#endif
 }
 
