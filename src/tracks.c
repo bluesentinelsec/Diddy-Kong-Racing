@@ -2925,7 +2925,6 @@ s32 collision_get_y(s32 levelSegmentIndex, f32 xIn, f32 zIn, f32 *yOut) {
 }
 
 #ifdef TARGET_PC
-#ifdef TARGET_PC
 // Decompressed level models are big-endian. The 0x4C-byte LevelModel header and
 // the 0x44-byte LevelModelSegment records both carry pointer slots, so on the
 // host the image is placed LEVEL_MODEL_PC_DELTA bytes into the track heap, the
@@ -3056,7 +3055,6 @@ static void pc_swap_level_segment_contents(LevelModelSegment *seg) {
         pc_swap16_buf(&seg->collisionFacets[i], sizeof(CollisionFacetPlanes));
     }
 }
-#endif
 
 #endif
 // Loads a level track from the index in the models table.
@@ -3100,17 +3098,7 @@ void generate_track(s32 modelId) {
     temp_s4 = gLevelModelTable[modelId + 1] - mdl;
 
 #ifdef TARGET_PC
-#ifdef TARGET_PC
     pc_load_level_model(gCurrentLevelModel, mdl, temp_s4);
-#else
-    temp = (s32) gCurrentLevelModel;
-    temp += (LEVEL_MODEL_MAX_SIZE - temp_s4);
-    temp -= ((s32) temp % 16); // Align to 16-byte boundary.
-
-    asset_load(ASSET_LEVEL_MODELS, temp, mdl, temp_s4);
-    stubbed_printf("pre gzip_inflate\n");
-    gzip_inflate((u8 *) temp, (u8 *) gCurrentLevelModel);
-#endif
     stubbed_printf("post gzip_inflate segs=%d tex=%d\n", gCurrentLevelModel->numberOfSegments,
                    gCurrentLevelModel->numberOfTextures);
 #else

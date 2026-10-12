@@ -265,7 +265,6 @@ void free_particle_assets(void) {
 }
 
 #ifdef TARGET_PC
-#ifdef TARGET_PC
 // Particle assets are big-endian. ParticleDescriptor carries no pointers and is
 // swapped in place; ParticleBehaviour ends in a pointer slot (colourLoop), so
 // behaviours are unpacked into a host-layout array (sPcBehaviours) that the
@@ -347,7 +346,6 @@ static void pc_swap_colour_loop(ColorLoopEntry *cl) {
 void pc_swap_colour_loop_shared(void *cl) {
     pc_swap_colour_loop((ColorLoopEntry *) cl);
 }
-#endif
 
 #endif
 /**

@@ -25,14 +25,12 @@ s32 gFreeQueueTimer;
  * Official Name: mmInit
  */
 #ifdef TARGET_PC
-#ifdef TARGET_PC
 // N64 carves the main pool out of "everything past BSS"; there is no such
 // region on a host, so back it with a static array sized by the platform
 // makefile. Defined here rather than in the port layer because this is where
 // MemoryPoolSlot is in scope, which keeps the type matching its declaration.
 MemoryPoolSlot gMainMemoryPool[PC_MAIN_POOL_BYTES / sizeof(MemoryPoolSlot)] __attribute__((aligned(16)));
 u32 gMainMemoryPoolSize = sizeof(gMainMemoryPool);
-#endif
 
 #endif
 void mempool_init_main(void) {

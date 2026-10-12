@@ -13,9 +13,7 @@ s32 asset_load(u32 assetIndex, u32 address, s32 assetOffset, s32 size);
 u8 *asset_rom_offset(u32 assetIndex, u32 assetOffset);
 s32 asset_table_size(u32 assetIndex);
 #ifdef TARGET_PC
-#ifdef TARGET_PC
 void **asset_table_load_pointers(u32 assetIndex);
-#endif
 void dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes);
 #else
 void dmacopy(u32 romOffset, u32 ramAddress, s32 numBytes);

@@ -43,9 +43,7 @@
 #include "waves.h"
 #include "weather.h"
 #ifdef TARGET_PC
-#ifdef TARGET_PC
 #include "pc_swap.h"
-#endif
 
 #ifdef TARGET_DC
 #   include <sh4zam/shz_sh4zam.h>
@@ -55,11 +53,7 @@
 #define OBJECT_MAP_SIZE 0x3000
 #define MAX_CHECKPOINTS 60
 #ifdef TARGET_PC
-#ifdef TARGET_PC
 #define OBJECT_POOL_SIZE (0x15800 * 3) // host objects carry 8-byte pointers
-#else
-#define OBJECT_POOL_SIZE 0x15800
-#endif
 #ifdef TARGET_PC
 #define OBJECT_BLUEPRINT_SIZE (0x800 * 3)
 #else
@@ -1033,7 +1027,6 @@ void free_all_objects(void) {
 }
 
 #ifdef TARGET_PC
-#ifdef TARGET_PC
 // ObjectHeader is loaded from a 0x78-byte big-endian image followed by the
 // arrays it references (model ids, vehicle part ids/indices, particle entries,
 // light sources). The image is loaded OBJECT_HEADER_PC_DELTA bytes into the
@@ -1083,7 +1076,6 @@ static void pc_unpack_object_header(ObjectHeader *header) {
         PC_SWAP16_AT(light, homeX, 12); // homeX/Y/Z, radius, unk14, unk16
     }
 }
-#endif
 
 #endif
 /**
@@ -1153,7 +1145,6 @@ s32 normalise_time(s32 timer) {
     }
 }
 
-#ifdef TARGET_PC
 #ifdef TARGET_PC
 // Object-map spawn entries are big-endian; the layout past the common header
 // is per-behavior, mirroring run_object_init_func's dispatch (plus
@@ -1244,7 +1235,6 @@ static void pc_swap_spawn_entry_fields(u8 *entryBytes) {
             break;
     }
 }
-#endif
 
 #endif
 /**

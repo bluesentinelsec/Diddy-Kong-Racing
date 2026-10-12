@@ -73,14 +73,12 @@ void allocate_object_model_pools(void) {
     gAnimationTable = (s16 *) asset_table_load(ASSET_ANIMATION_IDS);
     gObjectAnimationTable = (s32 *) asset_table_load(ASSET_OBJECT_ANIMATIONS_TABLE);
 #ifdef TARGET_PC
-#ifdef TARGET_PC
     {
         extern void pc_swap16_buf(void *buf, u32 numBytes);
         extern void pc_swap32_buf(void *buf, u32 numBytes);
         pc_swap16_buf(gAnimationTable, asset_table_size(ASSET_ANIMATION_IDS));
         pc_swap32_buf(gObjectAnimationTable, asset_table_size(ASSET_OBJECT_ANIMATIONS_TABLE));
     }
-#endif
     D_8011D644 = (s16 *) mempool_alloc_safe(0xC00, COLOUR_TAG_GREEN);
 #else
     D_8011D644 = (s32) mempool_alloc_safe(0xC00, COLOUR_TAG_GREEN);

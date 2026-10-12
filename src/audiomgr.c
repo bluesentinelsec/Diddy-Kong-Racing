@@ -104,7 +104,6 @@ static s16 *gLastAudioPtr = 0;
 static s32 gLastAudioFrameSamples = 0;
 
 #ifdef TARGET_PC
-#ifdef TARGET_PC
 // linux/reimpl.c — "ROM" reads served from the loaded asset image, and the shared
 // byteswap helper (asset sub-tables come back as raw big-endian u32s).
 extern void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes);
@@ -122,7 +121,6 @@ static void pc_audio_submit(Acmd *cmdList, s32 cmdLen, s16 *out, s32 frameSample
     bzero(out, frameSamples * 4); // stereo s16; the list may not cover every sample
     pc_audio_hle_run(cmdList, cmdLen, out, frameSamples);
 }
-#endif
 
 #endif
 /**** private routines ****/

@@ -35,11 +35,9 @@ extern u8 __ASSETS_LUT_START[], __ASSETS_LUT_END[];
 #endif
 
 #ifdef TARGET_PC
-#ifdef TARGET_PC
 // linux/reimpl.c: assets served from assets/assets{,.lut}.bin on disk.
 extern u32 pc_asset_lut_size(void);
 extern void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes);
-#endif
 
 #endif
 /**
