@@ -24,8 +24,14 @@
 
 s32 _allocatePVoice(ALSynth *drvr, PVoice **pvoice, s16 priority);
 
+#ifdef TARGET_PC
+extern void pc_trace_event(const char *fmt, ...);
+#endif
 s32 alSynAllocVoice(ALSynth *drvr, ALVoice *voice, ALVoiceConfig *vc)
 {
+#ifdef TARGET_PC
+    pc_trace_event("alloc prio=%d fxBus=%d unity=%d", vc->priority, vc->fxBus, vc->unityPitch);
+#endif
     PVoice  *pvoice = 0;
     ALFilter *f;
     ALParam *update;

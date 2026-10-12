@@ -53,10 +53,16 @@ s32 modify_panning(s32 pan) {
     }
 }
 
+#ifdef TARGET_PC
+extern void pc_trace_event(const char *fmt, ...);
+#endif
 void alSynStartVoiceParams(ALSynth *s, ALVoice *v, ALWaveTable *w,
                            f32 pitch, s16 vol, ALPan pan, u8 fxmix,
                            ALMicroTime t)
 {
+#ifdef TARGET_PC
+    { union { f32 f; u32 u; } pb; pb.f = pitch; pc_trace_event("start base=%x len=%d type=%d pitch=%08x vol=%d pan=%d fx=%d t=%d prio=%d pv=%d", (unsigned) (uintptr_t) w->base, w->len, w->type, pb.u, vol, pan, fxmix, (int) t, v->priority, v->pvoice != 0); }
+#endif
     ALStartParamAlt  *update;
     ALFilter    *f;
 

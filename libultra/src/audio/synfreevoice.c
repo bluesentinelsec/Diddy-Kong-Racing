@@ -24,8 +24,14 @@
 
 #include <os.h>
 
+#ifdef TARGET_PC
+extern void pc_trace_event(const char *fmt, ...);
+#endif
 void alSynFreeVoice(ALSynth *drvr, ALVoice *voice)
 {
+#ifdef TARGET_PC
+    pc_trace_event("free prio=%d pv=%d", voice->priority, voice->pvoice != 0);
+#endif
     ALFilter *f;
     ALFreeParam *update;
 

@@ -38,6 +38,10 @@ void pc_trace_audio(const void *data, size_t size);
 // divergence inside a frame.
 void pc_trace_mark(const char *what);
 
+// With DKR_TRACE_DETAIL=1, logs a game-side event (audio voice starts/stops) as a
+// line in the trace; declared by hand where host headers are unavailable.
+void pc_trace_event(const char *fmt, ...);
+
 // Texture pixels are hashed once at creation and recalled by handle on bind.
 void pc_trace_texture_create(unsigned int handle, const void *rgba, int width, int height, int cmS, int cmT);
 void pc_trace_texture_bind(unsigned int handle);

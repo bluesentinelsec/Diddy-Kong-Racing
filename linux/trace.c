@@ -199,3 +199,16 @@ void pc_trace_printf(const char *fmt, ...) {
     vfprintf(stderr, fmt, args);
     va_end(args);
 }
+
+void pc_trace_event(const char *fmt, ...) {
+    va_list args;
+
+    if (!sActive || !sDetail) {
+        return;
+    }
+    fputs("  ev ", sFile);
+    va_start(args, fmt);
+    vfprintf(sFile, fmt, args);
+    va_end(args);
+    fputc('\n', sFile);
+}
