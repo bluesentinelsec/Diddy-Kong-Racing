@@ -250,7 +250,15 @@ void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
 #endif
 
     for (i = 0; i < NUM_ACMD_LISTS; i++) {
+#ifdef TARGET_PC
+        // AUDBUF_SIZE is a byte count for the N64's 8-byte Acmd. A host Acmd holds
+        // two pointer-sized words, so keep the same *command* capacity; otherwise
+        // a busy frame (custom reverb plus a full voice set) runs past the list
+        // into the AudioInfo blocks allocated right after it.
+        __am.ACMDList[i] = (Acmd *) alHeapAlloc(c->heap, 1, AUDBUF_SIZE / 8 * sizeof(Acmd));
+#else
         __am.ACMDList[i] = (Acmd *) alHeapAlloc(c->heap, 1, AUDBUF_SIZE);
+#endif
     }
 
 #ifdef TARGET_PC

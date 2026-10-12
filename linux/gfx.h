@@ -21,6 +21,9 @@ void gfx_window_init(int width, int height, const GfxOptions *options);
 
 void gfx_frame_begin(void);
 
+// Frames presented so far (DKR_INPUT_SCRIPT and DKR_DUMP_FRAME count in these).
+unsigned int gfx_frame_count(void);
+
 // Uploads an RGBA8888 image and returns a handle for gfx_bind_texture().
 // `cmS`/`cmT` are the RDP's raw 2-bit clamp/mirror fields for each axis
 // (G_TX_WRAP / G_TX_MIRROR / G_TX_CLAMP).

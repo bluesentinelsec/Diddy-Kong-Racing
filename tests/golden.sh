@@ -1,11 +1,13 @@
 #!/bin/sh
 # Golden-trace regression check.
 #
-#   tests/golden.sh BINARY [GOLDEN] [FRAMES]            compare against the golden trace
-#   tests/golden.sh --update BINARY [GOLDEN] [FRAMES]   regenerate the golden trace
+#   tests/golden.sh BINARY [GOLDEN] [FRAMES] [INPUT]            compare against the golden trace
+#   tests/golden.sh --update BINARY [GOLDEN] [FRAMES] [INPUT]   regenerate the golden trace
 #
-# Runs the game with --trace for FRAMES frames (no input, erased save, frame-
-# counted clock) and diffs the per-frame gfx/audio hashes against GOLDEN. The
+# Runs the game with --trace for FRAMES frames (erased save, frame-counted
+# clock, and either no input or the scripted controller in INPUT - see
+# DKR_INPUT_SCRIPT in linux/input.c) and diffs the per-frame gfx/audio hashes
+# against GOLDEN. The
 # hashes cover what the renderer and the audio output receive, not GPU pixels,
 # so a 32-bit Raspberry Pi and a 64-bit Mac must produce the same file; the
 # first differing frame is reported. Needs assets/ next to the binary or in the
@@ -17,9 +19,15 @@ if [ "${1:-}" = "--update" ]; then
     update=1
     shift
 fi
-bin=${1:?usage: tests/golden.sh [--update] BINARY [GOLDEN] [FRAMES]}
+bin=${1:?usage: tests/golden.sh [--update] BINARY [GOLDEN] [FRAMES] [INPUT]}
 golden=${2:-tests/golden/us_v80.trace}
 frames=${3:-1800}
+input=${4:-}
+if [ -n "$input" ]; then
+    export DKR_INPUT_SCRIPT=$input
+else
+    unset DKR_INPUT_SCRIPT
+fi
 
 if [ "$update" = 1 ]; then
     "$bin" --windowed --trace "$golden" --trace-frames "$frames"
@@ -32,7 +40,7 @@ trap 'rm -f "$tmp"' EXIT
 "$bin" --windowed --trace "$tmp" --trace-frames "$frames"
 
 if cmp -s "$tmp" "$golden"; then
-    echo "golden: $frames frames identical to $golden"
+    echo "golden: $frames frames identical to $golden${input:+ (input $input)}"
     exit 0
 fi
 echo "golden: MISMATCH against $golden"

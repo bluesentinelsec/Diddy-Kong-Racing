@@ -87,9 +87,14 @@ branch is the decompilation's own line. Two checks keep that honest:
   mixer produces, one line per frame, and compares the result with
   `tests/golden/us_v80.trace`. The hashes do not involve the GPU or the audio
   device, so a 32-bit Raspberry Pi and a 64-bit Mac must produce the same file.
-  `make golden-update` regenerates it; `tests/golden.sh` takes any binary.
-  `DKR_TRACE_DETAIL=1` adds a line per renderer event to locate a divergence
-  within a frame, and `DKR_DUMP_FRAME` can capture the frame itself.
+  A second trace, `tests/golden/us_v80_drive.trace`, replays the scripted
+  controller in `tests/golden/drive.txt` for 7000 frames: through the player
+  select, the caution screen and the adventure intro, then driving around the
+  overworld, so it covers racer physics and the engine and skid sounds.
+  `make golden-update` regenerates both; `tests/golden.sh` takes any binary and
+  an optional input script. `DKR_TRACE_DETAIL=1` adds a line per renderer and
+  audio event to locate a divergence within a frame, and `DKR_DUMP_FRAME` can
+  capture the frame itself.
 
 ## Running
 
@@ -113,7 +118,11 @@ Environment variables:
 
 | Variable              | Effect                                                   |
 | --------------------- | -------------------------------------------------------- |
-| `DKR_DUMP_FRAME=<n>`  | write frame *n* to `dkr_frame_<n>.ppm` in the current directory (for testing without a screen) |
+| `DKR_DUMP_FRAME=<n>[,<m>...]` | write those frames to `dkr_frame_<n>.ppm` in the current directory (for testing without a screen) |
+| `DKR_DUMP_EVERY=<k>`  | also write every *k*-th frame                            |
+| `DKR_INPUT_SCRIPT=<file>` | replay a controller script instead of reading the keyboard and gamepad; each line is `<frame> <buttons> <stickX> <stickY>` (buttons: comma-separated `A B Z START L R DU DD DL DR CU CD CL CR`, or `-`), held until the next line. Works with `--trace`; see `tests/golden/drive.txt` |
+| `DKR_FPS_LOG=1`       | print frames drawn and logic steps consumed once a second |
+| `DKR_TRACE=<file>`, `DKR_TRACE_FRAMES=<n>` | same as `--trace` / `--trace-frames`      |
 
 Saves are kept in the per-user data directory as `eeprom.bin`:
 `~/Library/Application Support/bluesentinelsec/DiddyKongRacing/` on macOS,

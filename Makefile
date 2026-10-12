@@ -47,6 +47,10 @@ run: debug
 
 GOLDEN ?= tests/golden/us_v80.trace
 GOLDEN_FRAMES ?= 1800
+# Second trace: scripted input through the menus into the adventure overworld.
+GOLDEN_DRIVE ?= tests/golden/us_v80_drive.trace
+GOLDEN_DRIVE_FRAMES ?= 7000
+GOLDEN_DRIVE_INPUT ?= tests/golden/drive.txt
 
 test: debug
 	ctest --test-dir $(DEBUG_DIR) --output-on-failure
@@ -55,9 +59,11 @@ test: debug
 # of the renderer input and audio output with the committed trace (tests/golden.sh).
 golden: debug
 	tests/golden.sh $(DEBUG_DIR)/dkracing $(GOLDEN) $(GOLDEN_FRAMES)
+	tests/golden.sh $(DEBUG_DIR)/dkracing $(GOLDEN_DRIVE) $(GOLDEN_DRIVE_FRAMES) $(GOLDEN_DRIVE_INPUT)
 
 golden-update: debug
 	tests/golden.sh --update $(DEBUG_DIR)/dkracing $(GOLDEN) $(GOLDEN_FRAMES)
+	tests/golden.sh --update $(DEBUG_DIR)/dkracing $(GOLDEN_DRIVE) $(GOLDEN_DRIVE_FRAMES) $(GOLDEN_DRIVE_INPUT)
 
 fmt:
 	clang-format -i $(FORMAT_SOURCES)

@@ -2,10 +2,10 @@
 
 #include "trace.h"
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdarg.h>
 
 #define FNV_OFFSET 0xcbf29ce484222325ull
 #define FNV_PRIME 0x100000001b3ull
@@ -19,7 +19,9 @@ static uint64_t sAudioHash = FNV_OFFSET;
 static uint64_t sGfxTotal = FNV_OFFSET;
 static uint64_t sAudioTotal = FNV_OFFSET;
 static long sFrame;
-static int sDetail; // DKR_TRACE_DETAIL=1: also log the running hash after every renderer event
+static int sDetail;
+static uint32_t sCountReads; // osGetCount reads this frame // DKR_TRACE_DETAIL=1: also log the running hash after every
+                             // renderer event
 
 // Texture content hashes by GL handle. Handles are small integers; the table
 // grows to fit the largest one seen.
@@ -154,6 +156,7 @@ void pc_trace_frame_end(void) {
     sAudioTotal = fnv(sAudioTotal, &sAudioHash, sizeof(sAudioHash));
     sGfxHash = FNV_OFFSET;
     sAudioHash = FNV_OFFSET;
+    sCountReads = 0;
     if (sFrame >= sFrames) {
         fprintf(sFile, "end frames=%ld gfx=%016llx audio=%016llx\n", sFrame, (unsigned long long) sGfxTotal,
                 (unsigned long long) sAudioTotal);
@@ -183,9 +186,12 @@ void pc_trace_pcm(const void *data, size_t size) {
     }
 }
 
+// 46,875,000 ticks per second; a traced frame is one 30 Hz logic step (two
+// retrace periods), and every read within a frame advances a little so that no
+// two reads agree, as on the real Count register.
 uint32_t pc_trace_count(void) {
-    // 46,875,000 ticks per second at 60 frames per second.
-    return (uint32_t) ((uint64_t) sFrame * 781250u);
+    sCountReads++;
+    return (uint32_t) ((uint64_t) sFrame * 1562500u + (uint64_t) sCountReads * 128u);
 }
 
 // Ad-hoc diagnostics from game-side TARGET_PC regions (no host headers there).

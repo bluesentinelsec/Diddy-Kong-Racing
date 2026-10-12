@@ -82,6 +82,28 @@ s32 pc_retrace_wait(void) {
 
     // Advance by whole periods so rounding doesn't accumulate into drift.
     sLastNs += (long long) periods * PC_RETRACE_NSEC;
+
+    // DKR_FPS_LOG=1: once a second, report frames drawn and logic periods consumed.
+    {
+        static int sLog = -1;
+        static long long sLogNs;
+        static int sLogFrames, sLogPeriods;
+
+        if (sLog < 0) {
+            sLog = getenv("DKR_FPS_LOG") != NULL;
+            sLogNs = nowNs;
+        }
+        if (sLog) {
+            sLogFrames++;
+            sLogPeriods += periods;
+            if (nowNs - sLogNs >= 1000000000ll) {
+                fprintf(stderr, "FPS: %d frames, %d periods in %.2fs\n", sLogFrames, sLogPeriods,
+                        (nowNs - sLogNs) / 1e9);
+                sLogNs = nowNs;
+                sLogFrames = sLogPeriods = 0;
+            }
+        }
+    }
     return periods;
 }
 
@@ -1545,6 +1567,8 @@ static void print_usage(const char *prog) {
            "  --trace FILE     write a per-frame gfx/audio hash trace, then exit (see tests/golden.sh)\n"
            "  --trace-frames N frames to trace (default 1800)\n"
            "  --help           this text\n"
+           "Environment: DKR_INPUT_SCRIPT=FILE replays a controller script, DKR_DUMP_FRAME=n[,m..]\n"
+           "and DKR_DUMP_EVERY=k write frames as .ppm, DKR_FPS_LOG=1 logs the frame rate (see README).\n"
            "Run from the directory that holds assets/.\n",
            prog);
 }

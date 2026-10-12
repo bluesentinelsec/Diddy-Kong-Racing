@@ -2,8 +2,12 @@
 
 #include "input.h"
 
-#include <SDL3/SDL.h>
+#include "gfx.h"
 #include "trace.h"
+#include <SDL3/SDL.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 // The CONT_* button bits from include/PR/os_cont.h, repeated here because this
 // file cannot include the N64 headers (see input.h).
@@ -42,6 +46,108 @@ static const KeyBinding sKeyBindings[] = {
 };
 
 #define NUM_KEY_BINDINGS (int) (sizeof(sKeyBindings) / sizeof(sKeyBindings[0]))
+
+// ---------------------------------------------------------------------------
+// Scripted input: DKR_INPUT_SCRIPT=FILE replays controller state by frame, for
+// reproducing a report or driving a trace past the title screen. Each line is
+//
+//     <frame> <buttons> <stickX> <stickY>
+//
+// and holds from that frame (as counted by gfx_frame_count) until the next
+// line. Buttons are a comma-separated list of A B Z START L R DU DD DL DR CU CD
+// CL CR, or "-" for none. Lines must be in frame order; '#' starts a comment.
+// ---------------------------------------------------------------------------
+typedef struct {
+    unsigned int frame;
+    unsigned short buttons;
+    signed char stickX, stickY;
+} ScriptStep;
+
+static ScriptStep *sScript;
+static int sScriptCount;
+static int sScriptLoaded;
+
+static unsigned short script_button(const char *name) {
+    static const struct {
+        const char *name;
+        unsigned short bit;
+    } table[] = {
+        { "A", BTN_A },    { "B", BTN_B },      { "Z", BTN_Z },      { "START", BTN_START }, { "L", BTN_L },
+        { "R", BTN_R },    { "DU", BTN_UP },    { "DD", BTN_DOWN },  { "DL", BTN_LEFT },     { "DR", BTN_RIGHT },
+        { "CU", BTN_CUP }, { "CD", BTN_CDOWN }, { "CL", BTN_CLEFT }, { "CR", BTN_CRIGHT },
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
+        if (strcmp(name, table[i].name) == 0) {
+            return table[i].bit;
+        }
+    }
+    fprintf(stderr, "INPUT: unknown button '%s' in DKR_INPUT_SCRIPT\n", name);
+    return 0;
+}
+
+static void script_load(void) {
+    const char *path = getenv("DKR_INPUT_SCRIPT");
+    FILE *f;
+    char line[256];
+
+    sScriptLoaded = 1;
+    if (path == NULL || path[0] == '\0') {
+        return;
+    }
+    f = fopen(path, "r");
+    if (f == NULL) {
+        fprintf(stderr, "INPUT: cannot read %s\n", path);
+        exit(1);
+    }
+    while (fgets(line, sizeof(line), f) != NULL) {
+        char buttons[128];
+        ScriptStep step;
+        int x, y;
+        char *tok;
+        char *save;
+
+        if (line[0] == '#' || sscanf(line, "%u %127s %d %d", &step.frame, buttons, &x, &y) != 4) {
+            continue;
+        }
+        step.buttons = 0;
+        step.stickX = (signed char) x;
+        step.stickY = (signed char) y;
+        for (tok = strtok_r(buttons, ",", &save); tok != NULL; tok = strtok_r(NULL, ",", &save)) {
+            if (strcmp(tok, "-") != 0) {
+                step.buttons |= script_button(tok);
+            }
+        }
+        sScript = realloc(sScript, (size_t) (sScriptCount + 1) * sizeof(*sScript));
+        sScript[sScriptCount++] = step;
+    }
+    fclose(f);
+    printf("INPUT: replaying %d steps from %s\n", sScriptCount, path);
+}
+
+// Returns 1 and fills the outputs if a script is active.
+static int script_read(unsigned short *button, signed char *stickX, signed char *stickY) {
+    unsigned int frame;
+    int i;
+
+    if (!sScriptLoaded) {
+        script_load();
+    }
+    if (sScriptCount == 0) {
+        return 0;
+    }
+    frame = gfx_frame_count();
+    for (i = sScriptCount - 1; i >= 0; i--) {
+        if (sScript[i].frame <= frame) {
+            *button = sScript[i].buttons;
+            *stickX = sScript[i].stickX;
+            *stickY = sScript[i].stickY;
+            break;
+        }
+    }
+    return 1;
+}
 
 // Xbox-style layout. The N64 pad's yellow C buttons were used as a second
 // digital stick (camera, weapons menus), so the right thumbstick stands in for
@@ -156,6 +262,9 @@ void input_host_read(unsigned short *button, signed char *stickX, signed char *s
     *button = 0;
     *stickX = 0;
     *stickY = 0;
+    if (script_read(button, stickX, stickY)) {
+        return; // DKR_INPUT_SCRIPT drives the controller
+    }
     if (pc_trace_active()) {
         return; // a trace replays with the controller untouched
     }

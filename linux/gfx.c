@@ -9,8 +9,8 @@
 // GL ES profile.
 
 #include "gfx.h"
-#include "trace.h"
 #include "gl3_loader.h"
+#include "trace.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h> // SDL_SetMainReady; SDL_MAIN_HANDLED keeps our plain main()
@@ -66,7 +66,12 @@ static float sEnvColor[4] = { -1, -1, -1, -1 };
 static float sAlphaRef = -1.0f;
 
 static unsigned int sFrameCount;
-static long sDumpFrame = -1; // DKR_DUMP_FRAME: write that frame to a .ppm
+// DKR_DUMP_FRAME: comma-separated frame numbers to write as .ppm files;
+// DKR_DUMP_EVERY=N also writes every Nth frame.
+#define MAX_DUMP_FRAMES 64
+static long sDumpFrames[MAX_DUMP_FRAMES];
+static int sDumpFrameCount;
+static long sDumpEvery;
 
 // Interleaved vertex as uploaded: pos.xyzw, uv, fog, rgba8 — 32 bytes.
 typedef struct {
@@ -301,9 +306,35 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
     }
 
     dump = getenv("DKR_DUMP_FRAME");
-    if (dump != NULL) {
-        sDumpFrame = atol(dump);
+    while (dump != NULL && *dump != '\0' && sDumpFrameCount < MAX_DUMP_FRAMES) {
+        sDumpFrames[sDumpFrameCount++] = atol(dump);
+        dump = strchr(dump, ',');
+        if (dump != NULL) {
+            dump++;
+        }
     }
+    dump = getenv("DKR_DUMP_EVERY");
+    if (dump != NULL) {
+        sDumpEvery = atol(dump);
+    }
+}
+
+unsigned int gfx_frame_count(void) {
+    return sFrameCount;
+}
+
+static int dump_wanted(long frame) {
+    int i;
+
+    if (sDumpEvery > 0 && frame % sDumpEvery == 0) {
+        return 1;
+    }
+    for (i = 0; i < sDumpFrameCount; i++) {
+        if (sDumpFrames[i] == frame) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 // The RDP's cms/cmt are a 2-bit field, not a flag: bit 0 is mirror, bit 1 is
@@ -602,7 +633,7 @@ static void dump_frame(void) {
     }
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    snprintf(name, sizeof(name), "dkr_frame_%ld.ppm", sDumpFrame);
+    snprintf(name, sizeof(name), "dkr_frame_%u.ppm", sFrameCount);
     f = fopen(name, "wb");
     if (f != NULL) {
         fprintf(f, "P6\n%d %d\n255\n", w, h);
@@ -626,7 +657,7 @@ void gfx_frame_end(void) {
         return;
     }
     sFrameCount++;
-    if (sDumpFrame >= 0 && (long) sFrameCount == sDumpFrame) {
+    if (dump_wanted((long) sFrameCount)) {
         dump_frame();
     }
     SDL_GL_SwapWindow(sWindow);

@@ -8,8 +8,8 @@
 #include <time.h>
 
 #include "input.h"
-#include <SDL3/SDL.h>
 #include "trace.h"
+#include <SDL3/SDL.h>
 
 typedef signed char s8;
 typedef signed int s32;
@@ -472,14 +472,33 @@ u32 osSetIntMask(u32 mask) {
 // ---------------------------------------------------------------------------
 // The N64 Count register ticks at 46.875 MHz (CPU clock / 2).
 // 46875000 ticks/sec over 1e9 ns/sec = exactly 3/64 ticks per nanosecond.
+// The VR4300 Count register: 46.875 MHz, and two consecutive reads never
+// return the same value. The game relies on the latter - music_animation_fraction
+// (src/audio.c) treats an unchanged count as a wrap and adds 2^32 ticks, which
+// scrambled the character-select dance on hosts whose clock has microsecond
+// granularity (macOS CLOCK_MONOTONIC). So read the finest clock available and
+// force each read past the previous one.
 u32 osGetCount(void) {
+    static u32 sLast;
     struct timespec ts;
+    u64 ns;
+    u32 count;
+
     if (pc_trace_active()) {
         return pc_trace_count();
     }
+#ifdef CLOCK_MONOTONIC_RAW
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+#else
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    u64 ns = (u64) ts.tv_sec * 1000000000ull + (u64) ts.tv_nsec;
-    return (u32) (ns * 3 / 64);
+#endif
+    ns = (u64) ts.tv_sec * 1000000000ull + (u64) ts.tv_nsec;
+    count = (u32) (ns * 3 / 64);
+    if (count == sLast) {
+        count++;
+    }
+    sLast = count;
+    return count;
 }
 void __osSetCompare(u32 value) {
 }
