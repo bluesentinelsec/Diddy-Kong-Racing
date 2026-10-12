@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.24)
 project(dkracing C)
 
 # ---------------------------------------------------------------------------
@@ -33,19 +33,25 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
-# SDL3: prefer pkg-config (Homebrew, Debian, MSYS2 all ship a .pc), fall back to
-# the CMake config package. OpenGL itself is not linked: the renderer resolves
-# its GL 3.3 core / GL ES 3.0 entry points through SDL at runtime.
-find_package(PkgConfig QUIET)
-if(PKG_CONFIG_FOUND)
-    pkg_check_modules(SDL3 IMPORTED_TARGET sdl3)
-endif()
-if(TARGET PkgConfig::SDL3)
-    add_library(SDL3::SDL3 ALIAS PkgConfig::SDL3)
-    message(STATUS "SDL3 via pkg-config: ${SDL3_VERSION}")
-else()
-    find_package(SDL3 REQUIRED CONFIG)
-endif()
+# SDL3: fetched from the official repository at a pinned stable release and
+# built as a static library, so the executable is self-contained (no SDL
+# shared library to ship or find at runtime). OpenGL itself is not linked: the
+# renderer resolves its GL 3.3 core / GL ES 3.0 entry points through SDL.
+set(DKR_SDL3_TAG "release-3.4.18" CACHE STRING "SDL3 git tag to build against")
+include(FetchContent)
+set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+set(SDL_STATIC ON CACHE BOOL "" FORCE)
+set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(SDL3
+    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+    GIT_TAG ${DKR_SDL3_TAG}
+    GIT_SHALLOW TRUE
+    GIT_PROGRESS TRUE)
+FetchContent_MakeAvailable(SDL3)
+message(STATUS "SDL3 ${DKR_SDL3_TAG} via FetchContent, static")
 
 # Shaders are embedded as byte arrays so the executable is self-contained.
 set(DKR_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/linux/shaders)
@@ -203,7 +209,7 @@ function(dkr_configure_target tgt)
     target_compile_options(${tgt} PRIVATE ${DKR_C_FLAGS})
     target_compile_features(${tgt} PRIVATE c_std_23)
     target_include_directories(${tgt} PRIVATE ${DKR_INCLUDE_DIRS})
-    target_link_libraries(${tgt} PRIVATE SDL3::SDL3)
+    target_link_libraries(${tgt} PRIVATE SDL3::SDL3-static)
 endfunction()
 
 add_library(dkr_game OBJECT ${DKR_GAME_SOURCES} ${DKR_LIBULTRA_SOURCES})
@@ -216,7 +222,7 @@ target_include_directories(dkr_platform PRIVATE ${DKR_GENERATED_DIR})
 add_dependencies(dkr_platform dkr_shaders)
 
 add_executable(dkracing $<TARGET_OBJECTS:dkr_game> $<TARGET_OBJECTS:dkr_platform>)
-target_link_libraries(dkracing PRIVATE SDL3::SDL3)
+target_link_libraries(dkracing PRIVATE SDL3::SDL3-static)
 if(NOT WIN32)
     target_link_libraries(dkracing PRIVATE m)
 endif()
