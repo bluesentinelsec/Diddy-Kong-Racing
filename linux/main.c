@@ -49,6 +49,10 @@ s32 pc_retrace_wait(void) {
     long long nowNs;
     s32 periods;
 
+    if (pc_trace_active()) {
+        return PC_LOGIC_UPDATE_RATE; // a trace runs as fast as it can at a fixed timestep
+    }
+
     clock_gettime(CLOCK_MONOTONIC, &ts);
     nowNs = (long long) ts.tv_sec * 1000000000ll + ts.tv_nsec;
 
