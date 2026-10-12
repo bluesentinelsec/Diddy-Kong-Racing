@@ -94,10 +94,9 @@ void alCSeqNextEvent(ALCSeq *seq,ALEvent *evt)
  
 #ifdef TARGET_PC
     { extern void pc_trace_event(const char *fmt, ...);
-      const u8 *bp = seq->curLoc[firstTrack]; u32 h = 2166136261u, k; const u8 *sb = (const u8 *) seq->base;
-      for (k = 0; k < 12000; k++) { h = (h ^ sb[k]) * 16777619u; }
-      pc_trace_event("cseq_track t=%u bulen=%u buoff=%d next=%02x%02x%02x%02x%02x%02x seqhash=%08x", firstTrack, seq->curBULen[firstTrack],
-        (int) (seq->curBUPtr[firstTrack] ? seq->curBUPtr[firstTrack] - sb : -1), bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], h);
+      const u8 *bp = seq->curLoc[firstTrack]; const u8 *sb = (const u8 *) seq->base;
+      pc_trace_event("cseq_track t=%u bulen=%u buoff=%d next=%02x%02x%02x%02x%02x%02x", firstTrack, seq->curBULen[firstTrack],
+        (int) (seq->curBUPtr[firstTrack] ? seq->curBUPtr[firstTrack] - sb : -1), bp[0], bp[1], bp[2], bp[3], bp[4], bp[5]);
       pc_trace_event("cseq_next valid=%x flag=%d last=%u first=%u d=%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u loc=%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
         seq->validTracks, seq->deltaFlag, lastTicks, firstTrack,
         seq->evtDeltaTicks[0], seq->evtDeltaTicks[1], seq->evtDeltaTicks[2], seq->evtDeltaTicks[3], seq->evtDeltaTicks[4], seq->evtDeltaTicks[5], seq->evtDeltaTicks[6], seq->evtDeltaTicks[7],

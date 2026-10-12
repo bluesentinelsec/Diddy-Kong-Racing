@@ -147,7 +147,11 @@ const char D_800E49F0[] =
 void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
     s32 i;
     f32 fsize;
+#ifdef TARGET_PC
+    u32 *asset; // stepped by maxFrameSize *samples*: must stay a 4-byte stride on a 64-bit host
+#else
     uintptr_t *asset;
+#endif
     u32 *assetAudioTable;
     s32 *asset8;
     s32 assetSize;
