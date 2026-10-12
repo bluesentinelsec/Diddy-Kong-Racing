@@ -46,26 +46,38 @@ static const KeyBinding sKeyBindings[] = {
 
 #define NUM_KEY_BINDINGS (int) (sizeof(sKeyBindings) / sizeof(sKeyBindings[0]))
 
+// Xbox-style layout. The N64 pad's yellow C buttons were used as a second
+// digital stick (camera, weapons menus), so the right thumbstick stands in for
+// them; the triggers take accelerate/brake the way every modern racer does, while
+// the face buttons keep the N64 positions for anyone who thinks in those terms.
+//
+//   Left stick      -> analog stick          Right stick     -> C-up/down/left/right
+//   RT / A          -> A (accelerate)        LT / B          -> B (brake, reverse)
+//   X               -> Z (fire weapon)       Y               -> C-up
+//   RB              -> R (hop, powerslide)   LB              -> L
+//   D-pad           -> D-pad                 Menu (Start)    -> Start
 typedef struct {
     SDL_GamepadButton button;
     unsigned short n64;
 } PadBinding;
 
 static const PadBinding sPadBindings[] = {
-    { SDL_GAMEPAD_BUTTON_SOUTH, BTN_A },          // accelerate
-    { SDL_GAMEPAD_BUTTON_EAST, BTN_B },           // brake / reverse
-    { SDL_GAMEPAD_BUTTON_WEST, BTN_Z },           // fire weapon
-    { SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, BTN_R }, // hop / powerslide
+    { SDL_GAMEPAD_BUTTON_SOUTH, BTN_A },
+    { SDL_GAMEPAD_BUTTON_EAST, BTN_B },
+    { SDL_GAMEPAD_BUTTON_WEST, BTN_Z },
+    { SDL_GAMEPAD_BUTTON_NORTH, BTN_CUP },
+    { SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, BTN_R },
     { SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, BTN_L },
     { SDL_GAMEPAD_BUTTON_START, BTN_START },
-    { SDL_GAMEPAD_BUTTON_NORTH, BTN_CUP },
-    { SDL_GAMEPAD_BUTTON_DPAD_UP, BTN_CUP },
-    { SDL_GAMEPAD_BUTTON_DPAD_DOWN, BTN_CDOWN },
-    { SDL_GAMEPAD_BUTTON_DPAD_LEFT, BTN_CLEFT },
-    { SDL_GAMEPAD_BUTTON_DPAD_RIGHT, BTN_CRIGHT },
+    { SDL_GAMEPAD_BUTTON_DPAD_UP, BTN_UP },
+    { SDL_GAMEPAD_BUTTON_DPAD_DOWN, BTN_DOWN },
+    { SDL_GAMEPAD_BUTTON_DPAD_LEFT, BTN_LEFT },
+    { SDL_GAMEPAD_BUTTON_DPAD_RIGHT, BTN_RIGHT },
 };
 
 #define NUM_PAD_BINDINGS (int) (sizeof(sPadBindings) / sizeof(sPadBindings[0]))
+#define TRIGGER_THRESHOLD 8000  // of 32767
+#define C_STICK_THRESHOLD 16000 // right stick deflection that counts as a C press
 
 static SDL_Gamepad *sPad;
 static int sPadInit;
@@ -178,10 +190,19 @@ void input_host_read(unsigned short *button, signed char *stickX, signed char *s
                 buttons |= sPadBindings[i].n64;
             }
         }
-        // The right trigger also accelerates, which is how most people hold a
-        // racing game on a modern pad.
-        if (SDL_GetGamepadAxis(sPad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 8000) {
+        if (SDL_GetGamepadAxis(sPad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > TRIGGER_THRESHOLD) {
             buttons |= BTN_A;
+        }
+        if (SDL_GetGamepadAxis(sPad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > TRIGGER_THRESHOLD) {
+            buttons |= BTN_B;
+        }
+        {
+            Sint16 rx = SDL_GetGamepadAxis(sPad, SDL_GAMEPAD_AXIS_RIGHTX);
+            Sint16 ry = SDL_GetGamepadAxis(sPad, SDL_GAMEPAD_AXIS_RIGHTY);
+            if (rx < -C_STICK_THRESHOLD) buttons |= BTN_CLEFT;
+            if (rx > C_STICK_THRESHOLD) buttons |= BTN_CRIGHT;
+            if (ry < -C_STICK_THRESHOLD) buttons |= BTN_CUP;
+            if (ry > C_STICK_THRESHOLD) buttons |= BTN_CDOWN;
         }
         if (x == 0 && y == 0) {
             x = stick_from_axis(SDL_GetGamepadAxis(sPad, SDL_GAMEPAD_AXIS_LEFTX), 0);

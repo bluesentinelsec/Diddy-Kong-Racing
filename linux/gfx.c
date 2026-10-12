@@ -12,6 +12,7 @@
 #include "gl3_loader.h"
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h> // SDL_SetMainReady; SDL_MAIN_HANDLED keeps our plain main()
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
