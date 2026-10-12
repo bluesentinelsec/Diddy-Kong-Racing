@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #define FNV_OFFSET 0xcbf29ce484222325ull
 #define FNV_PRIME 0x100000001b3ull
@@ -185,4 +186,16 @@ void pc_trace_pcm(const void *data, size_t size) {
 uint32_t pc_trace_count(void) {
     // 46,875,000 ticks per second at 60 frames per second.
     return (uint32_t) ((uint64_t) sFrame * 781250u);
+}
+
+// Ad-hoc diagnostics from game-side TARGET_PC regions (no host headers there).
+int pc_trace_debug(const char *env) {
+    return sActive && getenv(env) != NULL;
+}
+
+void pc_trace_printf(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
 }
