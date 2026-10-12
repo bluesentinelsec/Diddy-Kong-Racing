@@ -92,6 +92,17 @@ void alCSeqNextEvent(ALCSeq *seq,ALEvent *evt)
         }
     }
  
+#ifdef TARGET_PC
+    { extern void pc_trace_event(const char *fmt, ...);
+      pc_trace_event("cseq_next valid=%x flag=%d last=%u first=%u d=%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u loc=%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+        seq->validTracks, seq->deltaFlag, lastTicks, firstTrack,
+        seq->evtDeltaTicks[0], seq->evtDeltaTicks[1], seq->evtDeltaTicks[2], seq->evtDeltaTicks[3], seq->evtDeltaTicks[4], seq->evtDeltaTicks[5], seq->evtDeltaTicks[6], seq->evtDeltaTicks[7],
+        seq->evtDeltaTicks[8], seq->evtDeltaTicks[9], seq->evtDeltaTicks[10], seq->evtDeltaTicks[11], seq->evtDeltaTicks[12], seq->evtDeltaTicks[13], seq->evtDeltaTicks[14], seq->evtDeltaTicks[15],
+        (int) (seq->curLoc[0] ? seq->curLoc[0] - (u8 *) seq->base : -1), (int) (seq->curLoc[1] ? seq->curLoc[1] - (u8 *) seq->base : -1), (int) (seq->curLoc[2] ? seq->curLoc[2] - (u8 *) seq->base : -1), (int) (seq->curLoc[3] ? seq->curLoc[3] - (u8 *) seq->base : -1),
+        (int) (seq->curLoc[4] ? seq->curLoc[4] - (u8 *) seq->base : -1), (int) (seq->curLoc[5] ? seq->curLoc[5] - (u8 *) seq->base : -1), (int) (seq->curLoc[6] ? seq->curLoc[6] - (u8 *) seq->base : -1), (int) (seq->curLoc[7] ? seq->curLoc[7] - (u8 *) seq->base : -1),
+        (int) (seq->curLoc[8] ? seq->curLoc[8] - (u8 *) seq->base : -1), (int) (seq->curLoc[9] ? seq->curLoc[9] - (u8 *) seq->base : -1), (int) (seq->curLoc[10] ? seq->curLoc[10] - (u8 *) seq->base : -1), (int) (seq->curLoc[11] ? seq->curLoc[11] - (u8 *) seq->base : -1),
+        (int) (seq->curLoc[12] ? seq->curLoc[12] - (u8 *) seq->base : -1), (int) (seq->curLoc[13] ? seq->curLoc[13] - (u8 *) seq->base : -1), (int) (seq->curLoc[14] ? seq->curLoc[14] - (u8 *) seq->base : -1), (int) (seq->curLoc[15] ? seq->curLoc[15] - (u8 *) seq->base : -1)); }
+#endif
     __alCSeqGetTrackEvent(seq,firstTrack,evt);
 
     evt->msg.midi.ticks = firstTime;
