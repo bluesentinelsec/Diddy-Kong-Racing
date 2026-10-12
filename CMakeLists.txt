@@ -33,20 +33,38 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
-# SDL2: prefer pkg-config (Homebrew, Debian, MSYS2 all ship a .pc), fall back to
-# the CMake config package. A stray SDL2.framework in /Library/Frameworks would
-# otherwise win on macOS and leave the binary with no rpath to it.
+# SDL3: prefer pkg-config (Homebrew, Debian, MSYS2 all ship a .pc), fall back to
+# the CMake config package. OpenGL itself is not linked: the renderer resolves
+# its GL 3.3 core / GL ES 3.0 entry points through SDL at runtime.
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
-    pkg_check_modules(SDL2 IMPORTED_TARGET sdl2)
+    pkg_check_modules(SDL3 IMPORTED_TARGET sdl3)
 endif()
-if(TARGET PkgConfig::SDL2)
-    add_library(SDL2::SDL2 ALIAS PkgConfig::SDL2)
-    message(STATUS "SDL2 via pkg-config: ${SDL2_VERSION}")
+if(TARGET PkgConfig::SDL3)
+    add_library(SDL3::SDL3 ALIAS PkgConfig::SDL3)
+    message(STATUS "SDL3 via pkg-config: ${SDL3_VERSION}")
 else()
-    find_package(SDL2 REQUIRED)
+    find_package(SDL3 REQUIRED CONFIG)
 endif()
-find_package(OpenGL REQUIRED)
+
+# Shaders are embedded as byte arrays so the executable is self-contained.
+set(DKR_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/linux/shaders)
+set(DKR_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+file(MAKE_DIRECTORY ${DKR_GENERATED_DIR})
+set(DKR_SHADER_HEADERS)
+foreach(shader dkr.vert dkr.frag)
+    string(REPLACE "." "_" symbol "shader_${shader}")
+    set(header ${DKR_GENERATED_DIR}/${symbol}.h)
+    add_custom_command(
+        OUTPUT ${header}
+        COMMAND ${CMAKE_COMMAND} -DINPUT=${DKR_SHADER_DIR}/${shader} -DOUTPUT=${header} -DSYMBOL=${symbol}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedFile.cmake
+        DEPENDS ${DKR_SHADER_DIR}/${shader} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedFile.cmake
+        COMMENT "Embedding ${shader}"
+        VERBATIM)
+    list(APPEND DKR_SHADER_HEADERS ${header})
+endforeach()
+add_custom_target(dkr_shaders DEPENDS ${DKR_SHADER_HEADERS})
 
 # --- Sources -----------------------------------------------------------------
 
@@ -143,9 +161,6 @@ set(DKR_DEFINES
 if(DKR_EEPROM_PRESET_100)
     list(APPEND DKR_DEFINES EEPROM_PRESET_100)
 endif()
-if(APPLE)
-    list(APPEND DKR_DEFINES GL_SILENCE_DEPRECATION)
-endif()
 
 set(DKR_C_FLAGS
     -fno-builtin
@@ -188,11 +203,7 @@ function(dkr_configure_target tgt)
     target_compile_options(${tgt} PRIVATE ${DKR_C_FLAGS})
     target_compile_features(${tgt} PRIVATE c_std_23)
     target_include_directories(${tgt} PRIVATE ${DKR_INCLUDE_DIRS})
-    if(TARGET SDL2::SDL2)
-        target_link_libraries(${tgt} PRIVATE SDL2::SDL2)
-    else()
-        target_include_directories(${tgt} PRIVATE ${SDL2_INCLUDE_DIRS})
-    endif()
+    target_link_libraries(${tgt} PRIVATE SDL3::SDL3)
 endfunction()
 
 add_library(dkr_game OBJECT ${DKR_GAME_SOURCES} ${DKR_LIBULTRA_SOURCES})
@@ -201,13 +212,13 @@ target_include_directories(dkr_game BEFORE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/i
 
 add_library(dkr_platform OBJECT ${DKR_PLATFORM_SOURCES})
 dkr_configure_target(dkr_platform)
+target_include_directories(dkr_platform PRIVATE ${DKR_GENERATED_DIR})
+add_dependencies(dkr_platform dkr_shaders)
 
 add_executable(dkracing $<TARGET_OBJECTS:dkr_game> $<TARGET_OBJECTS:dkr_platform>)
-target_link_libraries(dkracing PRIVATE OpenGL::GL m)
-if(TARGET SDL2::SDL2)
-    target_link_libraries(dkracing PRIVATE SDL2::SDL2)
-else()
-    target_link_libraries(dkracing PRIVATE ${SDL2_LIBRARIES})
+target_link_libraries(dkracing PRIVATE SDL3::SDL3)
+if(NOT WIN32)
+    target_link_libraries(dkracing PRIVATE m)
 endif()
 if(DKR_LINK_FLAGS)
     target_link_options(dkracing PRIVATE ${DKR_LINK_FLAGS})
