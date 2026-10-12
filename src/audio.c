@@ -13,39 +13,9 @@
 #include "pc_swap.h"
 #endif
 
-#ifdef DKR_AICAFLOW
-#include "../dreamcast/audio_aicaflow.h"
-#define DKR_AICAFLOW_MUSIC_MAX_GAIN 96.0f
-extern void pc_audio_lock(void);
-extern void pc_audio_unlock(void);
-#endif
-
 /************ .data ************/
 
 ALCSPlayer *gMusicPlayer = NULL;  // Official Name: tuneSeqPlayer
-
-#ifdef TARGET_PC
-// linux/reimpl.c — the shared byteswap helpers (same as game.c uses for the
-// level-header and AI-behaviour tables).
-extern void pc_swap32_buf(void *buf, u32 numBytes);
-extern void pc_swap16_buf(void *buf, u32 numBytes);
-
-// Audio is not initialized on PC (audio_init early-returns), so the public
-// music API no-ops. gMusicPlayer is created by audio_init, so it doubles as
-// the "music system initialized" flag.
-#define MUSIC_PC_GUARD(retval) \
-    if (gMusicPlayer == NULL) \
-    return retval
-// Same for the sfx side: gSoundBank is allocated by sound_init, which doesn't
-// run on PC, so bank-walking sfx queries no-op through this.
-#define SFX_PC_GUARD(retval) \
-    if (gSoundBank == NULL) \
-    return retval
-#else
-#define MUSIC_PC_GUARD(retval)
-#define SFX_PC_GUARD(retval)
-#endif
-
 ALCSPlayer *gJinglePlayer = NULL; // Official Name: ambientSeqPlayer
 u8 gMusicBaseVolume = 127;
 u8 sfxRelativeVolume = 127;
@@ -68,11 +38,7 @@ u8 gBlockVoiceLimitChange = FALSE;
 /************ .bss ************/
 
 // The audio heap is located at the start of the BSS section.
-#if defined(TARGET_PC) || defined(TARGET_DC)
-alignas(32) u8 gAudioHeapStack[AUDIO_HEAP_SIZE];
-#else
 u8 gAudioHeapStack[AUDIO_HEAP_SIZE];
-#endif
 
 ALHeap gALHeap;
 ALSeqFile *gSequenceTable;
@@ -112,109 +78,6 @@ SoundHandle gRacerSoundMask;
  * Allocate memory for all the audio systems, including sequence data, sound data and heaps.
  * Afterwards, set up the audio thread and start it.
  */
-#ifdef TARGET_PC
-/**
- * M1 diagnostic (docs/audio.md): walk the swapped banks and report what came out.
- * This is the deliverable of the byteswap milestone — there is no mixer yet, so
- * these numbers are the only evidence the swap is right. Delete once signed off.
- */
-static void audio_pc_census_bank(const char *name, ALBankFile *file) {
-    s32 b, in, s;
-    s32 sounds = 0, adpcm = 0, raw16 = 0, other = 0, looped = 0;
-
-    if (file == NULL) {
-        stubbed_printf("AUDIO/census: %s is NULL\n", name);
-        return;
-    }
-    stubbed_printf("AUDIO/census: %s rev=%d banks=%d\n", name, file->revision, file->bankCount);
-
-    for (b = 0; b < file->bankCount; b++) {
-        ALBank *bank = file->bankArray[b];
-
-        if (bank == NULL) {
-            continue;
-        }
-        stubbed_printf("  bank %d: insts=%d sampleRate=%d percussion=%s\n", b, bank->instCount, bank->sampleRate,
-                       bank->percussion ? "yes" : "no");
-
-        for (in = 0; in < bank->instCount; in++) {
-            ALInstrument *inst = bank->instArray[in];
-
-            if (inst == NULL) {
-                continue;
-            }
-            for (s = 0; s < inst->soundCount; s++) {
-                ALSound *snd = inst->soundArray[s];
-                ALWaveTable *w;
-
-                if (snd == NULL || snd->wavetable == NULL) {
-                    continue;
-                }
-                w = snd->wavetable;
-                sounds++;
-                if (w->type == AL_ADPCM_WAVE) {
-                    adpcm++;
-                    if (w->waveInfo.adpcmWave.loop) {
-                        looped++;
-                    }
-                } else if (w->type == AL_RAW16_WAVE) {
-                    raw16++;
-                    if (w->waveInfo.rawWave.loop) {
-                        looped++;
-                    }
-                } else {
-                    other++;
-                }
-                // First few waves in full, so base/len can be sanity-checked by eye.
-                // The book's order/npredictors are the best swap canary we have:
-                // order is always 2 and npredictors is small (1-8). If those come
-                // back as huge numbers, the BSWAP32-before-sizing in _bnkfSwapBook
-                // is wrong and the book array was swapped at the wrong length.
-                if (sounds <= 4) {
-                    stubbed_printf("    wave %d: type=%d base=%08X len=%d", sounds, w->type, (u32) w->base, w->len);
-                    if (w->type == AL_ADPCM_WAVE && w->waveInfo.adpcmWave.book != NULL) {
-                        stubbed_printf(" book(order=%d npred=%d)", w->waveInfo.adpcmWave.book->order,
-                                       w->waveInfo.adpcmWave.book->npredictors);
-                    }
-                    stubbed_printf("\n");
-                }
-            }
-        }
-    }
-    stubbed_printf("  %s totals: sounds=%d adpcm=%d raw16=%d other=%d looped=%d\n", name, sounds, adpcm, raw16, other,
-                   looped);
-    if (other != 0) {
-        stubbed_printf("  *** %s: %d waves of UNKNOWN type — the swap is probably wrong ***\n", name, other);
-    }
-}
-
-static void audio_pc_census(void) {
-    s32 i;
-    u32 maxLen = 0;
-
-    audio_pc_census_bank("soundBank", gSoundBank);
-    audio_pc_census_bank("sequenceBank", gSequenceBank);
-
-    stubbed_printf("AUDIO/census: sequences=%d sounds=%d(table) seqSounds=%d\n",
-                   gSequenceTable ? gSequenceTable->seqCount : -1, gSoundCount, gSeqSoundCount);
-    for (i = 0; gSequenceTable != NULL && i < gSequenceTable->seqCount; i++) {
-        if (gSequenceTable->seqArray[i].len > (s32) maxLen) {
-            maxLen = gSequenceTable->seqArray[i].len;
-        }
-        if (i < 3) {
-            stubbed_printf("  seq %d: offset=%08X len=%d\n", i, (u32) gSequenceTable->seqArray[i].offset,
-                           gSequenceTable->seqArray[i].len);
-        }
-    }
-    stubbed_printf("  longest sequence=%d bytes\n", maxLen);
-
-    for (i = 0; i < 3 && i < gSoundCount; i++) {
-        stubbed_printf("  sound %d: bite=%d vol=%d pitch=%d range=%d prio=%d\n", i, gSoundTable[i].soundBite,
-                       gSoundTable[i].volume, gSoundTable[i].pitch, gSoundTable[i].range, gSoundTable[i].priority);
-    }
-}
-#endif
-
 void audio_init(OSSched *sc) {
     s32 i;
     ALSynConfig synth_config;
@@ -229,11 +92,7 @@ void audio_init(OSSched *sc) {
 
     addrPtr = (s32 *) asset_table_load(ASSET_AUDIO_TABLE);
 #ifdef TARGET_PC
-    // The top-level asset LUT is swapped once at load (linux/reimpl.c), but
-    // per-asset sub-tables like this one are not — same as the level-header and
-    // AI-behaviour tables in game.c. Everything below indexes addrPtr[], so this
-    // has to happen before the first use.
-    pc_swap32_buf(addrPtr, asset_table_size(ASSET_AUDIO_TABLE));
+    pc_swap32_buf(addrPtr, asset_table_size(ASSET_AUDIO_TABLE)); // big-endian sub-table
 #endif
     gSoundBank = (ALBankFile *) mempool_alloc_safe(addrPtr[ASSET_AUDIO_2] - addrPtr[ASSET_AUDIO_1], COLOUR_TAG_CYAN);
     asset_load(ASSET_AUDIO, (uintptr_t) gSoundBank, addrPtr[ASSET_AUDIO_1], addrPtr[ASSET_AUDIO_2] - addrPtr[ASSET_AUDIO_1]);
@@ -244,10 +103,7 @@ void audio_init(OSSched *sc) {
     asset_load(ASSET_AUDIO, (uintptr_t) gSoundTable, addrPtr[ASSET_AUDIO_6], gSoundTableSize);
     gSoundCount = gSoundTableSize / sizeof(SoundData);
 #ifdef TARGET_PC
-    // SoundData is 0x0A bytes of MIXED widths (u16 at 0, six u8s, u16 at 6), so a
-    // blanket pc_swap16_buf over the array would corrupt every u8 pair. Only the
-    // two u16 fields swap. Note gSpatialSoundTable is an alias of this same array
-    // (audspat_init takes it from sound_table_properties) — swap it once, here.
+    // SoundData mixes u16 and u8 fields: swap only the two u16s (gSpatialSoundTable aliases this array).
     for (i = 0; i < gSoundCount; i++) {
         pc_swap16_buf(&gSoundTable[i].soundBite, sizeof(u16));
         pc_swap16_buf(&gSoundTable[i].range, sizeof(u16));
@@ -265,11 +121,7 @@ void audio_init(OSSched *sc) {
     gSequenceTable = (ALSeqFile *) alHeapAlloc(&gALHeap, 1, 4);
     asset_load(ASSET_AUDIO, (uintptr_t) gSequenceTable, addrPtr[ASSET_AUDIO_4], 4);
 #ifdef TARGET_PC
-    // This 4-byte peek reads seqCount straight out of the raw BE header to size
-    // the real load below — it happens before alSeqFileNew (which does the full
-    // swap) ever sees the file, so it needs its own. This temp buffer is thrown
-    // away right after, so the swap in alSeqFileNew is not a double-swap.
-    PC_SWAP16_AT(gSequenceTable, revision, sizeof(s16));
+    PC_SWAP16_AT(gSequenceTable, revision, sizeof(s16)); // raw big-endian peek, replaced below
     PC_SWAP16_AT(gSequenceTable, seqCount, sizeof(s16));
 #endif
 
@@ -296,27 +148,12 @@ void audio_init(OSSched *sc) {
         }
     }
 
-#ifdef TARGET_PC
-    // M1 census (docs/audio.md): everything above is the byteswap layer; dump what
-    // it produced so the numbers can be eyeballed before a mixer exists to hide
-    // behind. Sample rates should be recognizable (11025/16000/22050-ish), wave
-    // lengths sane, counts non-absurd. Garbage here means the swap is wrong.
-    // Remove once M1 is signed off.
-    audio_pc_census();
-#endif
-
     synth_config.maxVVoices = 40;
     synth_config.maxPVoices = 40;
     synth_config.maxUpdates = 96;
     synth_config.dmaproc = NULL;
-#ifdef AUDIO_NO_REVERB
-    
-    synth_config.fxType[0] = AL_FX_NONE;
-    synth_config.fxType[1] = AL_FX_NONE;
-#else
     synth_config.fxType[0] = AL_FX_CUSTOM;
     synth_config.fxType[1] = AL_FX_BIGROOM;
-#endif
     synth_config.outputRate = 0;
     synth_config.heap = &gALHeap;
     amCreateAudioMgr(&synth_config, 12, sc);
@@ -328,7 +165,7 @@ void audio_init(OSSched *sc) {
     audConfig.maxEvents = 150;
     audConfig.maxSounds = 32;
     audConfig.maxChannels = AUDIO_CHANNELS;
-    audConfig.numGroups = 64;
+    audConfig.numGroups = 1;
     audConfig.heap = &gALHeap;
     sndp_init_player(&audConfig);
     audioStartThread();
@@ -370,7 +207,6 @@ void sound_volume_reset(u8 skipReset) {
  * Official Name: amSetMuteMode
  */
 void sound_volume_change(s32 behaviour) {
-    MUSIC_PC_GUARD();
     switch (behaviour) {
         case VOLUME_LOWER: // Mute most sound effects and half the volume of music.
             sndp_set_group_volume(0, 0);
@@ -408,7 +244,6 @@ void sound_volume_change(s32 behaviour) {
  * Prevents changing of background music.
  */
 void music_change_off(void) {
-    MUSIC_PC_GUARD();
     gBlockMusicChange = TRUE;
 }
 
@@ -416,7 +251,6 @@ void music_change_off(void) {
  * Allows changing of background music.
  */
 void music_change_on(void) {
-    MUSIC_PC_GUARD();
     gBlockMusicChange = FALSE;
 }
 
@@ -425,58 +259,7 @@ void music_change_on(void) {
  * Stops any playing existing music beforehand.
  * Official Name: amTunePlay
  */
-void music_prepare(u8 seqID) {
-#ifdef DKR_AICAFLOW
-    int result;
-
-    pc_audio_lock();
-    result = dkr_afx_music_prepare(seqID);
-    pc_audio_unlock();
-    if (result) stubbed_printf("AICAFLOW: sequence %d was not prepared (%d)\n", seqID, result);
-#else
-    (void)seqID;
-#endif
-}
-
-void music_prefetch(u8 seqID) {
-#ifdef DKR_AICAFLOW
-    pc_audio_lock();
-    dkr_afx_music_prefetch(seqID);
-    pc_audio_unlock();
-#else
-    (void)seqID;
-#endif
-}
-
-void sound_scene_stop(void) {
-#ifdef DKR_AICAFLOW
-    int result;
-    pc_audio_lock();
-    sound_clear_delayed();
-    sndp_stop_with_flags(0); /* Also cancels sounds waiting for an AICA voice. */
-    result = dkr_afx_sfx_stop_all();
-    pc_audio_unlock();
-    if (result) stubbed_printf("AICAFLOW: scene SFX stop failed (%d)\n", result);
-#else
-    sndp_stop_all_looped();
-#endif
-}
-
-void sound_scene_prepare(u16 level) {
-#ifdef DKR_AICAFLOW
-    int result;
-
-    pc_audio_lock();
-    result = dkr_afx_sfx_scene_prepare(level);
-    pc_audio_unlock();
-    if (result) stubbed_printf("AICAFLOW: scene SFX for level %d was not prepared (%d)\n", level, result);
-#else
-    (void)level;
-#endif
-}
-
 void music_play(u8 seqID) {
-    MUSIC_PC_GUARD();
     if (gBlockMusicChange == FALSE && gMusicSliderVolume != 0) {
         gCurrentSequenceID = seqID;
         gMusicBaseVolume = 127;
@@ -495,7 +278,6 @@ void music_play(u8 seqID) {
  * Official Name: amTuneVoiceLimit
  */
 void music_voicelimit_set(u8 voiceLimit) {
-    MUSIC_PC_GUARD();
     if (gBlockVoiceLimitChange == FALSE) {
         set_voice_limit(gMusicPlayer, voiceLimit);
     }
@@ -505,7 +287,6 @@ void music_voicelimit_set(u8 voiceLimit) {
  * Prevent the background music voice limit from being changed.
  */
 void music_voicelimit_change_off(void) {
-    MUSIC_PC_GUARD();
     gBlockVoiceLimitChange = TRUE;
 }
 
@@ -513,7 +294,6 @@ void music_voicelimit_change_off(void) {
  * Allow the background music voice limit to be changed.
  */
 void music_voicelimit_change_on(void) {
-    MUSIC_PC_GUARD();
     gBlockVoiceLimitChange = FALSE;
 }
 
@@ -521,7 +301,6 @@ void music_voicelimit_change_on(void) {
  * Update the jingle players voice limit.
  */
 void music_jingle_voicelimit_set(u8 voiceLimit) {
-    MUSIC_PC_GUARD();
     set_voice_limit(gJinglePlayer, voiceLimit);
 }
 
@@ -534,7 +313,6 @@ UNUSED void func_80000C68(u8 arg0) {
  * Give it a positive number to fade in, otherwise, give it a negative one to fade out.
  */
 void music_fade(s32 time) {
-    MUSIC_PC_GUARD();
     sMusicDelayTimer = 0;
     sMusicDelayLength = (time * 60) >> 8;
 }
@@ -543,7 +321,6 @@ void music_fade(s32 time) {
  * Sets the background music volume back to normal.
  */
 void music_volume_reset(void) {
-    MUSIC_PC_GUARD();
     sMusicDelayTimer = 0;
     sMusicDelayLength = 0;
     sMusicFadeVolume = 1.0f;
@@ -560,7 +337,6 @@ void sound_update_queue(u8 updateRate) {
     s32 i;
     s32 j;
 
-    MUSIC_PC_GUARD();
     if (sMusicDelayLength > 0) {
         sMusicDelayTimer += updateRate;
         sMusicFadeVolume = ((f32) sMusicDelayTimer) / ((f32) sMusicDelayLength);
@@ -633,7 +409,6 @@ void sound_clear_delayed(void) {
  * Return the channel mask of the music player.
  */
 u16 music_channel_get_mask(void) {
-    MUSIC_PC_GUARD(0);
     return gMusicPlayer->chanMask;
 }
 
@@ -642,7 +417,6 @@ u16 music_channel_get_mask(void) {
  * Official Name: amTuneSetChlMask
  */
 void music_dynamic_set(u16 channelMask) {
-    MUSIC_PC_GUARD();
     u32 i;
     if (gMusicNextSeqID) {
         gDynamicMusicChannelMask = channelMask;
@@ -663,12 +437,8 @@ void music_dynamic_set(u16 channelMask) {
  * Official Name: amTuneMuteChl
  */
 void music_channel_off(u8 channel) {
-    MUSIC_PC_GUARD();
     if (channel < AUDIO_CHANNELS) {
         alSeqChOff(gMusicPlayer, channel);
-#ifdef DKR_AICAFLOW
-        dkr_afx_music_lane_mute(channel, TRUE);
-#endif
     }
 }
 
@@ -676,7 +446,6 @@ void music_channel_off(u8 channel) {
  * Return true if the given channel is currently active.
  */
 s32 music_channel_active(s32 channel) {
-    MUSIC_PC_GUARD(0);
     return (gMusicPlayer->chanMask & (1 << channel)) == 0;
 }
 
@@ -685,12 +454,8 @@ s32 music_channel_active(s32 channel) {
  * Official Name: amTuneUnmuteChl
  */
 void music_channel_on(u8 channel) {
-    MUSIC_PC_GUARD();
     if (channel < AUDIO_CHANNELS) {
         alSeqChOn(gMusicPlayer, channel);
-#ifdef DKR_AICAFLOW
-        dkr_afx_music_lane_mute(channel, FALSE);
-#endif
     }
 }
 
@@ -698,7 +463,6 @@ void music_channel_on(u8 channel) {
  * Set the panning level of the given channel for the music player.
  */
 void music_channel_pan_set(u8 channel, ALPan pan) {
-    MUSIC_PC_GUARD();
     if (channel < AUDIO_CHANNELS) {
         alCSPSetChlPan(gMusicPlayer, channel, pan);
     }
@@ -709,12 +473,8 @@ void music_channel_pan_set(u8 channel, ALPan pan) {
  * Official Name: amTuneSetChlVolume
  */
 void music_channel_volume_set(u8 channel, u8 volume) {
-    MUSIC_PC_GUARD();
     if (channel < AUDIO_CHANNELS) {
         alCSPSetChlVol(gMusicPlayer, channel, volume);
-#ifdef DKR_AICAFLOW
-        dkr_afx_music_lane_volume(channel, volume);
-#endif
     }
 }
 
@@ -722,7 +482,6 @@ void music_channel_volume_set(u8 channel, u8 volume) {
  * Return the volume of the given channel in the music player.
  */
 UNUSED u8 music_channel_volume(u8 channel) {
-    MUSIC_PC_GUARD(0);
     if (channel >= AUDIO_CHANNELS) {
         return 0;
     } else {
@@ -734,12 +493,8 @@ UNUSED u8 music_channel_volume(u8 channel) {
  * Set this channel to fade in over time.
  */
 void music_channel_fade_set(u8 channel, ALPan fade) {
-    MUSIC_PC_GUARD();
     if (channel < AUDIO_CHANNELS) {
         alCSPSetFadeIn(gMusicPlayer, channel, fade);
-#ifdef DKR_AICAFLOW
-        dkr_afx_music_lane_fade(channel, fade);
-#endif
     }
 }
 
@@ -747,7 +502,6 @@ void music_channel_fade_set(u8 channel, ALPan fade) {
  * Return the fade volume of the given channel.
  */
 u8 music_channel_fade(u8 channel) {
-    MUSIC_PC_GUARD(0);
     if (channel >= AUDIO_CHANNELS) {
         return 0;
     }
@@ -760,7 +514,6 @@ u8 music_channel_fade(u8 channel) {
  * Official Name: amTuneResetChls
  */
 void music_channel_reset_all(void) {
-    MUSIC_PC_GUARD();
     u32 channel;
     if (gBlockMusicChange == FALSE) {
         for (channel = 0; channel < AUDIO_CHANNELS; channel++) {
@@ -798,7 +551,6 @@ UNUSED u8 func_80001358(u8 chan1, u8 chan2, s32 arg2) {
  * Retrieves the FX mix levels of all audio channels.
  */
 UNUSED void music_get_fx_mix_all_channels(u8 *channelFXMix) {
-    MUSIC_PC_GUARD();
     s32 channelIdx;
     for (channelIdx = 0; channelIdx < gMusicPlayer->maxChannels; channelIdx++) {
         channelFXMix[channelIdx] = alSeqpGetChlFXMix((ALSeqPlayer *) gMusicPlayer, channelIdx);
@@ -812,7 +564,6 @@ UNUSED void music_get_fx_mix_all_channels(u8 *channelFXMix) {
  * Official Name: amTuneScaleTempo
  */
 void music_tempo_set_relative(f32 tempo) {
-    MUSIC_PC_GUARD();
     music_tempo_set((s32) ((f32) (u32) (music_tempo() & 0xFF) * tempo));
 }
 
@@ -821,14 +572,10 @@ void music_tempo_set_relative(f32 tempo) {
  * Official name: amTuneSetTempoBPM
  */
 void music_tempo_set(s32 tempo) {
-    MUSIC_PC_GUARD();
     if (tempo != 0) {
         f32 inv_tempo = (1.0f / tempo);
         alCSPSetTempo(gMusicPlayer, (s32) (inv_tempo * 60000000.0f));
         sMusicTempo = tempo;
-#ifdef DKR_AICAFLOW
-        dkr_afx_music_tempo((u16)tempo);
-#endif
     }
 }
 
@@ -837,7 +584,6 @@ void music_tempo_set(s32 tempo) {
  * Official name: amTuneGetTempoBPM
  */
 s16 music_tempo(void) {
-    MUSIC_PC_GUARD(0);
     return sMusicTempo;
 }
 
@@ -845,12 +591,7 @@ s16 music_tempo(void) {
  * Returns true if background music is currently playing.
  */
 u8 music_is_playing(void) {
-    MUSIC_PC_GUARD(0);
-#ifdef DKR_AICAFLOW
-    return dkr_afx_music_playing();
-#else
     return (alCSPGetState(gMusicPlayer) == AL_PLAYING);
-#endif
 }
 
 /**
@@ -858,7 +599,6 @@ u8 music_is_playing(void) {
  * Loops itself round, so the final result will return 0.0f - 1.0f.
  */
 f32 music_animation_fraction(void) {
-    MUSIC_PC_GUARD(0.0f);
     f32 tmp;
     u32 cnt = osGetCount();
     if ((u32) audioPrevCount < cnt) {
@@ -890,7 +630,6 @@ UNUSED void sound_get_properties(u8 poolID, u8 *tempo, u8 *volume, u8 *reverb) {
  * Official NAme: amAmbientPlay
  */
 void music_jingle_play_safe(u8 jingleID) {
-    MUSIC_PC_GUARD();
     if (music_jingle_playing() == SEQUENCE_NONE) {
         music_sequence_start(gCurrentJingleID = jingleID, gJinglePlayer);
         gJinglePlaying = TRUE;
@@ -911,7 +650,6 @@ void sound_jingle_tempo_set(s32 tempo) {
  * Official Name: amTuneStop
  */
 void music_stop(void) {
-    MUSIC_PC_GUARD();
     if (gBlockMusicChange == FALSE) {
         music_sequence_stop(gMusicPlayer);
     }
@@ -922,7 +660,6 @@ void music_stop(void) {
  * If the setting changed, then either stop or start music.
  */
 UNUSED void music_enabled_set(u8 setting) {
-    MUSIC_PC_GUARD();
     if (setting != gCanPlayMusic) {
         gCanPlayMusic = setting;
         if (setting) {
@@ -937,7 +674,6 @@ UNUSED void music_enabled_set(u8 setting) {
  * Return whether background music can be played.
  */
 u8 music_can_play(void) {
-    MUSIC_PC_GUARD(0);
     return gCanPlayMusic;
 }
 
@@ -946,7 +682,6 @@ u8 music_can_play(void) {
  * Official Name: amAmbientStop
  */
 void music_jingle_stop(void) {
-    MUSIC_PC_GUARD();
     if (music_jingle_playing() == SEQUENCE_NONE) {
         gCurrentJingleID = SEQUENCE_NONE;
         music_sequence_stop(gJinglePlayer);
@@ -958,16 +693,11 @@ void music_jingle_stop(void) {
  * Official Name: amTuneGetSeqNo
  */
 u8 music_current_sequence(void) {
-    MUSIC_PC_GUARD(0);
-#ifdef DKR_AICAFLOW
-    return dkr_afx_music_current();
-#else
     if (gCurrentSequenceID != SEQUENCE_NONE && gMusicPlayer->state == AL_PLAYING) {
         return gCurrentSequenceID;
     } else {
         return SEQUENCE_NONE;
     }
-#endif
 }
 
 /**
@@ -975,7 +705,6 @@ u8 music_current_sequence(void) {
  * Otherwise, return what's currently playing.
  */
 UNUSED u8 music_next(void) {
-    MUSIC_PC_GUARD(0);
     if (gMusicNextSeqID) {
         return gMusicNextSeqID;
     } else {
@@ -988,7 +717,6 @@ UNUSED u8 music_next(void) {
  * Official Name: amAmbientGetSeqNo
  */
 u8 music_jingle_current(void) {
-    MUSIC_PC_GUARD(0);
     return gCurrentJingleID;
 }
 
@@ -998,18 +726,11 @@ u8 music_jingle_current(void) {
  * Official Name: amTuneSetVolume
  */
 void music_volume_set(u8 volume) {
-    MUSIC_PC_GUARD();
     f32 normalized_vol;
 
     gMusicBaseVolume = volume;
     normalized_vol = gMusicSliderVolume * gMusicBaseVolume * sMusicFadeVolume;
     alCSPSetVol(gMusicPlayer, (s16) ((s32) (gGlobalMusicVolume * normalized_vol) >> 8));
-#ifdef DKR_AICAFLOW
-    normalized_vol = gGlobalMusicVolume * normalized_vol * DKR_AICAFLOW_MUSIC_MAX_GAIN /
-                     (256.0f * 256.0f * 127.0f);
-    dkr_afx_music_gain((u8)((normalized_vol < 0.0f) ? 0 :
-                            (normalized_vol > 255.0f) ? 255 : normalized_vol));
-#endif
 }
 
 /**
@@ -1018,19 +739,12 @@ void music_volume_set(u8 volume) {
  * Official Name: amTuneSetGlobalVolume
  */
 void music_volume_config_set(u32 slider_val) {
-    MUSIC_PC_GUARD();
     f32 normalized_vol;
 
     slider_val = (slider_val <= 256) ? slider_val : 256;
     gMusicSliderVolume = slider_val;
     normalized_vol = gMusicSliderVolume * gMusicBaseVolume * sMusicFadeVolume;
     alCSPSetVol(gMusicPlayer, (s16) ((s32) (gGlobalMusicVolume * normalized_vol) >> 8));
-#ifdef DKR_AICAFLOW
-    normalized_vol = gGlobalMusicVolume * normalized_vol * DKR_AICAFLOW_MUSIC_MAX_GAIN /
-                     (256.0f * 256.0f * 127.0f);
-    dkr_afx_music_gain((u8)((normalized_vol < 0.0f) ? 0 :
-                            (normalized_vol > 255.0f) ? 255 : normalized_vol));
-#endif
 }
 
 /**
@@ -1038,7 +752,6 @@ void music_volume_config_set(u32 slider_val) {
  * Official Name: amTuneGetVolume
  */
 u8 music_volume(void) {
-    MUSIC_PC_GUARD(0);
     return gMusicBaseVolume;
 }
 
@@ -1046,7 +759,6 @@ u8 music_volume(void) {
  * Return the music volume set by the player.
  */
 s32 music_volume_config(void) {
-    MUSIC_PC_GUARD(0);
     return gMusicSliderVolume;
 }
 
@@ -1056,7 +768,6 @@ s32 music_volume_config(void) {
  * Official Name: amAmbientSetVolume
  */
 void music_jingle_volume_set(u8 arg0) {
-    MUSIC_PC_GUARD();
     sfxRelativeVolume = arg0;
     alCSPSetVol(gJinglePlayer, (s16) (sndp_get_global_volume() * sfxRelativeVolume));
 }
@@ -1066,7 +777,6 @@ void music_jingle_volume_set(u8 arg0) {
  * Official Name: amAmbientSetPan
  */
 void music_jingle_pan_set(ALPan pan) {
-    MUSIC_PC_GUARD();
     u32 iChan;
     for (iChan = 0; iChan < AUDIO_CHANNELS; iChan++) {
         alCSPSetChlPan(gJinglePlayer, iChan, pan);
@@ -1079,7 +789,6 @@ void music_jingle_pan_set(ALPan pan) {
  * Official Name: amDittyPlay
  */
 void music_jingle_play(u8 seqID) {
-    MUSIC_PC_GUARD();
     gCanPlayJingle = TRUE;
     music_sequence_start(gCurrentJingleID = seqID, gJinglePlayer);
 }
@@ -1112,7 +821,6 @@ UNUSED void sound_channel_volume_all(u16 volume) {
  * Return the audible distance of the sound effect.
  */
 u16 sound_distance(u16 soundId) {
-    SFX_PC_GUARD(0);
     if (soundId > gSoundCount) {
         return 0;
     }
@@ -1128,14 +836,6 @@ void sound_play(u16 soundID, SoundHandle *handlePtr) {
     f32 pitch;
     s32 soundBite;
 
-#ifdef TARGET_PC
-    if (gSoundBank == NULL) {
-        if (handlePtr != NULL) {
-            *handlePtr = NULL;
-        }
-        return;
-    }
-#endif
     if (soundID > gSoundCount) {
         if (handlePtr != NULL) {
             *handlePtr = NULL;
@@ -1144,7 +844,7 @@ void sound_play(u16 soundID, SoundHandle *handlePtr) {
         return;
     }
     soundBite = gSoundTable[soundID].soundBite;
-    if (soundBite == 0) {
+    if (soundBite == NULL) {
         if (handlePtr != NULL) {
             *handlePtr = NULL;
         }
@@ -1188,16 +888,6 @@ void sound_play_spatial(u16 soundID, f32 x, f32 y, f32 z, SoundHandle *handlePtr
  * Official Name: amSndPlayDirect
  */
 void sound_play_direct(u16 soundID, SoundHandle *handlePtr) {
-#ifdef TARGET_PC
-    // Bail silently with no bank: on N64 these sounds are legal, so taking
-    // the "illegal sound" print below would be spurious PC-only log spam.
-    if (gSoundBank == NULL) {
-        if (handlePtr) {
-            *handlePtr = NULL;
-        }
-        return;
-    }
-#endif
     if (soundID <= 0 || sound_count() < soundID) {
         stubbed_printf("amSndPlayDirect: Somebody tried to play illegal sound %d\n", soundID);
         if (handlePtr) {
@@ -1217,9 +907,7 @@ void sound_play_direct(u16 soundID, SoundHandle *handlePtr) {
  * Official Name: amSndSetVol
  */
 void sound_volume_set_relative(u16 soundID, SoundHandle soundHandle, u8 volume) {
-    s32 newVolume;
-    SFX_PC_GUARD();
-    newVolume = ((s32) (gSoundTable[soundID].volume * (volume / 127.0f))) * 256;
+    s32 newVolume = ((s32) (gSoundTable[soundID].volume * (volume / 127.0f))) * 256;
     if (soundHandle) {
         sndp_set_param(soundHandle, AL_SNDP_VOL_EVT, newVolume);
     }
@@ -1250,7 +938,6 @@ UNUSED void sound_pitch_set(SoundHandle soundHandle, u32 pitch) {
  * Official name: amGetSfxCount
  */
 u16 sound_count(void) {
-    SFX_PC_GUARD(0);
     return gSoundBank->bankArray[0]->instArray[0]->soundCount;
 }
 
@@ -1258,7 +945,6 @@ u16 sound_count(void) {
  * Return mumber of playable sequences in the table.
  */
 u8 music_sequence_count(void) {
-    MUSIC_PC_GUARD(0);
     return gSequenceTable->seqCount;
 }
 
@@ -1282,7 +968,6 @@ void sound_table_properties(SoundData **table, s32 *size, s32 *count) {
  * Writes the music sound table address, size and element count into the arguments.
  */
 UNUSED void music_table_properties(MusicData **table, s32 *size, s32 *count) {
-    MUSIC_PC_GUARD();
     if (table != NULL) {
         *table = gSeqSoundTable;
     }
@@ -1299,7 +984,6 @@ UNUSED void music_table_properties(MusicData **table, s32 *size, s32 *count) {
  * Official Name: amSoundIsLooped
  */
 u8 sound_is_looped(u16 soundID) {
-    SFX_PC_GUARD(0);
     if (soundID <= 0 || gSoundBank->bankArray[0]->instArray[0]->soundCount < soundID) {
         return 0;
     }
@@ -1334,21 +1018,8 @@ ALCSPlayer *sound_seqplayer_init(s32 maxVoices, s32 maxEvents) {
  * Stop the current sequence then set the parameters for the next sequence.
  */
 void music_sequence_start(u8 seqID, ALCSPlayer *seqPlayer) {
-    MUSIC_PC_GUARD();
     music_sequence_stop(seqPlayer);
     if (seqID < gSequenceTable->seqCount) {
-#ifdef DKR_AICAFLOW
-        if (seqPlayer == gMusicPlayer) {
-            gCurrentSequenceID = seqID;
-            gMusicNextSeqID = SEQUENCE_NONE;
-            music_volume_set(gSeqSoundTable[seqID].volume);
-            if (gSeqSoundTable[seqID].tempo) music_tempo_set(gSeqSoundTable[seqID].tempo);
-            sound_reverb_set(gSeqSoundTable[seqID].reverb);
-            music_prepare(seqID);
-            dkr_afx_music_play(seqID);
-            return;
-        }
-#endif
         if (seqPlayer == gMusicPlayer) {
             gMusicNextSeqID = seqID;
         } else {
@@ -1363,10 +1034,6 @@ void music_sequence_start(u8 seqID, ALCSPlayer *seqPlayer) {
  * If the sequence player is currently inactive, start a new sequence with the current properties.
  */
 void music_sequence_init(ALCSPlayer *seqp, void *sequence, u8 *seqID, ALCSeq *seq) {
-    MUSIC_PC_GUARD();
-#ifdef DKR_AICAFLOW
-    if (seqp == gMusicPlayer) return;
-#endif
     s32 i;
 
     if ((alCSPGetState(seqp) == AL_STOPPED) && (*seqID != 0)) {
@@ -1374,11 +1041,7 @@ void music_sequence_init(ALCSPlayer *seqp, void *sequence, u8 *seqID, ALCSeq *se
                    gSequenceTable->seqArray[*seqID].offset - asset_rom_offset(ASSET_AUDIO, 0),
                    (s32) gSeqLengthTable[*seqID]);
 #ifdef TARGET_PC
-        // ALCMidiHdr is 17 big-endian u32s (16 track offsets + division) sitting at
-        // the head of the sequence, and alCSeqNew reads them immediately. The MIDI
-        // event stream after the header is a byte stream (with variable-length
-        // quantities) — it must NOT be swapped.
-        pc_swap32_buf(sequence, sizeof(ALCMidiHdr));
+        pc_swap32_buf(sequence, sizeof(ALCMidiHdr)); // 17 big-endian u32s; the event stream after them stays bytes
 #endif
         alCSeqNew(seq, sequence);
         alCSPSetSeq(seqp, seq);
@@ -1416,13 +1079,8 @@ void music_sequence_init(ALCSPlayer *seqp, void *sequence, u8 *seqID, ALCSeq *se
  * Stops the current playing sequence for the given sequence player.
  */
 void music_sequence_stop(ALCSPlayer *seqPlayer) {
-    MUSIC_PC_GUARD();
     if (gMusicPlayer == seqPlayer && gMusicPlaying) {
-#ifdef DKR_AICAFLOW
-        dkr_afx_music_stop();
-#else
         alCSPStop(seqPlayer);
-#endif
         gMusicPlaying = FALSE;
         gCurrentSequenceID = SEQUENCE_NONE;
         gMusicNextSeqID = SEQUENCE_NONE;
@@ -1439,11 +1097,7 @@ void music_sequence_stop(ALCSPlayer *seqPlayer) {
  * Official Name: amTuneSetReverbOnOff
  */
 void sound_reverb_set(u8 setting) {
-#ifdef DKR_AICAFLOW
-    dkr_afx_scene_reverb(setting);
-#else
     alFxReverbSet(setting);
-#endif
 }
 
 /**

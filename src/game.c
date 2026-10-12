@@ -536,10 +536,6 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     aitable_init((s8 *) &gCurrentLevelHeader->AILevelTable);
     func_8000CBC0();
     gMapId = levelId;
-    sound_scene_prepare((u16)levelId);
-    // Music samples are resident. Prepare this song's compact control flow before
-    // init_track fills the level heap; level_music_start only activates it.
-    music_prepare(gCurrentLevelHeader->music);
     for (var_s0 = 0; var_s0 < 7; var_s0++) {
         if ((s32) gCurrentLevelHeader->unk74[var_s0] != -1) {
             gCurrentLevelHeader->unk74[var_s0] =
@@ -769,7 +765,7 @@ char *level_name(s32 levelId) {
  * Call multiple functions to stop and free audio, then free track, weather and wave data.
  */
 void level_free(void) {
-    sound_scene_stop();
+    sndp_stop_all_looped();
     aitable_free();
     bgdraw_primcolour(0, 0, 0);
     mempool_free(gCurrentLevelHeader);

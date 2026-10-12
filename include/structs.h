@@ -543,11 +543,19 @@ typedef struct {
     /* 0x04 */ u32 unk04;
     /* 0x08 */ u32 unk08;
     /* 0x0C */ f32 unk0C;
+#ifdef TARGET_PC
     /* 0x10 */ ptrint_t unk10; // sound handles (pointers on the host)
     /* 0x14 */ ptrint_t unk14;
     /* 0x18 */ f32 unk18;
     /* 0x1C */ ptrint_t unk1C;
     /* 0x20 */ ptrint_t unk20;
+#else
+    /* 0x10 */ u32 unk10;
+    /* 0x14 */ u32 unk14;
+    /* 0x18 */ f32 unk18;
+    /* 0x1C */ u32 unk1C;
+    /* 0x20 */ u32 unk20;
+#endif
     /* 0x24 */ u32 unk24;
     /* 0x28 */ u32 unk28;
     /* 0x2C */ u32 unk2C;
@@ -745,7 +753,11 @@ typedef struct LevelModel {
     /* 0x1A */ s16 numberOfSegments;
     /* 0x1C */ s16 unk1C; // Unused?
     /* 0x1E */ s16 numberOfAnimatedTextures;
+#ifdef TARGET_PC
     /* 0x20 */ ptrint_t minimapSpriteIndex; // sprite id from the asset, replaced by the Sprite * at runtime
+#else
+    /* 0x20 */ s32 minimapSpriteIndex;
+#endif
     /* 0x24 */ u16 minimapRotation; // angle for icons on minimap?
     /* 0x26 */ u16 unk26;           // Unused? Common values: 0x0009, 0xFFFF, 0x0303
     /* 0x28 */ f32 minimapXScale;
