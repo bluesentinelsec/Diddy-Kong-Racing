@@ -25,7 +25,6 @@ bin/*
 ucode/*
 
 # Asset enums, since it is auto-generated.
-include/asset_enums.h
 
 #compiled object files
 *.slo

@@ -210,6 +210,7 @@ void gfx_window_init(int width, int height, int scale) {
     sFbHeight = height;
     sScale = scale;
 
+    SDL_SetMainReady(); // we provide a plain main(); no SDL_main redirection on Windows
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "GFX: SDL_Init failed: %s\n", SDL_GetError());
         return;
