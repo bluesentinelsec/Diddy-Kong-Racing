@@ -23,6 +23,9 @@
 
 #ifdef AUD_PROFILE
 #include <os.h>
+#ifdef TARGET_PC
+extern void pc_trace_event(const char *fmt, ...);
+#endif
 extern u32 cnt_index, drvr_num, drvr_cnt, drvr_max, drvr_min, lastCnt[];
 extern u32 client_num, client_cnt, client_max, client_min;
 #endif
@@ -206,7 +209,12 @@ Acmd *alAudioFrame(Acmd *cmdList, s32 *cmdLen, s16 *outBuf, s32 outLen)
 	 drvr->paramSamples = __nextSampleTime(drvr, &client))
     {
 	drvr->paramSamples &= ~0xf;
+#ifdef TARGET_PC
+	{ s32 us = (*client->handler)(client); s32 smp = _timeToSamplesNoRound(drvr, us); client->samplesLeft += smp;
+	  pc_trace_event("client us=%d smp=%d left=%d cur=%d", us, smp, client->samplesLeft, drvr->curSamples); }
+#else
 	client->samplesLeft += _timeToSamplesNoRound(drvr, (*client->handler)(client));
+#endif
     }
 
     /* for safety's sake, always store paramSamples aligned to 16 sample boundary.

@@ -349,6 +349,9 @@ static ALMicroTime __CSPVoiceHandler(void *node)
      * hour away
      */
     seqp->curTime += seqp->nextDelta;		/* sct 11/7/95 */
+#ifdef TARGET_PC
+    pc_trace_event("csp_delta us=%d type=%d cur=%d", seqp->nextDelta, seqp->nextEvent.type, seqp->curTime);
+#endif
     return seqp->nextDelta;
 }
 
@@ -376,6 +379,9 @@ void __CSPPostNextSeqEvent(ALCSPlayer *seqp)
 	return;
         
     evt.type = AL_SEQ_REF_EVT;
+#ifdef TARGET_PC
+    pc_trace_event("seq_post ticks=%d uspt=%d", deltaTicks, seqp->uspt);
+#endif
     alEvtqPostEvent(&seqp->evtq, &evt, deltaTicks * seqp->uspt);                
 }
 
@@ -946,6 +952,9 @@ static void __setUsptFromTempo (ALCSPlayer *seqp, f32 tempo)
 {
     if (seqp->target)
 	seqp->uspt = (s32)((f32)tempo * seqp->target->qnpt);
+#ifdef TARGET_PC
+	{ union { f32 f; u32 u; } q; q.f = seqp->target->qnpt; pc_trace_event("csp_tempo tempo=%d qnpt=%08x uspt=%d", tempo, q.u, seqp->uspt); }
+#endif
     else
 	seqp->uspt = 488;		/* This is the initial value set by alSeqpNew. */
 }
