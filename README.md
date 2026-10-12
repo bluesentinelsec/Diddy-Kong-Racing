@@ -93,8 +93,9 @@ branch is the decompilation's own line. Two checks keep that honest:
   overworld, so it covers racer physics and the engine and skid sounds.
   `make golden-update` regenerates both; `tests/golden.sh` takes any binary and
   an optional input script. `DKR_TRACE_DETAIL=1` adds a line per renderer and
-  audio event to locate a divergence within a frame, and `DKR_DUMP_FRAME` can
-  capture the frame itself.
+  audio event to locate a divergence within a frame, `DKR_TRACE_DRAW=<frame>:<n>`
+  prints the vertices of one draw call, and `DKR_DUMP_FRAME` can capture the
+  frame itself.
 
 ## Running
 

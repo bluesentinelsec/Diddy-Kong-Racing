@@ -591,6 +591,33 @@ void gfx_draw_tris(const GfxTriVert *verts, int count) {
     pc_trace_gfx_u32((uint32_t) count);
     pc_trace_gfx(verts, (size_t) count * sizeof(*verts));
     pc_trace_mark("draw");
+    // DKR_TRACE_DRAW=<frame>:<n>: print the vertices of draw call n (0-based) of
+    // that frame, to compare a diverging draw between hosts.
+    {
+        static long sWantFrame = -2, sWantDraw;
+        static unsigned int sDrawFrame = ~0u;
+        static long sDrawIndex;
+
+        if (sWantFrame == -2) {
+            const char *want = getenv("DKR_TRACE_DRAW");
+            sWantFrame = -1;
+            if (want != NULL && sscanf(want, "%ld:%ld", &sWantFrame, &sWantDraw) != 2) {
+                sWantFrame = -1;
+            }
+        }
+        if (sDrawFrame != sFrameCount) {
+            sDrawFrame = sFrameCount;
+            sDrawIndex = 0;
+        }
+        if (sWantFrame >= 0 && (long) sFrameCount + 1 == sWantFrame && sDrawIndex == sWantDraw) {
+            for (i = 0; i < count; i++) {
+                const GfxTriVert *v = &verts[i];
+                fprintf(stderr, "DRAW %ld:%ld v%d %a %a %a %a uv %a %a fog %a rgba %u %u %u %u\n", sWantFrame,
+                        sWantDraw, i, v->x, v->y, v->z, v->w, v->u, v->v, v->fog, v->r, v->g, v->b, v->a);
+            }
+        }
+        sDrawIndex++;
+    }
     while (done < count) {
         int n = count - done;
         if (n > GFX_MAX_BATCH_VERTS) {

@@ -184,6 +184,15 @@ MemoryPoolSlot *mempool_slot_find(MemoryPools poolIndex, s32 size, u32 colourTag
     if (currIndex != MEMSLOT_NONE) {
         mempool_slot_assign(poolIndex, (s32) currIndex, size, 1, 0, colourTag);
         interrupts_enable(intFlags);
+#ifdef TARGET_PC
+        // Retail reads a few fields it never initialises (e.g. ModelInstance's
+        // animUpdateTimer for a cache-hit model), so what it sees is whatever the
+        // previous occupant of the block left. The N64's heap history cannot be
+        // reproduced on a host with different struct sizes, and two hosts would
+        // not even agree with each other; hand out zeroed blocks instead, which
+        // is also what a fresh N64 (BSS-cleared) pool contains.
+        bzero((slots + currIndex)->data, size);
+#endif
         return (MemoryPoolSlot *) (slots + currIndex)->data;
     }
     interrupts_enable(intFlags);
