@@ -137,6 +137,9 @@ static void op_clearbuff(u32 w0, uintptr_t w1) {
     u32 addr = w0 & 0xFFFFFF;
     u32 count = w1 & 0xFFFF;
 
+    if (addr >= DMEM_SIZE) {
+        return;
+    }
     if (addr + count > DMEM_SIZE) {
         count = DMEM_SIZE - addr;
     }
@@ -157,6 +160,9 @@ static void op_dmemmove(u32 w0, uintptr_t w1) {
 static void op_loadbuff(uintptr_t w1) {
     u32 count = sCount;
 
+    if (sIn >= DMEM_SIZE) {
+        return;
+    }
     if (sIn + count > DMEM_SIZE) {
         count = DMEM_SIZE - sIn;
     }
@@ -168,6 +174,9 @@ static void op_loadbuff(uintptr_t w1) {
 static void op_savebuff(uintptr_t w1) {
     u32 count = sCount;
 
+    if (sOut >= DMEM_SIZE) {
+        return;
+    }
     if (sOut + count > DMEM_SIZE) {
         count = DMEM_SIZE - sOut;
     }
@@ -203,6 +212,8 @@ static void op_mix(u32 w0, uintptr_t w1) {
     s32 n = sCount >> 1; // bytes -> samples
     s32 k;
 
+    n = dmem_clamp(n, src);
+    n = dmem_clamp(n, dst);
     for (k = 0; k < n; k++) {
         dst[k] = clamp16(dst[k] + (((s32) src[k] * (s32) gain) >> 15));
     }
@@ -220,6 +231,9 @@ static void op_interleave(uintptr_t w1) {
     s32 n = sCount >> 1; // samples per channel
     s32 k;
 
+    n = dmem_clamp(n, l);
+    n = dmem_clamp(n, r);
+    n = dmem_clamp(2 * n, dst) / 2;
     for (k = 0; k < n; k++) {
         dst[2 * k + 0] = l[k];
         dst[2 * k + 1] = r[k];
@@ -343,7 +357,7 @@ static void op_resample(u32 w0, uintptr_t w1) {
 static void op_adpcm(u32 w0, uintptr_t w1) {
     u8 flags = (w0 >> 16) & 0xFF;
     s16 *state = rdram(w1);
-    const u8 *src = &sDmem[sIn];
+    const u8 *src = &sDmem[sIn & (DMEM_SIZE - 1)];
     s16 *dst = dmem16(sOut);
     s32 outSamples = sCount >> 1;
     s16 hist[16];
@@ -569,6 +583,8 @@ static void op_polef(u32 w0, uintptr_t w1) {
         y1 = state[0];
     }
 
+    n = dmem_clamp(n, src);
+    n = dmem_clamp(n, dst);
     for (k = 0; k < n; k++) {
         y1 = clamp16(((s32) src[k] * (s32) gain + fc * y1) >> 14);
         dst[k] = (s16) y1;
