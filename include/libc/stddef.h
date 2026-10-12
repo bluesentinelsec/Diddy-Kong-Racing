@@ -2,6 +2,7 @@
 #define STDDEF_H
 
 #include "PR/ultratypes.h"
+#ifdef TARGET_PC
 
 #ifdef TARGET_PC
 /* Host builds get the real stddef.h (size_t, offsetof). The host header
@@ -10,6 +11,7 @@
 #include_next <stddef.h>
 #undef NULL
 #define NULL 0
+#endif
 #endif
 
 #ifndef offsetof

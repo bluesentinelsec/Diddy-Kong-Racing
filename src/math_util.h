@@ -38,9 +38,11 @@ f32 sins_f(s16 angle);
 s32 coss_s16(s16 angle);
 s32 sins_s16(s16 angle);
 s32 sins_2(s16 angle);
+#ifdef TARGET_PC
 s32 coss_2(s16 angle);
 void set_breakpoint(u32 addr);
 void func_80070058(MtxF *mtx, RPYAngles *rotation);
+#endif
 void set_rng_seed(s32 num);
 void save_rng_seed(void);
 void load_rng_seed(void);
@@ -53,11 +55,13 @@ void mtxf_mul(MtxF *mat1, MtxF *mat2, MtxF *output);
 void mtxf_to_mtx(MtxF *mf, Mtx *m);
 void vec3s_reflect(Vec3s *vec, Vec3s *n);
 void mtxs_transform_dir(MtxS *mi, Vec3s *vec);
+#ifdef TARGET_PC
 #ifdef TARGET_DC
 void xmtrx_init_transform(ObjectTransform* trans);
 void xmtrx_apply_transform(ObjectTransform* trans);
 void xmtrx_init_inverse_transform(ObjectTransform *trans);
 void xmtrx_apply_inverse_transform(ObjectTransform* trans);
+#endif
 #endif
 void mtxf_from_transform(MtxF *mtx, ObjectTransform *trans);
 void mtxf_scale_y(MtxF *input, f32 scale);

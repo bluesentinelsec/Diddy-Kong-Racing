@@ -2,7 +2,9 @@
 #define _SET_RSP_SEGMENT_H_
 
 #include "PR/gbi.h"
+#ifdef TARGET_PC
 #include "types.h"
+#endif
 #include <PR/ultratypes.h>
 
 /**
@@ -20,6 +22,10 @@ enum RSPSegments {
     SEGMENT_COUNT,
 };
 
+#ifdef TARGET_PC
 void rsp_segment(Gfx **dList, s32 segment, ptrint_t base);
+#else
+void rsp_segment(Gfx **dList, s32 segment, s32 base);
+#endif
 
 #endif

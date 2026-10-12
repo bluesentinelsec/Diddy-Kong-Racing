@@ -104,12 +104,16 @@ f32 gCameraRelPosStackZ[CAMERA_MODEL_STACK_SIZE];
 u16 perspNorm;
 MtxF *gModelMatrixF[CAMERA_MODEL_STACK_SIZE + 1];
 Mtx *gModelMatrix[CAMERA_MODEL_STACK_SIZE + 1];
+#ifdef TARGET_PC
 // Backing store for gModelMatrixF[] (each entry is (MtxF*)&D_80120DA0[i<<4]).
 // Under the float matrix ABI it must be >=8-aligned or those MtxF pointers are
 // 4-aligned and the SH4 fmov.d matrix copy faults on them. N64/fixed builds keep
 // the bare array (matching).
 #ifdef GBI_FLOAT_MTX
 f32 D_80120DA0[CAMERA_MODEL_STACK_SIZE * 16] __attribute__((aligned(8)));
+#else
+f32 D_80120DA0[CAMERA_MODEL_STACK_SIZE * 16];
+#endif
 #else
 f32 D_80120DA0[CAMERA_MODEL_STACK_SIZE * 16];
 #endif
@@ -153,9 +157,13 @@ void cam_init(void) {
     gAdjustViewportHeight = FALSE;
     gAntiPiracyViewport = FALSE;
 
+#ifdef TARGET_PC
 #ifndef TARGET_PC
     // PI status poll before the raw cart read below — no PI hardware on PC
     // (linux/reimpl.c's D_B0000578 already answers the read with the magic).
+    WAIT_ON_IOBUSY(stat);
+#endif
+#else
     WAIT_ON_IOBUSY(stat);
 #endif
 
@@ -1124,9 +1132,13 @@ s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, S
         tiltAngle = (tiltAngle * tanX) >> 8;
         frameID = (tanY >> 7) & 0xFF;
         if (frameID > 127) {
+#ifdef TARGET_PC
             // Fires for every back-facing billboard, every frame — pure noise
             // now that stubbed_printf is real. The mirror below handles it.
             // stubbed_printf("CamDo2DSprite FrameNo Overflow !!!\n");
+#else
+            stubbed_printf("CamDo2DSprite FrameNo Overflow !!!\n");
+#endif
             frameID = 255 - frameID;
             tiltAngle += 0x8000;
             result = FALSE;

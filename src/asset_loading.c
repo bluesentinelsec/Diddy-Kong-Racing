@@ -31,11 +31,13 @@ u32 *gAssetsLookupTable;
 extern u8 __ASSETS_LUT_START[], __ASSETS_LUT_END[];
 
 #ifdef TARGET_PC
+#ifdef TARGET_PC
 // linux/reimpl.c: assets served from assets/assets{,.lut}.bin on disk.
 extern u32 pc_asset_lut_size(void);
 extern void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes);
 #endif
 
+#endif
 /**
  * Set up the peripheral interface message queues and scheduling.
  * This will send messages when DMA reads are finished.
@@ -60,7 +62,11 @@ void pi_init(void) {
 #endif
     gAssetsLookupTable = (u32 *) mempool_alloc_safe(assetTableSize, COLOUR_TAG_GREY);
     mempool_locked_set((u8 *) gAssetsLookupTable);
+#ifdef TARGET_PC
     dmacopy_internal((u32) (uintptr_t) __ASSETS_LUT_START, (uintptr_t) gAssetsLookupTable, (s32) assetTableSize);
+#else
+    dmacopy_internal((u32) __ASSETS_LUT_START, (u32) gAssetsLookupTable, (s32) assetTableSize);
+#endif
 }
 
 /**
@@ -90,7 +96,11 @@ u32 *asset_table_load(u32 assetIndex) {
         return NULL;
     }
 
+#ifdef TARGET_PC
     dmacopy_internal((u32) (uintptr_t) (start + __ASSETS_LUT_END), (uintptr_t) out, size);
+#else
+    dmacopy_internal((u32) (start + __ASSETS_LUT_END), (u32) out, size);
+#endif
 
 #if VERSION >= VERSION_79
     osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
@@ -149,7 +159,11 @@ UNUSED u8 *asset_table_load_zipped(u32 assetIndex, s32 extraMemory) {
  * Loads an asset section to a specific memory address.
  * Returns the size of asset section.
  */
+#ifdef TARGET_PC
 UNUSED s32 asset_table_load_addr(u32 assetIndex, uintptr_t address) {
+#else
+UNUSED s32 asset_table_load_addr(u32 assetIndex, u32 address) {
+#endif
     u32 start;
     s32 size;
     u32 *index;
@@ -167,7 +181,11 @@ UNUSED s32 asset_table_load_addr(u32 assetIndex, uintptr_t address) {
     start = *index;
     size = *(index + 1) - start;
 
+#ifdef TARGET_PC
     dmacopy_internal((u32) (uintptr_t) (start + __ASSETS_LUT_END), address, size);
+#else
+    dmacopy_internal((u32) (start + __ASSETS_LUT_END), address, size);
+#endif
 
 #if VERSION >= VERSION_79
     osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
@@ -181,7 +199,11 @@ UNUSED s32 asset_table_load_addr(u32 assetIndex, uintptr_t address) {
  * Returns the size argument.
  * Official name: piRomLoadSection
  */
+#ifdef TARGET_PC
 s32 asset_load(u32 assetIndex, uintptr_t address, s32 assetOffset, s32 size) {
+#else
+s32 asset_load(u32 assetIndex, u32 address, s32 assetOffset, s32 size) {
+#endif
     u32 *index;
     s32 start;
 
@@ -198,7 +220,11 @@ s32 asset_load(u32 assetIndex, uintptr_t address, s32 assetOffset, s32 size) {
     index = assetIndex + gAssetsLookupTable;
     start = *index + assetOffset;
 
+#ifdef TARGET_PC
     dmacopy_internal((u32) (uintptr_t) (start + __ASSETS_LUT_END), address, size);
+#else
+    dmacopy_internal((u32) (start + __ASSETS_LUT_END), address, size);
+#endif
 
 #if VERSION >= VERSION_79
     osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
@@ -206,6 +232,7 @@ s32 asset_load(u32 assetIndex, uintptr_t address, s32 assetOffset, s32 size) {
 
     return size;
 }
+#ifdef TARGET_PC
 
 #ifdef TARGET_PC
 /**
@@ -231,6 +258,7 @@ void **asset_table_load_pointers(u32 assetIndex) {
     mempool_free(raw);
     return out;
 }
+#endif
 #endif
 
 /**
@@ -293,7 +321,11 @@ s32 asset_table_size(u32 assetIndex) {
  * Copies data from the game cartridge to a ram address.
  * Official name: romCopy
  */
+#ifdef TARGET_PC
 void dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes) {
+#else
+void dmacopy(u32 romOffset, u32 ramAddress, s32 numBytes) {
+#endif
 #if VERSION >= VERSION_79
     OSMesg msg = NULL;
     osRecvMesg(&gDmaMutex, &msg, OS_MESG_BLOCK);
@@ -302,7 +334,11 @@ void dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes) {
 }
 
 // Looks like v2 ROMs made an alternate version of this function, and this is the original.
+#ifdef TARGET_PC
 void dmacopy_internal(u32 romOffset, uintptr_t ramAddress, s32 numBytes) {
+#else
+void dmacopy_internal(u32 romOffset, u32 ramAddress, s32 numBytes) {
+#endif
 #endif
 #ifdef TARGET_PC
     pc_dmacopy(romOffset, ramAddress, numBytes);

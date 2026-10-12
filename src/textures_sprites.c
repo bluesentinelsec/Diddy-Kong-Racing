@@ -390,12 +390,17 @@ s16 gUseDirectionalLighting;
 void tex_init_textures(void) {
     s32 i;
 
+#ifdef TARGET_PC
     gTextureCache = mempool_alloc_safe(2 * sizeof(*gTextureCache) * MAX_NUM_TEXTURES, COLOUR_TAG_MAGENTA);
+#else
+    gTextureCache = mempool_alloc_safe(8 * MAX_NUM_TEXTURES, COLOUR_TAG_MAGENTA);
+#endif
     gCiPalettes = mempool_alloc_safe(MAX_TEX_PALETTE_SIZE, COLOUR_TAG_MAGENTA);
     gNumberOfLoadedTextures = 0;
     gCiPalettesSize = 0;
     gTextureAssetTable[TEX_TABLE_2D] = (s32 *) asset_table_load(ASSET_TEXTURES_2D_TABLE);
     gTextureAssetTable[TEX_TABLE_3D] = (s32 *) asset_table_load(ASSET_TEXTURES_3D_TABLE);
+#ifdef TARGET_PC
 
 #ifdef TARGET_PC
     // Offset tables are big-endian u32s (linux/reimpl.c helper).
@@ -405,6 +410,7 @@ void tex_init_textures(void) {
         pc_swap32_buf(gTextureAssetTable[TEX_TABLE_3D], asset_table_size(ASSET_TEXTURES_3D_TABLE));
     }
 #endif
+#endif
 
     for (i = 0; gTextureAssetTable[TEX_TABLE_2D][i] != -1; i++) {}
     gTextureTableSize[TEX_TABLE_2D] = --i;
@@ -412,7 +418,11 @@ void tex_init_textures(void) {
     for (i = 0; gTextureAssetTable[TEX_TABLE_3D][i] != -1; i++) {}
     gTextureTableSize[TEX_TABLE_3D] = --i;
 
+#ifdef TARGET_PC
     gSpriteCache = mempool_alloc_safe(2 * sizeof(*gSpriteCache) * MAX_NUM_SPRITES, COLOUR_TAG_MAGENTA);
+#else
+    gSpriteCache = mempool_alloc_safe(8 * MAX_NUM_SPRITES, COLOUR_TAG_MAGENTA);
+#endif
     gCurrentSpriteAsset = mempool_alloc_safe(MAX_SPRITE_ASSET_SIZE, COLOUR_TAG_MAGENTA);
     gSpriteCacheCount = 0;
     gSpriteOffsetTable = (s32 *) asset_table_load(ASSET_SPRITES_TABLE);
@@ -470,6 +480,7 @@ UNUSED s32 tex_get_table_3D(void) {
 UNUSED s32 sprite_table_size(void) {
     return gSpriteTableSize;
 }
+#ifdef TARGET_PC
 
 #ifdef TARGET_PC
 // Texture assets are big-endian: a 0x20-byte header per frame followed by its
@@ -541,6 +552,7 @@ static void pc_swap_sprite_asset(SpriteAsset *spriteAsset) {
     pc_swap16_buf(spriteAsset, 8); // baseTextureId, numberOfFrames, anchor x/y
 }
 #endif
+#endif
 
 /**
  * Loads a texture into memory and initializes display lists for texture loading.
@@ -594,7 +606,7 @@ TextureHeader *load_texture(s32 id) {
 #ifdef TARGET_PC
     pc_load_temp_tex_header(assetSection, assetOffset);
 #else
-    asset_load(assetSection, (uintptr_t) gTempTextureHeader, assetOffset, sizeof(TempTexHeader));
+    asset_load(assetSection, (u32) gTempTextureHeader, assetOffset, sizeof(TempTexHeader));
 #endif
     numberOfTextures = gTempTextureHeader->header.numOfTextures >> 8;
 
@@ -641,18 +653,14 @@ TextureHeader *load_texture(s32 id) {
     if (!gTempTextureHeader->header.isCompressed) {
         tex = (TextureHeader *) mempool_alloc(numberOfTextures * TEXTURE_GFX_SIZE + assetSize, gTexColourTag);
         if (tex == NULL) {
-            stubbed_printf("TEXLOAD FAIL(u) id=%d n=%d size=%d tag=%d\n", id, numberOfTextures,
-                           numberOfTextures * TEXTURE_GFX_SIZE + assetSize, gTexColourTag);
             return NULL;
         }
-        asset_load(assetSection, (uintptr_t) tex, assetOffset, assetSize);
+        asset_load(assetSection, (u32) tex, assetOffset, assetSize);
     } else {
         // Allocate enough memory for the decompressed texture
         uncompressedSize = byteswap32((u8 *) &gTempTextureHeader->uncompressedSize) + sizeof(TextureHeader);
         tex = (TextureHeader *) mempool_alloc(numberOfTextures * TEXTURE_GFX_SIZE + uncompressedSize, gTexColourTag);
         if (tex == NULL) {
-            stubbed_printf("TEXLOAD FAIL(c) id=%d n=%d size=%d tag=%d\n", id, numberOfTextures,
-                           numberOfTextures * TEXTURE_GFX_SIZE + uncompressedSize, gTexColourTag);
             return NULL;
         }
 
@@ -664,7 +672,6 @@ TextureHeader *load_texture(s32 id) {
         gzip_inflate((u8 *) (compressedStart + sizeof(TextureHeader)), (u8 *) tex);
         assetSize = uncompressedSize - sizeof(TextureHeader);
     }
-
 #endif
 
     // Find an available slot in the texture cache and store the newly loaded texture
@@ -679,7 +686,11 @@ TextureHeader *load_texture(s32 id) {
         gNumberOfLoadedTextures++;
     }
     gTextureCache[ASSETCACHE_ID(slotIndex)] = id;
+#ifdef TARGET_PC
     gTextureCache[ASSETCACHE_PTR(slotIndex)] = (uintptr_t) tex;
+#else
+    gTextureCache[ASSETCACHE_PTR(slotIndex)] = (s32) tex;
+#endif
 
     // Load palettes if needed. If the texture has multiple frames, the palette is shared, so we only load it once.
     paletteOffset = -1;
@@ -755,7 +766,11 @@ void tex_free(TextureHeader *tex) {
     if (tex != NULL) {
         if ((--tex->numberOfInstances) <= 0) {
             for (i = 0; i < gNumberOfLoadedTextures; i++) {
+#ifdef TARGET_PC
                 if ((uintptr_t) tex == gTextureCache[ASSETCACHE_PTR(i)]) {
+#else
+                if ((s32) tex == gTextureCache[ASSETCACHE_PTR(i)]) {
+#endif
                     mempool_free(tex);
 
                     gTextureCache[ASSETCACHE_ID(i)] = -1;
@@ -1150,7 +1165,11 @@ Sprite *tex_load_sprite(s32 spriteID, s32 arg1) {
 
     numTextures = spriteAsset->frameTexOffsets[spriteAsset->numberOfFrames];
     allocSize = numTextures * 4 * sizeof(Vertex);
+#ifdef TARGET_PC
     allocSize += numTextures * 4 * sizeof(Gfx);
+#else
+    allocSize += (numTextures * 4) << 3;
+#endif
     allocSize += spriteAsset->numberOfFrames * sizeof(Gfx);
 #ifdef TARGET_PC
     // Retail bug: sprite_init_frame ends every frame with gDPPipeSync +
@@ -1165,9 +1184,15 @@ Sprite *tex_load_sprite(s32 spriteID, s32 arg1) {
     allocSize += spriteAsset->numberOfFrames * sizeof(Gfx);
 #endif
     allocSize += numTextures << 4 << 1;
+#ifdef TARGET_PC
     allocSize += numTextures * sizeof(TextureHeader *);
     allocSize += (s32) align16((u8 *) sizeof(Sprite));
     allocSize += (s32) align16((u8 *) (spriteAsset->numberOfFrames * sizeof(Gfx *)));
+#else
+    allocSize += numTextures * 4;
+    allocSize += (s32) align16((u8 *) 0x10);
+    allocSize += (s32) align16((u8 *) (spriteAsset->numberOfFrames * 4));
+#endif
     sprite = (Sprite *) mempool_alloc(allocSize, COLOUR_TAG_MAGENTA);
     if (sprite == NULL) {
         if (cacheFull) {
@@ -1177,6 +1202,7 @@ Sprite *tex_load_sprite(s32 spriteID, s32 arg1) {
         return NULL;
     }
 
+#ifdef TARGET_PC
     gSpriteTriangles = (Triangle *) ((uintptr_t) sprite + (uintptr_t) align16((u8 *) sizeof(Sprite)) +
                                      (uintptr_t) align16((u8 *) (spriteAsset->numberOfFrames * sizeof(Gfx *))));
     gSpriteDLists = (Gfx *) ((uintptr_t) gSpriteTriangles + numTextures * 0x20); // 0x20 = sizeof(Triangle) * 2
@@ -1188,6 +1214,14 @@ Sprite *tex_load_sprite(s32 spriteID, s32 arg1) {
     gSpriteVertices = (Vertex *) ((uintptr_t) gSpriteVertices + spriteAsset->numberOfFrames * sizeof(Gfx));
 #endif
     sprite->textures = (TextureHeader **) ((uintptr_t) gSpriteVertices + numTextures * sizeof(Vertex) * 4);
+#else
+    gSpriteTriangles = (Triangle *) ((s32) sprite + (s32) align16((u8 *) sizeof(Sprite)) +
+                                     (s32) align16((u8 *) (spriteAsset->numberOfFrames * 4)));
+    gSpriteDLists = (Gfx *) ((s32) gSpriteTriangles + numTextures * 0x20); // 0x20 = sizeof(Triangle) * 2
+    gSpriteVertices = (Vertex *) ((s32) gSpriteDLists + numTextures * 0x20 +
+                                  spriteAsset->numberOfFrames * sizeof(Gfx)); // 0x20 = sizeof(Gfx) * 4
+    sprite->textures = (TextureHeader **) ((s32) gSpriteVertices + numTextures * sizeof(Vertex) * 4);
+#endif
 
     allocFailed = FALSE;
     for (i = 0; i < numTextures; i++) {
@@ -1230,7 +1264,11 @@ Sprite *tex_load_sprite(s32 spriteID, s32 arg1) {
     }
 
     gSpriteCache[ASSETCACHE_ID(cacheNum)] = spriteID;
+#ifdef TARGET_PC
     gSpriteCache[ASSETCACHE_PTR(cacheNum)] = (uintptr_t) sprite;
+#else
+    gSpriteCache[ASSETCACHE_PTR(cacheNum)] = (s32) sprite;
+#endif
     sprite->numberOfInstances = 1;
     return sprite;
 }
@@ -1279,7 +1317,7 @@ s32 tex_asset_size(s32 id) {
 #ifdef TARGET_PC
         pc_load_temp_tex_header(textureTable, textureRomOffset);
 #else
-        asset_load(textureTable, (uintptr_t) new_var2, textureRomOffset, sizeof(TempTexHeader));
+        asset_load(textureTable, (u32) new_var2, textureRomOffset, sizeof(TempTexHeader));
 #endif
         new_var4 = gTempTextureHeader;
         size = byteswap32((u8 *) (&new_var4->uncompressedSize));
@@ -1411,8 +1449,13 @@ void func_8007CA68(s32 arg0, s32 arg1, s32 *arg2, s32 *arg3, s32 *arg4) {
 
     // Must be on the same line. (maybe a macro?)
     // clang-format off
+#ifdef TARGET_PC
     spriteAsset = gCurrentSpriteAsset; \
     asset_load(ASSET_SPRITES, (uintptr_t) spriteAsset, temp_a2, gSpriteOffsetTable[arg0 + 1] - temp_a2);
+#else
+    spriteAsset = gCurrentSpriteAsset; \
+    asset_load(ASSET_SPRITES, (u32)spriteAsset, temp_a2, gSpriteOffsetTable[arg0 + 1] - temp_a2);
+#endif
     // clang-format on
 #ifdef TARGET_PC
     pc_swap_sprite_asset(spriteAsset);

@@ -382,7 +382,11 @@ s32 gfxtask_wait(void) {
     }
     osRecvMesg(&gGfxTaskMesgQueue, (OSMesg) &mesg, OS_MESG_BLOCK);
     gGfxTaskIsRunning = FALSE;
+#ifdef TARGET_PC
     return (s32) (uintptr_t) mesg[1];
+#else
+    return (s32) mesg[1];
+#endif
 }
 
 /**

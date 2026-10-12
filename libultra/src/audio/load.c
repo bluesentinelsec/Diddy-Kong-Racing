@@ -210,7 +210,11 @@ Acmd *alRaw16Pull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset, Acmd 
 {
     Acmd        *ptr = p;
     s32         nbytes;
+#ifdef TARGET_PC
     ALDMAAddr         dramLoc;
+#else
+    s32         dramLoc;
+#endif
     s32         dramAlign;
     s32         dmemAlign;
     s32         overFlow;
@@ -439,11 +443,18 @@ Acmd *_decodeChunk(Acmd *ptr, ALLoadFilter *f, s32 tsam, s32 nbytes, s16 outp, s
 
 {
 
+#ifdef TARGET_PC
     ALDMAAddr
         dramLoc;
 
+#endif
     s32
+#ifdef TARGET_PC
         dramAlign;
+#else
+        dramAlign,
+        dramLoc;
+#endif
     
     if (nbytes > 0){
         dramLoc = (f->dma)(f->memin, nbytes, f->dmaState);

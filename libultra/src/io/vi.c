@@ -33,7 +33,15 @@ void __osViInit(void) {
     __osViNext->state = VI_STATE_BLACK;
     __osViNext->control = __osViNext->modep->comRegs.ctrl;
 
+#ifdef TARGET_PC
 #ifndef TARGET_PC
+    while (IO_READ(VI_CURRENT_REG) > 10) { // wait for vsync?
+    }
+
+    IO_WRITE(VI_CONTROL_REG, 0); // pixel size blank (no data, no sync)
+    __osViSwapContext();
+#endif
+#else
     while (IO_READ(VI_CURRENT_REG) > 10) { // wait for vsync?
     }
 

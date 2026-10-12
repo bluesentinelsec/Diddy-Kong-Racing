@@ -255,7 +255,11 @@ s32     alResampleParam(void *f, s32 paramID, void *param);
 
 typedef struct ALSave_s {
     ALFilter            filter;
+#ifdef TARGET_PC
     ALDMAAddr		dramout; /* host pointer on PC */
+#else
+    s32	       		dramout;
+#endif
     s32                 first;
 } ALSave;
 

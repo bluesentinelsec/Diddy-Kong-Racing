@@ -12,11 +12,13 @@
 #include "printf.h"
 #include "racer.h"
 #include "types.h"
+#ifdef TARGET_PC
 
 // Internal natural-log helper, defined at the bottom of this file. Declared here
 // (not in audio_vehicle.h) so the shared header stays free of a `log` prototype
 // that would clash with <math.h>'s `double log(double)` on the Dreamcast build.
 f32 log(f32 x);
+#endif
 
 /************ .data ************/
 
@@ -81,7 +83,7 @@ VehicleSoundData *racer_sound_init(s32 characterId, s32 vehicleId) {
     table = (s32 *) asset_table_load(ASSET_AUDIO_TABLE);
     assetOffset = table[ASSET_AUDIO_7] + (vehicleId * 10 + characterId) * sizeof(VehicleSoundAsset);
     asset = (VehicleSoundAsset *) mempool_alloc_safe(sizeof(VehicleSoundAsset), COLOUR_TAG_CYAN);
-    asset_load(ASSET_AUDIO, (uintptr_t) asset, assetOffset, sizeof(VehicleSoundAsset));
+    asset_load(ASSET_AUDIO, (u32) asset, assetOffset, sizeof(VehicleSoundAsset));
 
     soundData = (VehicleSoundData *) mempool_alloc_safe(sizeof(VehicleSoundData), COLOUR_TAG_CYAN);
 

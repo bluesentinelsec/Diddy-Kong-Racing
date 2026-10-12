@@ -341,7 +341,11 @@ void hud_init(UNUSED s32 viewportCount) {
     }
     gAssetHudElements = mempool_alloc_safe(gAssetHudElementIdsCount * (sizeof(void *) + 1), COLOUR_TAG_BLUE);
     // Evil pointer shenanigans to store the timer in that last byte in the struct above.
+#ifdef TARGET_PC
     gAssetHudElementStaleCounter = (u8 *) ((gAssetHudElementIdsCount + (void **) gAssetHudElements)); // past the pointer table (pointer-sized)
+#else
+    gAssetHudElementStaleCounter = (u8 *) ((gAssetHudElementIdsCount + (s32 *) gAssetHudElements));
+#endif
     for (i = 0; i < gAssetHudElementIdsCount; i++) {
         gAssetHudElementStaleCounter[i] = 0;
         gAssetHudElements->entry[i] = NULL;

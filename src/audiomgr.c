@@ -1,5 +1,7 @@
+#ifdef TARGET_PC
 #include <stddef.h>
 
+#endif
 #include "audiomgr.h"
 #include "asset_loading.h"
 #include "common.h"
@@ -35,11 +37,13 @@ typedef struct AudioInfo_s {
     OSScTask task;      /* scheduler structure */
     AudioMsg msg;       /* completion message */
 } AudioInfo;
+#ifdef TARGET_PC
 
 #ifdef TARGET_PC
 // amCreateAudioMgr allocates 120 bytes per AudioInfo on N64 (the trailing `msg`
 // field is never used, so retail gets away with the overrun). Host layouts
 // differ, so the PC build allocates the whole struct instead; see below.
+#endif
 #endif
 
 typedef struct {
@@ -100,6 +104,7 @@ static s16 *gLastAudioPtr = 0;
 static s32 gLastAudioFrameSamples = 0;
 
 #ifdef TARGET_PC
+#ifdef TARGET_PC
 // linux/reimpl.c — "ROM" reads served from the loaded asset image, and the shared
 // byteswap helper (asset sub-tables come back as raw big-endian u32s).
 extern void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes);
@@ -119,9 +124,14 @@ static void pc_audio_submit(Acmd *cmdList, s32 cmdLen, s16 *out, s32 frameSample
 }
 #endif
 
+#endif
 /**** private routines ****/
 static void __amMain(UNUSED void *arg);
+#ifdef TARGET_PC
 static ALDMAAddr __amDMA(s32 addr, s32 len, void *state);
+#else
+static s32 __amDMA(s32 addr, s32 len, void *state);
+#endif
 static ALDMAproc __amDmaNew(AMDMAState **state);
 static u32 __amHandleFrameMsg(AudioInfo *info, AudioInfo *lastInfo);
 static void __amHandleDoneMsg(AudioInfo *info);
@@ -185,6 +195,7 @@ void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
         pc_swap32_buf(asset8, assetSize);
 #endif
         c->params = asset8;
+#ifdef TARGET_PC
 #ifndef TARGET_PC
         // OUT-OF-BOUNDS WRITE, and always has been: `params` is ALSynConfig's last
         // field, so c[1].maxVVoices is the word just past the struct — i.e. the
@@ -198,6 +209,9 @@ void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
         //
         // If a future config ever sets fxType[1] = AL_FX_CUSTOM, this needs a real
         // params[2] field, not a wider stack frame.
+        c[1].maxVVoices = 0;
+#endif
+#else
         c[1].maxVVoices = 0;
 #endif
         alInit(&__am.g, c);
@@ -264,10 +278,14 @@ void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
     osCreateMesgQueue(&__am.audioReplyMsgQ, __am.audioReplyMsgBuf, MAX_MESGS);
     osCreateMesgQueue(&__am.audioFrameMsgQ, __am.audioFrameMsgBuf, MAX_MESGS);
     osCreateMesgQueue(&audDMAMessageQ, audDMAMessageBuf, NUM_DMA_MESSAGES);
+#ifdef TARGET_PC
 #ifndef TARGET_PC
     // No thread system on PC (__osDispatchThread is a stub): a thread created here
     // would never be scheduled. am_audio_frame_pc() below is the replacement — the
     // main loop calls it once per frame, doing what __amMain's retrace case does.
+    osCreateThread(&__am.thread, 4, __amMain, 0, (void *) (audioStack + STACKSIZE(STACK_AUD)), pri);
+#endif
+#else
     osCreateThread(&__am.thread, 4, __amMain, 0, (void *) (audioStack + STACKSIZE(STACK_AUD)), pri);
 #endif
 }
@@ -276,7 +294,11 @@ void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
  * Official Name: amGo
  */
 void audioStartThread(void) {
+#ifdef TARGET_PC
 #ifndef TARGET_PC
+    osStartThread(&__am.thread);
+#endif
+#else
     osStartThread(&__am.thread);
 #endif
 }
@@ -285,10 +307,15 @@ void audioStartThread(void) {
  * Official Name: amGoStop
  */
 void audioStopThread(void) {
+#ifdef TARGET_PC
 #ifndef TARGET_PC
     osStopThread(&__am.thread);
 #endif
+#else
+    osStopThread(&__am.thread);
+#endif
 }
+#ifdef TARGET_PC
 
 #ifdef TARGET_PC
 /**
@@ -316,6 +343,7 @@ void am_audio_frame_pc(void) {
     __amHandleDoneMsg(info);
     lastInfo = info;
 }
+#endif
 #endif
 
 /******************************************************************************
@@ -427,7 +455,6 @@ static u32 __amHandleFrameMsg(AudioInfo *info, AudioInfo *lastInfo) {
     curAcmdList ^= 1;
     return 0;
 #else
-
     t = &info->task;
 
     t->next = 0;                    /* paranoia */
@@ -492,7 +519,11 @@ static void __amHandleDoneMsg(UNUSED AudioInfo *info) {
  * __clearAudioDMA routine.
  *
  *****************************************************************************/
+#ifdef TARGET_PC
 static ALDMAAddr __amDMA(s32 addr, s32 len, UNUSED void *state) {
+#else
+static s32 __amDMA(s32 addr, s32 len, UNUSED void *state) {
+#endif
     void *foundBuffer;
     s32 delta, addrEnd, buffEnd;
     AMDMABuffer *dmaPtr, *lastDmaPtr;
@@ -513,7 +544,11 @@ static ALDMAAddr __amDMA(s32 addr, s32 len, UNUSED void *state) {
         } else if (addrEnd <= buffEnd) {      /* yes, found a buffer with samples */
             dmaPtr->lastFrame = audFrameCt;   /* mark it used */
             foundBuffer = dmaPtr->ptr + addr - dmaPtr->startAddr;
+#ifdef TARGET_PC
             return (ALDMAAddr) osVirtualToPhysical(foundBuffer);
+#else
+            return (int) osVirtualToPhysical(foundBuffer);
+#endif
         }
         lastDmaPtr = dmaPtr;
         dmaPtr = (AMDMABuffer *) dmaPtr->node.next;
@@ -534,7 +569,11 @@ static ALDMAAddr __amDMA(s32 addr, s32 len, UNUSED void *state) {
      */
     if (!dmaPtr) {
         stubbed_printf("OH DEAR - No audio DMA buffers left\n");
+#ifdef TARGET_PC
         return (ALDMAAddr) osVirtualToPhysical(lastDmaPtr->ptr) + delta;
+#else
+        return (int) osVirtualToPhysical(lastDmaPtr->ptr) + delta;
+#endif
     }
 
     dmaState.firstFree = (AMDMABuffer *) dmaPtr->node.next;
@@ -575,7 +614,11 @@ static ALDMAAddr __amDMA(s32 addr, s32 len, UNUSED void *state) {
                  &audDMAMessageQ);
 #endif
 
+#ifdef TARGET_PC
     return (ALDMAAddr) osVirtualToPhysical(foundBuffer) + delta;
+#else
+    return (int) osVirtualToPhysical(foundBuffer) + delta;
+#endif
 }
 
 /******************************************************************************

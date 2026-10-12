@@ -265,6 +265,7 @@ void free_particle_assets(void) {
 }
 
 #ifdef TARGET_PC
+#ifdef TARGET_PC
 // Particle assets are big-endian. ParticleDescriptor carries no pointers and is
 // swapped in place; ParticleBehaviour ends in a pointer slot (colourLoop), so
 // behaviours are unpacked into a host-layout array (sPcBehaviours) that the
@@ -348,6 +349,7 @@ void pc_swap_colour_loop_shared(void *cl) {
 }
 #endif
 
+#endif
 /**
  * Load all assets related to particles.
  */
@@ -559,7 +561,11 @@ void init_particle_buffers(s32 maxTriangleParticles, s32 maxRectangleParticles, 
             gParticleDummyCount++;
         }
 
+#ifdef TARGET_PC
         gParticleDummys = mempool_alloc_safe(gParticleDummyCount * sizeof(Sprite *), COLOUR_TAG_BLUE);
+#else
+        gParticleDummys = mempool_alloc_safe(gParticleDummyCount * 4, COLOUR_TAG_BLUE);
+#endif
         for (i = 0; i < gParticleDummyCount; i++) {
             gParticleDummys[i] = (Sprite *) tex_load_sprite(assetBuffer[i] & 0x3FFF, 1);
         }

@@ -119,11 +119,15 @@ void    alUnlink(ALLink *element);
 void    alLink(ALLink *element, ALLink *after);
 
 #ifdef TARGET_PC
+#ifdef TARGET_PC
 typedef uintptr_t ALDMAAddr; /* a DMA'd buffer is a host pointer */
 #else
 typedef s32 ALDMAAddr;
 #endif
 typedef ALDMAAddr (*ALDMAproc)(s32 addr, s32 len, void *state);
+#else
+typedef s32 (*ALDMAproc)(s32 addr, s32 len, void *state);
+#endif
 typedef ALDMAproc (*ALDMANew)(void *state);
 
 void    alCopy(void *src, void *dest, s32 len);

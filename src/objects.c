@@ -1,5 +1,8 @@
 #include "objects.h"
 #include "memory.h"
+#ifndef TARGET_PC
+
+#endif
 #include "asset_enums.h"
 #include "asset_loading.h"
 #include "audio_spatial.h"
@@ -40,15 +43,18 @@
 #include "waves.h"
 #include "weather.h"
 #ifdef TARGET_PC
+#ifdef TARGET_PC
 #include "pc_swap.h"
 #endif
 
 #ifdef TARGET_DC
 #   include <sh4zam/shz_sh4zam.h>
 #endif
+#endif
 
 #define OBJECT_MAP_SIZE 0x3000
 #define MAX_CHECKPOINTS 60
+#ifdef TARGET_PC
 #ifdef TARGET_PC
 #define OBJECT_POOL_SIZE (0x15800 * 3) // host objects carry 8-byte pointers
 #else
@@ -57,6 +63,10 @@
 #ifdef TARGET_PC
 #define OBJECT_BLUEPRINT_SIZE (0x800 * 3)
 #else
+#define OBJECT_BLUEPRINT_SIZE 0x800
+#endif
+#else
+#define OBJECT_POOL_SIZE 0x15800
 #define OBJECT_BLUEPRINT_SIZE 0x800
 #endif
 #define OBJECT_SLOT_COUNT 512
@@ -73,7 +83,9 @@
 #define SET_SHIFT_AND_MASK(varShift, varMask, x) \
     varShift = x;                                \
     varMask = 0xFFFF >> x;
+#ifdef TARGET_PC
 
+#endif
 
 /************ .data ************/
 
@@ -334,10 +346,14 @@ s32 gInitAINodes;
 s32 D_8011AF14;
 f32 gElevationHeights[5];
 s32 D_8011AF2C;
+#ifdef TARGET_PC
 // Effectively unused. Retail declared 4 bytes (a pointer) but
 // set_world_shading fills it as a whole ShadeProperties, overrunning into the
 // neighbouring globals — harmless only under retail's layout. Real storage now.
 ShadeProperties gWorldShading;
+#else
+ShadeProperties *gWorldShading; // Effectively unused.
+#endif
 s32 D_8011AF34;
 s32 D_8011AF38[10];
 Object_MidiFade *D_8011AF60;
@@ -776,7 +792,11 @@ void allocate_object_pools(void) {
         gAssetsObjectHeadersTableLength++;
     }
     gAssetsObjectHeadersTableLength--;
+#ifdef TARGET_PC
     gLoadedObjectHeaders = mempool_alloc_safe(gAssetsObjectHeadersTableLength * sizeof(ObjectHeader *), COLOUR_TAG_WHITE);
+#else
+    gLoadedObjectHeaders = mempool_alloc_safe(gAssetsObjectHeadersTableLength * 4, COLOUR_TAG_WHITE);
+#endif
     gObjectHeaderReferences = mempool_alloc_safe(gAssetsObjectHeadersTableLength, COLOUR_TAG_WHITE);
 
     for (i = 0; i < gAssetsObjectHeadersTableLength; i++) {
@@ -862,7 +882,11 @@ void allocate_object_pools(void) {
     decrypt_magic_codes(
         &gAssetsMiscSection[gAssetsMiscTable[ASSET_MISC_MAGIC_CODES]],
         (gAssetsMiscTable[ASSET_MISC_TITLE_SCREEN_DEMO_IDS] - gAssetsMiscTable[ASSET_MISC_MAGIC_CODES]) *
+#ifdef TARGET_PC
             sizeof(s32)); // index delta -> bytes (the N64 source spelled this sizeof(s32 *))
+#else
+            sizeof(s32 *));
+#endif
     gObjPtrList = mempool_alloc_safe(sizeof(uintptr_t) * OBJECT_SLOT_COUNT, COLOUR_TAG_BLUE);
     gFirstTimeFinish = 0;
     gTimeTrialEnabled = 0;
@@ -905,6 +929,7 @@ void decrypt_magic_codes(s32 *data, s32 length) {
             *ptr++ = (((temp[j] & 0xAA) >> 1) | ((temp[j] & 0x55) << 1));
         }
     }
+#ifdef TARGET_PC
 
 #ifdef TARGET_PC
     // The decryption above is endian-safe (it works on bytes in memory order),
@@ -924,6 +949,7 @@ void decrypt_magic_codes(s32 *data, s32 length) {
             words[k] = (u16) ((words[k] << 8) | (words[k] >> 8));
         }
     }
+#endif
 #endif
 }
 
@@ -1007,6 +1033,7 @@ void free_all_objects(void) {
 }
 
 #ifdef TARGET_PC
+#ifdef TARGET_PC
 // ObjectHeader is loaded from a 0x78-byte big-endian image followed by the
 // arrays it references (model ids, vehicle part ids/indices, particle entries,
 // light sources). The image is loaded OBJECT_HEADER_PC_DELTA bytes into the
@@ -1058,6 +1085,7 @@ static void pc_unpack_object_header(ObjectHeader *header) {
 }
 #endif
 
+#endif
 /**
  * Set the object's header.
  * Search if the intended header is already loaded and use that.
@@ -1082,7 +1110,7 @@ ObjectHeader *load_object_header(s32 index) {
 #else
     address = mempool_alloc_pool((MemoryPoolSlot *) gObjectMemoryPool, size);
     if (address != NULL) {
-        asset_load(ASSET_OBJECTS, (uintptr_t) address, assetOffset, size);
+        asset_load(ASSET_OBJECTS, (u32) address, assetOffset, size);
 #endif
         address->unk24 = (ObjectHeader24 *) ((uintptr_t) address + (uintptr_t) address->unk24);
         address->objectParticles =
@@ -1125,6 +1153,7 @@ s32 normalise_time(s32 timer) {
     }
 }
 
+#ifdef TARGET_PC
 #ifdef TARGET_PC
 // Object-map spawn entries are big-endian; the layout past the common header
 // is per-behavior, mirroring run_object_init_func's dispatch (plus
@@ -1217,6 +1246,7 @@ static void pc_swap_spawn_entry_fields(u8 *entryBytes) {
 }
 #endif
 
+#endif
 /**
  * Load the object map into RAM, then start spawning objects into the world.
  * Also decides whether this race type should be for silver coins or not.
@@ -1251,7 +1281,11 @@ void track_spawn_objects(s32 mapID, s32 index) {
     D_8011AD3E = 0;
     mem = mempool_alloc_safe(OBJECT_MAP_SIZE, COLOUR_TAG_BLUE);
     gObjectMap[index] = mem;
+#ifdef TARGET_PC
     gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + 4);
+#else
+    gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + sizeof(uintptr_t));
+#endif
     gObjectMapSize[index] = NULL;
     gObjectMapID[index] = mapID;
     objMapTable = (u32 *) asset_table_load(ASSET_LEVEL_OBJECT_MAPS_TABLE);
@@ -1299,14 +1333,22 @@ void track_spawn_objects(s32 mapID, s32 index) {
         }
 #endif
         mempool_free(objMapTable);
+#ifdef TARGET_PC
         gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + 4);
+#else
+        gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + sizeof(uintptr_t));
+#endif
         gObjectMapSize[index] = *mem;
         gObjectMapIndex = index;
         for (var_s0 = 0; var_s0 < gObjectMapSize[index]; var_s0 += temp_t3) {
             spawn_object((LevelObjectEntryCommon *) gObjectMapSpawnList[index], OBJECT_SPAWN_UNK01);
             gObjectMapSpawnList[index] = &gObjectMapSpawnList[index][temp_t3 = gObjectMapSpawnList[index][1] & 0x3F];
         }
+#ifdef TARGET_PC
         gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + 4);
+#else
+        gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + sizeof(uintptr_t));
+#endif
         gCollisionObjectCount = 0;
         gNumFinishedRacers = 1;
         if (gPathUpdateOff == FALSE) {
@@ -1815,8 +1857,12 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
             // Taj will teleport straight to the player to initiate a challenge.
             if (j) {
                 set_taj_voice_line(SOUND_VOICE_TAJ_CHALLENGE_RACE);
+#ifdef TARGET_PC
                 // MIPS masks shift counts mod 32; without &31 this is UB on the PC targets.
                 settings->tajFlags |= 1 << ((j + 31) & 31);
+#else
+                settings->tajFlags |= 1 << (j + 31);
+#endif
                 set_taj_status(TAJ_TELEPORT);
                 set_next_taj_challenge_menu(j);
                 safe_mark_write_save_file(get_save_file_index());
@@ -2050,8 +2096,13 @@ UNUSED void func_8000E4E8(s32 index) {
 }
 
 UNUSED s32 func_8000E558(Object *arg0) {
+#ifdef TARGET_PC
     ptrint_t temp_v0;
     ptrint_t new_var, new_var2;
+#else
+    s32 temp_v0;
+    s32 new_var, new_var2;
+#endif
     if (arg0->level_entry == NULL) {
         return TRUE;
     }
@@ -2071,8 +2122,13 @@ UNUSED s32 func_8000E558(Object *arg0) {
 void func_8000E5EC(LevelObjectEntryCommon *arg0) {
     u8 *src;
     u8 *dst;
+#ifdef TARGET_PC
     ptrint_t end;
     ptrint_t sp30[2];
+#else
+    s32 end;
+    s32 sp30[2];
+#endif
     s32 size;
     s32 i;
     s32 pad;
@@ -2126,7 +2182,11 @@ void func_8000E79C(u8 *arg0, u8 *arg1) {
     u8 *var_a2;
     s32 i;
     s32 j;
+#ifdef TARGET_PC
     uintptr_t k;
+#else
+    s32 k;
+#endif
 
     arg0Value = arg0[1] & 0x3F;
     arg0Value2 = arg0Value;
@@ -2139,7 +2199,11 @@ void func_8000E79C(u8 *arg0, u8 *arg1) {
         var_a2 = arg0 + arg1Value;
         var_t0 = arg0 + arg0Value2;
         k = (uintptr_t) var_a3;
+#ifdef TARGET_PC
         while (((uintptr_t) var_t0) < k) {
+#else
+        while (((u32) var_t0) < (u32) k) {
+#endif
             *var_a2 = *var_t0;
             var_a2++;
             var_t0++;
@@ -2149,7 +2213,11 @@ void func_8000E79C(u8 *arg0, u8 *arg1) {
         var_a2 -= arg0Value2;
         var_t0 = var_a3;
         k = (uintptr_t) (arg0 + arg1Value);
+#ifdef TARGET_PC
         while (k < ((uintptr_t) var_a2)) {
+#else
+        while ((u32) k < ((u32) var_a2)) {
+#endif
             var_a2--;
             var_t0--;
             *var_a2 = *var_t0;
@@ -2424,7 +2492,11 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
         address += sizeOfobj;
         if (sizeOfobj == 0) {
             if (D_8011AE50 != NULL) {
+#ifdef TARGET_PC
                 tex_free(D_8011AE50);
+#else
+                tex_free((TextureHeader *) (s32) D_8011AE50);
+#endif
             }
             objFreeAssets(curObj, assetCount, objType);
             try_free_object_header(headerType);
@@ -2436,12 +2508,14 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
         address += init_object_interaction_data(curObj, (ObjectInteraction *) address);
     }
     if (behaviourFlags & OBJECT_BEHAVIOUR_COLLIDABLE) {
+#ifdef TARGET_PC
 #ifdef GBI_FLOAT_MTX
         // ObjectCollision embeds MtxF matrices[4] at offset 0; under the float
         // matrix ABI those are copied with SH4 paired fmov.d (8-byte), so the
         // struct must start 8-aligned. The raw arena address isn't guaranteed
         // aligned. N64/fixed builds keep the original layout (matching).
         address = align8(address);
+#endif
 #endif
         address += obj_init_collision(curObj, (ObjectCollision *) address);
     }
@@ -2455,18 +2529,34 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
 
     if (curObj->header->numLightSources > 0) {
         curObj->lightData = (ObjectLight **) address;
+#ifdef TARGET_PC
         address += curObj->header->numLightSources * sizeof(ObjectLight *);
+#else
+        address += curObj->header->numLightSources * 4;
+#endif
     }
 
+#ifdef TARGET_PC
     sizeOfobj = (s32) ((uintptr_t) address - (uintptr_t) curObj);
+#else
+    sizeOfobj = (s32) address - (s32) curObj;
+#endif
     prevObj = curObj;
     curObj = mempool_alloc_pool((MemoryPoolSlot *) gObjectMemoryPool, sizeOfobj);
     if (curObj == NULL) {
         if (D_8011AE50 != NULL) {
+#ifdef TARGET_PC
             tex_free(D_8011AE50);
+#else
+            tex_free((TextureHeader *) (s32) D_8011AE50);
+#endif
         }
         if (D_8011AE54 != NULL) {
+#ifdef TARGET_PC
             tex_free(D_8011AE54);
+#else
+            tex_free((TextureHeader *) (s32) D_8011AE54);
+#endif
         }
         objFreeAssets(prevObj, assetCount, objType);
         try_free_object_header(headerType);
@@ -2538,10 +2628,18 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
     }
     if (curObj->header->attachPointCount > 0 && curObj->header->attachPointCount < 10 && obj_init_attachpoint(curObj)) {
         if (D_8011AE50 != NULL) {
+#ifdef TARGET_PC
             tex_free(D_8011AE50);
+#else
+            tex_free((TextureHeader *) (s32) D_8011AE50);
+#endif
         }
         if (D_8011AE54 != NULL) {
+#ifdef TARGET_PC
             tex_free(D_8011AE54);
+#else
+            tex_free((TextureHeader *) (s32) D_8011AE54);
+#endif
         }
         objFreeAssets(curObj, assetCount, objType);
         try_free_object_header(headerType);
@@ -2569,19 +2667,31 @@ void objFreeAssets(Object *obj, s32 count, s32 objType) {
     if (objType == OBJECT_MODEL_TYPE_3D_MODEL) { // 3D model
         for (i = 0; i < count; i++) {
             if (obj->modelInstances[i] != NULL) {
+#ifdef TARGET_PC
                 free_3d_model((ModelInstance *) obj->modelInstances[i]);
+#else
+                free_3d_model((ModelInstance *) (s32) obj->modelInstances[i]);
+#endif
             }
         }
     } else if (objType == OBJECT_MODEL_TYPE_MISC) {
         for (i = 0; i < count; i++) {
             if (obj->textures[i] != NULL) {
+#ifdef TARGET_PC
                 tex_free((TextureHeader *) obj->textures[i]);
+#else
+                tex_free((TextureHeader *) (s32) obj->textures[i]);
+#endif
             }
         }
     } else { // Sprite
         for (i = 0; i < count; i++) {
             if (obj->sprites[i] != NULL) {
+#ifdef TARGET_PC
                 sprite_free((Sprite *) obj->sprites[i]);
+#else
+                sprite_free((Sprite *) (s32) obj->sprites[i]);
+#endif
             }
         }
     }
@@ -2767,7 +2877,9 @@ Object *obj_spawn_attachment(s32 objID) {
     }
     objHeader = load_object_header(objID);
     if (objHeader == NULL) {
+#ifdef TARGET_PC
         stubbed_printf("obj_spawn_attachment(%d): header load failed\n", objID);
+#endif
         return NULL;
     }
 #ifdef TARGET_PC
@@ -2778,7 +2890,9 @@ Object *obj_spawn_attachment(s32 objID) {
 #endif
     object = (Object *) mempool_alloc(objSize, COLOUR_TAG_BLUE);
     if (object == NULL) {
+#ifdef TARGET_PC
         stubbed_printf("obj_spawn_attachment(%d): object alloc of %d bytes failed\n", objID, objSize);
+#endif
         try_free_object_header(objID);
         return NULL;
     }
@@ -2817,8 +2931,10 @@ Object *obj_spawn_attachment(s32 objID) {
         }
     }
     if (failedToLoadModel) {
+#ifdef TARGET_PC
         stubbed_printf("obj_spawn_attachment(%d): model/sprite load failed (type %d, %d ids)\n", objID, modelType,
                        numModelIds);
+#endif
         objFreeAssets(object, numModelIds, modelType);
         try_free_object_header(objID);
         mempool_free(object);
@@ -3068,19 +3184,39 @@ void obj_destroy(Object *obj, s32 arg1) {
     if (obj->behaviorId == i) {
         racer = obj->racer;
         if (racer->unk18 != NULL) {
+#ifdef TARGET_PC
             sndp_stop((SoundHandle) (uintptr_t) racer->unk18); // type cast required to match
+#else
+            sndp_stop((SoundHandle) (s32) racer->unk18); // type cast required to match
+#endif
         }
         if (racer->unk10 != NULL) {
+#ifdef TARGET_PC
             sndp_stop((SoundHandle) (uintptr_t) racer->unk10); // type cast required to match
+#else
+            sndp_stop((SoundHandle) (s32) racer->unk10); // type cast required to match
+#endif
         }
         if (racer->unk14 != NULL) {
+#ifdef TARGET_PC
             sndp_stop((SoundHandle) (uintptr_t) racer->unk14); // type cast required to match
+#else
+            sndp_stop((SoundHandle) (s32) racer->unk14); // type cast required to match
+#endif
         }
         if (racer->unk1C != NULL) {
+#ifdef TARGET_PC
             sndp_stop((SoundHandle) (uintptr_t) racer->unk1C); // type cast required to match
+#else
+            sndp_stop((SoundHandle) (s32) racer->unk1C); // type cast required to match
+#endif
         }
         if (racer->unk20 != NULL) {
+#ifdef TARGET_PC
             sndp_stop((SoundHandle) (uintptr_t) racer->unk20); // type cast required to match
+#else
+            sndp_stop((SoundHandle) (s32) racer->unk20); // type cast required to match
+#endif
         }
         if (racer->soundMask != NULL) {
             audspat_point_stop(racer->soundMask);
@@ -5493,6 +5629,7 @@ void obj_collision_transform(Object *obj) {
     trans.x_position = -obj->trans.x_position;
     trans.y_position = -obj->trans.y_position;
     trans.z_position = -obj->trans.z_position;
+#ifdef TARGET_PC
 #ifdef TARGET_DC
     inverseScale = shz_invf_fsrra(obj->trans.scale);
     shz_xmtrx_init_scale(inverseScale, inverseScale, inverseScale);
@@ -5514,9 +5651,27 @@ void obj_collision_transform(Object *obj) {
     mtxf_mul(curMtx, &inverseMtx, curMtx);
 #endif
     trans.scale = obj->trans.scale;
+#else
+    mtxf_from_inverse_transform(curMtx, &trans);
+    inverseScale = 1.0 / obj->trans.scale;
+    i = 0;
+    // Zero out the matrix.
+    while (i < 16) {
+        ((f32 *) inverseMtx)[i] = 0.0f;
+        i++;
+    }
+    inverseMtx[0][0] = inverseScale;
+    inverseMtx[1][1] = inverseScale;
+    inverseMtx[2][2] = inverseScale;
+    inverseMtx[3][3] = 1.0f;
+    mtxf_mul(curMtx, &inverseMtx, curMtx);
+#endif
     trans.rotation.y_rotation = obj->trans.rotation.y_rotation;
     trans.rotation.x_rotation = obj->trans.rotation.x_rotation;
     trans.rotation.z_rotation = obj->trans.rotation.z_rotation;
+#ifndef TARGET_PC
+    trans.scale = 1.0 / inverseScale;
+#endif
     trans.x_position = obj->trans.x_position;
     trans.y_position = obj->trans.y_position;
     trans.z_position = obj->trans.z_position;
@@ -5610,28 +5765,38 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
         spDC = (MtxF *) &collision->_matrices[((sp158->collisionData->mtxFlip + 1) & 1) << 1];
 #endif
 
+#ifdef TARGET_PC
 #ifdef TARGET_DC
         shz_xmtrx_load_4x4((const shz_mat4x4_t*)*spDC);
 #endif
 
+#endif
         sp14C = func_8001790C(obj, sp158);
         if (sp14C != NULL) {
             for (i = 0, j = 0; j < arg1; j++, i += 3) {
                 sp13C[j] = sp14C->unk0C[i + 0];
                 sp12C[j] = sp14C->unk0C[i + 1];
                 sp11C[j] = sp14C->unk0C[i + 2];
+#ifdef TARGET_PC
 #ifdef TARGET_DC
                 shz_vec3_t out = shz_xmtrx_transform_point3(shz_vec3_deref(&arg4[i]));
                 sp100[j] = out.x; spF0[j]  = out.y; spE0[j]  = out.z;
 #else
                 mtxf_transform_point(*spDC, arg4[i], arg4[i + 1], arg4[i + 2], &sp100[j], &spF0[j], &spE0[j]);
 #endif
+#else
+                mtxf_transform_point(*spDC, arg4[i], arg4[i + 1], arg4[i + 2], &sp100[j], &spF0[j], &spE0[j]);
+#endif
             }
         } else {
             for (i = 0, j = 0; j < arg1; j++, i++) {
+#ifdef TARGET_PC
 #ifdef TARGET_DC
                 shz_vec3_t out = shz_xmtrx_transform_point3(shz_vec3_deref(&arg3[i]));
                 sp13C[j] = out.x; sp12C[j] = out.y; sp11C[j] = out.z;
+#else
+                mtxf_transform_point(*spDC, arg3[i].x, arg3[i].y, arg3[i].z, &sp13C[j], &sp12C[j], &sp11C[j]);
+#endif
 #else
                 mtxf_transform_point(*spDC, arg3[i].x, arg3[i].y, arg3[i].z, &sp13C[j], &sp12C[j], &sp11C[j]);
 #endif
@@ -5639,9 +5804,13 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
         }
 
         for (i = 0, j = 0; j < arg1; j++, i += 3) {
+#ifdef TARGET_PC
 #ifdef TARGET_DC
             shz_vec3_t out = shz_xmtrx_transform_point3(shz_vec3_deref(&arg4[i]));
             sp100[j] = out.x; spF0[j]  = out.y; spE0[j]  = out.z;
+#else
+            mtxf_transform_point(*spDC, arg4[i], arg4[i + 1], arg4[i + 2], &sp100[j], &spF0[j], &spE0[j]);
+#endif
 #else
             mtxf_transform_point(*spDC, arg4[i], arg4[i + 1], arg4[i + 2], &sp100[j], &spF0[j], &spE0[j]);
 #endif
@@ -5671,10 +5840,12 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
         // @fake
         if (sp158) {}
 
+#ifdef TARGET_PC
 #ifdef TARGET_DC
         shz_xmtrx_load_4x4((const shz_mat4x4_t*)*spDC);
 #endif
 
+#endif
         sp16C = 1;
         for (i = 0, j = 0; j < arg1; j++, i += 3, sp16C <<= 1) {
             if (sp14C != NULL) {
@@ -5683,8 +5854,12 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
                 sp14C->unk0C[i + 2] = spE0[j];
             }
             if (tempv0 & sp16C) {
+#ifdef TARGET_PC
 #ifdef TARGET_DC
                 shz_vec3_deref(&arg4[i]) = shz_xmtrx_transform_point3(shz_vec3_init(sp100[j], spF0[j], spE0[j]));
+#else
+                mtxf_transform_point(*spDC, sp100[j], spF0[j], spE0[j], &arg4[i + 0], &arg4[i + 1], &arg4[i + 2]);
+#endif
 #else
                 mtxf_transform_point(*spDC, sp100[j], spF0[j], spE0[j], &arg4[i + 0], &arg4[i + 1], &arg4[i + 2]);
 #endif
@@ -6288,7 +6463,11 @@ void func_80018CE0(Object *racerObj, f32 xPos, f32 yPos, f32 zPos, s32 updateRat
                                     }
                                     break;
                                 default:
+#ifdef TARGET_PC
 #ifndef TARGET_PC
+                                    stubbed_printf("ERROR Channel %d\n", i);
+#endif
+#else
                                     stubbed_printf("ERROR Channel %d\n", i);
 #endif
                                     break;
@@ -6502,7 +6681,11 @@ void race_check_finish(s32 updateRate) {
     s8 sp5C[4];
     s8 someBool2;
     s8 flags[3];
+#ifdef TARGET_PC
     ptrint_t camera;
+#else
+    s32 camera;
+#endif
 
     currentLevelHeader = level_header();
     settings = get_settings();
@@ -8204,7 +8387,11 @@ UNUSED void func_8001D248(UNUSED s32 arg0, UNUSED s32 arg1, UNUSED s32 arg2) {
  * Presumably intended for level geometry, which supports shading, but never uses it.
  */
 void set_world_shading(f32 ambient, f32 diffuse, s16 angleX, s16 angleY, s16 angleZ) {
+#ifdef TARGET_PC
     set_shading_properties(&gWorldShading, ambient, diffuse, angleX, angleY, angleZ);
+#else
+    set_shading_properties((ShadeProperties *) &gWorldShading, ambient, diffuse, angleX, angleY, angleZ);
+#endif
 }
 
 /**
@@ -8440,8 +8627,13 @@ void calc_env_mapping_for_object(ObjectModel *model, s16 zRot, s16 xRot, s16 yRo
     s16 maskT;
     s16 i;
     s16 j;
+#ifdef TARGET_PC
 #ifdef TARGET_DC
     shz_vec3_t eyeUnit;
+#else
+    s16 var_v0;
+    s16 var_v1;
+#endif
 #else
     s16 var_v0;
     s16 var_v1;
@@ -8457,6 +8649,7 @@ void calc_env_mapping_for_object(ObjectModel *model, s16 zRot, s16 xRot, s16 yRo
     objTrans.y_position = 0.0f;
     objTrans.z_position = 0.0f;
     objTrans.scale = 1.0f;
+#ifdef TARGET_PC
 #ifdef TARGET_DC
     eyeUnit = shz_vec3_scale(shz_vec3_init(gEnvmapPos[0].x,
                                            gEnvmapPos[0].y,
@@ -8465,6 +8658,11 @@ void calc_env_mapping_for_object(ObjectModel *model, s16 zRot, s16 xRot, s16 yRo
 #else
     mtxf_from_transform(&objRotMtxF32, &objTrans);
     mtxf_to_mtxs(&objRotMtxF32, &objRotMtxS32);
+#endif
+#else
+    mtxf_from_transform(&objRotMtxF32, &objTrans);
+    mtxf_to_mtxs(&objRotMtxF32, &objRotMtxS32);
+
 #endif
     for (i = 0; i < model->numberOfBatches; i++) {
         if (model->batches[i].flags & RENDER_ENVMAP) {
@@ -8501,6 +8699,7 @@ void calc_env_mapping_for_object(ObjectModel *model, s16 zRot, s16 xRot, s16 yRo
                     break;
             }
 
+#ifdef TARGET_PC
 #ifdef TARGET_DC
             xmtrx_init_transform(&objTrans);
             if (sp70 != 0) {
@@ -8509,7 +8708,9 @@ void calc_env_mapping_for_object(ObjectModel *model, s16 zRot, s16 xRot, s16 yRo
             }
 #endif
 
+#endif
             for (j = model->batches[i].verticesOffset; j < model->batches[i + 1].verticesOffset; j++, k++) {
+#ifdef TARGET_PC
 #ifdef TARGET_DC
                 shz_vec3_t n = shz_vec3_init(model40Entries[count].x,
                                              model40Entries[count].y,
@@ -8540,6 +8741,28 @@ void calc_env_mapping_for_object(ObjectModel *model, s16 zRot, s16 xRot, s16 yRo
                     vec3s_reflect(&gEnvmapPos[0], &gEnvmapPos[1]);
                 }
                 count++;
+                var_v0 = gEnvmapPos[1].x;
+                var_v1 = gEnvmapPos[1].y;
+                if (var_v0 > 0) {
+                    var_v0--;
+                }
+                if (var_v1 > 0) {
+                    var_v1--;
+                }
+                var_v0 = (var_v0 << 2) + 0x8000;
+                var_v1 = (var_v1 << 2) + 0x8000;
+                D_8011AF68[k].u = (var_v0 >> shiftS) & maskS;
+                D_8011AF68[k].v = (var_v1 >> shiftT) & maskT;
+#endif
+#else
+                gEnvmapPos[1].x = model40Entries[count].x;
+                gEnvmapPos[1].y = model40Entries[count].y;
+                gEnvmapPos[1].z = model40Entries[count].z;
+                count++;
+                mtxs_transform_dir(&objRotMtxS32, &gEnvmapPos[1]);
+                if (sp70 == 0) {
+                    vec3s_reflect(&gEnvmapPos[0], &gEnvmapPos[1]);
+                }
                 var_v0 = gEnvmapPos[1].x;
                 var_v1 = gEnvmapPos[1].y;
                 if (var_v0 > 0) {
@@ -8612,6 +8835,7 @@ s32 *get_misc_asset(s32 index) {
 #endif
     return (s32 *) &gAssetsMiscSection[gAssetsMiscTable[index]];
 }
+#ifdef TARGET_PC
 
 #ifdef TARGET_PC
 /**
@@ -8650,6 +8874,7 @@ void pc_swap_misc_f32_once(s32 index) {
     }
     pc_swap32_buf(start, (u32) (end - start) & ~3u);
 }
+#endif
 #endif
 
 /**
@@ -9604,6 +9829,7 @@ s32 func_8001F460(Object *arg0, s32 arg1, Object *arg2) {
                 // clang-format on
             }
             if (obj64->unk3F == 0) {
+#ifdef TARGET_PC
                 // The angle unwrap above pushes control points past the s16 range on
                 // purpose, so this store relies on the conversion wrapping mod 65536.
                 // f32->s16 out of range is UB: MIPS wraps (correct), but x87 fistps
@@ -9612,10 +9838,21 @@ s32 func_8001F460(Object *arg0, s32 arg1, Object *arg2) {
                 arg0->trans.rotation.s[0] = (s16) (s32) catmull_rom_interpolation(spE0, var_s2, var_f20);
                 arg0->trans.rotation.s[1] = (s16) (s32) catmull_rom_interpolation(spCC, var_s2, var_f20);
                 arg0->trans.rotation.s[2] = (s16) (s32) catmull_rom_interpolation(spB8, var_s2, var_f20);
+#else
+                arg0->trans.rotation.s[0] = catmull_rom_interpolation(spE0, var_s2, var_f20);
+                arg0->trans.rotation.s[1] = catmull_rom_interpolation(spCC, var_s2, var_f20);
+                arg0->trans.rotation.s[2] = catmull_rom_interpolation(spB8, var_s2, var_f20);
+#endif
             } else {
+#ifdef TARGET_PC
                 arg0->trans.rotation.s[0] = (s16) (s32) lerp(spE0, var_s2, var_f20);
                 arg0->trans.rotation.s[1] = (s16) (s32) lerp(spCC, var_s2, var_f20);
                 arg0->trans.rotation.s[2] = (s16) (s32) lerp(spB8, var_s2, var_f20);
+#else
+                arg0->trans.rotation.s[0] = lerp(spE0, var_s2, var_f20);
+                arg0->trans.rotation.s[1] = lerp(spCC, var_s2, var_f20);
+                arg0->trans.rotation.s[2] = lerp(spB8, var_s2, var_f20);
+#endif
             }
             break;
     }
@@ -10064,15 +10301,27 @@ s32 func_80021600(s32 arg0) {
             }
 
             if (objAnim->unk3F == 0) {
+#ifdef TARGET_PC
                 // Same wrap-dependent store as in func_8001F460: go through s32 so the
                 // out-of-range angles from the unwrap wrap mod 65536 on x86 too.
                 sp154->trans.rotation.y_rotation = (s16) (s32) catmull_rom_interpolation(yRotations, 0, spEC);
                 sp154->trans.rotation.x_rotation = (s16) (s32) catmull_rom_interpolation(xRotations, 0, spEC);
                 sp154->trans.rotation.z_rotation = (s16) (s32) catmull_rom_interpolation(zRotations, 0, spEC);
+#else
+                sp154->trans.rotation.y_rotation = catmull_rom_interpolation(yRotations, 0, spEC);
+                sp154->trans.rotation.x_rotation = catmull_rom_interpolation(xRotations, 0, spEC);
+                sp154->trans.rotation.z_rotation = catmull_rom_interpolation(zRotations, 0, spEC);
+#endif
             } else {
+#ifdef TARGET_PC
                 sp154->trans.rotation.y_rotation = (s16) (s32) lerp(yRotations, 0, spEC);
                 sp154->trans.rotation.x_rotation = (s16) (s32) lerp(xRotations, 0, spEC);
                 sp154->trans.rotation.z_rotation = (s16) (s32) lerp(zRotations, 0, spEC);
+#else
+                sp154->trans.rotation.y_rotation = lerp(yRotations, 0, spEC);
+                sp154->trans.rotation.x_rotation = lerp(xRotations, 0, spEC);
+                sp154->trans.rotation.z_rotation = lerp(zRotations, 0, spEC);
+#endif
             }
             break;
     }
@@ -10219,7 +10468,11 @@ void mode_init_taj_race(void) {
         lvlSeg =
             get_level_segment_index_from_position(newRacerEntry.common.x, checkpointNode->y, newRacerEntry.common.z);
         newRacerEntry.common.y =
+#ifdef TARGET_PC
             collision_get_y(lvlSeg, newRacerEntry.common.x, newRacerEntry.common.z, yOut, 8) ? yOut[0] : checkpointNode->y;
+#else
+            collision_get_y(lvlSeg, newRacerEntry.common.x, newRacerEntry.common.z, yOut) ? yOut[0] : checkpointNode->y;
+#endif
         newRacerEntry.common.size = 16;
         newRacerEntry.angleY = racer->steerVisualRotation;
         newRacerEntry.angleX = 0;
@@ -10388,7 +10641,11 @@ CheckpointNode *func_800230D0(Object *obj, Object_Racer *racer) {
         obj->segmentID =
             get_level_segment_index_from_position(obj->trans.x_position, obj->trans.y_position, obj->trans.z_position);
     }
+#ifdef TARGET_PC
     yOutCount = collision_get_y(obj->segmentID, obj->trans.x_position, obj->trans.z_position, yOut, 9);
+#else
+    yOutCount = collision_get_y(obj->segmentID, obj->trans.x_position, obj->trans.z_position, yOut);
+#endif
     if (yOutCount != 0) {
         obj->trans.y_position = yOut[yOutCount - 1];
     }
@@ -10608,18 +10865,33 @@ s32 get_object_property_size(Object *obj, void *obj64) {
             ret = sizeof(Object_MidiChannelSet);
             break;
         case BHV_BUTTERFLY:
+#ifdef TARGET_PC
             temp_v0 = 0x10 - (s32) ((uintptr_t) obj64 & 0xF);
             obj->butterfly = (Object_Butterfly *) ((uintptr_t) obj64 + temp_v0);
+#else
+            temp_v0 = 0x10 - ((s32) obj64 & 0xF);
+            obj->butterfly = (Object_Butterfly *) ((s32) obj64 + temp_v0);
+#endif
             ret = (temp_v0 + sizeof(Object_Butterfly));
             break;
         case BHV_FISH:
+#ifdef TARGET_PC
             temp_v0 = 0x10 - (s32) ((uintptr_t) obj64 & 0xF);
             obj->fish = (Object_Fish *) ((uintptr_t) obj64 + temp_v0);
+#else
+            temp_v0 = 0x10 - ((s32) obj64 & 0xF);
+            obj->fish = (Object_Fish *) ((s32) obj64 + temp_v0);
+#endif
             ret = (temp_v0 + sizeof(Object_Fish));
             break;
         case BHV_CHARACTER_FLAG:
+#ifdef TARGET_PC
             temp_v0 = 0x10 - (s32) ((uintptr_t) obj64 & 0xF);
             obj->characterFlagModel = (CharacterFlagModel *) ((uintptr_t) obj64 + temp_v0);
+#else
+            temp_v0 = 0x10 - ((s32) obj64 & 0xF);
+            obj->characterFlagModel = (CharacterFlagModel *) ((s32) obj64 + temp_v0);
+#endif
             ret = (temp_v0 + sizeof(CharacterFlagModel));
             break;
         case BHV_UNK_5E:

@@ -49,11 +49,13 @@ extern "C" {
 /*
  * Structure for controllers 
  */
+#ifdef TARGET_PC
 
 #ifdef TARGET_PC
 /* Windows C runtimes define errno as a macro; the pad structs below have a
  * field of that name, so drop the macro for anything that includes this. */
 #undef errno
+#endif
 #endif
 
 typedef struct {

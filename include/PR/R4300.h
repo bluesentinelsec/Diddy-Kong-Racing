@@ -49,6 +49,7 @@
  * Address conversion macros
  */
 #ifdef TARGET_PC
+#ifdef TARGET_PC
 #include <stdint.h>
 
 /* On PC there are no CPU segments — pass pointers through unchanged. */
@@ -88,11 +89,43 @@
 #define	PHYS_TO_K1(x)	((u32)(x)|0xA0000000)	/* physical to kseg1 */
 
 #endif	/* _LANGUAGE_ASSEMBLY */
+#else
+#ifdef _LANGUAGE_ASSEMBLY
+
+#define	K0_TO_K1(x)	((x)|0xA0000000)	/* kseg0 to kseg1 */
+#define	K1_TO_K0(x)	((x)&0x9FFFFFFF)	/* kseg1 to kseg0 */
+#define	K0_TO_PHYS(x)	((x)&0x1FFFFFFF)	/* kseg0 to physical */
+#define	K1_TO_PHYS(x)	((x)&0x1FFFFFFF)	/* kseg1 to physical */
+#define	KDM_TO_PHYS(x)	((x)&0x1FFFFFFF)	/* direct mapped to physical */
+#define	PHYS_TO_K0(x)	((x)|0x80000000)	/* physical to kseg0 */
+#define	PHYS_TO_K1(x)	((x)|0xA0000000)	/* physical to kseg1 */
+
+#else /* _LANGUAGE_C */
+
+#define	K0_TO_K1(x)	((u32)(x)|0xA0000000)	/* kseg0 to kseg1 */
+#define	K1_TO_K0(x)	((u32)(x)&0x9FFFFFFF)	/* kseg1 to kseg0 */
+#define	K0_TO_PHYS(x)	((u32)(x)&0x1FFFFFFF)	/* kseg0 to physical */
+#define	K1_TO_PHYS(x)	((u32)(x)&0x1FFFFFFF)	/* kseg1 to physical */
+#define	KDM_TO_PHYS(x)	((u32)(x)&0x1FFFFFFF)	/* direct mapped to physical */
+#define	PHYS_TO_K0(x)	((u32)(x)|0x80000000)	/* physical to kseg0 */
+#define	PHYS_TO_K1(x)	((u32)(x)|0xA0000000)	/* physical to kseg1 */
+
+#endif	/* _LANGUAGE_ASSEMBLY */
+#endif
 
 /*
  * Address predicates
  */
+#ifdef TARGET_PC
 #ifndef TARGET_PC
+#define	IS_KSEG0(x)	((u32)(x) >= K0BASE && (u32)(x) < K1BASE)
+#define	IS_KSEG1(x)	((u32)(x) >= K1BASE && (u32)(x) < K2BASE)
+#define	IS_KSEGDM(x)	((u32)(x) >= K0BASE && (u32)(x) < K2BASE)
+#define	IS_KSEG2(x)	((u32)(x) >= K2BASE && (u32)(x) < KPTE_SHDUBASE)
+#define	IS_KPTESEG(x)	((u32)(x) >= KPTE_SHDUBASE)
+#define	IS_KUSEG(x)	((u32)(x) < K0BASE)
+#endif
+#else
 #define	IS_KSEG0(x)	((u32)(x) >= K0BASE && (u32)(x) < K1BASE)
 #define	IS_KSEG1(x)	((u32)(x) >= K1BASE && (u32)(x) < K2BASE)
 #define	IS_KSEGDM(x)	((u32)(x) >= K0BASE && (u32)(x) < K2BASE)
@@ -227,6 +260,7 @@
 
 /* Cause register exception codes */
 
+#ifdef TARGET_PC
 /*
  * R4300 Cause-register exception codes: the value that sits in bits 2..6 of the
  * MIPS Cause register. Nothing outside this header uses them, and there is no
@@ -259,6 +293,29 @@
 #define	EXC_VCED	EXC_CODE(31)	/* Virt. Coherency on data read */
 
 #endif /* !TARGET_PC */
+#else
+#define	EXC_CODE(x)	((x)<<2)
+
+/* Hardware exception codes */
+#define	EXC_INT		EXC_CODE(0)	/* interrupt */
+#define	EXC_MOD		EXC_CODE(1)	/* TLB mod */
+#define	EXC_RMISS	EXC_CODE(2)	/* Read TLB Miss */
+#define	EXC_WMISS	EXC_CODE(3)	/* Write TLB Miss */
+#define	EXC_RADE	EXC_CODE(4)	/* Read Address Error */
+#define	EXC_WADE	EXC_CODE(5)	/* Write Address Error */
+#define	EXC_IBE		EXC_CODE(6)	/* Instruction Bus Error */
+#define	EXC_DBE		EXC_CODE(7)	/* Data Bus Error */
+#define	EXC_SYSCALL	EXC_CODE(8)	/* SYSCALL */
+#define	EXC_BREAK	EXC_CODE(9)	/* BREAKpoint */
+#define	EXC_II		EXC_CODE(10)	/* Illegal Instruction */
+#define	EXC_CPU		EXC_CODE(11)	/* CoProcessor Unusable */
+#define	EXC_OV		EXC_CODE(12)	/* OVerflow */
+#define	EXC_TRAP	EXC_CODE(13)	/* Trap exception */
+#define	EXC_VCEI	EXC_CODE(14)	/* Virt. Coherency on Inst. fetch */
+#define	EXC_FPE		EXC_CODE(15)	/* Floating Point Exception */
+#define	EXC_WATCH	EXC_CODE(23)	/* Watchpoint reference */
+#define	EXC_VCED	EXC_CODE(31)	/* Virt. Coherency on data read */
+#endif
 
 /* C0_PRID Defines */
 #define	C0_IMPMASK	0xff00

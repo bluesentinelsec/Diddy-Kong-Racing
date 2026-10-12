@@ -1,7 +1,9 @@
 #include "os.h"
 #include "PRinternal/osint.h"
 #include "osint_debug.h"
+#ifdef TARGET_PC
 #include "assert.h"
+#endif
 
 
 /************ .rodata ************/

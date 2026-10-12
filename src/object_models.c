@@ -38,7 +38,11 @@ s32 D_8011D634;
 s16 *gAnimationTable;
 s32 *gObjectAnimationTable;
 s32 gModelAnimOffsetID;
+#ifdef TARGET_PC
 s16 *D_8011D644;
+#else
+s32 D_8011D644;
+#endif
 
 /******************************/
 
@@ -69,6 +73,7 @@ void allocate_object_model_pools(void) {
     gAnimationTable = (s16 *) asset_table_load(ASSET_ANIMATION_IDS);
     gObjectAnimationTable = (s32 *) asset_table_load(ASSET_OBJECT_ANIMATIONS_TABLE);
 #ifdef TARGET_PC
+#ifdef TARGET_PC
     {
         extern void pc_swap16_buf(void *buf, u32 numBytes);
         extern void pc_swap32_buf(void *buf, u32 numBytes);
@@ -77,6 +82,9 @@ void allocate_object_model_pools(void) {
     }
 #endif
     D_8011D644 = (s16 *) mempool_alloc_safe(0xC00, COLOUR_TAG_GREEN);
+#else
+    D_8011D644 = (s32) mempool_alloc_safe(0xC00, COLOUR_TAG_GREEN);
+#endif
     gModelAnimOffsetID = 0;
 
 #ifdef ANTI_TAMPER
@@ -90,6 +98,7 @@ void allocate_object_model_pools(void) {
     }
 #endif
 }
+#ifdef TARGET_PC
 
 #ifdef TARGET_PC
 // Inflated object models are big-endian: a 0x80-byte header whose offsets point
@@ -196,6 +205,7 @@ static void pc_unpack_object_model(ObjectModel *mdl) {
     sPcModelDisk = NULL;
 }
 #undef PC_REBASE
+#endif
 #endif
 
 /**
@@ -318,7 +328,11 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
             instance = model_instance_init(objMdl, flags);
             if (instance != NULL) {
                 gModelCache[ASSETCACHE_ID(cacheIndex)] = modelID;
+#ifdef TARGET_PC
                 gModelCache[ASSETCACHE_PTR(cacheIndex)] = (uintptr_t) objMdl;
+#else
+                gModelCache[ASSETCACHE_PTR(cacheIndex)] = (s32) objMdl;
+#endif
                 if (gModelCacheCount < MODEL_LOADED_MAX) {
                     instance->animUpdateTimer = 0;
                     return instance;
@@ -1041,7 +1055,11 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
     s32 assetSize;
     s32 i;
     s32 i2;
+#ifdef TARGET_PC
     uintptr_t animAddress;
+#else
+    u32 animAddress;
+#endif
     s32 *temp;
 
     start = gAnimationTable[modelID];
@@ -1056,7 +1074,11 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
         }
     }
     model->numberOfAnimations = end - start;
+#ifdef TARGET_PC
     allocAnimData = (ObjectModel_44 *) mempool_alloc(model->numberOfAnimations * sizeof(ObjectModel_44), COLOUR_TAG_RED);
+#else
+    allocAnimData = (ObjectModel_44 *) mempool_alloc(model->numberOfAnimations * 8, COLOUR_TAG_RED);
+#endif
     model->animations = allocAnimData;
     if (allocAnimData == NULL) {
         return 1;

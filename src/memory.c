@@ -25,6 +25,7 @@ s32 gFreeQueueTimer;
  * Official Name: mmInit
  */
 #ifdef TARGET_PC
+#ifdef TARGET_PC
 // N64 carves the main pool out of "everything past BSS"; there is no such
 // region on a host, so back it with a static array sized by the platform
 // makefile. Defined here rather than in the port layer because this is where
@@ -33,6 +34,7 @@ MemoryPoolSlot gMainMemoryPool[PC_MAIN_POOL_BYTES / sizeof(MemoryPoolSlot)] __at
 u32 gMainMemoryPoolSize = sizeof(gMainMemoryPool);
 #endif
 
+#endif
 void mempool_init_main(void) {
     s32 ramEnd;
 
@@ -98,7 +100,11 @@ MemoryPoolSlot *mempool_init(MemoryPoolSlot *slots, s32 poolSize, s32 numSlots) 
     }
     firstSlot = &gMemoryPools[poolCount].slots[0];
     slots += numSlots;
+#ifdef TARGET_PC
     if ((uintptr_t) slots & 0xF) {
+#else
+    if ((s32) slots & 0xF) {
+#endif
         firstSlot->data = (u8 *) _ALIGN16(slots);
     } else {
         firstSlot->data = (u8 *) slots;
@@ -234,7 +240,11 @@ void *mempool_alloc_fixed(s32 size, u8 *address, u32 colorTag) {
                         interrupts_enable(intFlags);
                         return curSlot->data;
                     } else {
+#ifdef TARGET_PC
                         i = mempool_slot_assign(POOL_MAIN, i, (s32) ((uintptr_t) address - (uintptr_t) curSlot->data), 0, 1, colorTag);
+#else
+                        i = mempool_slot_assign(POOL_MAIN, i, (u32) address - (u32) curSlot->data, 0, 1, colorTag);
+#endif
                         mempool_slot_assign(POOL_MAIN, i, size, 1, 0, colorTag);
                         interrupts_enable(intFlags);
                         return (slots + i)->data;
@@ -299,11 +309,15 @@ void mempool_free_queue_clear(void) {
             gFreeQueue[i].freeTimer = gFreeQueue[gFreeQueueCount - 1].freeTimer;
             gFreeQueueCount--;
         } else {
+#ifdef TARGET_PC
             // Fires for every queued free whose timer hasn't expired yet (they
             // free fine on a later pass) — pure noise now that stubbed_printf
             // is real.
             // stubbed_printf("\n*** mm Error *** ---> Can't free ram at this location: %x\n",
             //                gFreeQueue[i].dataAddress);
+#else
+            stubbed_printf("\n*** mm Error *** ---> Can't free ram at this location: %x\n", gFreeQueue[i].dataAddress);
+#endif
             i++;
         }
     }
@@ -347,7 +361,11 @@ void mempool_free_addr(u8 *address) {
 #endif
                 mempool_slot_clear(poolIndex, slotIndex);
             }
+#ifdef TARGET_PC
             return;
+#else
+            break;
+#endif
         }
         slot = &slots[slotIndex];
     }
@@ -589,9 +607,17 @@ s32 mempool_slot_assign(MemoryPools poolIndex, s32 slotIndex, s32 size, s32 slot
  * Official name: mmAlign16
  */
 u8 *align16(u8 *address) {
+#ifdef TARGET_PC
     s32 remainder = (s32) ((uintptr_t) address & 0xF);
+#else
+    s32 remainder = (s32) address & 0xF;
+#endif
     if (remainder > 0) {
+#ifdef TARGET_PC
         address = (u8 *) (((uintptr_t) address - remainder) + 16);
+#else
+        address = (u8 *) (((s32) address - remainder) + 16);
+#endif
     }
     return address;
 }
@@ -601,9 +627,17 @@ u8 *align16(u8 *address) {
  * Official name: mmAlign8
  */
 UNUSED u8 *align8(u8 *address) {
+#ifdef TARGET_PC
     s32 remainder = (s32) ((uintptr_t) address & 0x7);
+#else
+    s32 remainder = (s32) address & 0x7;
+#endif
     if (remainder > 0) {
+#ifdef TARGET_PC
         address = (u8 *) (((uintptr_t) address - remainder) + 8);
+#else
+        address = (u8 *) (((s32) address - remainder) + 8);
+#endif
     }
     return address;
 }
@@ -613,9 +647,17 @@ UNUSED u8 *align8(u8 *address) {
  * Official name: mmAlign4
  */
 UNUSED u8 *align4(u8 *address) {
+#ifdef TARGET_PC
     s32 remainder = (s32) ((uintptr_t) address & 0x3);
+#else
+    s32 remainder = (s32) address & 0x3;
+#endif
     if (remainder > 0) {
+#ifdef TARGET_PC
         address = (u8 *) (((uintptr_t) address - remainder) + 4);
+#else
+        address = (u8 *) (((s32) address - remainder) + 4);
+#endif
     }
     return address;
 }

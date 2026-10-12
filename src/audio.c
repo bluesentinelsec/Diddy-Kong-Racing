@@ -38,7 +38,13 @@ u8 gBlockVoiceLimitChange = FALSE;
 /************ .bss ************/
 
 // The audio heap is located at the start of the BSS section.
+#ifdef TARGET_PC
+// alHeapInit rounds the base up to 16 bytes without shortening the length, so an
+// unaligned array lets the last allocation run past its end; align it instead.
+_Alignas(32) u8 gAudioHeapStack[AUDIO_HEAP_SIZE];
+#else
 u8 gAudioHeapStack[AUDIO_HEAP_SIZE];
+#endif
 
 ALHeap gALHeap;
 ALSeqFile *gSequenceTable;
@@ -138,7 +144,11 @@ void audio_init(OSSched *sc) {
     gSeqLengthTable = (u32 *) mempool_alloc_safe((gSequenceTable->seqCount) * 4, COLOUR_TAG_CYAN);
 
     for (i = 0; i < gSequenceTable->seqCount; i++) {
+#ifdef TARGET_PC
         pad = (u32) (uintptr_t) (gSequenceTable + 8 + i * 8); // Fakematch
+#else
+        pad = (u32) (gSequenceTable + 8 + i * 8); // Fakematch
+#endif
         gSeqLengthTable[i] = gSequenceTable->seqArray[i].len;
         if (gSeqLengthTable[i] & 1) {
             gSeqLengthTable[i]++;
@@ -165,7 +175,14 @@ void audio_init(OSSched *sc) {
     audConfig.maxEvents = 150;
     audConfig.maxSounds = 32;
     audConfig.maxChannels = AUDIO_CHANNELS;
+#ifdef TARGET_PC
+    // Retail allocates one group but SOUND_PARAM_GROUP() indexes up to 64, overrunning
+    // the audio heap. On the N64 that lands in neighbouring allocations; here it would
+    // corrupt host pointers, so give the array its real size.
+    audConfig.numGroups = 64;
+#else
     audConfig.numGroups = 1;
+#endif
     audConfig.heap = &gALHeap;
     sndp_init_player(&audConfig);
     audioStartThread();

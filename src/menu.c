@@ -186,6 +186,7 @@ unk80126878 D_80126878[8];
 f32 D_801268D8;
 UNUSED s32 D_801268DC; // Set to 0 during the title screen, never read.
 s32 gOpeningNameID;
+#ifdef TARGET_PC
 //!@bug: menu_track_select_init() fills this with a `for (i = 0; i < 5; i++)`
 // loop, so it writes five rows into a four-row array. Retail really is 48 bytes
 // (gTrackSelectIDs = 0x801268E8, gFFLUnlocked = 0x80126918), so the console
@@ -197,6 +198,9 @@ s32 gOpeningNameID;
 // of its own is behaviour-neutral and keeps the stray store in bounds.
 #ifdef TARGET_PC
 s16 gTrackSelectIDs[5][6]; // Track Select values?
+#else
+s16 gTrackSelectIDs[4][6]; // Track Select values?
+#endif
 #else
 s16 gTrackSelectIDs[4][6]; // Track Select values?
 #endif
@@ -413,6 +417,7 @@ f32 D_801268D8;
 UNUSED s32 D_801268DC; // Set to 0 during the title screen, never read.
 s32 gOpeningNameID;
 UNUSED s32 D_801268E4;
+#ifdef TARGET_PC
 //!@bug: menu_track_select_init() fills this with a `for (i = 0; i < 5; i++)`
 // loop, so it writes five rows into a four-row array. Retail really is 48 bytes
 // (gTrackSelectIDs = 0x801268E8, gFFLUnlocked = 0x80126918), so the console
@@ -424,6 +429,9 @@ UNUSED s32 D_801268E4;
 // of its own is behaviour-neutral and keeps the stray store in bounds.
 #ifdef TARGET_PC
 s16 gTrackSelectIDs[5][6]; // Track Select values?
+#else
+s16 gTrackSelectIDs[4][6]; // Track Select values?
+#endif
 #else
 s16 gTrackSelectIDs[4][6]; // Track Select values?
 #endif
@@ -2029,7 +2037,7 @@ void load_menu_text(s32 language) {
         }
     }
 #else
-    asset_load(ASSET_MENU_TEXT, (uintptr_t) temp, langIndex, size);
+    asset_load(ASSET_MENU_TEXT, (u32) temp, langIndex, size);
 
     // TODO: Find a way to clean up the ugly hacks.
     // Fill up the lookup table with proper RAM addresses
@@ -3377,7 +3385,9 @@ void func_80083098(f32 updateRateF) {
  * Load the title textures and reset player allocation.
  * Set the current level and demo.
  */
+#ifdef TARGET_PC
 
+#endif
 void menu_title_screen_init(void) {
     s32 i;
     s32 numberOfPlayers;
@@ -3414,14 +3424,22 @@ void menu_title_screen_init(void) {
     set_time_trial_enabled(FALSE);
     gTitleDemoIndex = 0;
     sTitleScreenDemoIds = (s8 *) get_misc_asset(ASSET_MISC_TITLE_SCREEN_DEMO_IDS);
+#ifdef TARGET_PC
     numberOfPlayers = sTitleScreenDemoIds[gTitleDemoIndex + DEMO_PLAYER_COUNT];
+#else
+    numberOfPlayers = sTitleScreenDemoIds[DEMO_PLAYER_COUNT];
+#endif
     gTitleDemoTimer = 0;
     if (numberOfPlayers == -2) {
         numberOfPlayers = 0;
         gTitleDemoTimer = 600;
     }
+#ifdef TARGET_PC
     load_level_for_menu(sTitleScreenDemoIds[gTitleDemoIndex + DEMO_LEVEL_ID], numberOfPlayers,
                         sTitleScreenDemoIds[gTitleDemoIndex + DEMO_CUTSCENE_ID]);
+#else
+    load_level_for_menu(sTitleScreenDemoIds[DEMO_LEVEL_ID], numberOfPlayers, sTitleScreenDemoIds[DEMO_CUTSCENE_ID]);
+#endif
     D_801268D8 = 0;
     gOpeningNameID = 0;
     D_801268DC = 0;
@@ -3539,7 +3557,11 @@ s32 menu_title_screen_loop(s32 updateRate) {
             gTitleDemoTimer = 1500;
         }
         load_level_for_menu(demo[DEMO_LEVEL_ID], playerCount, demo[DEMO_CUTSCENE_ID]);
+#ifdef TARGET_PC
             if (sTitleScreenDemoIds[gTitleDemoIndex] == sTitleScreenDemoIds[DEMO_LEVEL_ID]) {
+#else
+        if (sTitleScreenDemoIds[gTitleDemoIndex] == sTitleScreenDemoIds[DEMO_LEVEL_ID]) {
+#endif
             D_801268D8 = 0.0f;
             gOpeningNameID = 0;
             D_801268DC = 0;
@@ -7660,9 +7682,13 @@ void fileselect_render(UNUSED s32 updateRate) {
     u32 colour;
     s32 i;
     UNUSED s32 pad[3];
+#ifdef TARGET_PC
     // Also receives the untrimmed menu-text names ("GAME A" etc.) for unstarted
     // slots, which are longer than SavefileInfo.name.
     char trimmedFilename[16];
+#else
+    char trimmedFilename[4];
+#endif
 
     if (osTvType == OS_TV_TYPE_PAL) {
         yPos = 12;
@@ -9244,7 +9270,11 @@ void trackmenu_setup_render(UNUSED s32 updateRate) {
             }
         }
 #endif
+#ifdef TARGET_PC
 #ifndef TARGET_PC
+        i = (s32) level_name(gTrackIdForPreview);
+#endif
+#else
         i = (s32) level_name(gTrackIdForPreview);
 #endif
         set_text_font(ASSET_FONTS_BIGFONT);
@@ -13819,12 +13849,24 @@ void menu_asset_free(s32 assetID) {
                 mempool_free_timer(2);
             } else {
                 if ((*gAssetsMenuElementIds)[assetID] & ASSET_MASK_SPRITE) {
+#ifdef TARGET_PC
                     sprite_free((Sprite *) gMenuAssets[assetID]);
+#else
+                    sprite_free((Sprite *) (u32) gMenuAssets[assetID]);
+#endif
                 } else {
                     if ((*gAssetsMenuElementIds)[assetID] & ASSET_MASK_OBJECT) {
+#ifdef TARGET_PC
                         free_object((Object *) gMenuAssets[assetID]);
+#else
+                        free_object((Object *) (u32) gMenuAssets[assetID]);
+#endif
                     } else {
+#ifdef TARGET_PC
                         free_3d_model((ModelInstance *) gMenuAssets[assetID]);
+#else
+                        free_3d_model((ModelInstance *) (u32) gMenuAssets[assetID]);
+#endif
                     }
                 }
             }

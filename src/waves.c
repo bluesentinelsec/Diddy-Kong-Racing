@@ -101,6 +101,7 @@ s32 gWaveTileCountZ;    // used in mempool_alloc_safe size calculation
 s32 gNumberOfLevelSegments;
 s32 D_8012A0E8[64];
 s16 gWaveBlockIDs[512]; // used to index gWaveModel and as arg0 for func_800B92F4 and func_800B97A8
+#ifdef TARGET_PC
 // One table: retail's fixed .bss layout placed D_8012A600 immediately after
 // D_8012A5E8, and the visibility builder/walkers index straight through both
 // (the k walk in func_800B92F4/func_800B97A8 only stops at a -1 sentinel).
@@ -109,6 +110,10 @@ s16 gWaveBlockIDs[512]; // used to index gWaveModel and as arg0 for func_800B92F
 unk8012A5E8 D_8012A5E8[26];
 #define D_8012A600 (D_8012A5E8 + 2)
 #define D_8012A600_COUNT 24
+#else
+unk8012A5E8 D_8012A5E8[2];
+unk8012A5E8 D_8012A600[24];
+#endif
 f32 gWavePowerBase;
 f32 gWaveMagnitude;
 s32 gWavePowerDivisor;
@@ -232,7 +237,9 @@ void waves_init_header(LevelHeader *header) {
     gWaveController.xlu = header->wavesXlu;
 }
 
+#ifdef TARGET_PC
 
+#endif
 void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
     s32 k;
     s32 sineVar2;
@@ -272,8 +279,10 @@ void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
     sineStep2 = (gWaveController.initSine[1].sineStep << 16) / gWaveController.seedSize;
     gWaveLowerY = 10000.0f;
     gWaveUpperY = -10000.0f;
+#ifdef TARGET_PC
     stubbed_printf("pre seedSize loop, seedSize=%d tileCount=%d subdiv=%d\n", gWaveController.seedSize,
                    gWaveController.tileCount, gWaveController.subdivisions);
+#endif
     for (i_2 = 0; i_2 < gWaveController.seedSize; i_2++) {
         gWaveHeightTable[i_2] = (sins_f(sineVar1) * gWaveController.initSine[0].height) +
                                 (gWaveController.initSine[1].height * sins_f(sineVar2));
@@ -289,7 +298,9 @@ void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
         sineVar1 += sineStep1;
         sineVar2 += sineStep2;
     };
+#ifdef TARGET_PC
     stubbed_printf("post seedSize loop\n");
+#endif
     save_rng_seed();
     set_rng_seed('WAVF');
 
@@ -301,7 +312,9 @@ void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
             var_s5++;
         }
     }
+#ifdef TARGET_PC
     stubbed_printf("post tileCount^2 loop\n");
+#endif
     var_s5 = 0;
     i_2 = 0;
     load_rng_seed();
@@ -310,9 +323,11 @@ void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
     } else {
         playerCount = 4;
     }
+#ifdef TARGET_PC
     stubbed_printf("pre vertex loop playerCount=%d v0=%x v1=%x v2=%x v3=%x\n", playerCount,
                    (u32) gWaveVertices[0], (u32) gWaveVertices[1], (u32) gWaveVertices[2],
                    (u32) gWaveVertices[3]);
+#endif
     for (var_s3 = 0; var_s3 < 25; var_s3++) {
         if (0 <= gWaveController.subdivisions) {
             do {
@@ -339,7 +354,9 @@ void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
             i_2 = 0;
         }
     }
+#ifdef TARGET_PC
     stubbed_printf("post vertex loop\n");
+#endif
 
     var_s5 = 0;
     for (i_2 = 0; i_2 < gWaveController.subdivisions; i_2++) {
@@ -359,9 +376,13 @@ void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
             var_s5 += 2;
         }
     }
+#ifdef TARGET_PC
     stubbed_printf("post triangle loop, pre func_800BC6C8\n");
+#endif
     func_800BC6C8();
+#ifdef TARGET_PC
     stubbed_printf("post func_800BC6C8\n");
+#endif
 
     var_s5 = (gWaveController.subdivisions + 1) * gWaveController.subdivisions;
     for (i = 0; i < ARRAY_COUNT(D_8012A028); i++) {
@@ -413,7 +434,9 @@ void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
     gWaveVertexFlip = 0;
 }
 
+#ifdef TARGET_PC
 
+#endif
 /**
  * Set wave visiblity variables to zero.
  */
@@ -444,7 +467,11 @@ void waves_visibility(s32 xPosition, s32 yPosition, s32 zPosition, s32 currentVi
 
     if (0) {}
 
+#ifdef TARGET_PC
     for (var_v1 = 0; var_v1 != D_8012A600_COUNT; var_v1 += 4) {
+#else
+    for (var_v1 = 0; var_v1 != ARRAY_COUNT(D_8012A600); var_v1 += 4) {
+#endif
         D_8012A5E8[0].blockID = -1;
         D_8012A5E8[1].blockID = -1;
         D_8012A600[var_v1].blockID = -1;
@@ -1328,7 +1355,9 @@ f32 func_800BB2F4(s32 arg0, f32 arg1, f32 arg2, Vec3f *arg3) {
     return sp78;
 }
 
+#ifdef TARGET_PC
 
+#endif
 void func_800BBDDC(LevelModel *level, LevelHeader *header) {
     func_800BBE08(level, header);
     func_800BBF78(level);
@@ -1416,30 +1445,48 @@ void func_800BBF78(LevelModel *model) {
         }
     }
 
+#ifdef TARGET_PC
     stubbed_printf("wave bbox diffX=%d diffZ=%d startX=%d startZ=%d boundsX1=%d boundsX2=%d boundsZ1=%d boundsZ2=%d\n",
                    gWaveBoundingBoxDiffX, gWaveBoundingBoxDiffZ, gWaveBoundingBoxX1, gWaveBoundingBoxZ1,
                    gWaveBlockBoundsX1, gWaveBlockBoundsX2, gWaveBlockBoundsZ1, gWaveBlockBoundsZ2);
+#endif
     gWaveBlockPosX = gWaveBoundingBoxX1;
+#ifdef TARGET_PC
     if (gWaveBoundingBoxDiffX > 0) {
         while (gWaveBlockBoundsX1 < gWaveBlockPosX) {
             gWaveBlockPosX -= gWaveBoundingBoxDiffX;
         }
+#else
+    while (gWaveBlockBoundsX1 < gWaveBlockPosX) {
+        gWaveBlockPosX -= gWaveBoundingBoxDiffX;
+#endif
     }
+#ifdef TARGET_PC
     stubbed_printf("post X while, posX=%d\n", gWaveBlockPosX);
+#endif
 
     gWaveBlockPosZ = gWaveBoundingBoxZ1;
+#ifdef TARGET_PC
     if (gWaveBoundingBoxDiffZ > 0) {
         while (gWaveBlockBoundsZ1 < gWaveBlockPosZ) {
             gWaveBlockPosZ -= gWaveBoundingBoxDiffZ;
         }
+#else
+    while (gWaveBlockBoundsZ1 < gWaveBlockPosZ) {
+        gWaveBlockPosZ -= gWaveBoundingBoxDiffZ;
+#endif
     }
+#ifdef TARGET_PC
     stubbed_printf("post Z while, posZ=%d\n", gWaveBlockPosZ);
+#endif
 
     gWaveTileCountX = ((gWaveBlockBoundsX2 - gWaveBlockPosX) / gWaveBoundingBoxDiffX) + 1;
     gWaveTileCountZ = ((gWaveBlockBoundsZ2 - gWaveBlockPosZ) / gWaveBoundingBoxDiffZ) + 1;
     gWaveTileGridCount = (subdivisions * gWaveTileCountX) + 1;
+#ifdef TARGET_PC
     stubbed_printf("tileCountX=%d tileCountZ=%d tileGridCount=%d subdiv=%d\n", gWaveTileCountX, gWaveTileCountZ,
                    gWaveTileGridCount, subdivisions);
+#endif
 
     if (D_800E30D4 != NULL) {
         mempool_free(D_800E30D4);
@@ -1639,7 +1686,9 @@ void func_800BCC70(LevelModel *model) {
     Vec2i *spA4;
     u8 *spA0;
 
+#ifdef TARGET_PC
     stubbed_printf("func_800BCC70 enter\n");
+#endif
     subdivisions = gWaveController.subdivisions;
     if (gWaveController.doubleDensity) {
         subdivisions *= 2;
@@ -1666,7 +1715,9 @@ void func_800BCC70(LevelModel *model) {
 
     stepX = gWaveBoundingBoxW / subdivisions;
     stepZ = gWaveBoundingBoxH / subdivisions;
+#ifdef TARGET_PC
     stubbed_printf("pre collision_get_y loop, numSegs=%d\n", model->numberOfSegments);
+#endif
     for (i = 0, var_s5 = 0; i < model->numberOfSegments; i++) {
         if (D_8012A0E8[gWaveModel[i].unkB] & (1 << gWaveModel[i].unkA)) {
             spA4[(gWaveModel[i].unkB * gWaveTileCountX) + gWaveModel[i].unkA].i[0] = i;
@@ -1677,10 +1728,14 @@ void func_800BCC70(LevelModel *model) {
                 x = gWaveModel[i].originX;
                 for (k = 0; k <= subdivisions; k++) {
                     // var_v0 stores the length of spAC
+#ifdef TARGET_PC
                     collisionCount = collision_get_y(i, spA8[k] + x, spA8[sp184] + z, colY, 30);
                     if (collisionCount > 30) {
                         stubbed_printf("collision_get_y OVERFLOW count=%d seg=%d\n", collisionCount, i);
                     }
+#else
+                    collisionCount = collision_get_y(i, spA8[k] + x, spA8[sp184] + z, colY);
+#endif
                     if (collisionCount == 0) {
                         var_a2 = 255;
                     } else {
@@ -1714,7 +1769,9 @@ void func_800BCC70(LevelModel *model) {
             // clang-format on
         }
     }
+#ifdef TARGET_PC
     stubbed_printf("post collision_get_y loop\n");
+#endif
 
     for (sp184 = 0; sp184 < gWaveTileCountZ; sp184++) {
         for (k = 0; k < gWaveTileCountX; k++) {
@@ -1875,9 +1932,13 @@ void func_800BCC70(LevelModel *model) {
     mempool_free(spA8);
     mempool_free(spA4);
     mempool_free(spA0);
+#ifdef TARGET_PC
     stubbed_printf("func_800BCC70 end\n");
+#endif
 }
+#ifdef TARGET_PC
 
+#endif
 
 s32 func_800BDC80(s32 arg0, unk8011C3B8 *arg1, unk8011C8B8 *arg2, f32 shadowXNegPosition, f32 shadowZNegPosition,
                   f32 shadowXPosition, f32 shadowZPosition) {
@@ -2054,6 +2115,9 @@ s32 func_800BDC80(s32 arg0, unk8011C3B8 *arg1, unk8011C8B8 *arg2, f32 shadowXNeg
         }
         sp332 = temp_fp;
     }
+#ifndef TARGET_PC
+
+#endif
     return counter;
 }
 
@@ -2083,10 +2147,14 @@ Object_Log *obj_wave_init(s32 blockID, f32 x, f32 z) {
     f32 var_f14;
     s32 var_v0_2;
     s32 var_a2;
+#ifdef TARGET_PC
     // Bisected to this array: read before it is written on some path through
     // the branches below, which indexes gWaveHeightIndices with garbage and
     // blacks out Future Fun Land on DC.
     s32 sp80[3] = { 0 };
+#else
+    s32 sp80[3];
+#endif
     s32 sp68[6];
     s32 sp5C[3];
     f32 sp50[3];
@@ -2681,4 +2749,6 @@ void obj_loop_wavepower(Object *obj) {
         gWaveGeneratorObj = obj;
     }
 }
+#ifdef TARGET_PC
 
+#endif

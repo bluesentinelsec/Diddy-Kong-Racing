@@ -36,18 +36,28 @@
 
 typedef unsigned char       u8;     /* unsigned  8-bit */
 typedef unsigned short      u16;    /* unsigned 16-bit */
+#ifndef TARGET_PC
+typedef unsigned long       u32;    /* unsigned 32-bit */
+#endif
 typedef unsigned long long  u64;    /* unsigned 64-bit */
 
 typedef signed char         s8;     /* signed  8-bit */
 typedef short               s16;    /* signed 16-bit */
+#ifndef TARGET_PC
+typedef long                s32;    /* signed 32-bit */
+#endif
 typedef long long           s64;    /* signed 64-bit */
 
 typedef volatile unsigned char      vu8;    /* unsigned  8-bit */
 typedef volatile unsigned short     vu16;   /* unsigned 16-bit */
+#ifndef TARGET_PC
+typedef volatile unsigned long      vu32;   /* unsigned 32-bit */
+#endif
 typedef volatile unsigned long long vu64;   /* unsigned 64-bit */
 
 typedef volatile signed char        vs8;    /* signed  8-bit */
 typedef volatile short              vs16;   /* signed 16-bit */
+#ifdef TARGET_PC
 typedef volatile long long          vs64;   /* signed 64-bit */
 
 #ifdef TARGET_PC
@@ -64,10 +74,15 @@ typedef long                s32;    /* signed 32-bit */
 typedef volatile unsigned long      vu32;   /* unsigned 32-bit */
 typedef volatile long               vs32;   /* signed 32-bit */
 #endif
+#else
+typedef volatile long               vs32;   /* signed 32-bit */
+typedef volatile long long          vs64;   /* signed 64-bit */
+#endif
 
 typedef float   f32;    /* single prec floating point */
 typedef double  f64;    /* double prec floating point */
 
+#ifdef TARGET_PC
 #if defined(TARGET_DC) || defined(TARGET_PC)
 /* Host size_t: the real one, so it matches the system libc prototypes. */
 #include <stddef.h>
@@ -75,6 +90,18 @@ typedef double  f64;    /* double prec floating point */
 /* The game assigns NULL to integers in places; keep the N64 spelling. */
 #undef NULL
 #define NULL 0
+#endif
+#else
+#if !defined(_SIZE_T) && !defined(_SIZE_T_) && !defined(_SIZE_T_DEF)
+#define _SIZE_T
+#define _SIZE_T_DEF         /* exeGCC size_t define label */
+#if (_MIPS_SZLONG == 32)
+typedef unsigned int    size_t;
+#endif
+#if (_MIPS_SZLONG == 64)
+typedef unsigned long   size_t;
+#endif
+#endif
 #endif
 #else
 #if !defined(_SIZE_T) && !defined(_SIZE_T_) && !defined(_SIZE_T_DEF)

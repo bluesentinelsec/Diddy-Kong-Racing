@@ -80,6 +80,7 @@ extern "C" {
 
 /* byte string operations */
 
+#ifdef TARGET_PC
 #if defined(TARGET_PC)
 /* Host builds: game code sees the N64 libc stubs (include/libc/string.h
  * declares these), platform code the real string.h, whose fortified macros
@@ -93,6 +94,17 @@ extern void     bzero(void *, int);
 extern void     bcopy(const void *, void *, size_t);
 extern int      bcmp(const void *, const void *, size_t);
 extern void     bzero(void *, size_t);
+#endif
+#else
+#ifndef MODERN_CC
+extern void     bcopy(const void *, void *, int);
+extern int      bcmp(const void *, const void *, int);
+extern void     bzero(void *, int);
+#else
+extern void     bcopy(const void *, void *, size_t);
+extern int      bcmp(const void *, const void *, size_t);
+extern void     bzero(void *, size_t);
+#endif
 #endif
 
 /* Printf */

@@ -745,7 +745,11 @@ void audspat_calculate_echo(SoundHandle soundHandle, f32 x, f32 y, f32 z) {
                 if (distToSegment < minDist) {
                     // Check if the point is below the ceiling (indicating it is inside a tunnel).
                     // This check should ideally be performed only once per call.
+#ifdef TARGET_PC
                     numOfYVals = collision_get_y(levelSegmentIndex, x, z, yVals, 10);
+#else
+                    numOfYVals = collision_get_y(levelSegmentIndex, x, z, yVals);
+#endif
                     for (k = 0; k < numOfYVals; k++) {
                         if (y < yVals[k]) {
                             minDist = distToSegment;
