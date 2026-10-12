@@ -505,6 +505,9 @@ void __CSPHandleMIDIMsg(ALCSPlayer_Custom *seqp, ALEvent *event)
         status != AL_MIDI_ControlChange &&
         status != AL_MIDI_PitchBendChange
     ) {
+#ifdef TARGET_PC
+        pc_trace_event("csp_masked status=%x chan=%d mask=%x", status, chan, seqp->chanMask);
+#endif
         return;
     }
 
@@ -519,6 +522,9 @@ void __CSPHandleMIDIMsg(ALCSPlayer_Custom *seqp, ALEvent *event)
 		    break;
 
                 sound = __lookupSoundQuick((ALSeqPlayer*)seqp, byte1, byte2, chan);
+#ifdef TARGET_PC
+                pc_trace_event("csp_lookup chan=%d key=%d vel=%d sound=%d inst=%d", chan, byte1, byte2, sound != 0, seqp->chanState[chan].instrument != 0);
+#endif
                 ALFlagFailIf(!sound, seqp->debugFlags & NO_SOUND_ERR_MASK,
                     ERR_ALSEQP_NO_SOUND); 
                 
@@ -527,6 +533,9 @@ void __CSPHandleMIDIMsg(ALCSPlayer_Custom *seqp, ALEvent *event)
                 config.unityPitch = 0;
                 
                 vstate = __mapVoice((ALSeqPlayer*)seqp, byte1, byte2, chan);
+#ifdef TARGET_PC
+                pc_trace_event("csp_map vstate=%d", vstate != 0);
+#endif
                 ALFlagFailIf(!vstate, seqp->debugFlags & NO_VOICE_ERR_MASK,
                     ERR_ALSEQP_NO_VOICE );
 
