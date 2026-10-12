@@ -24,7 +24,8 @@
 #ifdef TARGET_PC
 #include <stdio.h>
 #include <stdlib.h>
-#include "trace.h"
+extern int pc_trace_active(void);
+extern long pc_trace_frame(void);
 #endif
 #include <stdio.h>
 #include <assert.h>
