@@ -350,6 +350,7 @@ void gfx_bind_texture(unsigned int handle) {
         return;
     }
     pc_trace_texture_bind(handle);
+    pc_trace_mark("bind");
     if (handle == 0) {
         if (sTexBound) {
             sTexBound = 0;
@@ -371,6 +372,7 @@ void gfx_set_texture_filter(int point) {
         return;
     }
     pc_trace_gfx_u32(0x100 | (point ? 1u : 0u));
+    pc_trace_mark("filter");
     filter = point ? GL_NEAREST : GL_LINEAR;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
@@ -385,6 +387,7 @@ void gfx_set_texenv_blend(const unsigned char color[4]) {
     }
     pc_trace_gfx_u32(0x200);
     pc_trace_gfx(color, 4);
+    pc_trace_mark("texenv_blend");
     c[0] = color[0] / 255.0f;
     c[1] = color[1] / 255.0f;
     c[2] = color[2] / 255.0f;
@@ -405,6 +408,7 @@ void gfx_set_texenv_modulate(void) {
         return;
     }
     pc_trace_gfx_u32(0x300);
+    pc_trace_mark("texenv_modulate");
     if (sTexMode != 1) {
         sTexMode = 1;
         set_tex_mode_uniform();
@@ -422,6 +426,7 @@ void gfx_set_fog(int enable, const unsigned char color[4]) {
     if (enable) {
         pc_trace_gfx(color, 4);
     }
+    pc_trace_mark("fog");
     if (enable != sFogEnable) {
         sFogEnable = enable;
         glUniform1i(sUniFogEnable, enable);
@@ -445,6 +450,7 @@ void gfx_set_alpha_test(float ref) {
     }
     pc_trace_gfx_u32(0x500);
     pc_trace_gfx_f32(ref);
+    pc_trace_mark("alpha_test");
     if (ref != sAlphaRef) {
         sAlphaRef = ref;
         glUniform1f(sUniAlphaRef, ref);
@@ -456,6 +462,7 @@ void gfx_set_depth_test(int enable) {
         return;
     }
     pc_trace_gfx_u32(0x600 | (enable ? 1u : 0u));
+    pc_trace_mark("depth_test");
     if (enable) {
         glEnable(GL_DEPTH_TEST);
     } else {
@@ -468,6 +475,7 @@ void gfx_set_depth_write(int enable) {
         return;
     }
     pc_trace_gfx_u32(0x700 | (enable ? 1u : 0u));
+    pc_trace_mark("depth_write");
     glDepthMask(enable ? GL_TRUE : GL_FALSE);
 }
 
@@ -476,6 +484,7 @@ void gfx_set_depth_offset(int enable) {
         return;
     }
     pc_trace_gfx_u32(0x800 | (enable ? 1u : 0u));
+    pc_trace_mark("depth_offset");
     if (enable) {
         glEnable(GL_POLYGON_OFFSET_FILL);
     } else {
@@ -497,6 +506,7 @@ void gfx_set_scissor(float x0, float y0, float x1, float y1) {
     pc_trace_gfx_f32(y0);
     pc_trace_gfx_f32(x1);
     pc_trace_gfx_f32(y1);
+    pc_trace_mark("scissor");
     sx = (float) sVpW / (float) sFbWidth;
     sy = (float) sVpH / (float) sFbHeight;
     // GL measures from the bottom-left, so y flips; offset into the letterbox.
@@ -519,6 +529,7 @@ void gfx_disable_scissor(void) {
         return;
     }
     pc_trace_gfx_u32(0xA00);
+    pc_trace_mark("scissor_off");
     glEnable(GL_SCISSOR_TEST);
     glScissor(sVpX, sVpY, sVpW, sVpH);
 }
@@ -548,6 +559,7 @@ void gfx_draw_tris(const GfxTriVert *verts, int count) {
     pc_trace_gfx_u32(0xB00);
     pc_trace_gfx_u32((uint32_t) count);
     pc_trace_gfx(verts, (size_t) count * sizeof(*verts));
+    pc_trace_mark("draw");
     while (done < count) {
         int n = count - done;
         if (n > GFX_MAX_BATCH_VERTS) {

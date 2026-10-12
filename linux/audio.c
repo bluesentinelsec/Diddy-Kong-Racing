@@ -72,6 +72,7 @@ s32 osAiSetFrequency(u32 frequency) {
 void osAiSetNextBuffer(void *buf, u32 size) {
     if (buf != NULL && size != 0) {
         pc_trace_audio(buf, size);
+        pc_trace_mark("audio");
     }
     if (!sAudioReady || buf == NULL || size == 0) {
         return;

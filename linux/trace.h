@@ -34,6 +34,10 @@ void pc_trace_gfx_u32(uint32_t value);
 void pc_trace_gfx_f32(float value);
 void pc_trace_audio(const void *data, size_t size);
 
+// With DKR_TRACE_DETAIL=1, logs the running hashes after an event, to find the first
+// divergence inside a frame.
+void pc_trace_mark(const char *what);
+
 // Texture pixels are hashed once at creation and recalled by handle on bind.
 void pc_trace_texture_create(unsigned int handle, const void *rgba, int width, int height, int cmS, int cmT);
 void pc_trace_texture_bind(unsigned int handle);

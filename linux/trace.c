@@ -18,6 +18,7 @@ static uint64_t sAudioHash = FNV_OFFSET;
 static uint64_t sGfxTotal = FNV_OFFSET;
 static uint64_t sAudioTotal = FNV_OFFSET;
 static long sFrame;
+static int sDetail; // DKR_TRACE_DETAIL=1: also log the running hash after every renderer event
 
 // Texture content hashes by GL handle. Handles are small integers; the table
 // grows to fit the largest one seen.
@@ -63,6 +64,7 @@ void pc_trace_init(void) {
         exit(1);
     }
     sActive = 1;
+    sDetail = getenv("DKR_TRACE_DETAIL") != NULL && atoi(getenv("DKR_TRACE_DETAIL")) != 0;
     fprintf(sFile, "# dkracing trace v1 frames=%ld\n", sFrames);
     printf("TRACE: writing %ld frames to %s\n", sFrames, sPath);
 }
@@ -79,6 +81,12 @@ void pc_trace_gfx(const void *data, size_t size) {
 
 void pc_trace_gfx_u32(uint32_t value) {
     pc_trace_gfx(&value, sizeof(value));
+}
+
+void pc_trace_mark(const char *what) {
+    if (sActive && sDetail) {
+        fprintf(sFile, "  %s %016llx %016llx\n", what, (unsigned long long) sGfxHash, (unsigned long long) sAudioHash);
+    }
 }
 
 void pc_trace_gfx_f32(float value) {
