@@ -25,7 +25,9 @@
 #include "types.h"
 #include "video.h"
 #include "weather.h"
+#ifdef TARGET_PC
 #include "pc_swap.h"
+#endif
 
 #ifdef TARGET_PC
 // LevelHeader is loaded from a 0xC4-byte big-endian N64 image and unpacked

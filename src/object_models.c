@@ -10,7 +10,9 @@
 #include "racer.h"
 #include "textures_sprites.h"
 #include "tracks.h"
+#ifdef TARGET_PC
 #include "pc_swap.h"
+#endif
 
 #define MODEL_LOADED_MAX 70
 

@@ -80,12 +80,6 @@ extern "C" {
 
 /* byte string operations */
 
-/*
- * The N64 SDK spells these with `int` lengths. A host libc spells them with
- * `size_t` (newlib's <strings.h>, which anything including <string.h> drags in),
- * and the two declarations conflict — so on a host target take the size_t form
- * and agree with the platform.
- */
 #if defined(TARGET_PC)
 /* Host builds: game code sees the N64 libc stubs (include/libc/string.h
  * declares these), platform code the real string.h, whose fortified macros

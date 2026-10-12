@@ -100,8 +100,13 @@ s8 gRacerAIBalloonActionTable[NUM_WEAPON_TYPES] = { 1, 1, 2, 2, 4, 3, 0, 6, 4, 3
 // off the end. On console the byte past the table is D_800DCDA8[0] (they are
 // adjacent: 0x800DCDA0 + 8 == 0x800DCDA8), so the read yields 1; the ninth entry
 // below reproduces that exactly, keeping the stray load in bounds.
+#ifdef TARGET_PC
 s8 D_800DCDA0[9] = {
     0, 0, 0, 1, 1, 2, 2, 2, 1,
+#else
+s8 D_800DCDA0[8] = {
+    0, 0, 0, 1, 1, 2, 2, 2,
+#endif
 };
 
 s8 D_800DCDA8[8] = {
@@ -3699,7 +3704,7 @@ void func_8004CC20(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Rac
     s32 steerAngle;
     f32 temp4;
     f32 var_f0;
-    alignas(8) f32 mtx[4][4];
+    f32 mtx[4][4];
     Object *obj;
     f32 var_f2;
     s8 objectMoved;

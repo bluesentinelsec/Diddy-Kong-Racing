@@ -195,7 +195,11 @@ s32 gOpeningNameID;
 // real, drifting corruption. The fifth row is never read back (every read
 // indexes by gTrackSelectCursorY, which stops at 3), so giving the write a row
 // of its own is behaviour-neutral and keeps the stray store in bounds.
+#ifdef TARGET_PC
 s16 gTrackSelectIDs[5][6]; // Track Select values?
+#else
+s16 gTrackSelectIDs[4][6]; // Track Select values?
+#endif
 s16 gFFLUnlocked;
 UNUSED s32 D_80128464;
 UNUSED s32 D_80128468;
@@ -418,7 +422,11 @@ UNUSED s32 D_801268E4;
 // real, drifting corruption. The fifth row is never read back (every read
 // indexes by gTrackSelectCursorY, which stops at 3), so giving the write a row
 // of its own is behaviour-neutral and keeps the stray store in bounds.
+#ifdef TARGET_PC
 s16 gTrackSelectIDs[5][6]; // Track Select values?
+#else
+s16 gTrackSelectIDs[4][6]; // Track Select values?
+#endif
 s16 gFFLUnlocked;
 UNUSED s32 D_8012691C;
 UNUSED s32 D_80126920;
@@ -3369,6 +3377,7 @@ void func_80083098(f32 updateRateF) {
  * Load the title textures and reset player allocation.
  * Set the current level and demo.
  */
+#ifdef TARGET_PC
 void menu_prefetch_next_title_demo_music(void) {
     s8 *demo;
     u32 *offsets;
@@ -3395,6 +3404,7 @@ void menu_prefetch_next_title_demo_music(void) {
     mempool_free(offsets);
     music_prefetch(sequence);
 }
+#endif
 
 void menu_title_screen_init(void) {
     s32 i;
@@ -3440,7 +3450,9 @@ void menu_title_screen_init(void) {
     }
     load_level_for_menu(sTitleScreenDemoIds[gTitleDemoIndex + DEMO_LEVEL_ID], numberOfPlayers,
                         sTitleScreenDemoIds[gTitleDemoIndex + DEMO_CUTSCENE_ID]);
+#ifdef TARGET_PC
     menu_prefetch_next_title_demo_music();
+#endif
     D_801268D8 = 0;
     gOpeningNameID = 0;
     D_801268DC = 0;
@@ -3558,7 +3570,9 @@ s32 menu_title_screen_loop(s32 updateRate) {
             gTitleDemoTimer = 1500;
         }
         load_level_for_menu(demo[DEMO_LEVEL_ID], playerCount, demo[DEMO_CUTSCENE_ID]);
-        menu_prefetch_next_title_demo_music();
+    #ifdef TARGET_PC
+    menu_prefetch_next_title_demo_music();
+#endif
         if (sTitleScreenDemoIds[gTitleDemoIndex] == sTitleScreenDemoIds[DEMO_LEVEL_ID]) {
             D_801268D8 = 0.0f;
             gOpeningNameID = 0;

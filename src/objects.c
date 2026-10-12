@@ -39,7 +39,9 @@
 #include "video.h"
 #include "waves.h"
 #include "weather.h"
+#ifdef TARGET_PC
 #include "pc_swap.h"
+#endif
 
 #ifdef TARGET_DC
 #   include <sh4zam/shz_sh4zam.h>

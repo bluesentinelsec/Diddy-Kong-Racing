@@ -6,7 +6,9 @@
 #include "menu.h"
 #include "textures_sprites.h"
 #include "video.h"
+#ifdef TARGET_PC
 #include "pc_swap.h"
+#endif
 
 /************ .data ************/
 

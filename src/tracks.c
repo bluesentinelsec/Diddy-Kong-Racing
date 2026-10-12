@@ -25,7 +25,9 @@
 #include "video.h"
 #include "waves.h"
 #include "weather.h"
+#ifdef TARGET_PC
 #include "pc_swap.h"
+#endif
 
 // Maximum size for a level model is 522.5 KiB
 #ifdef TARGET_PC

@@ -6,7 +6,9 @@
 #include "memory.h"
 #include "tracks.h"
 #include <ultra64.h>
+#ifdef TARGET_PC
 #include "pc_swap.h"
+#endif
 
 #define MAX_NUM_TEXTURES 700
 #define MAX_NUM_SPRITES 100

@@ -7,7 +7,9 @@
 #include "textures_sprites.h"
 #include "tracks.h"
 #include <ultra64.h>
+#ifdef TARGET_PC
 #include "pc_swap.h"
+#endif
 
 /************ .rodata ************/
 

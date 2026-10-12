@@ -9,7 +9,9 @@
 #include "libultra/src/audio/seqchannel.h"
 #include "sched.h"
 #include "types.h"
+#ifdef TARGET_PC
 #include "pc_swap.h"
+#endif
 
 #ifdef DKR_AICAFLOW
 #include "../dreamcast/audio_aicaflow.h"
