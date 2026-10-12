@@ -1,3 +1,6 @@
+#include "trace.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 #include <PR/abi.h>
 #include <string.h>
@@ -588,13 +591,42 @@ void pc_audio_hle_run(void *cmdList, s32 cmdLen, void *outBuf, s32 frameSamples)
     const Acmd *cmd = cmdList;
     s32 i;
 
+    FILE *acmdDump = NULL;
+
     (void) outBuf; // the list SAVEBUFFs into it itself
     (void) frameSamples;
+
+    // DKR_TRACE_ACMD=<frame>: write this tick's command list (and a hash of every
+    // block it loads from memory) to dkr_acmd_<frame>.txt, host-pointer free.
+    if (pc_trace_active() && getenv("DKR_TRACE_ACMD") != NULL && atol(getenv("DKR_TRACE_ACMD")) == pc_trace_frame() + 1) {
+        char name[64];
+        snprintf(name, sizeof(name), "dkr_acmd_%ld.txt", pc_trace_frame() + 1);
+        acmdDump = fopen(name, "a");
+    }
 
     for (i = 0; i < cmdLen; i++) {
         u32 w0 = (u32) cmd[i].words.w0;
         uintptr_t w1 = cmd[i].words.w1; // pointer-sized: DMA sources and state buffers
         u32 op = w0 >> 24;
+
+        if (acmdDump != NULL) {
+            int isPtr = op == A_LOADBUFF || op == A_SAVEBUFF || op == A_LOADADPCM || op == A_SETLOOP || op == A_ADPCM ||
+                        op == A_RESAMPLE || op == A_ENVMIXER || op == A_POLEF;
+            fprintf(acmdDump, "%4d op %02x w0 %08x", i, op, w0);
+            if (!isPtr) {
+                fprintf(acmdDump, " w1 %08x", (unsigned) w1);
+            } else if (op == A_LOADBUFF || op == A_LOADADPCM) {
+                const unsigned char *p = (const unsigned char *) w1;
+                u32 n = op == A_LOADBUFF ? sCount : (w0 & 0xFFFF), k, h = 2166136261u;
+                for (k = 0; k < n; k++) {
+                    h = (h ^ p[k]) * 16777619u;
+                }
+                fprintf(acmdDump, " data[%u] %08x", n, h);
+            } else {
+                fprintf(acmdDump, " ptr");
+            }
+            fputc('\n', acmdDump);
+        }
 
         switch (op) {
             case A_SPNOOP:
@@ -646,5 +678,8 @@ void pc_audio_hle_run(void *cmdList, s32 cmdLen, void *outBuf, s32 frameSamples)
             default:
                 break;
         }
+    }
+    if (acmdDump != NULL) {
+        fclose(acmdDump);
     }
 }
