@@ -8,10 +8,10 @@ endif
 
 CC := gcc
 CXX := g++
-CFLAGS := -I . -Wall -Wextra -Wno-unused-parameter -pedantic -std=c99 $(OPT) -s
+CFLAGS := -I . -Wall -Wextra -Wno-unused-parameter -Wno-sfinae-incomplete -pedantic -std=c99 $(OPT) -s
 # List of specific errors to ignore
-IGNORE_W_ERRORS := -Wno-unused-parameter -Wno-misleading-indentation -Wno-extra -Wno-sfinae-incomplete
-CXXFLAGS := -I . -I dkr_assets_tool_src/ -std=c++17 $(OPT)
+IGNORE_W_ERRORS := -Wno-unused-parameter -Wno-misleading-indentation -Wno-extra
+CXXFLAGS := -I . -I dkr_assets_tool_src/ -Wno-sfinae-incomplete -std=c++17 $(OPT)
 LDFLAGS := -lm
 PROGRAMS := n64crc dkr_assets_tool
 
@@ -67,7 +67,7 @@ dkr_assets_tool_C_FILES := $(call rwildcard,dkr_assets_tool_src,*.c)
 dkr_assets_tool_OBJ_FILES := $(foreach file,$(dkr_assets_tool_C_FILES),$(BUILD_DIR)/$(file:.c=.o)) \
                              $(foreach file,$(dkr_assets_tool_CPP_FILES),$(BUILD_DIR)/$(file:.cpp=.o))
 
-DUMMY := $(shell mkdir -p $(sort $(dir $(dkr_assets_tool_OBJ_FILES))))
+DUMMY != mkdir -p $(sort $(dir $(dkr_assets_tool_OBJ_FILES)))
 
 $(BUILD_DIR)/%.o: %.c
 	$(CC) -c $^ -o $@ $(CFLAGS)

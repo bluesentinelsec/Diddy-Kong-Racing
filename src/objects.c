@@ -246,14 +246,14 @@ s32 D_8011AD5C;
 s32 D_8011AD60;
 s32 *gAssetsObjectHeadersTable;
 s32 gAssetsObjectHeadersTableLength;
-s32 *gAssetsMiscSection;
+s32 *gAssetsMiscSection; // Official Name: Ftables
 #ifdef TARGET_PC
 static Object_Boost sPcBoostTable[NUMBER_OF_CHARACTERS]; // ASSET_MISC_20 unpacked for the host
 #endif
-s32 *gAssetsMiscTable;
-s32 D_8011AD74;
+s32 *gAssetsMiscTable;   // Official Name: Findex
+UNUSED s32 D_8011AD74;
 Gfx *D_8011AD78[10];
-s32 gAssetsMiscTableLength;
+s32 gAssetsMiscTableLength; // Official Name: Fmax
 s16 D_8011ADA4;
 f32 gObjectUpdateRateF;
 s32 gPathUpdateOff;
@@ -2225,7 +2225,7 @@ void add_particle_to_entity_list(Object *obj) {
     gParticleCount++;
 }
 
-// Official Name: ObjSetupObject
+// Official Name: objSetupObject
 Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
     s32 objType;
     Settings *settings;
@@ -3423,10 +3423,8 @@ s32 play_footstep_sounds(Object *obj, s32 arg1, s32 frame, s32 oddSoundId, s32 e
     s32 soundId;
 
     ret = 0;
-    if (arg1 < obj->header->unk5B) {
-        // TODO: Figure this one out better. The index could be something like this:
-        // obj->header->internalName[arg1 - 4]
-        asset = (s8 *) get_misc_asset(*(&obj->header->unk5C + arg1));
+    if (arg1 < obj->header->miscAssetCount) {
+        asset = (s8 *) get_misc_asset(obj->header->miscAssetIds[arg1]);
         asset0 = asset[0];
         shakeDist = (asset[1] & 0xFF) * 8.0f;
         shakeMagnitude = asset[2];
@@ -5239,7 +5237,7 @@ void func_80016500(Object *obj, Object_Racer *racer) {
     angle = racer->steerVisualRotation;
     if (racer->vehicleID == VEHICLE_CAR) {
         if (racer->drift_direction != 0) {
-            angle += racer->unk10C;
+            angle += racer->driftHeadingOffset;
             angle = (s16) angle;
         }
     }
@@ -5698,7 +5696,7 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
     arg2[0] = 0;
     for (i = 0; i < 4; i++) {
         if (sp168 & (1 << i)) {
-            arg2[0]++;
+            (*arg2)++;
         }
     }
 
@@ -5749,99 +5747,80 @@ u32 func_800179D0(void) {
 #endif
 }
 
-// https://decomp.me/scratch/xNAlf
-// 2026-07-11: verified against baserom asm (ROM 0x18618). The B>0.707 branch originally
-// solved the plane equation at (x1,z1) — the new position — not (x2,z2); using A2/C2
-// (A*x2/C*z2) here caused the map-specific "caught on the track lip" collision bug.
-s32 func_80017A18(ObjectModel *arg0, s32 arg1, s32 *arg2, f32 *arg3, f32 *arg4, f32 *arg5, f32 *arg6, f32 *arg7,
-                  f32 *arg8, f32 *arg9, s8 *argA, f32 argB) {
+s32 func_80017A18(ObjectModel *arg0, s32 arg1, s32 *numCollisions, f32 *originPointsX, f32 *originPointsY,
+                  f32 *originPointsZ, f32 *targetPointsX, f32 *targetPointsY, f32 *targetPointsZ, f32 *collisionRadii,
+                  s8 *surfaces, f32 scale) {
     f32 *planes;
     s32 i, j, k;
     f32 sum1, sum2;
     f32 t;
-    u32 var_a2; // u32 required here to force loading 1 instead of a3 into it
+    u32 var_a2;
     s32 counter;
-    s32 spF8; // f8
+    s32 spF8;
     s32 var_s6;
-    f32 A2, C2;
-    f32 A; // e4
-    f32 B; // e0
-    f32 C; // dc
-    f32 D; // d8
+    CollisionFacetPlanes *node;
+    UNUSED s32 pad;
+    s32 closestTri;
+    f32 A, B, C, D;
     f32 A1, B1, C1, D1;
     s32 redoLoop;
-    f32 spC0; // c0
-    f32 x1;   // bc
-    f32 y1;
-    f32 z1; // b4
+    f32 spC0;
+    f32 x1, y1, z1;
     f32 x3, y3, z3;
-    f32 x2; // a4
-    f32 y2; // a0
-    f32 z2; // 9c
-    CollisionNode *node;
-    f32 dx, dy, dz;
-    s32 triIndex;
-    s32 closestTri;
+    f32 x2, y2, z2;
 
     spF8 = 0;
     planes = arg0->collisionPlanes;
     var_s6 = 1;
 
     for (i = 0; i < arg1; i++) {
-        x1 = arg6[i];
-        y1 = arg7[i];
-        z1 = arg8[i];
-        spC0 = arg9[i] * argB;
+        x1 = targetPointsX[i];
+        y1 = targetPointsY[i];
+        z1 = targetPointsZ[i];
+        x2 = originPointsX[i];
+        y2 = originPointsY[i];
+        z2 = originPointsZ[i];
+        spC0 = collisionRadii[i] * scale;
 
         counter = 0;
         do {
             redoLoop = FALSE;
-            x2 = arg3[i];
-            y2 = arg4[i];
-            z2 = arg5[i];
-
             for (j = 0; j < arg0->collisionFacetCount; j++) {
-                node = (CollisionNode *) &arg0->collisionFacets[j];
-                triIndex = node->colPlaneIndex;
+                node = &arg0->collisionFacets[j];
+                closestTri = node->basePlaneIndex;
 
-                A = planes[4 * triIndex + 0];
-                B = planes[4 * triIndex + 1];
-                C = planes[4 * triIndex + 2];
-                D = planes[4 * triIndex + 3];
-
-                A2 = A * x2;
-                sum1 = A2;
-                sum1 += B * y2;
-                C2 = C * z2;
-                sum1 += C2;
-                sum1 = D + sum1;
+                A = planes[4 * closestTri + 0];
+                B = planes[4 * closestTri + 1];
+                C = planes[4 * closestTri + 2];
+                D = planes[4 * closestTri + 3];
+                sum1 = A * x2 + B * y2 + C * z2 + D;
+                sum2 = A * x1 + B * y1 + C * z1 + D;
                 sum1 -= spC0;
-
-                sum2 = planes[4 * triIndex + 0] * x1;
-                sum2 += planes[4 * triIndex + 1] * y1;
-                sum2 += planes[4 * triIndex + 2] * z1;
-                sum2 += D;
                 sum2 -= spC0;
                 if (sum1 >= -0.1 && sum2 < -0.1) {
+                    x3 = (x1 - x2);
+                    y3 = (y1 - y2);
+                    z3 = (z1 - z2);
                     if (sum1 != sum2) {
                         t = sum1 / (sum1 - sum2);
                     } else {
                         t = 0.0f;
                     }
-                    x3 = (x1 - x2) * t + x2;
-                    y3 = (y1 - y2) * t + y2;
-                    z3 = (z1 - z2) * t + z2;
+
                     var_a2 = TRUE;
+                    x3 = x3 * t + x2;
+                    y3 = y3 * t + y2;
+                    z3 = z3 * t + z2;
 
                     for (k = 0; k < 3 && var_a2 == TRUE; k++) {
-                        closestTri = node->closestTri[k];
+                        closestTri = node->edgeBisectorPlane[k];
 
-                        A1 = planes[4 * closestTri + 0] * x3;
-                        B1 = planes[4 * closestTri + 1] * y3;
-                        C1 = planes[4 * closestTri + 2] * z3;
+                        A1 = planes[4 * closestTri + 0];
+                        B1 = planes[4 * closestTri + 1];
+                        C1 = planes[4 * closestTri + 2];
                         D1 = planes[4 * closestTri + 3];
-
-                        if (A1 + B1 + C1 + D1 > 4.0f) {
+                        t = A1 * x3 + B1 * y3 + C1 * z3 + D1;
+                        if (t > 4.0f) {
                             var_a2 = FALSE;
                         }
                     }
@@ -5849,7 +5828,7 @@ s32 func_80017A18(ObjectModel *arg0, s32 arg1, s32 *arg2, f32 *arg3, f32 *arg4, 
                     if (var_a2) {
                         redoLoop = TRUE;
                         if (B > 0.707) {
-                            y1 = (spC0 - ((A * x1) + (C * z1) + D)) / B;
+                            y1 = (spC0 - (A * x1 + C * z1 + D)) / B;
                         } else {
                             x1 -= sum2 * A;
                             y1 -= sum2 * B;
@@ -5862,10 +5841,11 @@ s32 func_80017A18(ObjectModel *arg0, s32 arg1, s32 *arg2, f32 *arg3, f32 *arg4, 
                             y1 = y2;
                             z1 = z2;
                         }
-                        argA[i] = 0;
-                        arg6[i] = x1;
-                        arg7[i] = y1;
-                        arg8[i] = z1;
+                        surfaces[i] = 0;
+                        targetPointsX[i] = x1;
+                        targetPointsY[i] = y1;
+                        targetPointsZ[i] = z1;
+
                         j = arg0->collisionFacetCount; // break
                     }
                 }
@@ -5873,7 +5853,7 @@ s32 func_80017A18(ObjectModel *arg0, s32 arg1, s32 *arg2, f32 *arg3, f32 *arg4, 
         } while (redoLoop);
 
         if (counter > 0) {
-            arg2[0]++;
+            (*numCollisions)++;
             spF8 |= var_s6;
         }
         var_s6 <<= 1;
@@ -7562,6 +7542,7 @@ Object *get_racer_object(s32 index) {
 
 /**
  * Returns the racer object specified by the player ID.
+ * Official name: objGetPlayerNo
  */
 Object *get_racer_object_by_port(s32 index) {
     if (gNumRacers == 0) {

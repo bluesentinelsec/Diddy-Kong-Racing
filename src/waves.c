@@ -19,8 +19,6 @@ Vec2s *gWaveHeightIndices = NULL; // holds some sort of index?
 TexCoords *gWaveUVTable = NULL;
 f32 *D_800E304C[9] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
 
-// Was [4][1], but indexed [0][k] with k up to 3 — UB that makes gcc delete waves_init's
-// fill loops (frozen water levels). Keep these flat [4], single index everywhere.
 Vertex *gWaveVertices[4] = { NULL, NULL, NULL, NULL };
 Triangle *gWaveTriangles[4] = { NULL, NULL, NULL, NULL };
 Triangle D_800E3090[4] = {
@@ -2272,7 +2270,7 @@ f32 obj_wave_height(Object_Log *log, s32 updateRate) {
             var_t0 += log->unkE[(log->unk4 >> 1) + 1];
         }
         if (log->unk2 > 0) {
-            var_t0 <<= (log->unk2 + 0x1F);
+            var_t0 <<= (log->unk2 - 1);
         } else {
             var_t0 >>= 1;
         }

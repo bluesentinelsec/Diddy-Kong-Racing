@@ -297,6 +297,7 @@ void init_track(u32 geometry, u32 skybox, s32 numberOfPlayers, Vehicle vehicle, 
 /**
  * The root function for rendering the entire scene.
  * Handles drawing the track, objects and the majority of the HUD in single player.
+ * Official name: trackDraw
  */
 void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 updateRate) {
     s32 i;
@@ -913,12 +914,10 @@ void func_80026C14(s16 arg0, s16 arg1, s32 arg2) {
 }
 
 void func_80026E54(s16 arg0, s8 *arg1, f32 arg2, f32 arg3) {
-    UNUSED s32 pad[7];
     unk8011D478 *next;
     unk8011D478 *curr;
     s16 temp3;
     s16 temp4;
-    f32 diff_unk0;
     f32 curr_unk0;
     f32 curr_unk2;
     f32 next_unk0;
@@ -926,17 +925,12 @@ void func_80026E54(s16 arg0, s8 *arg1, f32 arg2, f32 arg3) {
     s32 noSwap;
     s16 i;
     s16 j;
+    f32 sp94[20];
+    f32 sp6C[10];
+    s8 sp60[10];
     s8 temp;
     s8 temp0;
     s8 temp1;
-    UNUSED f32 temp2;
-#ifdef TARGET_PC
-    f32 sp94[20]; // retail writes up to 2 * arg0 (< 20) entries into a 10-entry array
-#else
-    f32 sp94[10];
-#endif
-    f32 sp6C[10];
-    s8 sp60[10];
     s8 swapByte;
 
     if (arg0 >= 10 || arg0 == 0) {
@@ -954,11 +948,10 @@ void func_80026E54(s16 arg0, s8 *arg1, f32 arg2, f32 arg3) {
         if (curr_unk0 == next_unk0) {
             return;
         }
-        diff_unk0 = (curr_unk0 - next_unk0);
-        sp94[j++] = ((next_unk2 - curr_unk2) * ((curr_unk0 - arg3) / diff_unk0)) + curr_unk2;
+        sp94[j++] = ((next_unk2 - curr_unk2) * ((curr_unk0 - arg3) / ((curr_unk0 - next_unk0)))) + curr_unk2;
         sp6C[i] = sp94[j - 1];
         sp60[i] = i;
-        sp94[j++] = ((curr_unk2 - next_unk2) * ((arg2 - next_unk0) / diff_unk0)) + next_unk2;
+        sp94[j++] = ((curr_unk2 - next_unk2) * ((arg2 - next_unk0) / ((curr_unk0 - next_unk0)))) + next_unk2;
         sp6C[i] += sp94[j - 1];
         i++;
     }
@@ -1139,7 +1132,8 @@ s32 func_80027568(void) {
     if (racerObj == NULL) {
         return FALSE;
     }
-    generate_collision_candidates(1, &racerObj->trans.position, &gSceneActiveCamera->trans.position, -1);
+    generate_collision_candidates(1, &racerObj->trans.position, &gSceneActiveCamera->trans.position,
+                                  VEHICLE_NO_OVERRIDE);
     ret = FALSE;
     for (var_t4 = 0; var_t4 < gNumCollisionCandidates && ret == FALSE; var_t4++) {
         flipSide = gCollisionCandidates[var_t4];
@@ -1339,6 +1333,7 @@ void track_tex_anim(s32 updateRate) {
  * Spawns and initialises the skydome object seen ingame.
  * Skipped if the object ID doesn't exist.
  * Also compares a checksum which can potentially trigger anti-tamper measures.
+ * Official name: initSky
  */
 void skydome_spawn(s32 objectID) {
     LevelObjectEntryCommon spawnObject;
@@ -1366,30 +1361,30 @@ void skydome_spawn(s32 objectID) {
 /**
  * Sets the status to render the sky.
  * If set to false, will skip the background and skydome rendering.
+ * Official name: trackSkySet
  */
 void set_skydome_visbility(s32 renderSky) {
     gSceneRenderSkyDome = renderSky;
 }
 
-// https://decomp.me/scratch/E1DFy
 // This function creates the flashy sky effect in the wizpig 2 race.
 void trackbg_render_flashy(void) {
     Triangle *tris;
     Vertex *verts;
-    s32 vCoordMask; // sp14C
+    s32 vCoordMask;
     s32 uCoordMask;
     f32 scaledXSin;
     f32 scaledXCos;
     f32 var_f16;
-    s16 uCoords[9]; // sp128
-    s16 vCoords[9]; // sp114
+    s16 uCoords[9];
+    s16 vCoords[9];
     f32 xCos;
-    f32 xSin; // sp10C
+    f32 xSin;
     f32 pad_sp108;
     Camera *camera;
     f32 pad_sp100;
-    f32 xPositions[9]; // spDC
-    f32 zPositions[9]; // spB8
+    f32 xPositions[9];
+    f32 zPositions[9];
     Vec3f pos;
     s32 i;
     s32 var_v0;
@@ -1402,10 +1397,10 @@ void trackbg_render_flashy(void) {
     s16 vertY;
     s16 vTempCoord;
     s16 uTempCoord;
+    LevelHeader_70 *pad2;
+    LevelHeader_70 *var_t2;
     LevelHeader_70 *levelHeader;
-    LevelHeader_70 *var_t2; // sp7C
-    LevelHeader_70 *sp78;
-    TextureHeader *texHeader; // sp74
+    TextureHeader *texHeader;
     s32 pad[4];
 
     verts = gTrackVtxPtr;
@@ -1420,47 +1415,51 @@ void trackbg_render_flashy(void) {
 
     scaledXSin = xSin * 1280.0f;
     scaledXCos = xCos * 1280.0f;
+    pad_sp100 = 2.0f * scaledXSin;
     xPositions[0] = -scaledXCos - (xSin * 1280.0f);
     zPositions[0] = -scaledXCos + (xSin * 1280.0f);
     xPositions[1] = scaledXCos - (xSin * 1280.0f);
     zPositions[1] = -scaledXCos - (xSin * 1280.0f);
-    xPositions[2] = scaledXCos + (xSin * 1280.0f);
+    xPositions[2] = scaledXCos + scaledXSin;
     zPositions[2] = scaledXCos - (xSin * 1280.0f);
     xPositions[3] = -scaledXCos + (xSin * 1280.0f);
-    zPositions[3] = scaledXCos + scaledXSin;
+    zPositions[3] = scaledXCos + (xSin * 1280.0f);
     xPositions[4] = 0.0f;
     zPositions[4] = 0.0f;
 
-    zPositions[5] = scaledXSin - (2.0f * scaledXCos);
-    xPositions[6] = scaledXCos - (2.0f * scaledXSin);
-    zPositions[6] = -(2.0f * scaledXCos) - scaledXSin;
-    xPositions[5] = -scaledXCos - (2.0f * scaledXSin);
-    xPositions[7] = scaledXCos + (2.0f * scaledXSin);
-    zPositions[7] = (2.0f * scaledXCos) - scaledXSin;
-    xPositions[8] = -scaledXCos + (2.0f * scaledXSin);
-    zPositions[8] = (2.0f * scaledXCos) + scaledXSin;
+    xPositions[5] = -(xCos * 1280.0f) - (2.0f * scaledXSin);
+    zPositions[5] = scaledXSin + -(2.0f * (xCos * 1280.0f));
+    xPositions[6] = (xCos * 1280.0f) - (2.0f * scaledXSin);
+    zPositions[6] = -(2.0f * (xCos * 1280.0f)) - scaledXSin;
+    xPositions[7] = (xCos * 1280.0f) + (2.0f * scaledXSin);
+    zPositions[7] = (2.0f * (xCos * 1280.0f)) - scaledXSin;
+    xPositions[8] = -(xCos * 1280.0f) + (2.0f * scaledXSin);
+    zPositions[8] = (2.0f * (xCos * 1280.0f)) + scaledXSin;
 
-    var_f14 = 1280.0f;
-    var_f14 *= 0.25f;
+    scaledXCos = 1280.0f;
+    var_f14 = scaledXCos * 0.25f;
 
     var_a1 = texHeader->width * 16 * gCurrentLevelHeader2->unkA0;
     var_a2 = texHeader->height * 16 * gCurrentLevelHeader2->unkA1;
 
-    var_v0 = ((s32) (camera->trans.x_position * (var_f14 / var_a1)) + (gCurrentLevelHeader2->unkA8 >> 4)) & uCoordMask;
-    var_v1 = ((s32) (camera->trans.z_position * (var_f14 / var_a2)) + (gCurrentLevelHeader2->unkAA >> 4)) & vCoordMask;
+    var_v0 = ((s32) (camera->trans.x_position * ((scaledXCos * 0.25f) / var_a1)) + (gCurrentLevelHeader2->unkA8 >> 4)) &
+             uCoordMask;
+    var_v1 = ((s32) (camera->trans.z_position * ((scaledXCos * 0.25f) / var_a2)) + (gCurrentLevelHeader2->unkAA >> 4)) &
+             vCoordMask;
 
     var_f14 = var_a1 * xCos;
     pos.z = var_a1 * xCos;
     pos.x = var_a1 * xCos;
     var_f16 = var_a2 * xSin;
     xCos = var_f16;
+    pad_sp108 = var_f16;
 
     // @fake
     var_a2 = texHeader->height * 16 * gCurrentLevelHeader2->unkA1;
 
-    uCoords[0] = (s16) (-var_f14 - xCos) + var_v0;
+    uCoords[0] = (s16) (-var_f14 - pad_sp108) + var_v0;
     vCoords[0] = (s16) (var_f16 - var_f14) + var_v1;
-    uCoords[1] = (s16) (var_f14 - xCos) + var_v0;
+    uCoords[1] = (s16) (var_f14 - pad_sp108) + var_v0;
     vCoords[1] = (s16) (-var_f14 - var_f16) + var_v1;
     uCoords[2] = (s16) (var_f14 + var_f16) + var_v0;
     vCoords[2] = (s16) (var_f14 - var_f16) + var_v1;
@@ -1474,7 +1473,7 @@ void trackbg_render_flashy(void) {
     vCoords[5] = (s16) (var_f16 - (2.0f * var_f14)) + var_v1;
     uCoords[6] = (s16) (var_f14 - (2.0f * xCos)) + var_v0;
     vCoords[6] = (s16) ((-(2.0f * var_f14)) - var_f16) + var_v1;
-    uCoords[7] = (s16) ((2.0f * xCos) + pos.z) + var_v0;
+    uCoords[7] = (s16) (pos.f[2] + (2.0f * xCos)) + var_v0;
     vCoords[7] = (s16) ((2.0f * pos.x) - var_f16) + var_v1;
     uCoords[8] = (s16) ((2.0f * xCos) - pos.z) + var_v0;
     vCoords[8] = (s16) ((2.0f * pos.x) + var_f16) + var_v1;
@@ -1490,11 +1489,10 @@ void trackbg_render_flashy(void) {
             levelHeader = var_t2;
         }
     } else {
-        levelHeader = sp78; // @bug? sp78 is never set
         var_t2 = NULL;
     }
 
-    var_a3 = -0x100;
+    var_a3 = COLOUR_RGBA32(255, 255, 255, 0);
     if (var_t2 != NULL) {
         var_a2 = var_t2->rgba.word;
         var_a3 = levelHeader->rgba.word & (~0xFF);
@@ -1526,7 +1524,7 @@ void trackbg_render_flashy(void) {
 
     var_v0_3 = D_800DC92C;
     for (i = 0; i < 8; i++) {
-        tris->flags = 0x40;
+        tris->flags = BACKFACE_DRAW;
         tris->vi0 = *var_v0_3;
         tris->uv0.u = uCoords[*var_v0_3];
         tris->uv0.v = vCoords[*var_v0_3];
@@ -2509,7 +2507,11 @@ s32 get_wave_properties(f32 yPos, f32 *waterHeight, Vec3f *rotation) {
     return gTrackWaves[index]->type;
 }
 
-s32 func_8002B0F4(s32 levelSegmentIndex, f32 xIn, f32 zIn, WaterProperties ***arg3) {
+/**
+ * Finds the waves in the current level segment, sorts them by height, outputs the sorted list into
+ * waterProps and returns the number of waves.
+ */
+s32 get_level_segment_waves(s32 levelSegmentIndex, f32 xIn, f32 zIn, WaterProperties ***waterProps) {
     LevelModelSegmentBoundingBox *currentBoundingBox;
     Triangle *tri;
     Vertex *vert;
@@ -2551,7 +2553,7 @@ s32 func_8002B0F4(s32 levelSegmentIndex, f32 xIn, f32 zIn, WaterProperties ***ar
 
     unused_bool = FALSE;
     D_8011D308 = 0;
-    *arg3 = NULL;
+    *waterProps = NULL;
     XInInt = xIn;
     ZInInt = zIn;
     segmentCount = get_inside_segment_count_xz(XInInt, ZInInt, segmentsInside);
@@ -2682,7 +2684,7 @@ s32 func_8002B0F4(s32 levelSegmentIndex, f32 xIn, f32 zIn, WaterProperties ***ar
 
     } while (!stopSorting);
 
-    *arg3 = gTrackWaves;
+    *waterProps = gTrackWaves;
     D_8011D308 = yOutCount;
 
     return yOutCount;

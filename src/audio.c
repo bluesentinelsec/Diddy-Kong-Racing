@@ -66,7 +66,11 @@ u8 gBlockVoiceLimitChange = FALSE;
 /************ .bss ************/
 
 // The audio heap is located at the start of the BSS section.
+#if defined(TARGET_PC) || defined(TARGET_DC)
 alignas(32) u8 gAudioHeapStack[AUDIO_HEAP_SIZE];
+#else
+u8 gAudioHeapStack[AUDIO_HEAP_SIZE];
+#endif
 
 ALHeap gALHeap;
 ALSeqFile *gSequenceTable;
