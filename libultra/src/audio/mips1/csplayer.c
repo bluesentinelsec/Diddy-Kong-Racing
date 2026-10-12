@@ -478,6 +478,9 @@ void __CSPHandleMIDIMsg(ALCSPlayer_Custom *seqp, ALEvent *event)
     new_var = byte1 = midi->byte1;
     new_var2 = byte2 = midi->byte2;
     chanState = &seqp->chanState[chan];
+#ifdef TARGET_PC
+    pc_trace_event("csp_midi status=%x chan=%d b1=%d b2=%d state=%d mask=%x", status, chan, byte1, byte2, seqp->state, seqp->chanMask);
+#endif
 
     if (status == AL_MIDI_ChannelModeSelect)
     {
