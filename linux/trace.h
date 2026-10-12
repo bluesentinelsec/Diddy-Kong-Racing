@@ -48,4 +48,10 @@ void pc_trace_frame_end(void);
 // The N64 Count register as the trace sees it (46.875 MHz, advancing per frame).
 uint32_t pc_trace_count(void);
 
+// Frames completed so far (the number the next "frame" line will carry, minus one).
+long pc_trace_frame(void);
+
+// DKR_TRACE_PCM=<frame>: append that frame's mixed PCM to dkr_pcm_<frame>.raw.
+void pc_trace_pcm(const void *data, size_t size);
+
 #endif

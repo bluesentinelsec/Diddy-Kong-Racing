@@ -35,6 +35,8 @@ Other targets:
 | `make fmt`    | clang-format the port's own sources (the decomp keeps its formatting) |
 | `make doc`    | Doxygen HTML documentation into `docs/html`                           |
 | `make assets` | extract and pack the game assets from the ROM in `baseroms/`          |
+| `make rom`    | build the N64 ROM from this tree and check it is byte-identical       |
+| `make golden` | run the game deterministically and compare it with the golden trace   |
 | `make clean`  | remove all build output                                               |
 
 The Makefile is a thin wrapper; the build itself is CMake, so this works too:
@@ -68,6 +70,27 @@ This writes the two asset files and regenerates `include/asset_enums.h`.
 Supported ROMs are identified by SHA-1; US 1.1 is the one this port is tested
 with.
 
+## Correctness
+
+The game code in `src/`, `include/` and `libultra/` is the decompilation, and
+every place the port diverges is an `#ifdef TARGET_PC` region whose `#else`
+branch is the decompilation's own line. Two checks keep that honest:
+
+- `make rom` (Linux, needs the IDO toolchain that `make assets` sets up) builds
+  the N64 ROM from this tree with the decompilation's own build and fails unless
+  the result is byte-identical to the retail US 1.1 ROM
+  (SHA-1 `6d96743d46f8c0cd0edb0ec5600b003c89b93755`). This proves the N64 side
+  of every `#ifdef` is still exactly the matching code.
+- `make golden` runs the port for a fixed number of frames with no input, an
+  erased save and a frame-counted clock, hashing everything the renderer is
+  handed (state changes, vertices, texture pixels) and every audio buffer the
+  mixer produces, one line per frame, and compares the result with
+  `tests/golden/us_v80.trace`. The hashes do not involve the GPU or the audio
+  device, so a 32-bit Raspberry Pi and a 64-bit Mac must produce the same file.
+  `make golden-update` regenerates it; `tests/golden.sh` takes any binary.
+  `DKR_TRACE_DETAIL=1` adds a line per renderer event to locate a divergence
+  within a frame, and `DKR_DUMP_FRAME` can capture the frame itself.
+
 ## Running
 
 ```
@@ -79,6 +102,8 @@ with.
 | `--windowed`, `-w`  | start in a window instead of borderless fullscreen            |
 | `--fullscreen`      | start fullscreen (the default)                                 |
 | `--scale N`         | window size as a multiple of the 320x240 frame (default 3)     |
+| `--trace FILE`      | write the per-frame hash trace to FILE, then exit (see above)  |
+| `--trace-frames N`  | frames to trace (default 1800)                                 |
 | `--help`, `-h`      | print the options                                              |
 
 F11 toggles fullscreen while running; Escape quits. The window is resizable and

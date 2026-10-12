@@ -162,6 +162,26 @@ void pc_trace_frame_end(void) {
     }
 }
 
+long pc_trace_frame(void) {
+    return sFrame;
+}
+
+void pc_trace_pcm(const void *data, size_t size) {
+    const char *want = getenv("DKR_TRACE_PCM");
+    char name[64];
+    FILE *f;
+
+    if (!sActive || want == NULL || atol(want) != sFrame + 1) {
+        return;
+    }
+    snprintf(name, sizeof(name), "dkr_pcm_%ld.raw", sFrame + 1);
+    f = fopen(name, "ab");
+    if (f != NULL) {
+        fwrite(data, 1, size, f);
+        fclose(f);
+    }
+}
+
 uint32_t pc_trace_count(void) {
     // 46,875,000 ticks per second at 60 frames per second.
     return (uint32_t) ((uint64_t) sFrame * 781250u);

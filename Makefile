@@ -10,6 +10,8 @@
 #   make fmt        clang-format the port's own sources
 #   make doc        Doxygen HTML into docs/html
 #   make assets     extract and pack the game assets from baseroms/ (needs the ROM)
+#   make rom        build the N64 ROM with the IDO toolchain and verify it is byte-identical
+#   make golden     run the game deterministically and compare per-frame hashes with tests/golden/
 #   make clean      remove every build directory
 
 CMAKE      ?= cmake
@@ -24,7 +26,7 @@ RELEASE_DIR := build/release
 # keep their upstream formatting so merges stay easy.
 FORMAT_SOURCES := $(wildcard linux/*.c linux/*.h include/pc_asset.h tests/*.c tests/*.h)
 
-.PHONY: golden golden-update all debug release run test fmt doc assets clean
+.PHONY: rom golden golden-update all debug release run test fmt doc assets clean
 
 all: debug
 
@@ -68,6 +70,13 @@ assets:
 	$(MAKE) -f Makefile.n64 setup
 	$(MAKE) -f Makefile.n64 extract REGION=us VERSION=v80
 	$(MAKE) -f Makefile.n64 build_assets REGION=us VERSION=v80
+
+# The correctness gate: the decompilation's own build (IDO 5.3 via the recomp
+# toolchain, Linux only) must reproduce the retail ROM bit for bit from this tree.
+# Makefile.n64 checks the SHA-1 itself and fails the build on a mismatch.
+rom:
+	$(MAKE) -f Makefile.n64 REGION=us VERSION=v80 -j$(JOBS)
+	cmp build/dkr.us.v80.z64 baseroms/baserom.us.v80.z64 && echo "rom: build/dkr.us.v80.z64 is byte-identical to the retail ROM"
 
 clean:
 	rm -rf build docs/html
