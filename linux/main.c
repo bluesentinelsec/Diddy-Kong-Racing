@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <ultra64.h>
 #include <structs.h>
 #include <f3ddkr.h>
@@ -1514,12 +1516,40 @@ void pc_gfx_task_submit(void *dlBegin, void *dlEnd) {
     pc_audio_report();
 }
 
+static void print_usage(const char *prog) {
+    printf("Usage: %s [options]\n"
+           "  --windowed       start in a window instead of fullscreen (F11 toggles)\n"
+           "  --scale N        window size as a multiple of 320x240 (default 3)\n"
+           "  --help           this text\n"
+           "Run from the directory that holds assets/.\n",
+           prog);
+}
+
 int main(int argc, char **argv) {
+    GfxOptions options = { 1, WINDOW_SCALE };
+    int i;
+
+    for (i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--windowed") == 0 || strcmp(argv[i], "-w") == 0) {
+            options.fullscreen = 0;
+        } else if (strcmp(argv[i], "--fullscreen") == 0) {
+            options.fullscreen = 1;
+        } else if (strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
+            options.scale = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        } else {
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            print_usage(argv[0]);
+            return 1;
+        }
+    }
     printf("=== DKR PC ===\n");
     sHostThread.id = 3;
     sHostThread.priority = 10;
     __osRunningThread = &sHostThread;
-    gfx_window_init(N64_SCREEN_W, N64_SCREEN_H, WINDOW_SCALE);
+    gfx_window_init(N64_SCREEN_W, N64_SCREEN_H, &options);
     thread3_main(0);
     return 0;
 }

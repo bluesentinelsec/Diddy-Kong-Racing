@@ -44,9 +44,11 @@ static int sIsES; // 1 when the context is OpenGL ES
 // the bottom-left, while the game speaks 320x240 from the top-left.
 static int sFbWidth = 320;
 static int sFbHeight = 240;
-static int sScale = 1;
 static int sWinWidth = 320;
 static int sWinHeight = 240;
+// The 4:3 image, centred in the window (letter/pillar-boxed), in window pixels.
+static int sVpX, sVpY, sVpW = 320, sVpH = 240;
+static int sFullscreen;
 
 static GLuint sProgram;
 static GLuint sVao;
@@ -84,6 +86,10 @@ typedef struct {
 } GlConfig;
 
 static int try_create_context(const GlConfig *cfg, int width, int height) {
+    SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE;
+    if (sFullscreen) {
+        flags |= SDL_WINDOW_FULLSCREEN; // borderless, at the desktop resolution
+    }
     SDL_GL_ResetAttributes();
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, cfg->profile);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, cfg->major);
@@ -92,7 +98,7 @@ static int try_create_context(const GlConfig *cfg, int width, int height) {
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
 
-    sWindow = SDL_CreateWindow("Diddy Kong Racing", width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    sWindow = SDL_CreateWindow("Diddy Kong Racing", width, height, flags);
     if (sWindow == NULL) {
         fprintf(stderr, "GFX: SDL_CreateWindow (%s) failed: %s\n", cfg->name, SDL_GetError());
         return 0;
@@ -203,13 +209,29 @@ static void set_tex_mode_uniform(void) {
 // Public API (see gfx.h)
 // ---------------------------------------------------------------------------
 
-void gfx_window_init(int width, int height, int scale) {
+// Largest 4:3 rectangle that fits the drawable, centred.
+static void update_viewport(void) {
+    SDL_GetWindowSizeInPixels(sWindow, &sWinWidth, &sWinHeight);
+    if (sWinWidth * sFbHeight >= sWinHeight * sFbWidth) {
+        sVpH = sWinHeight;
+        sVpW = sWinHeight * sFbWidth / sFbHeight;
+    } else {
+        sVpW = sWinWidth;
+        sVpH = sWinWidth * sFbHeight / sFbWidth;
+    }
+    sVpX = (sWinWidth - sVpW) / 2;
+    sVpY = (sWinHeight - sVpH) / 2;
+    glViewport(sVpX, sVpY, sVpW, sVpH);
+}
+
+void gfx_window_init(int width, int height, const GfxOptions *options) {
     const char *missing;
     const char *dump;
+    int scale = options != NULL && options->scale > 0 ? options->scale : 3;
 
     sFbWidth = width;
     sFbHeight = height;
-    sScale = scale;
+    sFullscreen = options == NULL || options->fullscreen;
 
     SDL_SetMainReady(); // we provide a plain main(); no SDL_main redirection on Windows
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -238,9 +260,7 @@ void gfx_window_init(int width, int height, int scale) {
         return;
     }
 
-    // The drawable may be larger than the window on high-DPI displays.
-    SDL_GetWindowSizeInPixels(sWindow, &sWinWidth, &sWinHeight);
-    glViewport(0, 0, sWinWidth, sWinHeight);
+    update_viewport();
 
     glGenVertexArrays(1, &sVao);
     glBindVertexArray(sVao);
@@ -453,11 +473,11 @@ void gfx_set_scissor(float x0, float y0, float x1, float y1) {
     if (sWindow == NULL) {
         return;
     }
-    sx = (float) sWinWidth / (float) sFbWidth;
-    sy = (float) sWinHeight / (float) sFbHeight;
-    // GL measures from the bottom-left, so y flips.
-    gx = (int) (x0 * sx);
-    gy = (int) ((sFbHeight - y1) * sy);
+    sx = (float) sVpW / (float) sFbWidth;
+    sy = (float) sVpH / (float) sFbHeight;
+    // GL measures from the bottom-left, so y flips; offset into the letterbox.
+    gx = sVpX + (int) (x0 * sx);
+    gy = sVpY + (int) ((sFbHeight - y1) * sy);
     w = (int) ((x1 - x0) * sx);
     h = (int) ((y1 - y0) * sy);
     if (w < 0 || h < 0) {
@@ -469,11 +489,13 @@ void gfx_set_scissor(float x0, float y0, float x1, float y1) {
     glScissor(gx, gy, w, h);
 }
 
+// "No clip" still means the 4:3 image: the letterbox bars stay black.
 void gfx_disable_scissor(void) {
     if (sWindow == NULL) {
         return;
     }
-    glDisable(GL_SCISSOR_TEST);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(sVpX, sVpY, sVpW, sVpH);
 }
 
 void gfx_frame_begin(void) {
@@ -575,8 +597,11 @@ void gfx_frame_end(void) {
             exit(0);
         }
         if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
-            SDL_GetWindowSizeInPixels(sWindow, &sWinWidth, &sWinHeight);
-            glViewport(0, 0, sWinWidth, sWinHeight);
+            update_viewport();
+        }
+        if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F11) {
+            sFullscreen = !sFullscreen;
+            SDL_SetWindowFullscreen(sWindow, sFullscreen);
         }
     }
 }

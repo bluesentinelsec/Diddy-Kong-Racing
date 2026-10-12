@@ -9,9 +9,16 @@ typedef struct {
     unsigned char r, g, b, a;
 } GfxTriVert;
 
+// Host window options, filled in from the command line by main().
+typedef struct {
+    int fullscreen; // borderless fullscreen on the current display (the default)
+    int scale;      // window size = N64 framebuffer size * scale, when windowed
+} GfxOptions;
+
 // Opens the window and GL context. `width`/`height` are the N64 framebuffer
-// size the interpreter draws in; the window is that times `scale`.
-void gfx_window_init(int width, int height, int scale);
+// size the interpreter draws in. The image keeps its 4:3 aspect and is centred
+// (letterboxed) in whatever size the window or display has.
+void gfx_window_init(int width, int height, const GfxOptions *options);
 
 void gfx_frame_begin(void);
 

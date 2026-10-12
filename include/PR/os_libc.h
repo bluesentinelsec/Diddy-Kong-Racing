@@ -86,7 +86,12 @@ extern "C" {
  * and the two declarations conflict — so on a host target take the size_t form
  * and agree with the platform.
  */
-#if !defined(MODERN_CC) && !defined(TARGET_PC)
+#if defined(TARGET_PC)
+/* Host builds: game code sees the N64 libc stubs (include/libc/string.h
+ * declares these), platform code the real string.h, whose fortified macros
+ * must not be shadowed by declarations here. */
+#include <string.h>
+#elif !defined(MODERN_CC)
 extern void     bcopy(const void *, void *, int);
 extern int      bcmp(const void *, const void *, int);
 extern void     bzero(void *, int);
