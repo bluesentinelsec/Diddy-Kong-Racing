@@ -8,6 +8,8 @@
 #include "gfx.h"
 #include "trace.h"
 
+void pc_crash_handler_install(void); // linux/crash.c
+
 // The game's main-thread entry (src/thread3_main.c): init_game() + the
 // main_game_loop() forever-loop. Called directly on the host thread, same as
 // the OoT DC port calling Main()/Graph_ThreadEntry directly — the N64 boot
@@ -1598,6 +1600,7 @@ int main(int argc, char **argv) {
         }
     }
     printf("=== DKR PC ===\n");
+    pc_crash_handler_install();
     pc_trace_init();
     sHostThread.id = 3;
     sHostThread.priority = 10;

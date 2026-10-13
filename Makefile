@@ -6,6 +6,7 @@
 #   make            debug build        -> build/debug/dkracing
 #   make release    optimized build    -> build/release/dkracing
 #   make run        build (debug) and run, windowed
+#   make run-debugger  same, under lldb (macOS) or gdb (Linux); prints a backtrace on a crash
 #   make test       build and run the unit tests (ctest)
 #   make fmt        clang-format the port's own sources
 #   make doc        Doxygen HTML into docs/html
@@ -26,7 +27,7 @@ RELEASE_DIR := build/release
 # keep their upstream formatting so merges stay easy.
 FORMAT_SOURCES := $(wildcard linux/*.c linux/*.h include/pc_asset.h tests/*.c tests/*.h)
 
-.PHONY: rom golden golden-update all debug release run test fmt doc assets clean
+.PHONY: rom golden golden-update all debug release run run-debugger test fmt doc assets clean
 
 all: debug
 
@@ -44,6 +45,20 @@ $(RELEASE_DIR)/CMakeCache.txt:
 
 run: debug
 	./$(DEBUG_DIR)/dkracing $(RUN_ARGS)
+
+# Run the debug build under the platform's debugger. The process starts at once;
+# on a crash the debugger prints a backtrace and leaves you at its prompt (type
+# `quit` to leave). DEBUGGER overrides the choice, e.g. DEBUGGER=gdb on macOS.
+# The game's own crash handler is disabled so the debugger sees the raw fault.
+UNAME_S  := $(shell uname -s)
+DEBUGGER ?= $(if $(filter Darwin,$(UNAME_S)),lldb,gdb)
+
+run-debugger: debug
+ifeq ($(DEBUGGER),lldb)
+	DKR_NO_CRASH_HANDLER=1 lldb -o run -o 'bt all' -- ./$(DEBUG_DIR)/dkracing $(RUN_ARGS)
+else
+	DKR_NO_CRASH_HANDLER=1 $(DEBUGGER) -q -ex run -ex bt --args ./$(DEBUG_DIR)/dkracing $(RUN_ARGS)
+endif
 
 GOLDEN ?= tests/golden/us_v80.trace
 GOLDEN_FRAMES ?= 1800

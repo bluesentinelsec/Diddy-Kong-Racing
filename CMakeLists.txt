@@ -84,6 +84,7 @@ set(DKR_PLATFORM_SOURCES
     linux/reimpl.c
     linux/pc_asset.c
     linux/trace.c
+    linux/crash.c
 )
 
 set(DKR_GAME_SOURCES
@@ -171,6 +172,7 @@ if(DKR_EEPROM_PRESET_100)
 endif()
 
 set(DKR_C_FLAGS
+    -g # debug info in every build so crash backtraces and debuggers can name lines
     -ffp-contract=off # no fused multiply-add: the N64 FPU has none, and hosts must agree bit for bit
     -fno-builtin
     -fno-common
@@ -231,6 +233,10 @@ if(NOT WIN32)
 endif()
 if(DKR_LINK_FLAGS)
     target_link_options(dkracing PRIVATE ${DKR_LINK_FLAGS})
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # glibc's backtrace_symbols resolves names through the dynamic symbol table.
+    target_link_options(dkracing PRIVATE -rdynamic)
 endif()
 
 # --- Unit tests ----------------------------------------------------------------

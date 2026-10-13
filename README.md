@@ -31,6 +31,7 @@ Other targets:
 | Target        | What it does                                                          |
 | ------------- | --------------------------------------------------------------------- |
 | `make run`    | debug build, then run windowed (`RUN_ARGS` to change the flags)       |
+| `make run-debugger` | the same under lldb (macOS) or gdb (Linux); a crash prints a backtrace and leaves you at the debugger prompt |
 | `make test`   | build and run the unit tests with ctest                               |
 | `make fmt`    | clang-format the port's own sources (the decomp keeps its formatting) |
 | `make doc`    | Doxygen HTML documentation into `docs/html`                           |
@@ -124,6 +125,12 @@ Environment variables:
 | `DKR_INPUT_SCRIPT=<file>` | replay a controller script instead of reading the keyboard and gamepad; each line is `<frame> <buttons> <stickX> <stickY>` (buttons: comma-separated `A B Z START L R DU DD DL DR CU CD CL CR`, or `-`), held until the next line. Works with `--trace`; see `tests/golden/drive.txt` |
 | `DKR_FPS_LOG=1`       | print frames drawn and logic steps consumed once a second |
 | `DKR_TRACE=<file>`, `DKR_TRACE_FRAMES=<n>` | same as `--trace` / `--trace-frames`      |
+| `DKR_NO_CRASH_HANDLER=1` | do not catch fatal signals (`make run-debugger` sets this so the debugger sees the fault) |
+
+On a crash (segmentation fault, bus error, abort) the game prints the current frame
+number and a backtrace to stderr and appends it to `dkracing-crash.log` in the
+working directory, then re-raises the signal. Please include that file in bug
+reports. For file and line numbers run the debug build under `make run-debugger`.
 
 Saves are kept in the per-user data directory as `eeprom.bin`:
 `~/Library/Application Support/bluesentinelsec/DiddyKongRacing/` on macOS,
