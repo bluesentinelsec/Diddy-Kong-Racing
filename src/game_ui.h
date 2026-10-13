@@ -394,7 +394,14 @@ typedef struct HudElements {
 
 typedef struct HudDrawTexture {
     DrawTexture drawTexture;
+#ifdef TARGET_PC
+    // texrect_draw walks DrawTexture elements until a NULL texture pointer. On the N64 the
+    // zeroed unk8 is exactly where element[1].texture lands; with 8-byte pointers it must be
+    // pointer-sized too, or texrect_draw reads uninitialised stack (crashed on C-right in the hub).
+    uintptr_t unk8;
+#else
     s32 unk8; // Field is always set to 0 and never read/written outside of hud_element_render
+#endif
 } HudDrawTexture;
 
 extern u8 gGfxTaskYieldData[OS_YIELD_DATA_SIZE];
