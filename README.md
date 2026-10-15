@@ -109,6 +109,8 @@ branch is the decompilation's own line. Two checks keep that honest:
 | `--windowed`, `-w`  | start in a window instead of borderless fullscreen            |
 | `--fullscreen`      | start fullscreen (the default)                                 |
 | `--scale N`         | window size as a multiple of the 320x240 frame (default 3)     |
+| `--no-vsync`        | present as fast as the GPU allows instead of once per refresh  |
+| `--no-interp`       | no interpolated frames: draw only the 30Hz logic frames        |
 | `--trace FILE`      | write the per-frame hash trace to FILE, then exit (see above)  |
 | `--trace-frames N`  | frames to trace (default 1800)                                 |
 | `--help`, `-h`      | print the options                                              |
@@ -116,14 +118,33 @@ branch is the decompilation's own line. Two checks keep that honest:
 F11 toggles fullscreen while running; Escape quits. The window is resizable and
 the image keeps its 4:3 aspect.
 
+### Frame rate
+
+The game's logic runs at the N64's 30Hz with its original fixed timestep, which
+is what keeps the physics identical to the console. The frame rate is not tied
+to it: between two logic frames the host redraws the last frame it was given
+with every matrix interpolated between its previous and current values, as often
+as the display will take a frame (vsync) or as fast as the GPU can draw one
+(`--no-vsync`). Camera and object motion is smooth at any refresh rate;
+vertex-animated meshes and the 2D layer step at 30Hz.
+
+This is done entirely on the host side of the display list: the game tags each
+matrix it pushes with the object or camera it belongs to (`pc_gfx_mtx_tag`, see
+`include/pc_gfx.h`), the interpreter records the frame with those tags, and the
+replay matches each matrix with last frame's by tag. The logic frame itself is
+still rendered the moment it is submitted, exactly as before, so `make golden`
+is unaffected (a trace never interpolates). Interpolation adds about half a
+logic frame of display latency; `--no-interp` restores the plain 30Hz path.
+
 Environment variables:
 
 | Variable              | Effect                                                   |
 | --------------------- | -------------------------------------------------------- |
 | `DKR_DUMP_FRAME=<n>[,<m>...]` | write those frames to `dkr_frame_<n>.ppm` in the current directory (for testing without a screen) |
 | `DKR_DUMP_EVERY=<k>`  | also write every *k*-th frame                            |
+| `DKR_DUMP_PRESENT=<a>-<b>` | write every presented frame (logic and interpolated) numbered *a* to *b* as `dkr_present_<n>.ppm` |
 | `DKR_INPUT_SCRIPT=<file>` | replay a controller script instead of reading the keyboard and gamepad; each line is `<frame> <buttons> <stickX> <stickY>` (buttons: comma-separated `A B Z START L R DU DD DL DR CU CD CL CR`, or `-`), held until the next line. Works with `--trace`; see `tests/golden/drive.txt` |
-| `DKR_FPS_LOG=1`       | print frames drawn and logic steps consumed once a second |
+| `DKR_FPS_LOG=1`       | print logic frames, logic steps consumed and frames presented once a second |
 | `DKR_TRACE=<file>`, `DKR_TRACE_FRAMES=<n>` | same as `--trace` / `--trace-frames`      |
 | `DKR_NO_CRASH_HANDLER=1` | do not catch fatal signals (`make run-debugger` sets this so the debugger sees the fault) |
 
@@ -155,12 +176,14 @@ Gamepads can be plugged in while the game is running.
 
 ## Layout
 
-- `linux/` - the host layer: `main.c` (display-list interpreter and frame loop),
+- `linux/` - the host layer: `main.c` (display-list interpreter, frame
+  recording and interpolation, frame loop),
   `gfx.c` (SDL3 window and shader renderer), `audio_hle.c` (RSP audio
   interpreter), `audio.c`, `input.c`, `reimpl.c` (libultra replacements, asset
   loading, saves), `pc_asset.c` (64-bit-safe asset unpacking), `shaders/`.
 - `src/`, `libultra/`, `include/` - the decompiled game and its SDK, with
-  `TARGET_PC` sections where the port diverges.
+  `TARGET_PC` sections where the port diverges. `include/pc_*.h` are the host
+  interfaces those sections call.
 - `tests/` - unit tests for the host layer (`make test`).
 - `Makefile.n64` - the decompilation's own build and asset pipeline.
 

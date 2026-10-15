@@ -37,17 +37,82 @@ static OSThread sHostThread;
 //
 // So: pace to the same 30Hz cadence vanilla runs at, and only report more
 // periods if we genuinely ran slow.
+//
+// The time between two logic ticks is not wasted, though. The renderer keeps
+// the last frame it was handed (see "Frame interpolation" below), and while the
+// game waits for its next tick the host redraws that frame with every matrix
+// interpolated between where it was last tick and where it is now, at whatever
+// rate the display can present. The logic still runs at 30Hz with a fixed
+// timestep — only the rendering is uncapped.
 // ---------------------------------------------------------------------------
 #include <time.h>
 
 #define PC_RETRACE_NSEC (1000000000ll / 60)
 #define PC_LOGIC_UPDATE_RATE 2 // LOGIC_30FPS — what gVideoDeltaTime commits to
 #define PC_MAX_UPDATE_RATE 6   // don't let a debugger pause become a huge skip
+#define PC_LOGIC_PERIOD_NSEC (PC_LOGIC_UPDATE_RATE * PC_RETRACE_NSEC)
+
+static s32 sInterpolate = TRUE;  // --no-interp turns this off (and tracing always does)
+static long long sTickNs = 0;    // the ideal time of the last logic tick
+static long long sPresentNs = 0; // running average interval between presents (display latency)
+static long long sLastPresentNs; // when the last present happened
+static s32 sPresentCount = 0;    // for DKR_FPS_LOG
+
+static long long clock_ns(void) {
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long) ts.tv_sec * 1000000000ll + ts.tv_nsec;
+}
+
+/**
+ * Called after every present (logic frame or interpolated one) so the pacer
+ * knows roughly how long a rendered frame takes to reach the screen. With vsync
+ * on this settles on the refresh period; uncapped it is the frame time.
+ */
+static void note_present(void) {
+    long long now = clock_ns();
+
+    if (sLastPresentNs != 0) {
+        long long dt = now - sLastPresentNs;
+
+        if (dt > 100000000ll) {
+            dt = 100000000ll; // a stall is not latency
+        }
+        sPresentNs = (sPresentNs == 0) ? dt : (sPresentNs * 7 + dt) / 8;
+    }
+    sLastPresentNs = now;
+    sPresentCount++;
+}
+
+/**
+ * Where between the previous logic tick (0) and the latest one (1) the frame
+ * being rendered *now* should sit — judged for the moment it will be seen, so
+ * the present latency is added on. Clamped: the game never gets ahead of its
+ * own logic.
+ */
+static f32 frame_alpha(void) {
+    long long now;
+    f32 alpha;
+
+    if (!sInterpolate || sTickNs == 0) {
+        return 1.0f;
+    }
+    now = clock_ns() + sPresentNs - sTickNs;
+    alpha = (f32) now / (f32) PC_LOGIC_PERIOD_NSEC;
+    if (alpha < 0.0f) {
+        alpha = 0.0f;
+    }
+    if (alpha > 1.0f) {
+        alpha = 1.0f;
+    }
+    return alpha;
+}
+
+static s32 pc_gfx_replay(f32 alpha); // below, with the renderer
 
 s32 pc_retrace_wait(void) {
-    static long long sLastNs = 0;
     long long targetNs;
-    struct timespec ts;
     long long nowNs;
     s32 periods;
 
@@ -55,26 +120,36 @@ s32 pc_retrace_wait(void) {
         return PC_LOGIC_UPDATE_RATE; // a trace runs as fast as it can at a fixed timestep
     }
 
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    nowNs = (long long) ts.tv_sec * 1000000000ll + ts.tv_nsec;
+    nowNs = clock_ns();
 
-    if (sLastNs == 0) {
-        sLastNs = nowNs;
+    if (sTickNs == 0) {
+        sTickNs = nowNs;
         return PC_LOGIC_UPDATE_RATE;
     }
 
-    // Sleep until this frame has covered its full committed cadence. This is
-    // the stand-in for retail's blocking osRecvMesg on the vblank queue.
-    targetNs = sLastNs + (PC_LOGIC_UPDATE_RATE * PC_RETRACE_NSEC);
+    // Until this frame has covered its full committed cadence — the stand-in
+    // for retail's blocking osRecvMesg on the vblank queue — keep the display
+    // busy with interpolated frames. Without interpolation (or with nothing to
+    // redraw) just sleep it out.
+    targetNs = sTickNs + PC_LOGIC_PERIOD_NSEC;
+    while (nowNs < targetNs) {
+        if (sInterpolate && pc_gfx_replay(frame_alpha())) {
+            note_present();
+        } else {
+            struct timespec req;
+            req.tv_sec = (targetNs - nowNs) / 1000000000ll;
+            req.tv_nsec = (targetNs - nowNs) % 1000000000ll;
+            nanosleep(&req, NULL);
+            nowNs = targetNs;
+            break;
+        }
+        nowNs = clock_ns();
+    }
     if (nowNs < targetNs) {
-        struct timespec req;
-        req.tv_sec = (targetNs - nowNs) / 1000000000ll;
-        req.tv_nsec = (targetNs - nowNs) % 1000000000ll;
-        nanosleep(&req, NULL);
         nowNs = targetNs;
     }
 
-    periods = (s32) ((nowNs - sLastNs) / PC_RETRACE_NSEC);
+    periods = (s32) ((nowNs - sTickNs) / PC_RETRACE_NSEC);
     if (periods < PC_LOGIC_UPDATE_RATE) {
         periods = PC_LOGIC_UPDATE_RATE;
     }
@@ -83,9 +158,10 @@ s32 pc_retrace_wait(void) {
     }
 
     // Advance by whole periods so rounding doesn't accumulate into drift.
-    sLastNs += (long long) periods * PC_RETRACE_NSEC;
+    sTickNs += (long long) periods * PC_RETRACE_NSEC;
 
-    // DKR_FPS_LOG=1: once a second, report frames drawn and logic periods consumed.
+    // DKR_FPS_LOG=1: once a second, report logic frames, logic periods consumed
+    // and frames actually presented (logic frames plus interpolated ones).
     {
         static int sLog = -1;
         static long long sLogNs;
@@ -99,10 +175,10 @@ s32 pc_retrace_wait(void) {
             sLogFrames++;
             sLogPeriods += periods;
             if (nowNs - sLogNs >= 1000000000ll) {
-                fprintf(stderr, "FPS: %d frames, %d periods in %.2fs\n", sLogFrames, sLogPeriods,
-                        (nowNs - sLogNs) / 1e9);
+                fprintf(stderr, "FPS: %d logic frames, %d periods, %d presented in %.2fs\n", sLogFrames, sLogPeriods,
+                        sPresentCount, (nowNs - sLogNs) / 1e9);
                 sLogNs = nowNs;
-                sLogFrames = sLogPeriods = 0;
+                sLogFrames = sLogPeriods = sPresentCount = 0;
             }
         }
     }
@@ -137,6 +213,15 @@ typedef struct {
     f32 clip[4];
     f32 u, v; // texel coords, filled in per-triangle from the Triangle's UVs
     u8 r, g, b, a;
+    // What produced clip[], so an interpolated frame can redo the transform
+    // with the matrices moved: the model-space position, the matrix-table entry
+    // it went through, and — for a billboarded vertex — the same for the anchor
+    // whose clip position was added on. mtx == -1 means "no matrix was loaded"
+    // and the vertex is left as recorded.
+    f32 raw[3];
+    f32 anchorRaw[3];
+    s16 mtx;
+    s16 anchorMtx;
 } GfxVertex;
 
 // ---------------------------------------------------------------------------
@@ -194,9 +279,11 @@ static f32 min_f(f32 a, f32 b) {
     return (a < b) ? a : b;
 }
 
+static void t_set_scissor(f32 x0, f32 y0, f32 x1, f32 y1); // recorded host call, below
+
 static void apply_clip_rect(void) {
-    gfx_set_scissor(max_f(sScisX0, sVpClipX0), max_f(sScisY0, sVpClipY0), min_f(sScisX1, sVpClipX1),
-                    min_f(sScisY1, sVpClipY1));
+    t_set_scissor(max_f(sScisX0, sVpClipX0), max_f(sScisY0, sVpClipY0), min_f(sScisX1, sVpClipX1),
+                  min_f(sScisY1, sVpClipY1));
 }
 
 static GfxTriVert sTriVerts[GFX_MAX_TRI_VERTS];
@@ -246,6 +333,409 @@ static u8 sBlendColor[4] = { 0x00, 0x00, 0x00, 0xFF }; // G_SETBLENDCOLOR
 static u8 sFogColor[4] = { 0x00, 0x00, 0x00, 0xFF };
 static s16 sFogMul = 0;
 static s16 sFogOfs = 0;
+
+// ---------------------------------------------------------------------------
+// Frame interpolation.
+//
+// The game hands over one display list per logic tick, 30 times a second. To
+// present more frames than that without touching the game's timestep, the
+// interpreter records everything a frame does — every host state change and
+// every batch of triangles, the latter in model space with the matrix each
+// vertex was transformed by — and the pacer (pc_retrace_wait) replays that
+// recording between ticks with the matrices interpolated between their
+// previous and current values.
+//
+// Interpolating an MVP matrix element-wise is exact for the camera's own motion
+// (the projection is constant, so lerp(M1·VP, M2·VP) == lerp(M1·V, M2·V)·P)
+// and a close approximation for an object's: a rotation blended this way
+// shrinks very slightly at the midpoint, invisibly so for the ~1/30s of motion
+// involved. Vertex data (animated meshes) is not interpolated.
+//
+// Matching a matrix with its previous-frame self is the real problem: the Mtx
+// addresses the display list points at belong to a per-frame heap and the
+// order objects are drawn in changes every frame. So the game tags each matrix
+// it pushes with what it belongs to (pc_gfx_mtx_tag: an object transform, a
+// camera, a sprite...) and the match is on that tag. A matrix with no tag, or
+// whose tag was not seen last frame (a newly spawned object, a camera cut), is
+// drawn where it is now. The logic frame itself is still rendered the moment it
+// is submitted, exactly as before, so the golden trace is unaffected.
+// ---------------------------------------------------------------------------
+
+#include "pc_gfx.h"
+
+#define MTX_TABLE_MAX 4096
+#define MTX_TAG_MAX 4096
+
+typedef struct {
+    const void *key; // from pc_gfx_mtx_tag, NULL if untagged
+    const Mtx *addr; // where the display list found it, to fold repeated loads
+    u16 ordinal;     // n-th matrix with this key and site in the frame
+    u8 site;
+    u8 hasPrev;
+    f32 cur[4][4];
+    f32 prev[4][4]; // last frame's matrix with the same key/site/ordinal
+    f32 eff[4][4];  // what the vertices are transformed with: lerp(prev, cur)
+} MtxEntry;
+
+static MtxEntry sMtxTable[2][MTX_TABLE_MAX]; // [sMtxCur] is this frame, the other is last frame
+static s32 sMtxCount[2];
+static s32 sMtxCur = 0;
+static s32 sMtxSlotEntry[3] = { -1, -1, -1 }; // table index loaded in each RSP matrix slot
+
+typedef struct {
+    const void *addr;
+    const void *key;
+    u8 site;
+} MtxTag;
+
+static MtxTag sMtxTags[MTX_TAG_MAX];
+static s32 sMtxTagCount = 0;
+
+void pc_gfx_mtx_tag(const void *mtx, const void *key, int site) {
+    if (sMtxTagCount < MTX_TAG_MAX) {
+        sMtxTags[sMtxTagCount].addr = mtx;
+        sMtxTags[sMtxTagCount].key = key;
+        sMtxTags[sMtxTagCount].site = (u8) site;
+        sMtxTagCount++;
+    }
+}
+
+/** The latest tag for a matrix: a frame the game built but never submitted may have left older ones. */
+static const MtxTag *mtx_tag_find(const void *addr) {
+    s32 i;
+
+    for (i = sMtxTagCount - 1; i >= 0; i--) {
+        if (sMtxTags[i].addr == addr) {
+            return &sMtxTags[i];
+        }
+    }
+    return NULL;
+}
+
+static void mtx_lerp(const f32 a[4][4], const f32 b[4][4], f32 t, f32 out[4][4]) {
+    s32 i, j;
+
+    for (i = 0; i < 4; i++) {
+        for (j = 0; j < 4; j++) {
+            out[i][j] = a[i][j] + ((b[i][j] - a[i][j]) * t);
+        }
+    }
+}
+
+/** Settle every table entry's effective matrix for a frame at `alpha` (0 = last tick, 1 = this tick). */
+static void mtx_table_resolve(f32 alpha) {
+    MtxEntry *table = sMtxTable[sMtxCur];
+    s32 i;
+
+    for (i = 0; i < sMtxCount[sMtxCur]; i++) {
+        MtxEntry *e = &table[i];
+
+        if (!e->hasPrev || alpha >= 1.0f) {
+            memcpy(e->eff, e->cur, sizeof(e->eff)); // exact, so the submitted frame is bit-for-bit the old path
+        } else if (alpha <= 0.0f) {
+            memcpy(e->eff, e->prev, sizeof(e->eff));
+        } else {
+            mtx_lerp(e->prev, e->cur, alpha, e->eff);
+        }
+    }
+}
+
+/**
+ * Register a matrix the display list loaded and return its table index. The
+ * same Mtx loaded twice in a frame (mtx_pop re-pushes the parent) folds into
+ * one entry; otherwise the entry is matched against last frame's table by its
+ * tag and takes that matrix as its interpolation origin.
+ */
+static s32 mtx_table_add(const Mtx *addr, const f32 cur[4][4], f32 alpha) {
+    MtxEntry *table = sMtxTable[sMtxCur];
+    const MtxEntry *prevTable = sMtxTable[sMtxCur ^ 1];
+    const MtxTag *tag;
+    MtxEntry *e;
+    s32 i;
+
+    for (i = sMtxCount[sMtxCur] - 1; i >= 0; i--) {
+        if (table[i].addr == addr && memcmp(table[i].cur, cur, sizeof(table[i].cur)) == 0) {
+            return i;
+        }
+    }
+    if (sMtxCount[sMtxCur] >= MTX_TABLE_MAX) {
+        return -1;
+    }
+
+    e = &table[sMtxCount[sMtxCur]];
+    memset(e, 0, sizeof(*e));
+    e->addr = addr;
+    memcpy(e->cur, cur, sizeof(e->cur));
+
+    tag = mtx_tag_find(addr);
+    if (tag != NULL && tag->key != NULL) {
+        e->key = tag->key;
+        e->site = tag->site;
+        for (i = 0; i < sMtxCount[sMtxCur]; i++) {
+            if (table[i].key == e->key && table[i].site == e->site) {
+                e->ordinal++;
+            }
+        }
+        for (i = 0; i < sMtxCount[sMtxCur ^ 1]; i++) {
+            if (prevTable[i].key == e->key && prevTable[i].site == e->site && prevTable[i].ordinal == e->ordinal) {
+                memcpy(e->prev, prevTable[i].cur, sizeof(e->prev));
+                e->hasPrev = TRUE;
+                break;
+            }
+        }
+    }
+
+    if (!e->hasPrev || alpha >= 1.0f) {
+        memcpy(e->eff, e->cur, sizeof(e->eff));
+    } else if (alpha <= 0.0f) {
+        memcpy(e->eff, e->prev, sizeof(e->eff));
+    } else {
+        mtx_lerp(e->prev, e->cur, alpha, e->eff);
+    }
+    return sMtxCount[sMtxCur]++;
+}
+
+// The recording. State changes are stored as the host calls they turn into;
+// triangle batches keep their model-space vertices plus a snapshot of the
+// interpreter state that projecting them reads (viewport, fog, combiner).
+enum TapeOpType {
+    TAPE_BIND_TEXTURE,
+    TAPE_TEXTURE_FILTER,
+    TAPE_TEXENV_BLEND,
+    TAPE_TEXENV_MODULATE,
+    TAPE_FOG,
+    TAPE_ALPHA_TEST,
+    TAPE_DEPTH_TEST,
+    TAPE_DEPTH_WRITE,
+    TAPE_DEPTH_OFFSET,
+    TAPE_SCISSOR,
+    TAPE_SCISSOR_OFF,
+    TAPE_QUAD, // screen-space triangles (the 2D layer), drawn as recorded
+    TAPE_TRIS  // model-space triangles, re-transformed on replay
+};
+
+typedef struct {
+    f32 vpScaleX, vpScaleY, vpTransX, vpTransY;
+    u32 geometryMode, otherModeH, combineW0, combineW1;
+    u8 primColor[4], envColor[4];
+    s16 fogMul, fogOfs;
+} DrawSnap;
+
+typedef struct {
+    u8 type;
+    u8 flag;
+    u8 color[4];
+    f32 f[4];
+    u32 handle;
+    s32 first, count; // into sTapeTris (TAPE_TRIS) or sTapeQuadVerts (TAPE_QUAD)
+    DrawSnap snap;
+} TapeOp;
+
+typedef struct {
+    GfxVertex v[3];
+    s32 cull;
+} TapeTri;
+
+static TapeOp *sTapeOps;
+static s32 sTapeOpCount, sTapeOpCap;
+static TapeTri *sTapeTris;
+static s32 sTapeTriCount, sTapeTriCap;
+static GfxTriVert *sTapeQuadVerts;
+static s32 sTapeQuadCount, sTapeQuadCap;
+static s32 sTapeValid = FALSE;  // a complete frame is recorded and its textures still exist
+static s32 sTapeStale = FALSE;  // a texture was deleted since the recording began
+static s32 sImmediate = TRUE;   // the submitted frame draws as it records; a replay only reads the tape
+static f32 sRecordAlpha = 1.0f; // where the submitted frame sits between the last two ticks
+
+static void *grow(void *p, s32 *cap, s32 need, size_t size) {
+    s32 n = *cap ? *cap : 1024;
+
+    while (n < need) {
+        n *= 2;
+    }
+    if (n != *cap) {
+        p = realloc(p, (size_t) n * size);
+        if (p == NULL) {
+            fprintf(stderr, "GFX: out of memory recording the frame\n");
+            exit(1);
+        }
+        *cap = n;
+    }
+    return p;
+}
+
+static TapeOp *tape_push(u8 type) {
+    TapeOp *op;
+
+    sTapeOps = grow(sTapeOps, &sTapeOpCap, sTapeOpCount + 1, sizeof(*sTapeOps));
+    op = &sTapeOps[sTapeOpCount++];
+    memset(op, 0, sizeof(*op));
+    op->type = type;
+    return op;
+}
+
+static void snap_capture(DrawSnap *s) {
+    s->vpScaleX = sVpScaleX;
+    s->vpScaleY = sVpScaleY;
+    s->vpTransX = sVpTransX;
+    s->vpTransY = sVpTransY;
+    s->geometryMode = sGeometryMode;
+    s->otherModeH = sOtherModeH;
+    s->combineW0 = sCombineW0;
+    s->combineW1 = sCombineW1;
+    memcpy(s->primColor, sPrimColor, 4);
+    memcpy(s->envColor, sEnvColor, 4);
+    s->fogMul = sFogMul;
+    s->fogOfs = sFogOfs;
+}
+
+static void snap_apply(const DrawSnap *s) {
+    sVpScaleX = s->vpScaleX;
+    sVpScaleY = s->vpScaleY;
+    sVpTransX = s->vpTransX;
+    sVpTransY = s->vpTransY;
+    sGeometryMode = s->geometryMode;
+    sOtherModeH = s->otherModeH;
+    sCombineW0 = s->combineW0;
+    sCombineW1 = s->combineW1;
+    memcpy(sPrimColor, s->primColor, 4);
+    memcpy(sEnvColor, s->envColor, 4);
+    sFogMul = s->fogMul;
+    sFogOfs = s->fogOfs;
+}
+
+// The host calls the interpreter makes, each recorded and — for the submitted
+// frame — performed at once.
+static void t_bind_texture(u32 handle) {
+    tape_push(TAPE_BIND_TEXTURE)->handle = handle;
+    if (sImmediate) {
+        gfx_bind_texture(handle);
+    }
+}
+
+static void t_set_texture_filter(s32 point) {
+    tape_push(TAPE_TEXTURE_FILTER)->flag = (u8) point;
+    if (sImmediate) {
+        gfx_set_texture_filter(point);
+    }
+}
+
+static void t_set_texenv_blend(const u8 color[4]) {
+    memcpy(tape_push(TAPE_TEXENV_BLEND)->color, color, 4);
+    if (sImmediate) {
+        gfx_set_texenv_blend(color);
+    }
+}
+
+static void t_set_texenv_modulate(void) {
+    tape_push(TAPE_TEXENV_MODULATE);
+    if (sImmediate) {
+        gfx_set_texenv_modulate();
+    }
+}
+
+static void t_set_fog(s32 enable, const u8 color[4]) {
+    TapeOp *op = tape_push(TAPE_FOG);
+
+    op->flag = (u8) enable;
+    memcpy(op->color, color, 4);
+    if (sImmediate) {
+        gfx_set_fog(enable, color);
+    }
+}
+
+static void t_set_alpha_test(f32 ref) {
+    tape_push(TAPE_ALPHA_TEST)->f[0] = ref;
+    if (sImmediate) {
+        gfx_set_alpha_test(ref);
+    }
+}
+
+static void t_set_depth_test(s32 enable) {
+    tape_push(TAPE_DEPTH_TEST)->flag = (u8) enable;
+    if (sImmediate) {
+        gfx_set_depth_test(enable);
+    }
+}
+
+static void t_set_depth_write(s32 enable) {
+    tape_push(TAPE_DEPTH_WRITE)->flag = (u8) enable;
+    if (sImmediate) {
+        gfx_set_depth_write(enable);
+    }
+}
+
+static void t_set_depth_offset(s32 enable) {
+    tape_push(TAPE_DEPTH_OFFSET)->flag = (u8) enable;
+    if (sImmediate) {
+        gfx_set_depth_offset(enable);
+    }
+}
+
+static void t_set_scissor(f32 x0, f32 y0, f32 x1, f32 y1) {
+    TapeOp *op = tape_push(TAPE_SCISSOR);
+
+    op->f[0] = x0;
+    op->f[1] = y0;
+    op->f[2] = x1;
+    op->f[3] = y1;
+    if (sImmediate) {
+        gfx_set_scissor(x0, y0, x1, y1);
+    }
+}
+
+static void t_disable_scissor(void) {
+    tape_push(TAPE_SCISSOR_OFF);
+    if (sImmediate) {
+        gfx_disable_scissor();
+    }
+}
+
+/** Screen-space triangles: recorded as they are and drawn now. */
+static void t_draw_quad(const GfxTriVert *verts, s32 count) {
+    TapeOp *op;
+
+    sTapeQuadVerts = grow(sTapeQuadVerts, &sTapeQuadCap, sTapeQuadCount + count, sizeof(*sTapeQuadVerts));
+    memcpy(&sTapeQuadVerts[sTapeQuadCount], verts, (size_t) count * sizeof(*verts));
+    op = tape_push(TAPE_QUAD);
+    op->first = sTapeQuadCount;
+    op->count = count;
+    sTapeQuadCount += count;
+    if (sImmediate) {
+        gfx_draw_tris(verts, count);
+    }
+}
+
+/** Model-space triangles already pushed with tape_tri(); the batch draws now from sTriVerts. */
+static void t_draw_tris(s32 firstTri, s32 triCount) {
+    TapeOp *op = tape_push(TAPE_TRIS);
+
+    op->first = firstTri;
+    op->count = triCount;
+    snap_capture(&op->snap);
+    if (sImmediate) {
+        gfx_draw_tris(sTriVerts, sTriVertCount);
+    }
+}
+
+static void tape_tri(const GfxVertex *v0, const GfxVertex *v1, const GfxVertex *v2, s32 cull) {
+    TapeTri *t;
+
+    sTapeTris = grow(sTapeTris, &sTapeTriCap, sTapeTriCount + 1, sizeof(*sTapeTris));
+    t = &sTapeTris[sTapeTriCount++];
+    t->v[0] = *v0;
+    t->v[1] = *v1;
+    t->v[2] = *v2;
+    t->cull = cull;
+}
+
+static void tape_reset(void) {
+    sTapeOpCount = 0;
+    sTapeTriCount = 0;
+    sTapeQuadCount = 0;
+    sTapeValid = FALSE;
+    sTapeStale = FALSE;
+}
 
 #define GFX_MAX_TEXTURES 1024
 #define GFX_MAX_TEX_TEXELS (256 * 256)
@@ -298,6 +788,8 @@ void pc_gfx_invalidate_range(const void *addr, s32 size) {
 
         if ((t->timg >= lo && t->timg < hi) || (t->tlut >= lo && t->tlut < hi)) {
             gfx_delete_texture(t->handle);
+            sTapeValid = FALSE; // the recording may still bind it
+            sTapeStale = TRUE;
             sTexCache[i] = sTexCache[--sTexCacheCount];
         } else {
             i++;
@@ -344,7 +836,7 @@ static void mtx_to_float(const Mtx *m, f32 out[4][4]) {
  * billboarding — add the anchor's clip coordinates, then perspective divide and
  * map through the viewport.
  */
-static void load_vertex(GfxVertex *dst, const Vertex *v, const f32 *anchor) {
+static void load_vertex(GfxVertex *dst, const Vertex *v, const GfxVertex *anchor) {
     const f32(*m)[4] = sMatrices[sCurMatrix];
     f32 x = v->x, y = v->y, z = v->z;
     s32 i;
@@ -352,8 +844,24 @@ static void load_vertex(GfxVertex *dst, const Vertex *v, const f32 *anchor) {
     for (i = 0; i < 4; i++) {
         dst->clip[i] = (m[0][i] * x) + (m[1][i] * y) + (m[2][i] * z) + m[3][i];
         if (anchor != NULL) {
-            dst->clip[i] += anchor[i];
+            dst->clip[i] += anchor->clip[i];
         }
+    }
+
+    dst->raw[0] = x;
+    dst->raw[1] = y;
+    dst->raw[2] = z;
+    dst->mtx = (s16) sMtxSlotEntry[sCurMatrix];
+    if (anchor != NULL) {
+        dst->anchorRaw[0] = anchor->raw[0];
+        dst->anchorRaw[1] = anchor->raw[1];
+        dst->anchorRaw[2] = anchor->raw[2];
+        dst->anchorMtx = anchor->mtx;
+        if (anchor->mtx < 0) {
+            dst->mtx = -1; // can't redo the anchor, so don't redo the vertex
+        }
+    } else {
+        dst->anchorMtx = -1;
     }
 
     dst->r = v->r;
@@ -390,7 +898,7 @@ static void handle_vertex(u32 w0, uintptr_t w1) {
     for (i = 0; i < count && dstIdx + i < GFX_MAX_VERTS; i++) {
         // Billboarded vertices are sprite-space offsets from vertex 0, the
         // anchor pushed just before the billboard matrix.
-        load_vertex(&sVerts[dstIdx + i], &src[i], sBillboard ? sVerts[0].clip : NULL);
+        load_vertex(&sVerts[dstIdx + i], &src[i], sBillboard ? &sVerts[0] : NULL);
     }
 }
 
@@ -599,6 +1107,8 @@ static u32 texture_current(void) {
             }
         }
         gfx_delete_texture(sTexCache[oldest].handle);
+        sTapeValid = FALSE;
+        sTapeStale = TRUE;
         sTexCache[oldest] = sTexCache[--sTexCacheCount];
     }
 
@@ -813,7 +1323,7 @@ static void emit_triangle(const GfxVertex *v0, const GfxVertex *v1, const GfxVer
 static void apply_texture_filter(void) {
     u32 filt = sOtherModeH & (3 << G_MDSFT_TEXTFILT);
 
-    gfx_set_texture_filter(filt == G_TF_POINT);
+    t_set_texture_filter(filt == G_TF_POINT);
 }
 
 static void apply_render_mode(void) {
@@ -824,9 +1334,9 @@ static void apply_render_mode(void) {
     // Depth needs both halves to agree: the RSP has to be emitting z (geometry
     // mode) and the RDP has to be told to use it (render mode). Clearing G_ZBUFFER
     // is how the game turns depth off for the sky, overlays and its 2D layer.
-    gfx_set_depth_test(zEnabled && (sOtherModeL & Z_CMP) != 0);
-    gfx_set_depth_write(zEnabled && (sOtherModeL & Z_UPD) != 0);
-    gfx_set_depth_offset(zEnabled && (sOtherModeL & ZMODE_DEC) == ZMODE_DEC);
+    t_set_depth_test(zEnabled && (sOtherModeL & Z_CMP) != 0);
+    t_set_depth_write(zEnabled && (sOtherModeL & Z_UPD) != 0);
+    t_set_depth_offset(zEnabled && (sOtherModeL & ZMODE_DEC) == ZMODE_DEC);
 
     // CVG_X_ALPHA is how the cutout materials (G_RM_*_TEX_EDGE) get their hard
     // edge: the RDP multiplies coverage by alpha, which on a non-antialiased
@@ -839,7 +1349,7 @@ static void apply_render_mode(void) {
     } else if (alphaCompare == G_AC_THRESHOLD) {
         ref = sBlendColor[3] / 255.0f;
     }
-    gfx_set_alpha_test(ref);
+    t_set_alpha_test(ref);
 }
 
 /**
@@ -853,6 +1363,7 @@ static void handle_polygon(u32 w0, uintptr_t w1) {
     s32 texEnabled = params & 1;
     u32 texture = 0;
     f32 invTexW = 0.0f, invTexH = 0.0f;
+    s32 firstTri;
     s32 i;
 
     if (tris == NULL) {
@@ -871,6 +1382,7 @@ static void handle_polygon(u32 w0, uintptr_t w1) {
 
     // Each G_TRIN is one material batch, so it becomes one draw call.
     sTriVertCount = 0;
+    firstTri = sTapeTriCount;
 
     for (i = 0; i < count; i++) {
         GfxVertex v[3];
@@ -887,15 +1399,16 @@ static void handle_polygon(u32 w0, uintptr_t w1) {
         v[2].v = tris[i].uv2.v * invTexH;
 
         // DKR marks culling per triangle: BACKFACE_DRAW means double-sided.
+        tape_tri(&v[0], &v[1], &v[2], !(tris[i].flags & BACKFACE_DRAW));
         emit_triangle(&v[0], &v[1], &v[2], !(tris[i].flags & BACKFACE_DRAW));
     }
 
     apply_render_mode();
-    gfx_set_fog((sGeometryMode & G_FOG) != 0, sFogColor);
-    gfx_bind_texture(texture);
+    t_set_fog((sGeometryMode & G_FOG) != 0, sFogColor);
+    t_bind_texture(texture);
     apply_texture_filter();
-    gfx_set_texenv_modulate(); // the 2D path leaves the env in blend mode
-    gfx_draw_tris(sTriVerts, sTriVertCount);
+    t_set_texenv_modulate(); // the 2D path leaves the env in blend mode
+    t_draw_tris(firstTri, sTapeTriCount - firstTri);
 }
 
 // ---------------------------------------------------------------------------
@@ -1178,22 +1691,22 @@ static void draw_2d_quad(f32 x0, f32 y0, f32 x1, f32 y1, f32 u0, f32 v0, f32 u1,
     }
 
     if (texture != 0) {
-        gfx_set_texenv_blend(lit);
+        t_set_texenv_blend(lit);
     } else {
-        gfx_set_texenv_modulate();
+        t_set_texenv_modulate();
     }
 
     // The 2D layer is ordered by the display list, not by depth. Everything the
     // last material batch left set has to be undone; the next G_TRIN re-applies
     // its own state through apply_render_mode(), so nothing needs restoring.
-    gfx_set_depth_test(FALSE);
-    gfx_set_depth_write(FALSE);
-    gfx_set_depth_offset(FALSE);
-    gfx_set_alpha_test(0.0f);
-    gfx_set_fog(FALSE, sFogColor); // the HUD does not sit in the world's haze
-    gfx_bind_texture(texture);
+    t_set_depth_test(FALSE);
+    t_set_depth_write(FALSE);
+    t_set_depth_offset(FALSE);
+    t_set_alpha_test(0.0f);
+    t_set_fog(FALSE, sFogColor); // the HUD does not sit in the world's haze
+    t_bind_texture(texture);
     apply_texture_filter();
-    gfx_draw_tris(q, 6);
+    t_draw_quad(q, 6);
 }
 
 /**
@@ -1300,7 +1813,17 @@ static void run_dl(const Gfx *dl, s32 count, s32 depth) {
             case G_MTX: {
                 s32 slot = (((w0 >> 16) & 0xFF) >> 6) & 3;
                 if (p1 != 0 && slot < 3) {
-                    mtx_to_float((const Mtx *) p1, sMatrices[slot]);
+                    f32 cur[4][4];
+                    s32 entry;
+
+                    mtx_to_float((const Mtx *) p1, cur);
+                    entry = mtx_table_add((const Mtx *) p1, cur, sRecordAlpha);
+                    sMtxSlotEntry[slot] = entry;
+                    if (entry >= 0) {
+                        memcpy(sMatrices[slot], sMtxTable[sMtxCur][entry].eff, sizeof(sMatrices[slot]));
+                    } else {
+                        memcpy(sMatrices[slot], cur, sizeof(sMatrices[slot]));
+                    }
                     sCurMatrix = slot;
                 }
                 break;
@@ -1523,10 +2046,117 @@ static void run_dl(const Gfx *dl, s32 count, s32 depth) {
 extern void pc_audio_frame(void);
 extern void pc_audio_report(void);
 
+/**
+ * Draw the recorded frame again with its matrices at `alpha` between last
+ * tick's and this tick's values, and present it. Returns FALSE when there is
+ * nothing (or nothing safe) to draw, so the pacer can sleep instead.
+ */
+static s32 pc_gfx_replay(f32 alpha) {
+    DrawSnap live;
+    s32 i, j, k;
+
+    if (!sTapeValid || !gfx_window_valid()) {
+        return FALSE;
+    }
+
+    mtx_table_resolve(alpha);
+    snap_capture(&live);
+    sImmediate = FALSE;
+    gfx_frame_begin();
+
+    for (i = 0; i < sTapeOpCount; i++) {
+        const TapeOp *op = &sTapeOps[i];
+
+        switch (op->type) {
+            case TAPE_BIND_TEXTURE:
+                gfx_bind_texture(op->handle);
+                break;
+            case TAPE_TEXTURE_FILTER:
+                gfx_set_texture_filter(op->flag);
+                break;
+            case TAPE_TEXENV_BLEND:
+                gfx_set_texenv_blend(op->color);
+                break;
+            case TAPE_TEXENV_MODULATE:
+                gfx_set_texenv_modulate();
+                break;
+            case TAPE_FOG:
+                gfx_set_fog(op->flag, op->color);
+                break;
+            case TAPE_ALPHA_TEST:
+                gfx_set_alpha_test(op->f[0]);
+                break;
+            case TAPE_DEPTH_TEST:
+                gfx_set_depth_test(op->flag);
+                break;
+            case TAPE_DEPTH_WRITE:
+                gfx_set_depth_write(op->flag);
+                break;
+            case TAPE_DEPTH_OFFSET:
+                gfx_set_depth_offset(op->flag);
+                break;
+            case TAPE_SCISSOR:
+                gfx_set_scissor(op->f[0], op->f[1], op->f[2], op->f[3]);
+                break;
+            case TAPE_SCISSOR_OFF:
+                gfx_disable_scissor();
+                break;
+            case TAPE_QUAD:
+                gfx_draw_tris(&sTapeQuadVerts[op->first], op->count);
+                break;
+            case TAPE_TRIS:
+                snap_apply(&op->snap);
+                sTriVertCount = 0;
+                for (j = 0; j < op->count; j++) {
+                    const TapeTri *t = &sTapeTris[op->first + j];
+                    GfxVertex v[3];
+
+                    for (k = 0; k < 3; k++) {
+                        v[k] = t->v[k];
+                        if (v[k].mtx >= 0) {
+                            const f32(*m)[4] = sMtxTable[sMtxCur][v[k].mtx].eff;
+                            s32 c;
+
+                            for (c = 0; c < 4; c++) {
+                                v[k].clip[c] = (m[0][c] * v[k].raw[0]) + (m[1][c] * v[k].raw[1]) +
+                                               (m[2][c] * v[k].raw[2]) + m[3][c];
+                            }
+                            if (v[k].anchorMtx >= 0) {
+                                const f32(*a)[4] = sMtxTable[sMtxCur][v[k].anchorMtx].eff;
+
+                                for (c = 0; c < 4; c++) {
+                                    v[k].clip[c] += (a[0][c] * v[k].anchorRaw[0]) + (a[1][c] * v[k].anchorRaw[1]) +
+                                                    (a[2][c] * v[k].anchorRaw[2]) + a[3][c];
+                                }
+                            }
+                        }
+                    }
+                    emit_triangle(&v[0], &v[1], &v[2], t->cull);
+                }
+                gfx_draw_tris(sTriVerts, sTriVertCount);
+                break;
+        }
+    }
+
+    gfx_present();
+    sImmediate = TRUE;
+    snap_apply(&live);
+    return TRUE;
+}
+
 void pc_gfx_task_submit(void *dlBegin, void *dlEnd) {
     sGfxFrameCount++;
 
     gfx_frame_begin();
+
+    // A new recording: this frame's matrices are matched against last frame's,
+    // and the frame is drawn for the moment it will be seen.
+    sMtxCur ^= 1;
+    sMtxCount[sMtxCur] = 0;
+    sMtxSlotEntry[0] = sMtxSlotEntry[1] = sMtxSlotEntry[2] = -1;
+    sRecordAlpha = frame_alpha();
+    tape_reset();
+    sImmediate = TRUE;
 
     sCurMatrix = 0;
     sBillboard = FALSE;
@@ -1549,11 +2179,14 @@ void pc_gfx_task_submit(void *dlBegin, void *dlEnd) {
     sScisY0 = sVpClipY0 = 0.0f;
     sScisX1 = sVpClipX1 = (f32) N64_SCREEN_W;
     sScisY1 = sVpClipY1 = (f32) N64_SCREEN_H;
-    gfx_disable_scissor();
+    t_disable_scissor();
 
     run_dl((const Gfx *) dlBegin, (const Gfx *) dlEnd - (const Gfx *) dlBegin, 0);
 
     gfx_frame_end();
+    note_present();
+    sTapeValid = !sTapeStale;
+    sMtxTagCount = 0; // the game builds its next frame from here on
 
     // Tick the audio manager once per frame. On N64 this is the scheduler posting
     // OS_SC_RETRACE_MSG to the audio thread; there is no thread and no scheduler
@@ -1566,6 +2199,8 @@ static void print_usage(const char *prog) {
     printf("Usage: %s [options]\n"
            "  --windowed       start in a window instead of fullscreen (F11 toggles)\n"
            "  --scale N        window size as a multiple of 320x240 (default 3)\n"
+           "  --no-vsync       present as fast as the GPU allows instead of once per refresh\n"
+           "  --no-interp      no interpolated frames: draw the 30Hz logic frames only\n"
            "  --trace FILE     write a per-frame gfx/audio hash trace, then exit (see tests/golden.sh)\n"
            "  --trace-frames N frames to trace (default 1800)\n"
            "  --help           this text\n"
@@ -1576,7 +2211,7 @@ static void print_usage(const char *prog) {
 }
 
 int main(int argc, char **argv) {
-    GfxOptions options = { 1, WINDOW_SCALE };
+    GfxOptions options = { 1, WINDOW_SCALE, 1 };
     int i;
 
     for (i = 1; i < argc; i++) {
@@ -1586,6 +2221,11 @@ int main(int argc, char **argv) {
             options.fullscreen = 1;
         } else if (strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
             options.scale = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--no-vsync") == 0) {
+            options.vsync = 0;
+        } else if (strcmp(argv[i], "--no-interp") == 0) {
+            sInterpolate = FALSE;
+            options.vsync = 0;
         } else if (strcmp(argv[i], "--trace") == 0 && i + 1 < argc) {
             pc_trace_configure(argv[++i], 0);
         } else if (strcmp(argv[i], "--trace-frames") == 0 && i + 1 < argc) {
@@ -1602,6 +2242,10 @@ int main(int argc, char **argv) {
     printf("=== DKR PC ===\n");
     pc_crash_handler_install();
     pc_trace_init();
+    if (pc_trace_active()) {
+        sInterpolate = FALSE; // a trace is the logic frames, nothing in between
+        options.vsync = 0;
+    }
     sHostThread.id = 3;
     sHostThread.priority = 10;
     __osRunningThread = &sHostThread;

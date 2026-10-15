@@ -72,6 +72,10 @@ static unsigned int sFrameCount;
 static long sDumpFrames[MAX_DUMP_FRAMES];
 static int sDumpFrameCount;
 static long sDumpEvery;
+// DKR_DUMP_PRESENT=a-b: write every presented frame (logic and interpolated)
+// numbered a..b as dkr_present_<n>.ppm, to look at the interpolation.
+static long sDumpPresentLo = -1, sDumpPresentHi = -1;
+static unsigned int sPresentCount;
 
 // Interleaved vertex as uploaded: pos.xyzw, uv, fog, rgba8 — 32 bytes.
 typedef struct {
@@ -259,7 +263,9 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
         return;
     }
     printf("GFX: %s / %s\n", (const char *) glGetString(GL_RENDERER), (const char *) glGetString(GL_VERSION));
-    SDL_GL_SetSwapInterval(0); // pc_retrace_wait() already paces the game
+    // The game's logic is paced by pc_retrace_wait(); vsync only decides whether
+    // the frames presented in between wait for the display or run uncapped.
+    SDL_GL_SetSwapInterval(options != NULL && options->vsync ? 1 : 0);
 
     if (!build_program()) {
         SDL_GL_DestroyContext(sContext);
@@ -312,6 +318,10 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
         if (dump != NULL) {
             dump++;
         }
+    }
+    dump = getenv("DKR_DUMP_PRESENT");
+    if (dump != NULL && sscanf(dump, "%ld-%ld", &sDumpPresentLo, &sDumpPresentHi) == 1) {
+        sDumpPresentHi = sDumpPresentLo;
     }
     dump = getenv("DKR_DUMP_EVERY");
     if (dump != NULL) {
@@ -648,7 +658,7 @@ void gfx_draw_tris(const GfxTriVert *verts, int count) {
 
 // DKR_DUMP_FRAME=<n>: save frame n as dkr_frame_<n>.ppm in the working directory.
 // A screenshot facility the game carries itself, for headless/remote testing.
-static void dump_frame(void) {
+static void dump_frame_named(const char *prefix, unsigned int n) {
     int w = sWinWidth, h = sWinHeight;
     unsigned char *pixels = malloc((size_t) w * h * 4);
     char name[64];
@@ -660,7 +670,7 @@ static void dump_frame(void) {
     }
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    snprintf(name, sizeof(name), "dkr_frame_%u.ppm", sFrameCount);
+    snprintf(name, sizeof(name), "dkr_%s_%u.ppm", prefix, n);
     f = fopen(name, "wb");
     if (f != NULL) {
         fprintf(f, "P6\n%d %d\n255\n", w, h);
@@ -677,9 +687,11 @@ static void dump_frame(void) {
     free(pixels);
 }
 
-void gfx_frame_end(void) {
-    SDL_Event event;
+static void dump_frame(void) {
+    dump_frame_named("frame", sFrameCount);
+}
 
+void gfx_frame_end(void) {
     if (sWindow == NULL) {
         return;
     }
@@ -687,8 +699,25 @@ void gfx_frame_end(void) {
     if (dump_wanted((long) sFrameCount)) {
         dump_frame();
     }
-    SDL_GL_SwapWindow(sWindow);
+    gfx_present();
     pc_trace_frame_end();
+}
+
+int gfx_window_valid(void) {
+    return sWindow != NULL;
+}
+
+void gfx_present(void) {
+    SDL_Event event;
+
+    if (sWindow == NULL) {
+        return;
+    }
+    sPresentCount++;
+    if ((long) sPresentCount >= sDumpPresentLo && (long) sPresentCount <= sDumpPresentHi) {
+        dump_frame_named("present", sPresentCount);
+    }
+    SDL_GL_SwapWindow(sWindow);
 
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT || (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)) {

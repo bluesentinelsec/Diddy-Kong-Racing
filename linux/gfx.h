@@ -12,6 +12,7 @@ typedef struct {
 typedef struct {
     int fullscreen; // borderless fullscreen on the current display (the default)
     int scale;      // window size = N64 framebuffer size * scale, when windowed
+    int vsync;      // wait for the display's refresh on every present
 } GfxOptions;
 
 // Opens the window and GL context. `width`/`height` are the N64 framebuffer
@@ -89,5 +90,12 @@ void gfx_disable_scissor(void);
 
 // Presents the frame and pumps the event queue (exits the process on quit).
 void gfx_frame_end(void);
+
+// Presents an interpolated frame: swaps and pumps events, but does not count as
+// a frame for scripts and dumps, which follow the game's own logic frames.
+void gfx_present(void);
+
+// Whether there is a window to draw into at all.
+int gfx_window_valid(void);
 
 #endif

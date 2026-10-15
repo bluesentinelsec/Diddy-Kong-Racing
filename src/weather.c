@@ -3,6 +3,9 @@
 #include "audio.h"
 #include "audio_spatial.h"
 #include "camera.h"
+#ifdef TARGET_PC
+#include "pc_gfx.h"
+#endif
 #include "common.h"
 #include "f3ddkr.h"
 #include "fade_transition.h"
@@ -542,6 +545,9 @@ void snow_render(void) {
             i = 0;
             mtx = get_projection_matrix_s16();
             gSPMatrixDKR(gCurrWeatherDisplayList++, OS_K0_TO_PHYSICAL(mtx), G_MTX_DKR_INDEX_0);
+#ifdef TARGET_PC
+            pc_gfx_mtx_tag(mtx, mtx, PC_MTX_SITE_WEATHER);
+#endif
             gSPSelectMatrixDKR(gCurrWeatherDisplayList++, G_MTX_DKR_INDEX_0);
             material_set_no_tex_offset(&gCurrWeatherDisplayList, gSnowGfx.texture, RENDER_Z_COMPARE);
             while (i + gSnowVertOffset < gSnowVertCount) {

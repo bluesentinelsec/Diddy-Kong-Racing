@@ -25,7 +25,7 @@ RELEASE_DIR := build/release
 
 # Everything the port adds on top of the decompilation; the decomp's own sources
 # keep their upstream formatting so merges stay easy.
-FORMAT_SOURCES := $(wildcard linux/*.c linux/*.h include/pc_asset.h tests/*.c tests/*.h)
+FORMAT_SOURCES := $(wildcard linux/*.c linux/*.h include/pc_asset.h include/pc_gfx.h tests/*.c tests/*.h)
 
 .PHONY: rom golden golden-update all debug release run run-debugger test fmt doc assets clean
 

@@ -8,6 +8,9 @@
 #include "PRinternal/piint.h"
 #include "PRinternal/viint.h"
 #include "textures_sprites.h"
+#ifdef TARGET_PC
+#include "pc_gfx.h"
+#endif
 #include "tracks.h"
 #include "video.h"
 #include "weather.h"
@@ -965,6 +968,9 @@ void mtx_ortho(Gfx **dList, Mtx **mtx) {
     gViewportStack[gActiveCameraID + 5].vp.vtrans[1] = height * 2;
     gSPViewport((*dList)++, OS_K0_TO_PHYSICAL(&gViewportStack[gActiveCameraID + 5]));
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_0);
+#ifdef TARGET_PC
+    pc_gfx_mtx_tag((*mtx) - 1, &gCameras[gActiveCameraID], PC_MTX_SITE_ORTHO);
+#endif
     gModelMatrixStackPos = 0;
     gMtxOriginID = G_MTX_DKR_INDEX_0;
 
@@ -990,6 +996,9 @@ void mtx_perspective(Gfx **dList, Mtx **mtx) {
     mtxf_mul(gModelMatrixF[0], &gViewProjMatrixF, &gCurrentModelMatrixF);
     mtxf_to_mtx(&gCurrentModelMatrixF, *mtx);
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_0);
+#ifdef TARGET_PC
+    pc_gfx_mtx_tag((*mtx) - 1, &gCameras[gActiveCameraID], PC_MTX_SITE_PERSPECTIVE);
+#endif
     gModelMatrixStackPos = 0;
     gMtxOriginID = G_MTX_DKR_INDEX_0;
 }
@@ -1053,6 +1062,9 @@ void mtx_world_origin(Gfx **dList, Mtx **mtx) {
     mtxf_to_mtx(&gCurrentModelMatrixF, *mtx);
     gModelMatrix[gModelMatrixStackPos] = *mtx;
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), gMtxOriginID);
+#ifdef TARGET_PC
+    pc_gfx_mtx_tag((*mtx) - 1, &gCameras[gActiveCameraID], PC_MTX_SITE_ORIGIN);
+#endif
 }
 
 /**
@@ -1165,6 +1177,9 @@ s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, S
         mtxf_to_mtx(&gCurrentModelMatrixF, *mtx);
         gModelMatrix[gModelMatrixStackPos] = *mtx;
         gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_2);
+#ifdef TARGET_PC
+        pc_gfx_mtx_tag((*mtx) - 1, obj, PC_MTX_SITE_BILLBOARD);
+#endif
         // Push an empty vertex because sprite vertices are hardcoded to start from index 1,
         // and billboard mode is not enabled for vehicle parts.
         gSPVertexDKR((*dList)++, OS_K0_TO_PHYSICAL(&gVehiclePartVertex), 1, 0);
@@ -1197,6 +1212,9 @@ s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, S
         mtxf_to_mtx(gModelMatrixF[gModelMatrixStackPos], *mtx);
         gModelMatrix[gModelMatrixStackPos] = *mtx;
         gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_2);
+#ifdef TARGET_PC
+        pc_gfx_mtx_tag((*mtx) - 1, obj, PC_MTX_SITE_BILLBOARD);
+#endif
         // Enable billboard mode; subsequent vertices will be rendered relative to the anchor point
         gDkrEnableBillboard((*dList)++);
     }
@@ -1289,6 +1307,9 @@ void render_ortho_triangle_image(Gfx **dList, Mtx **mtx, Vertex **vtx, ObjectSeg
     mtxf_to_mtx(gModelMatrixF[gModelMatrixStackPos], *mtx);
     gModelMatrix[gModelMatrixStackPos] = *mtx;
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_2);
+#ifdef TARGET_PC
+    pc_gfx_mtx_tag((*mtx) - 1, segment, PC_MTX_SITE_ORTHO_IMAGE);
+#endif
     gDkrEnableBillboard((*dList)++);
     if (gSpriteAnimMode == SPRITE_ANIM_NORMALIZED) {
         index = (((u8) index) * sprite->numberOfFrames) >> 8;
@@ -1409,6 +1430,9 @@ void mtx_shear_push(Gfx **dList, Mtx **mtx, Object *obj, Object *objBase, f32 sh
     mtxf_mul(&matrix_mult, &gViewProjMatrixF, &gCurrentMVPMatrixF);
     mtxf_to_mtx(&gCurrentMVPMatrixF, *mtx);
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_1);
+#ifdef TARGET_PC
+    pc_gfx_mtx_tag((*mtx) - 1, obj, PC_MTX_SITE_SHEAR);
+#endif
 }
 
 /**
@@ -1453,6 +1477,9 @@ s32 mtx_cam_push(Gfx **dList, Mtx **mtx, ObjectTransform *trans, f32 scaleY, f32
     }
 
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_1);
+#ifdef TARGET_PC
+    pc_gfx_mtx_tag((*mtx) - 1, trans, PC_MTX_SITE_MODEL);
+#endif
 
     // Compute world-space position of the model's origin (0, 0, 0)
     mtxf_transform_point(*gModelMatrixF[gModelMatrixStackPos], 0.0f, 0.0f, 0.0f, &camRelX, &camRelY, &camRelZ);
@@ -1544,6 +1571,9 @@ void mtx_head_push(Gfx **dList, Mtx **mtx, ModelInstance *modInst, s16 headAngle
     mtxf_mul(&headMtxF, &gCurrentMVPMatrixF, &rotationMtxF);
     mtxf_to_mtx(&rotationMtxF, *mtx);
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_2);
+#ifdef TARGET_PC
+    pc_gfx_mtx_tag((*mtx) - 1, modInst, PC_MTX_SITE_HEAD);
+#endif
     gSPSelectMatrixDKR((*dList)++, G_MTX_DKR_INDEX_1);
 }
 
