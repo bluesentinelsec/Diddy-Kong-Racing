@@ -13,6 +13,7 @@ typedef struct {
     int fullscreen; // borderless fullscreen on the current display (the default)
     int scale;      // window size = N64 framebuffer size * scale, when windowed
     int vsync;      // wait for the display's refresh on every present
+    int scanlines;  // start with the scanline effect on (F2 toggles it)
 } GfxOptions;
 
 // Opens the window and GL context. `width`/`height` are the N64 framebuffer

@@ -20,6 +20,8 @@
 
 #include "shader_dkr_frag.h"
 #include "shader_dkr_vert.h"
+#include "shader_post_frag.h"
+#include "shader_post_vert.h"
 
 #define DKR_GL_DEFINE(ret, name, args) dkr_##name##_t dkr_##name = NULL;
 DKR_GL_FUNCS(DKR_GL_DEFINE)
@@ -56,6 +58,22 @@ static GLuint sVao;
 static GLuint sVbo;
 static GLint sAttrPos, sAttrUV, sAttrFog, sAttrColor;
 static GLint sUniScreen, sUniTex, sUniTexMode, sUniEnvColor, sUniFogEnable, sUniFogColor, sUniAlphaRef;
+
+// ---------------------------------------------------------------------------
+// Post-processing. The scene is drawn into an offscreen framebuffer the size of
+// the 4:3 image, and presenting it is one full-image quad through post.frag,
+// which applies the effects that are switched on. Effects are runtime toggles:
+//
+//   F2  scanlines (on by default; --no-scanlines starts with it off)
+// ---------------------------------------------------------------------------
+static GLuint sSceneFbo, sSceneTex, sSceneDepth;
+static int sSceneW, sSceneH; // what the offscreen buffers were allocated at
+static GLuint sPostProgram, sPostVao, sPostVbo;
+static GLint sPostAttrPos, sPostAttrUV, sPostUniScene, sPostUniSceneLines, sPostUniScanlines, sPostUniStrength;
+static int sScanlines = 1;
+static const float SCANLINE_STRENGTH = 0.3f;
+
+static void set_tex_mode_uniform(void);
 
 // Shadowed uniform state, so a redundant gfx_set_* costs nothing.
 static int sTexMode = 1;  // what the shader does with the texel (0/1/2)
@@ -176,26 +194,36 @@ static GLuint compile_shader(GLenum type, const char *body, unsigned int bodyLen
     return shader;
 }
 
-static int build_program(void) {
-    GLuint vs = compile_shader(GL_VERTEX_SHADER, (const char *) shader_dkr_vert, shader_dkr_vert_len);
-    GLuint fs = compile_shader(GL_FRAGMENT_SHADER, (const char *) shader_dkr_frag, shader_dkr_frag_len);
+static GLuint link_program(const unsigned char *vert, unsigned int vertLen, const unsigned char *frag,
+                           unsigned int fragLen) {
+    GLuint vs = compile_shader(GL_VERTEX_SHADER, (const char *) vert, vertLen);
+    GLuint fs = compile_shader(GL_FRAGMENT_SHADER, (const char *) frag, fragLen);
+    GLuint program;
     GLint ok = 0;
 
     if (vs == 0 || fs == 0) {
         return 0;
     }
-    sProgram = glCreateProgram();
-    glAttachShader(sProgram, vs);
-    glAttachShader(sProgram, fs);
-    glLinkProgram(sProgram);
+    program = glCreateProgram();
+    glAttachShader(program, vs);
+    glAttachShader(program, fs);
+    glLinkProgram(program);
     glDeleteShader(vs);
     glDeleteShader(fs);
-    glGetProgramiv(sProgram, GL_LINK_STATUS, &ok);
+    glGetProgramiv(program, GL_LINK_STATUS, &ok);
     if (!ok) {
         char log[2048];
         GLsizei len = 0;
-        glGetProgramInfoLog(sProgram, sizeof(log), &len, log);
+        glGetProgramInfoLog(program, sizeof(log), &len, log);
         fprintf(stderr, "GFX: shader program failed to link:\n%.*s\n", (int) len, log);
+        return 0;
+    }
+    return program;
+}
+
+static int build_program(void) {
+    sProgram = link_program(shader_dkr_vert, shader_dkr_vert_len, shader_dkr_frag, shader_dkr_frag_len);
+    if (sProgram == 0) {
         return 0;
     }
 
@@ -210,7 +238,141 @@ static int build_program(void) {
     sUniFogEnable = glGetUniformLocation(sProgram, "uFogEnable");
     sUniFogColor = glGetUniformLocation(sProgram, "uFogColor");
     sUniAlphaRef = glGetUniformLocation(sProgram, "uAlphaRef");
+
+    sPostProgram = link_program(shader_post_vert, shader_post_vert_len, shader_post_frag, shader_post_frag_len);
+    if (sPostProgram == 0) {
+        return 0;
+    }
+    sPostAttrPos = glGetAttribLocation(sPostProgram, "aPos");
+    sPostAttrUV = glGetAttribLocation(sPostProgram, "aUV");
+    sPostUniScene = glGetUniformLocation(sPostProgram, "uScene");
+    sPostUniSceneLines = glGetUniformLocation(sPostProgram, "uSceneLines");
+    sPostUniScanlines = glGetUniformLocation(sPostProgram, "uScanlines");
+    sPostUniStrength = glGetUniformLocation(sPostProgram, "uScanlineStrength");
     return 1;
+}
+
+/**
+ * (Re)create the offscreen scene buffers at the current image size. Returns 0,
+ * with the buffers released, when the GL implementation refuses: the scene then
+ * draws straight to the window and the effects are unavailable.
+ */
+static int scene_buffers_create(void) {
+    if (sSceneFbo != 0 && sSceneW == sVpW && sSceneH == sVpH) {
+        return 1;
+    }
+    if (sSceneFbo != 0) {
+        glDeleteFramebuffers(1, &sSceneFbo);
+        glDeleteTextures(1, &sSceneTex);
+        glDeleteRenderbuffers(1, &sSceneDepth);
+        sSceneFbo = sSceneTex = sSceneDepth = 0;
+    }
+    if (sVpW <= 0 || sVpH <= 0) {
+        return 0;
+    }
+
+    glGenTextures(1, &sSceneTex);
+    glBindTexture(GL_TEXTURE_2D, sSceneTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, sVpW, sVpH, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // presented 1:1
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    sTexBound = 0; // the scene texture is bound now, not a game texture
+
+    glGenRenderbuffers(1, &sSceneDepth);
+    glBindRenderbuffer(GL_RENDERBUFFER, sSceneDepth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, sVpW, sVpH);
+
+    glGenFramebuffers(1, &sSceneFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, sSceneFbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sSceneTex, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, sSceneDepth);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "GFX: offscreen framebuffer incomplete; post-processing effects unavailable\n");
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDeleteFramebuffers(1, &sSceneFbo);
+        glDeleteTextures(1, &sSceneTex);
+        glDeleteRenderbuffers(1, &sSceneDepth);
+        sSceneFbo = sSceneTex = sSceneDepth = 0;
+        return 0;
+    }
+    sSceneW = sVpW;
+    sSceneH = sVpH;
+    return 1;
+}
+
+/** Point the scene draws at the offscreen buffer (or the window when there is none). */
+static void scene_target_bind(void) {
+    if (sSceneFbo != 0) {
+        glBindFramebuffer(GL_FRAMEBUFFER, sSceneFbo);
+        glViewport(0, 0, sVpW, sVpH);
+    } else {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(sVpX, sVpY, sVpW, sVpH);
+    }
+}
+
+/** Draw the offscreen scene onto the window through the post shader. */
+static void post_process(void) {
+    float x0, y0, x1, y1;
+    float quad[4][4];
+
+    if (sSceneFbo == 0) {
+        return; // the scene is already on the window
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, sWinWidth, sWinHeight);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // The image rectangle in NDC.
+    x0 = (float) sVpX / (float) sWinWidth * 2.0f - 1.0f;
+    x1 = (float) (sVpX + sVpW) / (float) sWinWidth * 2.0f - 1.0f;
+    y0 = (float) sVpY / (float) sWinHeight * 2.0f - 1.0f;
+    y1 = (float) (sVpY + sVpH) / (float) sWinHeight * 2.0f - 1.0f;
+    // Texture v runs bottom-up like GL, and so does NDC y, so no flip. The
+    // scanline phase in the shader wants v = 0 at the top of the image, which
+    // 1 - v gives it; the shader only uses fract() of it, so either works.
+    quad[0][0] = x0;
+    quad[0][1] = y0;
+    quad[0][2] = 0.0f;
+    quad[0][3] = 0.0f;
+    quad[1][0] = x1;
+    quad[1][1] = y0;
+    quad[1][2] = 1.0f;
+    quad[1][3] = 0.0f;
+    quad[2][0] = x0;
+    quad[2][1] = y1;
+    quad[2][2] = 0.0f;
+    quad[2][3] = 1.0f;
+    quad[3][0] = x1;
+    quad[3][1] = y1;
+    quad[3][2] = 1.0f;
+    quad[3][3] = 1.0f;
+
+    glUseProgram(sPostProgram);
+    glBindVertexArray(sPostVao);
+    glBindBuffer(GL_ARRAY_BUFFER, sPostVbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STREAM_DRAW);
+    glBindTexture(GL_TEXTURE_2D, sSceneTex);
+    glUniform1i(sPostUniScene, 0);
+    glUniform2f(sPostUniSceneLines, (float) sFbWidth, (float) sFbHeight);
+    glUniform1i(sPostUniScanlines, sScanlines);
+    glUniform1f(sPostUniStrength, SCANLINE_STRENGTH);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    // Back to the scene pipeline for the next frame.
+    glUseProgram(sProgram);
+    glBindVertexArray(sVao);
+    glBindBuffer(GL_ARRAY_BUFFER, sVbo);
+    glEnable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+    sTexBound = 0;
+    set_tex_mode_uniform();
 }
 
 static void set_tex_mode_uniform(void) {
@@ -233,7 +395,8 @@ static void update_viewport(void) {
     }
     sVpX = (sWinWidth - sVpW) / 2;
     sVpY = (sWinHeight - sVpH) / 2;
-    glViewport(sVpX, sVpY, sVpW, sVpH);
+    scene_buffers_create();
+    scene_target_bind();
 }
 
 void gfx_window_init(int width, int height, const GfxOptions *options) {
@@ -244,6 +407,7 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
     sFbWidth = width;
     sFbHeight = height;
     sFullscreen = options == NULL || options->fullscreen;
+    sScanlines = options == NULL || options->scanlines;
 
     SDL_SetMainReady(); // we provide a plain main(); no SDL_main redirection on Windows
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -273,6 +437,15 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
         sWindow = NULL;
         return;
     }
+
+    glGenVertexArrays(1, &sPostVao);
+    glBindVertexArray(sPostVao);
+    glGenBuffers(1, &sPostVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, sPostVbo);
+    glEnableVertexAttribArray(sPostAttrPos);
+    glVertexAttribPointer(sPostAttrPos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (const void *) 0);
+    glEnableVertexAttribArray(sPostAttrUV);
+    glVertexAttribPointer(sPostAttrUV, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (const void *) (2 * sizeof(float)));
 
     update_viewport();
 
@@ -550,9 +723,10 @@ void gfx_set_scissor(float x0, float y0, float x1, float y1) {
     pc_trace_mark("scissor");
     sx = (float) sVpW / (float) sFbWidth;
     sy = (float) sVpH / (float) sFbHeight;
-    // GL measures from the bottom-left, so y flips; offset into the letterbox.
-    gx = sVpX + (int) (x0 * sx);
-    gy = sVpY + (int) ((sFbHeight - y1) * sy);
+    // GL measures from the bottom-left, so y flips; offset into the letterbox
+    // when drawing straight to the window (the offscreen buffer is the image).
+    gx = (sSceneFbo != 0 ? 0 : sVpX) + (int) (x0 * sx);
+    gy = (sSceneFbo != 0 ? 0 : sVpY) + (int) ((sFbHeight - y1) * sy);
     w = (int) ((x1 - x0) * sx);
     h = (int) ((y1 - y0) * sy);
     if (w < 0 || h < 0) {
@@ -572,7 +746,11 @@ void gfx_disable_scissor(void) {
     pc_trace_gfx_u32(0xA00);
     pc_trace_mark("scissor_off");
     glEnable(GL_SCISSOR_TEST);
-    glScissor(sVpX, sVpY, sVpW, sVpH);
+    if (sSceneFbo != 0) {
+        glScissor(0, 0, sVpW, sVpH);
+    } else {
+        glScissor(sVpX, sVpY, sVpW, sVpH);
+    }
 }
 
 void gfx_frame_begin(void) {
@@ -691,15 +869,14 @@ static void dump_frame(void) {
     dump_frame_named("frame", sFrameCount);
 }
 
+static void present(int dumpLogicFrame);
+
 void gfx_frame_end(void) {
     if (sWindow == NULL) {
         return;
     }
     sFrameCount++;
-    if (dump_wanted((long) sFrameCount)) {
-        dump_frame();
-    }
-    gfx_present();
+    present(dump_wanted((long) sFrameCount));
     pc_trace_frame_end();
 }
 
@@ -708,16 +885,25 @@ int gfx_window_valid(void) {
 }
 
 void gfx_present(void) {
+    present(0);
+}
+
+static void present(int dumpLogicFrame) {
     SDL_Event event;
 
     if (sWindow == NULL) {
         return;
     }
+    post_process();
     sPresentCount++;
+    if (dumpLogicFrame) {
+        dump_frame();
+    }
     if ((long) sPresentCount >= sDumpPresentLo && (long) sPresentCount <= sDumpPresentHi) {
         dump_frame_named("present", sPresentCount);
     }
     SDL_GL_SwapWindow(sWindow);
+    scene_target_bind();
 
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT || (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)) {
@@ -730,6 +916,9 @@ void gfx_present(void) {
         if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F11) {
             sFullscreen = !sFullscreen;
             SDL_SetWindowFullscreen(sWindow, sFullscreen);
+        }
+        if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F2) {
+            sScanlines = !sScanlines;
         }
     }
 }

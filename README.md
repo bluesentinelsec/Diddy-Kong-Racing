@@ -111,12 +111,28 @@ branch is the decompilation's own line. Two checks keep that honest:
 | `--scale N`         | window size as a multiple of the 320x240 frame (default 3)     |
 | `--no-vsync`        | present as fast as the GPU allows instead of once per refresh  |
 | `--no-interp`       | no interpolated frames: draw only the 30Hz logic frames        |
+| `--no-scanlines`    | start with the scanline effect off                             |
 | `--trace FILE`      | write the per-frame hash trace to FILE, then exit (see above)  |
 | `--trace-frames N`  | frames to trace (default 1800)                                 |
 | `--help`, `-h`      | print the options                                              |
 
-F11 toggles fullscreen while running; Escape quits. The window is resizable and
-the image keeps its 4:3 aspect.
+F11 toggles fullscreen while running; F2 toggles the scanline effect; Escape
+quits. The window is resizable and the image keeps its 4:3 aspect.
+
+### Effects
+
+The scene is rendered into an offscreen framebuffer at the window's resolution
+and copied to the screen through a post-processing shader
+(`linux/shaders/post.frag`) that applies whichever effects are switched on.
+Effects are runtime toggles; `--no-*` flags set their starting state.
+
+| Effect    | Key | Default | What it does                                              |
+| --------- | --- | ------- | --------------------------------------------------------- |
+| Scanlines | F2  | on      | one dark line per N64 scanline, CRT style                 |
+
+All shaders are plain OpenGL (GLSL 3.30 core / ES 3.00) and are embedded in the
+executable as byte arrays at build time (`cmake/EmbedFile.cmake`), so nothing
+ships beside the binary.
 
 ### Frame rate
 
