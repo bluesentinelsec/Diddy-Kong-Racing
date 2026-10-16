@@ -38,6 +38,8 @@ Other targets:
 | `make assets` | extract and pack the game assets from the ROM in `baseroms/`          |
 | `make rom`    | build the N64 ROM from this tree and check it is byte-identical       |
 | `make golden` | run the game deterministically and compare it with the golden trace   |
+| `make web`    | browser build through Docker (Emscripten) into `build/web`            |
+| `make run-web`| build it and serve it on http://localhost:8000                        |
 | `make clean`  | remove all build output                                               |
 
 The Makefile is a thin wrapper; the build itself is CMake, so this works too:
@@ -54,6 +56,29 @@ AddressSanitizer build, `DKR_BUILD_TESTS=ON` for the test executables,
 
 Cross-building a 32-bit binary on a 64-bit Raspberry Pi:
 `cmake -S . -B build/pi -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-armhf.cmake`.
+
+### Browser build (Emscripten)
+
+The port also builds for the browser. The toolchain lives in a Docker image
+(`docker/web.Dockerfile`, a pinned `emscripten/emsdk` release), so Docker is
+the only thing to install:
+
+```
+make web       # -> build/web/dkracing.html, .js, .wasm and .data (the assets)
+make run-web   # builds, then serves build/web on http://localhost:8000
+```
+
+Open http://localhost:8000/dkracing.html and click the page once (browsers only
+allow audio after a click). Keys and gamepads work as on the desktop; Tab
+toggles fullscreen. Saves are kept in the browser's IndexedDB. The page needs
+WebGL 2.
+
+How it fits: the game loop blocks waiting for the next tick, which a page
+cannot do, so the build uses Emscripten's ASYNCIFY to turn those waits into
+yields to the browser; the renderer's OpenGL ES 3.0 path becomes WebGL 2
+unchanged; `assets/` is packed into `dkracing.data` and served beside the
+page. CI builds the page without assets to check the code still compiles for
+wasm (it has no game data), so the CI artifact is not playable.
 
 ## Assets
 

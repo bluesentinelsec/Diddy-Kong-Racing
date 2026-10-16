@@ -6,8 +6,8 @@
 // backend: we push each buffer, ask how much is still queued, and pace the
 // manager against that.
 
-#include <SDL3/SDL.h>
 #include "trace.h"
+#include <SDL3/SDL.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -69,18 +69,21 @@ s32 osAiSetFrequency(u32 frequency) {
 }
 
 // The game hands us the PCM the mixer produced for the *previous* frame.
-void osAiSetNextBuffer(void *buf, u32 size) {
+// Returns 0 like the libultra original (os_ai.h declares it s32; on wasm a
+// caller and callee disagreeing on the signature is a trap, not a warning).
+s32 osAiSetNextBuffer(void *buf, u32 size) {
     if (buf != NULL && size != 0) {
         pc_trace_audio(buf, size);
         pc_trace_pcm(buf, size);
         pc_trace_mark("audio");
     }
     if (!sAudioReady || buf == NULL || size == 0) {
-        return;
+        return 0;
     }
     if (!SDL_PutAudioStreamData(sStream, buf, (int) size)) {
         fprintf(stderr, "AUDIO: SDL_PutAudioStreamData failed: %s\n", SDL_GetError());
     }
+    return 0;
 }
 
 // Bytes queued and not yet played, in our (input) format.

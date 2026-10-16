@@ -20,7 +20,11 @@ extern void pc_trace_event(const char *fmt, ...);
 
 // Internal natural-log helper, defined at the bottom of this file. Declared here
 // (not in audio_vehicle.h) so the shared header stays free of a `log` prototype
-// that would clash with <math.h>'s `double log(double)` on the Dreamcast build.
+// that would clash with <math.h>'s `double log(double)`. It is also renamed:
+// the symbol `log` would otherwise satisfy SDL's own calls to libm's log()
+// (the game's objects link first), which is wrong on every host and a
+// signature-mismatch trap on wasm.
+#define log dkr_log
 f32 log(f32 x);
 #endif
 

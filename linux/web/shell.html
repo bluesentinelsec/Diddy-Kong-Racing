@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diddy Kong Racing</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #ccc; font: 14px system-ui, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  /* The game renders at the canvas's own size; CSS only fits it to the page, keeping 16:9. */
+  canvas { display: block; width: 100vw; height: 56.25vw; max-height: 100vh; max-width: 177.78vh; outline: none; }
+  #status { position: fixed; bottom: 8px; left: 0; right: 0; text-align: center; pointer-events: none; }
+  #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+           background: rgba(0,0,0,.75); font-size: 24px; cursor: pointer; }
+  #start.hidden { display: none; }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+<div id="status">Loading…</div>
+<div id="start" class="hidden">Click to start</div>
+<script>
+  // Browsers only allow audio after a user gesture, so the game waits behind
+  // this overlay until the page has been clicked once.
+  var startOverlay = document.getElementById('start');
+  var statusLine = document.getElementById('status');
+  var started = new Promise(function (resolve) {
+    startOverlay.addEventListener('click', function () {
+      startOverlay.classList.add('hidden');
+      resolve();
+    }, { once: true });
+  });
+  var Module = {
+    canvas: document.getElementById('canvas'),
+    arguments: ['--windowed'],
+    print: function (text) { console.log(text); },
+    printErr: function (text) { console.warn(text); },
+    setStatus: function (text) { statusLine.textContent = text; },
+    preRun: [function () {
+      Module.addRunDependency('user-gesture');
+      Module.setStatus('');
+      startOverlay.classList.remove('hidden');
+      started.then(function () { Module.removeRunDependency('user-gesture'); });
+    }],
+    postRun: [function () { statusLine.textContent = ''; }]
+  };
+  Module.canvas.addEventListener('click', function () { Module.canvas.focus(); });
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

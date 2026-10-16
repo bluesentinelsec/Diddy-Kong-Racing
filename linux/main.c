@@ -46,6 +46,9 @@ static OSThread sHostThread;
 // timestep — only the rendering is uncapped.
 // ---------------------------------------------------------------------------
 #include <time.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #define PC_RETRACE_NSEC (1000000000ll / 60)
 #define PC_LOGIC_UPDATE_RATE 2 // LOGIC_30FPS — what gVideoDeltaTime commits to
@@ -112,6 +115,24 @@ static f32 frame_alpha(void) {
 
 static s32 pc_gfx_replay(f32 alpha); // below, with the renderer
 
+/**
+ * Block for a while. In a browser there is no blocking: the page's event loop
+ * has to run for the canvas to be shown at all, so the wait is an ASYNCIFY
+ * yield instead (emscripten_sleep unwinds the whole game stack and rewinds it
+ * when the timer fires).
+ */
+static void host_sleep_ns(long long ns) {
+#ifdef __EMSCRIPTEN__
+    emscripten_sleep((unsigned int) ((ns + 999999ll) / 1000000ll));
+#else
+    struct timespec req;
+
+    req.tv_sec = ns / 1000000000ll;
+    req.tv_nsec = ns % 1000000000ll;
+    nanosleep(&req, NULL);
+#endif
+}
+
 s32 pc_retrace_wait(void) {
     long long targetNs;
     long long nowNs;
@@ -136,11 +157,19 @@ s32 pc_retrace_wait(void) {
     while (nowNs < targetNs) {
         if (sInterpolate && pc_gfx_replay(frame_alpha())) {
             note_present();
+#ifdef __EMSCRIPTEN__
+            // A browser presents the canvas only when it gets control back, so
+            // yield after every frame, and no more often than the display can
+            // use: the next 60Hz slot, or the tick if that comes first.
+            {
+                long long slotNs = sLastPresentNs + PC_RETRACE_NSEC;
+                long long untilNs = (slotNs < targetNs ? slotNs : targetNs) - clock_ns();
+
+                host_sleep_ns(untilNs > 1000000ll ? untilNs : 1000000ll);
+            }
+#endif
         } else {
-            struct timespec req;
-            req.tv_sec = (targetNs - nowNs) / 1000000000ll;
-            req.tv_nsec = (targetNs - nowNs) % 1000000000ll;
-            nanosleep(&req, NULL);
+            host_sleep_ns(targetNs - nowNs);
             nowNs = targetNs;
             break;
         }
@@ -2498,6 +2527,10 @@ static void print_usage(const char *prog) {
 int main(int argc, char **argv) {
     GfxOptions options = { 1, WINDOW_SCALE, 1, 1, 1 };
     int i;
+
+#ifdef __EMSCRIPTEN__
+    options.fullscreen = 0; // a page can only go fullscreen from a key press (Tab)
+#endif
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--windowed") == 0 || strcmp(argv[i], "-w") == 0) {
