@@ -139,6 +139,7 @@ branch is the decompilation's own line. Two checks keep that honest:
 | `--no-scanlines`    | start with the scanline effect off                             |
 | `--no-widescreen`   | keep the 4:3 image letterboxed instead of widening it          |
 | `--audio-rate HZ`   | mix audio at HZ (default 44100; 22050 is what the console did) |
+| `--resampler R`     | voice resampling filter: `sinc` (default) or `n64` (the console's) |
 | `--trace FILE`      | write the per-frame hash trace to FILE, then exit (see above)  |
 | `--trace-frames N`  | frames to trace (default 1800)                                 |
 | `--help`, `-h`      | print the options                                              |
@@ -185,8 +186,21 @@ kHz, so the host tells the synthesizer to scale every voice pitch and the
 reverb's delay lines by the ratio (`include/pc_audio.h`); the result is the same
 notes and the same timing, with the resampler and reverb working at the higher
 rate and no extra upsampling of a 22 kHz stream by the sound device.
-`--audio-rate 22050` gives the console's rate for comparison. Traces always
-mix at 22.05 kHz, so `make golden` is unaffected.
+`--audio-rate 22050` gives the console's rate for comparison.
+
+The other departure is the voice resampler. The RSP microcode pitch-shifts
+each voice through a 4-tap, 64-phase filter, which the port reproduces
+exactly (`--resampler n64`). The default is instead a 14-tap windowed-sinc
+interpolator with 256 phases (`linux/audio_hle.c`): a flatter passband, so
+pitched-up samples keep more of their top end, and much better rejection of
+the images above it, which is where the 4-tap's warble on sustained notes
+comes from. It works within the same per-voice state block the game
+allocates, so the two filters can even be swapped mid-stream. Measured on the
+same scripted run, the sinc mix carries about twice the 4-8 kHz energy of the
+4-tap mix and a seventh of the energy above 12 kHz.
+
+Traces always mix at 22.05 kHz through the console's filter, so `make golden`
+is unaffected by either setting.
 
 ### Frame rate
 
