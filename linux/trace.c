@@ -68,6 +68,9 @@ void pc_trace_init(void) {
     }
     sActive = 1;
     sDetail = getenv("DKR_TRACE_DETAIL") != NULL && atoi(getenv("DKR_TRACE_DETAIL")) != 0;
+    if (sDetail) {
+        setvbuf(sFile, NULL, _IOLBF, 0); // a hung run still leaves its last events on disk
+    }
     fprintf(sFile, "# dkracing trace v1 frames=%ld\n", sFrames);
     printf("TRACE: writing %ld frames to %s\n", sFrames, sPath);
 }

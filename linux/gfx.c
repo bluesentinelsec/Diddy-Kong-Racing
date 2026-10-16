@@ -422,6 +422,17 @@ static void update_viewport(void) {
     scene_target_bind();
 }
 
+// Startup render state. Every one of these is driven per material by the
+// interpreter (apply_render_mode in main.c); they also open the trace, so a run
+// without a display sets them too.
+static void set_state_defaults(void) {
+    static const unsigned char black[4] = { 0, 0, 0, 255 };
+
+    gfx_set_alpha_test(0.0f);
+    gfx_set_texenv_modulate();
+    gfx_set_fog(0, black);
+}
+
 void gfx_window_init(int width, int height, const GfxOptions *options) {
     const char *missing;
     const char *dump;
@@ -437,11 +448,13 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
     SDL_SetMainReady(); // we provide a plain main(); no SDL_main redirection on Windows
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "GFX: SDL_Init failed: %s\n", SDL_GetError());
+        set_state_defaults();
         return;
     }
     // A widescreen window opens at 16:9; fullscreen takes the display's shape either way.
     if (!create_context((sWidescreen ? height * 16 / 9 : width) * scale, height * scale)) {
         fprintf(stderr, "GFX: no usable OpenGL context; running without video\n");
+        set_state_defaults();
         return;
     }
     missing = dkr_gl_load((void *(*) (const char *) ) SDL_GL_GetProcAddress);
@@ -450,6 +463,7 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
         SDL_GL_DestroyContext(sContext);
         SDL_DestroyWindow(sWindow);
         sWindow = NULL;
+        set_state_defaults();
         return;
     }
     printf("GFX: %s / %s\n", (const char *) glGetString(GL_RENDERER), (const char *) glGetString(GL_VERSION));
@@ -461,6 +475,7 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
         SDL_GL_DestroyContext(sContext);
         SDL_DestroyWindow(sWindow);
         sWindow = NULL;
+        set_state_defaults();
         return;
     }
 
@@ -495,20 +510,13 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
     glUniform1i(sUniTex, 0);
     glActiveTexture(GL_TEXTURE0);
 
-    // Startup defaults; every one of these is driven per material by the
-    // interpreter (apply_render_mode in main.c).
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_CULL_FACE);       // the interpreter culls in screen space itself
     glPolygonOffset(-1.0f, -1.0f); // nearer is smaller here: pull decals towards zero
-    gfx_set_alpha_test(0.0f);
-    gfx_set_texenv_modulate();
-    {
-        static const unsigned char black[4] = { 0, 0, 0, 255 };
-        gfx_set_fog(0, black);
-    }
+    set_state_defaults();
 
     dump = getenv("DKR_DUMP_FRAME");
     while (dump != NULL && *dump != '\0' && sDumpFrameCount < MAX_DUMP_FRAMES) {
@@ -559,10 +567,15 @@ static GLint wrap_mode(int cm) {
 }
 
 unsigned int gfx_create_texture(const void *rgba, int width, int height, int cmS, int cmT) {
+    static GLuint sHeadlessId;
     GLuint id = 0;
 
     if (sWindow == NULL) {
-        return 0;
+        // No GL: hand out stand-in handles so a headless trace still names and
+        // hashes every texture the game binds.
+        id = ++sHeadlessId;
+        pc_trace_texture_create(id, rgba, width, height, cmS, cmT);
+        return id;
     }
     glGenTextures(1, &id);
     glBindTexture(GL_TEXTURE_2D, id);
@@ -586,11 +599,11 @@ void gfx_delete_texture(unsigned int handle) {
 }
 
 void gfx_bind_texture(unsigned int handle) {
+    pc_trace_texture_bind(handle);
+    pc_trace_mark("bind");
     if (sWindow == NULL) {
         return;
     }
-    pc_trace_texture_bind(handle);
-    pc_trace_mark("bind");
     if (handle == 0) {
         if (sTexBound) {
             sTexBound = 0;
@@ -608,11 +621,11 @@ void gfx_bind_texture(unsigned int handle) {
 void gfx_set_texture_filter(int point) {
     GLint filter;
 
+    pc_trace_gfx_u32(0x100 | (point ? 1u : 0u));
+    pc_trace_mark("filter");
     if (sWindow == NULL) {
         return;
     }
-    pc_trace_gfx_u32(0x100 | (point ? 1u : 0u));
-    pc_trace_mark("filter");
     if (sTexBound == 0) {
         return; // nothing bound to set it on (WebGL reports the attempt as an error)
     }
@@ -625,12 +638,12 @@ void gfx_set_texture_filter(int point) {
 void gfx_set_texenv_blend(const unsigned char color[4]) {
     float c[4];
 
-    if (sWindow == NULL) {
-        return;
-    }
     pc_trace_gfx_u32(0x200);
     pc_trace_gfx(color, 4);
     pc_trace_mark("texenv_blend");
+    if (sWindow == NULL) {
+        return;
+    }
     c[0] = color[0] / 255.0f;
     c[1] = color[1] / 255.0f;
     c[2] = color[2] / 255.0f;
@@ -647,11 +660,11 @@ void gfx_set_texenv_blend(const unsigned char color[4]) {
 
 /** Plain texel * vertex colour, which is what the 3D path wants. */
 void gfx_set_texenv_modulate(void) {
+    pc_trace_gfx_u32(0x300);
+    pc_trace_mark("texenv_modulate");
     if (sWindow == NULL) {
         return;
     }
-    pc_trace_gfx_u32(0x300);
-    pc_trace_mark("texenv_modulate");
     if (sTexMode != 1) {
         sTexMode = 1;
         set_tex_mode_uniform();
@@ -661,15 +674,15 @@ void gfx_set_texenv_modulate(void) {
 void gfx_set_fog(int enable, const unsigned char color[4]) {
     float c[4];
 
-    if (sWindow == NULL) {
-        return;
-    }
     enable = enable ? 1 : 0;
     pc_trace_gfx_u32(0x400 | (unsigned) enable);
     if (enable) {
         pc_trace_gfx(color, 4);
     }
     pc_trace_mark("fog");
+    if (sWindow == NULL) {
+        return;
+    }
     if (enable != sFogEnable) {
         sFogEnable = enable;
         glUniform1i(sUniFogEnable, enable);
@@ -688,12 +701,12 @@ void gfx_set_fog(int enable, const unsigned char color[4]) {
 }
 
 void gfx_set_alpha_test(float ref) {
-    if (sWindow == NULL) {
-        return;
-    }
     pc_trace_gfx_u32(0x500);
     pc_trace_gfx_f32(ref);
     pc_trace_mark("alpha_test");
+    if (sWindow == NULL) {
+        return;
+    }
     if (ref != sAlphaRef) {
         sAlphaRef = ref;
         glUniform1f(sUniAlphaRef, ref);
@@ -701,11 +714,11 @@ void gfx_set_alpha_test(float ref) {
 }
 
 void gfx_set_depth_test(int enable) {
+    pc_trace_gfx_u32(0x600 | (enable ? 1u : 0u));
+    pc_trace_mark("depth_test");
     if (sWindow == NULL) {
         return;
     }
-    pc_trace_gfx_u32(0x600 | (enable ? 1u : 0u));
-    pc_trace_mark("depth_test");
     if (enable) {
         glEnable(GL_DEPTH_TEST);
     } else {
@@ -714,20 +727,20 @@ void gfx_set_depth_test(int enable) {
 }
 
 void gfx_set_depth_write(int enable) {
+    pc_trace_gfx_u32(0x700 | (enable ? 1u : 0u));
+    pc_trace_mark("depth_write");
     if (sWindow == NULL) {
         return;
     }
-    pc_trace_gfx_u32(0x700 | (enable ? 1u : 0u));
-    pc_trace_mark("depth_write");
     glDepthMask(enable ? GL_TRUE : GL_FALSE);
 }
 
 void gfx_set_depth_offset(int enable) {
+    pc_trace_gfx_u32(0x800 | (enable ? 1u : 0u));
+    pc_trace_mark("depth_offset");
     if (sWindow == NULL) {
         return;
     }
-    pc_trace_gfx_u32(0x800 | (enable ? 1u : 0u));
-    pc_trace_mark("depth_offset");
     if (enable) {
         glEnable(GL_POLYGON_OFFSET_FILL);
     } else {
@@ -741,15 +754,15 @@ void gfx_set_scissor(float x0, float y0, float x1, float y1) {
     float sx, sy;
     int w, h, gx, gy;
 
-    if (sWindow == NULL) {
-        return;
-    }
     pc_trace_gfx_u32(0x900);
     pc_trace_gfx_f32(x0);
     pc_trace_gfx_f32(y0);
     pc_trace_gfx_f32(x1);
     pc_trace_gfx_f32(y1);
     pc_trace_mark("scissor");
+    if (sWindow == NULL) {
+        return;
+    }
     sx = (float) sVpW / (float) sFbWidth;
     sy = (float) sVpH / (float) sFbHeight;
     // GL measures from the bottom-left, so y flips; offset into the letterbox
@@ -769,11 +782,11 @@ void gfx_set_scissor(float x0, float y0, float x1, float y1) {
 
 // "No clip" still means the 4:3 image: the letterbox bars stay black.
 void gfx_disable_scissor(void) {
+    pc_trace_gfx_u32(0xA00);
+    pc_trace_mark("scissor_off");
     if (sWindow == NULL) {
         return;
     }
-    pc_trace_gfx_u32(0xA00);
-    pc_trace_mark("scissor_off");
     glEnable(GL_SCISSOR_TEST);
     if (sSceneFbo != 0) {
         glScissor(0, 0, sVpW, sVpH);
@@ -805,13 +818,16 @@ static GfxGpuVert sBatch[GFX_MAX_BATCH_VERTS];
 void gfx_draw_tris(const GfxTriVert *verts, int count) {
     int i, done = 0;
 
-    if (sWindow == NULL || count <= 0) {
+    if (count <= 0) {
         return;
     }
     pc_trace_gfx_u32(0xB00);
     pc_trace_gfx_u32((uint32_t) count);
     pc_trace_gfx(verts, (size_t) count * sizeof(*verts));
     pc_trace_mark("draw");
+    if (sWindow == NULL) {
+        return;
+    }
     // DKR_TRACE_DRAW=<frame>:<n>: print the vertices of draw call n (0-based) of
     // that frame, to compare a diverging draw between hosts.
     {
@@ -905,11 +921,12 @@ static void dump_frame(void) {
 static void present(int dumpLogicFrame);
 
 void gfx_frame_end(void) {
-    if (sWindow == NULL) {
-        return;
-    }
     sFrameCount++;
-    present(dump_wanted((long) sFrameCount));
+    if (sWindow != NULL) {
+        present(dump_wanted((long) sFrameCount));
+    }
+    // The trace hashes what the renderer is handed, not pixels, so a run with no
+    // display (ssh into a Pi, a CI box) counts frames and finishes like any other.
     pc_trace_frame_end();
 }
 
