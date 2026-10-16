@@ -11,6 +11,9 @@
 #include "tracks.h"
 #include "types.h"
 #include <ultra64.h>
+#ifdef TARGET_PC
+#include "pc_gfx.h"
+#endif
 
 /************ .data ************/
 
@@ -1092,6 +1095,11 @@ void waves_render(Gfx **dList, Mtx **mtx, s32 viewportID) {
                     transform.x_position = spE0->originX;
                     for (var_fp = 0; var_fp < 2; var_fp++) {
                         mtx_cam_push(&gWaveDL, &gWaveMtx, &transform, 1.0f, 0.0f);
+#ifdef TARGET_PC
+                        // Tag the tile by identity rather than by the shared stack transform, so the host
+                        // can pair its vertices with last frame's and interpolate the wave motion.
+                        pc_gfx_mtx_tag(gWaveMtx - 1, spE0, PC_MTX_SITE_WATER);
+#endif
                         if (sp104 & 0xFF) {
                             numTris = gWaveController.subdivisions << 1;
                             numVerts = gWaveController.subdivisions + 1;
@@ -1119,6 +1127,9 @@ void waves_render(Gfx **dList, Mtx **mtx, s32 viewportID) {
                 }
             } else {
                 mtx_cam_push(&gWaveDL, &gWaveMtx, &transform, 1.0f, 0.0f);
+#ifdef TARGET_PC
+                pc_gfx_mtx_tag(gWaveMtx - 1, spE0, PC_MTX_SITE_WATER);
+#endif
                 numTris = gWaveController.subdivisions << 1;
                 numVerts = gWaveController.subdivisions + 1;
                 var_t0 = ((sp104 & 0xFF) - 1) * numVerts * numVerts;
