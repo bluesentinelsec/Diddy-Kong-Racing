@@ -277,6 +277,20 @@ static u8 gEeprom[PC_EEPROM_BYTES];
 static s32 gEepromReady = 0;
 static char gEepromPath[1024];
 
+#ifdef __EMSCRIPTEN__
+// In a browser the file system is in memory and gone on reload, so the save
+// lives on an IndexedDB-backed mount instead: pulled in once before the first
+// read, pushed out after every write. The pull has to finish before the game
+// reads the save, and ASYNCIFY lets this await it.
+#include <emscripten.h>
+EM_ASYNC_JS(void, web_save_mount, (), {
+    FS.mkdir('/save');
+    FS.mount(IDBFS, {}, '/save');
+    await new Promise(function(resolve) { FS.syncfs(true, function() { resolve(); }); });
+});
+EM_JS(void, web_save_sync, (), { FS.syncfs(false, function(){}); });
+#endif
+
 static void eeprom_flush(void) {
     char tmp[sizeof(gEepromPath) + 8];
     FILE *f;
@@ -302,6 +316,9 @@ static void eeprom_flush(void) {
             fprintf(stderr, "SAVE: cannot replace %s\n", gEepromPath);
         }
     }
+#ifdef __EMSCRIPTEN__
+    web_save_sync();
+#endif
 }
 
 static void eeprom_init(void) {
@@ -322,6 +339,10 @@ static void eeprom_init(void) {
     if (pc_trace_active()) {
         return; // a trace starts from an erased save and keeps nothing
     }
+#ifdef __EMSCRIPTEN__
+    web_save_mount();
+    snprintf(gEepromPath, sizeof(gEepromPath), "/save/eeprom.bin");
+#else
     pref = SDL_GetPrefPath("bluesentinelsec", "DiddyKongRacing");
     if (pref == NULL) {
         fprintf(stderr, "SAVE: no preference directory (%s); progress will not be kept\n", SDL_GetError());
@@ -329,6 +350,7 @@ static void eeprom_init(void) {
     }
     snprintf(gEepromPath, sizeof(gEepromPath), "%seeprom.bin", pref);
     SDL_free(pref);
+#endif
 
     f = fopen(gEepromPath, "rb");
     if (f != NULL) {

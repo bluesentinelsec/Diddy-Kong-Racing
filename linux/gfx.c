@@ -367,7 +367,11 @@ static void post_process(void) {
     glUniform1f(sPostUniStrength, SCANLINE_STRENGTH);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-    // Back to the scene pipeline for the next frame.
+    // Back to the scene pipeline for the next frame. The scene texture must
+    // not stay bound: the next frame renders into it, and WebGL refuses to
+    // draw with a texture bound to the framebuffer it is drawing to, even
+    // when the shader never samples it.
+    glBindTexture(GL_TEXTURE_2D, 0);
     glUseProgram(sProgram);
     glBindVertexArray(sVao);
     glBindBuffer(GL_ARRAY_BUFFER, sVbo);
@@ -609,6 +613,9 @@ void gfx_set_texture_filter(int point) {
     }
     pc_trace_gfx_u32(0x100 | (point ? 1u : 0u));
     pc_trace_mark("filter");
+    if (sTexBound == 0) {
+        return; // nothing bound to set it on (WebGL reports the attempt as an error)
+    }
     filter = point ? GL_NEAREST : GL_LINEAR;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);

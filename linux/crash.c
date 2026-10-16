@@ -107,7 +107,10 @@ void pc_crash_handler_install(void) {
     if (getenv("DKR_NO_CRASH_HANDLER") != NULL) {
         return; // leave the fault to the debugger or the OS crash reporter
     }
-#if !defined(_WIN32)
+#if defined(__EMSCRIPTEN__)
+    (void) i;
+    (void) sigs; // a wasm trap goes to the browser console, which already shows the stack
+#elif !defined(_WIN32)
     {
         stack_t ss;
         struct sigaction sa;

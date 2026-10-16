@@ -76,3 +76,24 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: build/dkracing*
+
+  web:
+    name: Web (Emscripten)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same Docker image and make target developers use. CI has no game
+      # data, so the page is built without assets: this checks the code
+      # compiles and links for wasm, not that the game runs.
+      - name: Build
+        run: make web
+
+      - name: Upload page
+        uses: actions/upload-artifact@v4
+        with:
+          name: dkracing-web
+          path: |
+            build/web/dkracing.html
+            build/web/dkracing.js
+            build/web/dkracing.wasm

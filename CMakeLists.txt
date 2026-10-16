@@ -172,7 +172,7 @@ if(DKR_EEPROM_PRESET_100)
 endif()
 
 set(DKR_C_FLAGS
-    -g # debug info in every build so crash backtraces and debuggers can name lines
+    $<$<NOT:$<BOOL:${EMSCRIPTEN}>>:-g> # debug info in every build so crash backtraces and debuggers can name lines (not wasm: huge, slow)
     -ffp-contract=off # no fused multiply-add: the N64 FPU has none, and hosts must agree bit for bit
     -fno-builtin
     -fno-common
@@ -237,6 +237,37 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # glibc's backtrace_symbols resolves names through the dynamic symbol table.
     target_link_options(dkracing PRIVATE -rdynamic)
+endif()
+
+# --- Browser build (Emscripten) ------------------------------------------------
+# Configure with `emcmake cmake ...` (see docker/web.Dockerfile and `make web`).
+# The game loop blocks in pc_retrace_wait, so ASYNCIFY turns those waits into
+# yields to the browser; the renderer's GL ES 3.0 path becomes WebGL 2. The
+# assets are packed into dkracing.data next to the page when assets/ exists
+# (CI has no game data, so it only checks that the code builds).
+if(EMSCRIPTEN)
+    set(CMAKE_EXECUTABLE_SUFFIX ".html")
+    set(DKR_WEB_SHELL ${CMAKE_CURRENT_SOURCE_DIR}/linux/web/shell.html)
+    target_link_options(dkracing PRIVATE
+        -sASYNCIFY
+        -sASYNCIFY_STACK_SIZE=1048576
+        -sALLOW_MEMORY_GROWTH=1
+        -sINITIAL_MEMORY=128MB
+        -sSTACK_SIZE=4MB
+        -sMIN_WEBGL_VERSION=2
+        -sMAX_WEBGL_VERSION=2
+        -sGL_ENABLE_GET_PROC_ADDRESS=1
+        -sENVIRONMENT=web
+        -sEXIT_RUNTIME=0
+        -lidbfs.js
+        --shell-file ${DKR_WEB_SHELL})
+    set_property(TARGET dkracing APPEND PROPERTY LINK_DEPENDS ${DKR_WEB_SHELL})
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.bin)
+        target_link_options(dkracing PRIVATE --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets@/assets)
+        set_property(TARGET dkracing APPEND PROPERTY LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.bin)
+    else()
+        message(WARNING "assets/assets.bin not found: the web build will have no game data (run `make assets` first)")
+    endif()
 endif()
 
 # --- Unit tests ----------------------------------------------------------------

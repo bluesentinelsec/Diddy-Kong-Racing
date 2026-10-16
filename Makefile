@@ -13,6 +13,8 @@
 #   make assets     extract and pack the game assets from baseroms/ (needs the ROM)
 #   make rom        build the N64 ROM with the IDO toolchain and verify it is byte-identical
 #   make golden     run the game deterministically and compare per-frame hashes with tests/golden/
+#   make web        browser build (Emscripten, in Docker) -> build/web/dkracing.html
+#   make run-web    build it and serve it on http://localhost:8000
 #   make clean      remove every build directory
 
 CMAKE      ?= cmake
@@ -27,7 +29,7 @@ RELEASE_DIR := build/release
 # keep their upstream formatting so merges stay easy.
 FORMAT_SOURCES := $(wildcard linux/*.c linux/*.h include/pc_asset.h include/pc_gfx.h tests/*.c tests/*.h)
 
-.PHONY: rom golden golden-update all debug release run run-debugger test fmt doc assets clean
+.PHONY: rom golden golden-update all debug release run run-debugger test fmt doc assets clean web web-image run-web
 
 all: debug
 
@@ -98,6 +100,27 @@ assets:
 rom:
 	$(MAKE) -f Makefile.n64 REGION=us VERSION=v80 -j$(JOBS)
 	cmp build/dkr.us.v80.z64 baseroms/baserom.us.v80.z64 && echo "rom: build/dkr.us.v80.z64 is byte-identical to the retail ROM"
+
+# Browser build. The Emscripten toolchain lives in a Docker image
+# (docker/web.Dockerfile) so nothing has to be installed on the host; the
+# repository is bind-mounted into it and the output lands in build/web like any
+# other configuration. Needs the assets (make assets) for a playable page.
+WEB_DIR   := build/web
+WEB_IMAGE ?= dkracing-web
+WEB_PORT  ?= 8000
+DOCKER    ?= docker
+
+web-image:
+	$(DOCKER) build -t $(WEB_IMAGE) -f docker/web.Dockerfile docker
+
+web: web-image
+	$(DOCKER) run --rm -v "$(CURDIR)":/src -w /src $(WEB_IMAGE) sh -c \
+	  'emcmake cmake -S . -B $(WEB_DIR) -G Ninja -DCMAKE_BUILD_TYPE=Release $(CMAKE_ARGS) && cmake --build $(WEB_DIR) -j $(JOBS)'
+	@ls -la $(WEB_DIR)/dkracing.*
+
+run-web: web
+	@echo "Serving $(WEB_DIR) on http://localhost:$(WEB_PORT)/dkracing.html (Ctrl-C to stop)"
+	$(DOCKER) run --rm -p $(WEB_PORT):8000 -v "$(CURDIR)/$(WEB_DIR)":/srv:ro -w /srv $(WEB_IMAGE) python3 -m http.server 8000
 
 clean:
 	rm -rf build docs/html
