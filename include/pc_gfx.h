@@ -10,6 +10,11 @@
  * find the same matrix in the previous frame and interpolate between the two
  * when it presents frames in between logic ticks. A matrix without a tag is
  * drawn where it is; the display list itself is untouched.
+ *
+ * For the PERSPECTIVE, ORIGIN, MODEL, SHEAR and BILLBOARD sites the key must
+ * point at the ObjectTransform the matrix was built from (a Camera, an Object
+ * or the transform itself — all start with one): the host snapshots it to tell
+ * a camera cut or a teleport from motion, and snaps instead of interpolating.
  */
 
 enum PcMtxSite {

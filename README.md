@@ -141,8 +141,12 @@ is what keeps the physics identical to the console. The frame rate is not tied
 to it: between two logic frames the host redraws the last frame it was given
 with every matrix interpolated between its previous and current values, as often
 as the display will take a frame (vsync) or as fast as the GPU can draw one
-(`--no-vsync`). Camera and object motion is smooth at any refresh rate;
-vertex-animated meshes and the 2D layer step at 30Hz.
+(`--no-vsync`). Camera and object motion is smooth at any refresh rate, and so
+is the racers' vertex animation (each vertex batch is paired with its
+previous-frame self and interpolated too); the 2D layer steps at 30Hz. A camera
+cut, a respawn or an object teleport is drawn where it lands rather than
+blended across the jump: the game's transform is snapshotted with each matrix
+tag, and one that moved implausibly far in a single tick is treated as new.
 
 This is done entirely on the host side of the display list: the game tags each
 matrix it pushes with the object or camera it belongs to (`pc_gfx_mtx_tag`, see
@@ -160,7 +164,7 @@ Environment variables:
 | `DKR_DUMP_EVERY=<k>`  | also write every *k*-th frame                            |
 | `DKR_DUMP_PRESENT=<a>-<b>` | write every presented frame (logic and interpolated) numbered *a* to *b* as `dkr_present_<n>.ppm` |
 | `DKR_INPUT_SCRIPT=<file>` | replay a controller script instead of reading the keyboard and gamepad; each line is `<frame> <buttons> <stickX> <stickY>` (buttons: comma-separated `A B Z START L R DU DD DL DR CU CD CL CR`, or `-`), held until the next line. Works with `--trace`; see `tests/golden/drive.txt` |
-| `DKR_FPS_LOG=1`       | print logic frames, logic steps consumed and frames presented once a second |
+| `DKR_FPS_LOG=1`       | print logic frames, logic steps consumed, frames presented and camera cuts detected, once a second |
 | `DKR_TRACE=<file>`, `DKR_TRACE_FRAMES=<n>` | same as `--trace` / `--trace-frames`      |
 | `DKR_NO_CRASH_HANDLER=1` | do not catch fatal signals (`make run-debugger` sets this so the debugger sees the fault) |
 

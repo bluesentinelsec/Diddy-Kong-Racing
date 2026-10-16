@@ -57,6 +57,7 @@ static long long sTickNs = 0;    // the ideal time of the last logic tick
 static long long sPresentNs = 0; // running average interval between presents (display latency)
 static long long sLastPresentNs; // when the last present happened
 static s32 sPresentCount = 0;    // for DKR_FPS_LOG
+static s32 sCutCount = 0;        // camera cuts, likewise (see mtx_table_cut)
 
 static long long clock_ns(void) {
     struct timespec ts;
@@ -175,10 +176,10 @@ s32 pc_retrace_wait(void) {
             sLogFrames++;
             sLogPeriods += periods;
             if (nowNs - sLogNs >= 1000000000ll) {
-                fprintf(stderr, "FPS: %d logic frames, %d periods, %d presented in %.2fs\n", sLogFrames, sLogPeriods,
-                        sPresentCount, (nowNs - sLogNs) / 1e9);
+                fprintf(stderr, "FPS: %d logic frames, %d periods, %d presented, %d camera cuts in %.2fs\n", sLogFrames,
+                        sLogPeriods, sPresentCount, sCutCount, (nowNs - sLogNs) / 1e9);
                 sLogNs = nowNs;
-                sLogFrames = sLogPeriods = sPresentCount = 0;
+                sLogFrames = sLogPeriods = sPresentCount = sCutCount = 0;
             }
         }
     }
@@ -222,6 +223,10 @@ typedef struct {
     f32 anchorRaw[3];
     s16 mtx;
     s16 anchorMtx;
+    // For a vertex of an animated mesh: where the same vertex was last frame,
+    // so the position itself can be interpolated as well as the matrix.
+    f32 prevRaw[3];
+    s32 hasPrevRaw;
 } GfxVertex;
 
 // ---------------------------------------------------------------------------
@@ -349,15 +354,19 @@ static s16 sFogOfs = 0;
 // (the projection is constant, so lerp(M1·VP, M2·VP) == lerp(M1·V, M2·V)·P)
 // and a close approximation for an object's: a rotation blended this way
 // shrinks very slightly at the midpoint, invisibly so for the ~1/30s of motion
-// involved. Vertex data (animated meshes) is not interpolated.
+// involved. Vertex positions are interpolated too where a batch can be paired
+// with its previous-frame self (see vtx_batch_record), which is what keeps the
+// racers' vertex animation from stepping at 30Hz.
 //
 // Matching a matrix with its previous-frame self is the real problem: the Mtx
 // addresses the display list points at belong to a per-frame heap and the
 // order objects are drawn in changes every frame. So the game tags each matrix
 // it pushes with what it belongs to (pc_gfx_mtx_tag: an object transform, a
 // camera, a sprite...) and the match is on that tag. A matrix with no tag, or
-// whose tag was not seen last frame (a newly spawned object, a camera cut), is
-// drawn where it is now. The logic frame itself is still rendered the moment it
+// whose tag was not seen last frame (a newly spawned object), is drawn where it
+// is now — as is one whose transform jumped since last frame (a camera cut, a
+// respawn, a teleport), because blending across a jump smears the scene
+// between the two places. The logic frame itself is still rendered the moment it
 // is submitted, exactly as before, so the golden trace is unaffected.
 // ---------------------------------------------------------------------------
 
@@ -372,6 +381,12 @@ typedef struct {
     u16 ordinal;     // n-th matrix with this key and site in the frame
     u8 site;
     u8 hasPrev;
+    u8 hasXform;    // pos/rot hold the transform the matrix was built from
+    s32 prevIndex;  // index of that matrix in last frame's table, -1 if none
+    s32 batchCount; // vertex batches loaded under this matrix (see vtx_batch_record)
+    s32 batchFirst; // where they start in sVtxBatchIdx once the frame is indexed
+    f32 pos[3];
+    s16 rot[3];
     f32 cur[4][4];
     f32 prev[4][4]; // last frame's matrix with the same key/site/ordinal
     f32 eff[4][4];  // what the vertices are transformed with: lerp(prev, cur)
@@ -386,17 +401,94 @@ typedef struct {
     const void *addr;
     const void *key;
     u8 site;
+    u8 hasXform;
+    f32 pos[3]; // the key's ObjectTransform when the matrix was built
+    s16 rot[3];
 } MtxTag;
 
 static MtxTag sMtxTags[MTX_TAG_MAX];
 static s32 sMtxTagCount = 0;
 
+/** Sites whose key starts with the ObjectTransform the matrix was built from (pc_gfx.h). */
+static s32 site_has_xform(int site) {
+    switch (site) {
+        case PC_MTX_SITE_PERSPECTIVE:
+        case PC_MTX_SITE_ORIGIN:
+        case PC_MTX_SITE_MODEL:
+        case PC_MTX_SITE_SHEAR:
+        case PC_MTX_SITE_BILLBOARD:
+            return TRUE;
+        default:
+            return FALSE;
+    }
+}
+
 void pc_gfx_mtx_tag(const void *mtx, const void *key, int site) {
     if (sMtxTagCount < MTX_TAG_MAX) {
-        sMtxTags[sMtxTagCount].addr = mtx;
-        sMtxTags[sMtxTagCount].key = key;
-        sMtxTags[sMtxTagCount].site = (u8) site;
-        sMtxTagCount++;
+        MtxTag *t = &sMtxTags[sMtxTagCount++];
+
+        t->addr = mtx;
+        t->key = key;
+        t->site = (u8) site;
+        t->hasXform = (key != NULL && site_has_xform(site));
+        if (t->hasXform) {
+            const ObjectTransform *x = (const ObjectTransform *) key;
+
+            t->pos[0] = x->x_position;
+            t->pos[1] = x->y_position;
+            t->pos[2] = x->z_position;
+            t->rot[0] = x->rotation.x_rotation;
+            t->rot[1] = x->rotation.y_rotation;
+            t->rot[2] = x->rotation.z_rotation;
+        }
+    }
+}
+
+// A matrix that jumped — a camera cut, a respawn, an object teleported — must
+// not be interpolated across the jump, or for a frame the thing is drawn
+// somewhere between the two places. The matrices alone can't tell (an MVP
+// element changes plenty in honest motion), so the tag snapshots the transform
+// the game built the matrix from, and a transform that moved further in one
+// tick than anything in the game legitimately does marks the matrix as new.
+// A camera jump marks the whole frame: every MVP has the view in it.
+#define CUT_POS_DIST 100.0f  // units per tick; the fastest racer manages ~15
+#define CUT_ROT_DELTA 0x2000 // 45 degrees per tick
+
+static s32 sCutFrame = FALSE;     // the camera jumped: nothing this frame interpolates
+static s32 sLastModelCut = FALSE; // the last MODEL matrix was new: its HEAD child must be too
+
+static s32 xform_jumped(const MtxEntry *a, const MtxEntry *b) {
+    f32 dx = a->pos[0] - b->pos[0];
+    f32 dy = a->pos[1] - b->pos[1];
+    f32 dz = a->pos[2] - b->pos[2];
+    s32 i;
+
+    if ((dx * dx) + (dy * dy) + (dz * dz) > CUT_POS_DIST * CUT_POS_DIST) {
+        return TRUE;
+    }
+    for (i = 0; i < 3; i++) {
+        s16 d = (s16) (a->rot[i] - b->rot[i]); // wraps, so 0x7FFF -> -0x7FFF is a small turn
+
+        if (d > CUT_ROT_DELTA || d < -CUT_ROT_DELTA) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+/** The camera jumped: everything registered so far this frame is drawn where it is now. */
+static void mtx_table_cut(void) {
+    MtxEntry *table = sMtxTable[sMtxCur];
+    s32 i;
+
+    if (!sCutFrame) {
+        sCutCount++;
+    }
+    sCutFrame = TRUE;
+    for (i = 0; i < sMtxCount[sMtxCur]; i++) {
+        table[i].hasPrev = FALSE;
+        table[i].prevIndex = -1;
+        memcpy(table[i].eff, table[i].cur, sizeof(table[i].eff));
     }
 }
 
@@ -465,12 +557,16 @@ static s32 mtx_table_add(const Mtx *addr, const f32 cur[4][4], f32 alpha) {
     e = &table[sMtxCount[sMtxCur]];
     memset(e, 0, sizeof(*e));
     e->addr = addr;
+    e->prevIndex = -1;
     memcpy(e->cur, cur, sizeof(e->cur));
 
     tag = mtx_tag_find(addr);
     if (tag != NULL && tag->key != NULL) {
         e->key = tag->key;
         e->site = tag->site;
+        e->hasXform = tag->hasXform;
+        memcpy(e->pos, tag->pos, sizeof(e->pos));
+        memcpy(e->rot, tag->rot, sizeof(e->rot));
         for (i = 0; i < sMtxCount[sMtxCur]; i++) {
             if (table[i].key == e->key && table[i].site == e->site) {
                 e->ordinal++;
@@ -480,9 +576,29 @@ static s32 mtx_table_add(const Mtx *addr, const f32 cur[4][4], f32 alpha) {
             if (prevTable[i].key == e->key && prevTable[i].site == e->site && prevTable[i].ordinal == e->ordinal) {
                 memcpy(e->prev, prevTable[i].cur, sizeof(e->prev));
                 e->hasPrev = TRUE;
+                e->prevIndex = i;
                 break;
             }
         }
+    }
+
+    if (e->hasPrev) {
+        const MtxEntry *p = &prevTable[e->prevIndex];
+
+        if (e->hasXform && p->hasXform && xform_jumped(e, p)) {
+            if (e->site == PC_MTX_SITE_PERSPECTIVE || e->site == PC_MTX_SITE_ORIGIN) {
+                mtx_table_cut();
+            }
+            e->hasPrev = FALSE;
+        } else if (sCutFrame || (e->site == PC_MTX_SITE_HEAD && sLastModelCut)) {
+            e->hasPrev = FALSE;
+        }
+        if (!e->hasPrev) {
+            e->prevIndex = -1;
+        }
+    }
+    if (e->site == PC_MTX_SITE_MODEL) {
+        sLastModelCut = !e->hasPrev;
     }
 
     if (!e->hasPrev || alpha >= 1.0f) {
@@ -737,6 +853,117 @@ static void tape_reset(void) {
     sTapeStale = FALSE;
 }
 
+// Vertex pairing. An animated mesh (a racer) regenerates its vertices every
+// tick, so interpolating its matrix alone leaves the animation stepping at
+// 30Hz. Each G_VTX batch is kept with the matrix entry it loaded under, and
+// next frame the n-th batch under the same (matched) entry with the same
+// vertex count is taken to be the same vertices a tick earlier. The display
+// list for a model is built the same way every frame, so the n-th batch is
+// the same batch — and when it isn't (a LOD switch), the count usually differs
+// and the move-distance check below catches the rest.
+#define VTX_LERP_MAX 100.0f // units per tick; a racer's animation peaks around 40
+
+typedef struct {
+    s32 entry;
+    s32 count;
+    s32 first; // into sVtxRaw
+} VtxBatch;
+
+static VtxBatch *sVtxBatch[2]; // [sMtxCur] is this frame, like sMtxTable
+static s32 sVtxBatchCount[2], sVtxBatchCap[2];
+static f32 (*sVtxRaw[2])[3];
+static s32 sVtxRawCount[2], sVtxRawCap[2];
+static s32 *sVtxBatchIdx[2]; // batches ordered by entry: entry.batchFirst + ordinal
+static s32 sVtxBatchIdxCap[2];
+
+/** Order the finished frame's batches by entry, so the next frame can find "the n-th batch under this matrix". */
+static void vtx_index_build(s32 cur) {
+    MtxEntry *table = sMtxTable[cur];
+    s32 n = sVtxBatchCount[cur];
+    s32 first = 0;
+    s32 i;
+
+    sVtxBatchIdx[cur] = grow(sVtxBatchIdx[cur], &sVtxBatchIdxCap[cur], n, sizeof(*sVtxBatchIdx[cur]));
+    for (i = 0; i < sMtxCount[cur]; i++) {
+        table[i].batchFirst = first;
+        first += table[i].batchCount;
+        table[i].batchCount = 0;
+    }
+    for (i = 0; i < n; i++) {
+        MtxEntry *e = &table[sVtxBatch[cur][i].entry];
+
+        sVtxBatchIdx[cur][e->batchFirst + e->batchCount++] = i;
+    }
+}
+
+/**
+ * Record a vertex batch under matrix entry `entry` and return the raw positions
+ * of its previous-frame self (count * 3 floats), or NULL if it has none or the
+ * pairing is implausible.
+ */
+static const f32 *vtx_batch_record(s32 entry, const Vertex *src, s32 count) {
+    s32 cur = sMtxCur;
+    s32 prv = sMtxCur ^ 1;
+    MtxEntry *e = &sMtxTable[cur][entry];
+    s32 ordinal = e->batchCount++;
+    const f32 *prevRaw = NULL;
+    VtxBatch *b;
+    s32 i;
+
+    sVtxBatch[cur] = grow(sVtxBatch[cur], &sVtxBatchCap[cur], sVtxBatchCount[cur] + 1, sizeof(*sVtxBatch[cur]));
+    sVtxRaw[cur] = grow(sVtxRaw[cur], &sVtxRawCap[cur], sVtxRawCount[cur] + count, sizeof(*sVtxRaw[cur]));
+    b = &sVtxBatch[cur][sVtxBatchCount[cur]++];
+    b->entry = entry;
+    b->count = count;
+    b->first = sVtxRawCount[cur];
+    for (i = 0; i < count; i++) {
+        sVtxRaw[cur][b->first + i][0] = src[i].x;
+        sVtxRaw[cur][b->first + i][1] = src[i].y;
+        sVtxRaw[cur][b->first + i][2] = src[i].z;
+    }
+    sVtxRawCount[cur] += count;
+
+    // Only meshes positioned by an object transform: level geometry (ORIGIN)
+    // draws a different set of segments as the camera moves, so its batch
+    // ordinals pair unrelated vertices.
+    if (e->prevIndex >= 0 && (e->site == PC_MTX_SITE_MODEL || e->site == PC_MTX_SITE_HEAD)) {
+        const MtxEntry *pe = &sMtxTable[prv][e->prevIndex];
+
+        if (ordinal < pe->batchCount) {
+            const VtxBatch *pb = &sVtxBatch[prv][sVtxBatchIdx[prv][pe->batchFirst + ordinal]];
+
+            if (pb->count == count) {
+                prevRaw = &sVtxRaw[prv][pb->first][0];
+            }
+        }
+    }
+    if (prevRaw != NULL) {
+        for (i = 0; i < count; i++) {
+            f32 dx = src[i].x - prevRaw[(i * 3) + 0];
+            f32 dy = src[i].y - prevRaw[(i * 3) + 1];
+            f32 dz = src[i].z - prevRaw[(i * 3) + 2];
+
+            if ((dx * dx) + (dy * dy) + (dz * dz) > VTX_LERP_MAX * VTX_LERP_MAX) {
+                return NULL; // not the same vertices after all
+            }
+        }
+    }
+    return prevRaw;
+}
+
+/** A vertex's model-space position for a frame at `alpha`. */
+static void vertex_pos(const GfxVertex *v, f32 alpha, f32 out[3]) {
+    s32 i;
+
+    for (i = 0; i < 3; i++) {
+        if (v->hasPrevRaw && alpha < 1.0f) {
+            out[i] = v->prevRaw[i] + ((v->raw[i] - v->prevRaw[i]) * alpha);
+        } else {
+            out[i] = v->raw[i];
+        }
+    }
+}
+
 #define GFX_MAX_TEXTURES 1024
 #define GFX_MAX_TEX_TEXELS (256 * 256)
 
@@ -836,21 +1063,27 @@ static void mtx_to_float(const Mtx *m, f32 out[4][4]) {
  * billboarding — add the anchor's clip coordinates, then perspective divide and
  * map through the viewport.
  */
-static void load_vertex(GfxVertex *dst, const Vertex *v, const GfxVertex *anchor) {
+static void load_vertex(GfxVertex *dst, const Vertex *v, const f32 *prevRaw, const GfxVertex *anchor) {
     const f32(*m)[4] = sMatrices[sCurMatrix];
-    f32 x = v->x, y = v->y, z = v->z;
+    f32 pos[3];
     s32 i;
 
+    dst->raw[0] = v->x;
+    dst->raw[1] = v->y;
+    dst->raw[2] = v->z;
+    dst->hasPrevRaw = (prevRaw != NULL);
+    if (prevRaw != NULL) {
+        memcpy(dst->prevRaw, prevRaw, sizeof(dst->prevRaw));
+    }
+    vertex_pos(dst, sRecordAlpha, pos); // exact at alpha 1, so the trace path is untouched
+
     for (i = 0; i < 4; i++) {
-        dst->clip[i] = (m[0][i] * x) + (m[1][i] * y) + (m[2][i] * z) + m[3][i];
+        dst->clip[i] = (m[0][i] * pos[0]) + (m[1][i] * pos[1]) + (m[2][i] * pos[2]) + m[3][i];
         if (anchor != NULL) {
             dst->clip[i] += anchor->clip[i];
         }
     }
 
-    dst->raw[0] = x;
-    dst->raw[1] = y;
-    dst->raw[2] = z;
     dst->mtx = (s16) sMtxSlotEntry[sCurMatrix];
     if (anchor != NULL) {
         dst->anchorRaw[0] = anchor->raw[0];
@@ -879,11 +1112,15 @@ static void handle_vertex(u32 w0, uintptr_t w1) {
     u32 params = (w0 >> 16) & 0xFF;
     s32 count = ((params >> 3) & 0x1F) + 1;
     s32 append = params & G_VTX_APPEND;
+    const f32 *prevRaw = NULL;
     s32 dstIdx;
     s32 i;
 
     if (src == NULL) {
         return;
+    }
+    if (sMtxSlotEntry[sCurMatrix] >= 0) {
+        prevRaw = vtx_batch_record(sMtxSlotEntry[sCurMatrix], src, count);
     }
 
     if (append) {
@@ -898,7 +1135,8 @@ static void handle_vertex(u32 w0, uintptr_t w1) {
     for (i = 0; i < count && dstIdx + i < GFX_MAX_VERTS; i++) {
         // Billboarded vertices are sprite-space offsets from vertex 0, the
         // anchor pushed just before the billboard matrix.
-        load_vertex(&sVerts[dstIdx + i], &src[i], sBillboard ? &sVerts[0] : NULL);
+        load_vertex(&sVerts[dstIdx + i], &src[i], prevRaw != NULL ? &prevRaw[i * 3] : NULL,
+                    sBillboard ? &sVerts[0] : NULL);
     }
 }
 
@@ -2115,11 +2353,12 @@ static s32 pc_gfx_replay(f32 alpha) {
                         v[k] = t->v[k];
                         if (v[k].mtx >= 0) {
                             const f32(*m)[4] = sMtxTable[sMtxCur][v[k].mtx].eff;
+                            f32 pos[3];
                             s32 c;
 
+                            vertex_pos(&v[k], alpha, pos);
                             for (c = 0; c < 4; c++) {
-                                v[k].clip[c] = (m[0][c] * v[k].raw[0]) + (m[1][c] * v[k].raw[1]) +
-                                               (m[2][c] * v[k].raw[2]) + m[3][c];
+                                v[k].clip[c] = (m[0][c] * pos[0]) + (m[1][c] * pos[1]) + (m[2][c] * pos[2]) + m[3][c];
                             }
                             if (v[k].anchorMtx >= 0) {
                                 const f32(*a)[4] = sMtxTable[sMtxCur][v[k].anchorMtx].eff;
@@ -2154,6 +2393,10 @@ void pc_gfx_task_submit(void *dlBegin, void *dlEnd) {
     sMtxCur ^= 1;
     sMtxCount[sMtxCur] = 0;
     sMtxSlotEntry[0] = sMtxSlotEntry[1] = sMtxSlotEntry[2] = -1;
+    sVtxBatchCount[sMtxCur] = 0;
+    sVtxRawCount[sMtxCur] = 0;
+    sCutFrame = FALSE;
+    sLastModelCut = FALSE;
     sRecordAlpha = frame_alpha();
     tape_reset();
     sImmediate = TRUE;
@@ -2186,7 +2429,8 @@ void pc_gfx_task_submit(void *dlBegin, void *dlEnd) {
     gfx_frame_end();
     note_present();
     sTapeValid = !sTapeStale;
-    sMtxTagCount = 0; // the game builds its next frame from here on
+    vtx_index_build(sMtxCur); // next frame pairs its vertex batches against this one
+    sMtxTagCount = 0;         // the game builds its next frame from here on
 
     // Tick the audio manager once per frame. On N64 this is the scheduler posting
     // OS_SC_RETRACE_MSG to the audio thread; there is no thread and no scheduler
