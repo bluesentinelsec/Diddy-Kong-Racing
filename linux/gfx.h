@@ -13,13 +13,21 @@ typedef struct {
     int fullscreen; // borderless fullscreen on the current display (the default)
     int scale;      // window size = N64 framebuffer size * scale, when windowed
     int vsync;      // wait for the display's refresh on every present
-    int scanlines;  // start with the scanline effect on (F2 toggles it)
+    int scanlines;  // start with the scanline effect on (1 toggles it)
+    int widescreen; // widen the image to the window's aspect (2 toggles it)
 } GfxOptions;
 
 // Opens the window and GL context. `width`/`height` are the N64 framebuffer
 // size the interpreter draws in. The image keeps its 4:3 aspect and is centred
-// (letterboxed) in whatever size the window or display has.
+// (letterboxed) in whatever size the window or display has — unless widescreen
+// is on, when the image is widened to the window's aspect instead.
 void gfx_window_init(int width, int height, const GfxOptions *options);
+
+// How much wider than the N64's 320 the image currently is: 1.0 with widescreen
+// off or in a 4:3 window, (16/9) / (4/3) = 1.333 in a 16:9 one. The interpreter
+// draws in a framebuffer `320 * scale` wide, keeping the 4:3 content centred at
+// its original pixel size and revealing more of the scene at the sides.
+float gfx_wide_scale(void);
 
 void gfx_frame_begin(void);
 

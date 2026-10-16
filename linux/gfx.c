@@ -46,6 +46,8 @@ static int sIsES; // 1 when the context is OpenGL ES
 // gfx_set_scissor() needs both: GL's scissor is in window pixels, measured from
 // the bottom-left, while the game speaks 320x240 from the top-left.
 static int sFbWidth = 320;
+static int sFbBaseWidth = 320; // the N64's; sFbWidth grows past it in widescreen
+static int sWidescreen = 1;
 static int sFbHeight = 240;
 static int sWinWidth = 320;
 static int sWinHeight = 240;
@@ -383,9 +385,26 @@ static void set_tex_mode_uniform(void) {
 // Public API (see gfx.h)
 // ---------------------------------------------------------------------------
 
-// Largest 4:3 rectangle that fits the drawable, centred.
+// Largest 4:3 rectangle that fits the drawable, centred — or, in widescreen,
+// the whole drawable, with the framebuffer the interpreter draws in widened to
+// match (clamped so an absurd window can't become an absurd field of view).
 static void update_viewport(void) {
     SDL_GetWindowSizeInPixels(sWindow, &sWinWidth, &sWinHeight);
+    sFbWidth = sFbBaseWidth;
+    if (sWidescreen && sWinHeight > 0) {
+        int wide = (sWinWidth * sFbHeight + sWinHeight / 2) / sWinHeight;
+
+        if (wide > sFbBaseWidth * 12 / 5) {
+            wide = sFbBaseWidth * 12 / 5;
+        }
+        if (wide > sFbBaseWidth) {
+            sFbWidth = wide;
+        }
+    }
+    if (sProgram != 0) {
+        glUseProgram(sProgram);
+        glUniform2f(sUniScreen, (float) sFbWidth, (float) sFbHeight);
+    }
     if (sWinWidth * sFbHeight >= sWinHeight * sFbWidth) {
         sVpH = sWinHeight;
         sVpW = sWinHeight * sFbWidth / sFbHeight;
@@ -405,16 +424,19 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
     int scale = options != NULL && options->scale > 0 ? options->scale : 3;
 
     sFbWidth = width;
+    sFbBaseWidth = width;
     sFbHeight = height;
     sFullscreen = options == NULL || options->fullscreen;
     sScanlines = options == NULL || options->scanlines;
+    sWidescreen = options == NULL || options->widescreen;
 
     SDL_SetMainReady(); // we provide a plain main(); no SDL_main redirection on Windows
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "GFX: SDL_Init failed: %s\n", SDL_GetError());
         return;
     }
-    if (!create_context(width * scale, height * scale)) {
+    // A widescreen window opens at 16:9; fullscreen takes the display's shape either way.
+    if (!create_context((sWidescreen ? height * 16 / 9 : width) * scale, height * scale)) {
         fprintf(stderr, "GFX: no usable OpenGL context; running without video\n");
         return;
     }
@@ -753,6 +775,10 @@ void gfx_disable_scissor(void) {
     }
 }
 
+float gfx_wide_scale(void) {
+    return (float) sFbWidth / (float) sFbBaseWidth;
+}
+
 void gfx_frame_begin(void) {
     if (sWindow == NULL) {
         return;
@@ -913,12 +939,16 @@ static void present(int dumpLogicFrame) {
         if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
             update_viewport();
         }
-        if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F11) {
+        if (event.type == SDL_EVENT_KEY_DOWN && (event.key.key == SDLK_TAB || event.key.key == SDLK_F11)) {
             sFullscreen = !sFullscreen;
             SDL_SetWindowFullscreen(sWindow, sFullscreen);
         }
-        if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F2) {
+        if (event.type == SDL_EVENT_KEY_DOWN && (event.key.key == SDLK_1 || event.key.key == SDLK_F2)) {
             sScanlines = !sScanlines;
+        }
+        if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_2) {
+            sWidescreen = !sWidescreen;
+            update_viewport();
         }
     }
 }

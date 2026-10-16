@@ -10,6 +10,9 @@
 #include "textures_sprites.h"
 #include "types.h"
 #include "video.h"
+#ifdef TARGET_PC
+#include "pc_gfx.h"
+#endif
 
 /************ .data ************/
 
@@ -331,6 +334,11 @@ void transition_render(Gfx **dList, Mtx **mtx, Vertex **vtx) {
             set_ortho_matrix_height(1.2f);
         }
         mtx_ortho(dList, mtx);
+#ifdef TARGET_PC
+        // The wipe shapes are sized to clear a 4:3 screen when fully open; the host
+        // zooms this matrix with a widescreen image so they still clear it.
+        pc_gfx_mtx_tag(*mtx - 1, &sTransitionStatus, PC_MTX_SITE_TRANSITION);
+#endif
         set_ortho_matrix_height(1.0f);
         switch (gCurFadeTransition) {
             case FADE_FULLSCREEN:
