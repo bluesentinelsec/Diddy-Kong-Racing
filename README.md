@@ -112,12 +112,27 @@ branch is the decompilation's own line. Two checks keep that honest:
 | `--no-vsync`        | present as fast as the GPU allows instead of once per refresh  |
 | `--no-interp`       | no interpolated frames: draw only the 30Hz logic frames        |
 | `--no-scanlines`    | start with the scanline effect off                             |
+| `--no-widescreen`   | keep the 4:3 image letterboxed instead of widening it          |
 | `--trace FILE`      | write the per-frame hash trace to FILE, then exit (see above)  |
 | `--trace-frames N`  | frames to trace (default 1800)                                 |
 | `--help`, `-h`      | print the options                                              |
 
-F11 toggles fullscreen while running; F2 toggles the scanline effect; Escape
-quits. The window is resizable and the image keeps its 4:3 aspect.
+Keys while running: Tab toggles fullscreen, 1 toggles the scanline effect, 2
+toggles widescreen, Escape quits. The window is resizable.
+
+### Widescreen
+
+On by default: the image is widened to the window's (or display's) aspect
+instead of being letterboxed, and the extra width shows more of the scene at
+the sides. The game still projects for 4:3 and its matrices are untouched; the
+host moves each viewport's centre out to the centre of the wider image while
+keeping its pixel scale, so everything that was on screen before is exactly
+where it was and the margins fill in. The HUD, menus and text stay at their
+original size, centred; full-width fades and letterbox bars span the full
+width; the background sky image is zoomed to cover the corners. The field of
+view is clamped at 2.4:1 for very wide windows. The game culls objects by
+distance and draws every level segment, so nothing pops in at the edges.
+Traces (`make golden`) always run at 4:3.
 
 ### Effects
 
@@ -128,7 +143,7 @@ Effects are runtime toggles; `--no-*` flags set their starting state.
 
 | Effect    | Key | Default | What it does                                              |
 | --------- | --- | ------- | --------------------------------------------------------- |
-| Scanlines | F2  | on      | one dark line per N64 scanline, CRT style                 |
+| Scanlines | 1   | on      | one dark line per N64 scanline, CRT style                 |
 
 All shaders are plain OpenGL (GLSL 3.30 core / ES 3.00) and are embedded in the
 executable as byte arrays at build time (`cmake/EmbedFile.cmake`), so nothing

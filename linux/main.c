@@ -276,6 +276,16 @@ static f32 sVpTransY = N64_SCREEN_H / 2.0f;
 static f32 sScisX0, sScisY0, sScisX1, sScisY1;
 static f32 sVpClipX0, sVpClipY0, sVpClipX1, sVpClipY1;
 
+// Widescreen (gfx_wide_scale, sampled once per drawn frame). The game projects
+// for 4:3 and the host can't change its matrices, so the extra width comes from
+// the viewport map instead: a viewport keeps its NDC-to-pixel scale and only
+// has its centre moved out to the centre of the wider image, which leaves the
+// 4:3 content exactly where it was and lets the scene spill into the margins.
+// Scissors scale with the image; the 2D layer sits centred at its original
+// size, except that anything spanning the full 320 (fades, letterbox bars) is
+// stretched to span the full width, and the screen-wipe mask is zoomed.
+static f32 sWideScale = 1.0f;
+
 static f32 max_f(f32 a, f32 b) {
     return (a > b) ? a : b;
 }
@@ -788,6 +798,11 @@ static void t_set_depth_offset(s32 enable) {
     }
 }
 
+/** A scissor in N64 pixels, widened with the image. */
+static void scissor_now(f32 x0, f32 y0, f32 x1, f32 y1) {
+    gfx_set_scissor(x0 * sWideScale, y0, x1 * sWideScale, y1);
+}
+
 static void t_set_scissor(f32 x0, f32 y0, f32 x1, f32 y1) {
     TapeOp *op = tape_push(TAPE_SCISSOR);
 
@@ -796,7 +811,7 @@ static void t_set_scissor(f32 x0, f32 y0, f32 x1, f32 y1) {
     op->f[2] = x1;
     op->f[3] = y1;
     if (sImmediate) {
-        gfx_set_scissor(x0, y0, x1, y1);
+        scissor_now(x0, y0, x1, y1);
     }
 }
 
@@ -1391,9 +1406,17 @@ static void combiner_eval(const f32 shade[4], u8 out[4], u8 sec[3]);
 
 static void project(const GfxVertex *v, GfxTriVert *out) {
     f32 invW = 1.0f / v->clip[3];
+    f32 scaleX = sVpScaleX;
+    f32 scaleY = sVpScaleY;
 
-    out->x = (v->clip[0] * invW * sVpScaleX) + sVpTransX;
-    out->y = sVpTransY - (v->clip[1] * invW * sVpScaleY);
+    if (v->mtx >= 0 && sMtxTable[sMtxCur][v->mtx].site == PC_MTX_SITE_TRANSITION) {
+        // The screen-wipe mask: shapes sized to clear a 4:3 screen when fully
+        // open, so zoom them until they clear the wider frame too.
+        scaleX *= sWideScale;
+        scaleY *= sWideScale;
+    }
+    out->x = (v->clip[0] * invW * scaleX) + (sVpTransX * sWideScale);
+    out->y = sVpTransY - (v->clip[1] * invW * scaleY);
     // Negated so nearer geometry gets the smaller depth under GL_LESS.
     out->z = -(v->clip[2] * invW);
     // Kept so the host layer can restore the homogeneous position and get
@@ -1485,6 +1508,7 @@ static void clip_edge(const GfxVertex *a, const GfxVertex *b, GfxVertex *out) {
     f32 t = (GFX_NEAR_W - a->clip[3]) / (b->clip[3] - a->clip[3]);
     s32 i;
 
+    *out = *a; // the matrix fields project() reads; the rest is overwritten below
     for (i = 0; i < 4; i++) {
         out->clip[i] = a->clip[i] + ((b->clip[i] - a->clip[i]) * t);
     }
@@ -1889,6 +1913,18 @@ static void draw_2d_quad(f32 x0, f32 y0, f32 x1, f32 y1, f32 u0, f32 v0, f32 u1,
                          const u8 unlit[3], u32 texture) {
     GfxTriVert q[6];
     s32 i;
+
+    if (sWideScale != 1.0f) {
+        if (x0 <= 0.0f && x1 >= (f32) N64_SCREEN_W) {
+            x0 *= sWideScale; // spans the screen (a fade, a letterbox bar): keep it spanning
+            x1 *= sWideScale;
+        } else {
+            f32 shift = ((f32) N64_SCREEN_W * (sWideScale - 1.0f)) * 0.5f;
+
+            x0 += shift; // HUD and text: original size, centred
+            x1 += shift;
+        }
+    }
 
     q[0].x = x0;
     q[0].y = y0;
@@ -2302,6 +2338,7 @@ static s32 pc_gfx_replay(f32 alpha) {
     snap_capture(&live);
     sImmediate = FALSE;
     gfx_frame_begin();
+    sWideScale = gfx_wide_scale();
 
     for (i = 0; i < sTapeOpCount; i++) {
         const TapeOp *op = &sTapeOps[i];
@@ -2335,7 +2372,7 @@ static s32 pc_gfx_replay(f32 alpha) {
                 gfx_set_depth_offset(op->flag);
                 break;
             case TAPE_SCISSOR:
-                gfx_set_scissor(op->f[0], op->f[1], op->f[2], op->f[3]);
+                scissor_now(op->f[0], op->f[1], op->f[2], op->f[3]);
                 break;
             case TAPE_SCISSOR_OFF:
                 gfx_disable_scissor();
@@ -2388,6 +2425,7 @@ void pc_gfx_task_submit(void *dlBegin, void *dlEnd) {
     sGfxFrameCount++;
 
     gfx_frame_begin();
+    sWideScale = gfx_wide_scale();
 
     // A new recording: this frame's matrices are matched against last frame's,
     // and the frame is drawn for the moment it will be seen.
@@ -2442,11 +2480,12 @@ void pc_gfx_task_submit(void *dlBegin, void *dlEnd) {
 
 static void print_usage(const char *prog) {
     printf("Usage: %s [options]\n"
-           "  --windowed       start in a window instead of fullscreen (F11 toggles)\n"
+           "  --windowed       start in a window instead of fullscreen (Tab toggles)\n"
            "  --scale N        window size as a multiple of 320x240 (default 3)\n"
            "  --no-vsync       present as fast as the GPU allows instead of once per refresh\n"
            "  --no-interp      no interpolated frames: draw the 30Hz logic frames only\n"
-           "  --no-scanlines   start with the scanline effect off (F2 toggles it)\n"
+           "  --no-scanlines   start with the scanline effect off (1 toggles it)\n"
+           "  --no-widescreen  keep the 4:3 image letterboxed (2 toggles widescreen)\n"
            "  --trace FILE     write a per-frame gfx/audio hash trace, then exit (see tests/golden.sh)\n"
            "  --trace-frames N frames to trace (default 1800)\n"
            "  --help           this text\n"
@@ -2457,7 +2496,7 @@ static void print_usage(const char *prog) {
 }
 
 int main(int argc, char **argv) {
-    GfxOptions options = { 1, WINDOW_SCALE, 1, 1 };
+    GfxOptions options = { 1, WINDOW_SCALE, 1, 1, 1 };
     int i;
 
     for (i = 1; i < argc; i++) {
@@ -2471,6 +2510,8 @@ int main(int argc, char **argv) {
             options.vsync = 0;
         } else if (strcmp(argv[i], "--no-scanlines") == 0) {
             options.scanlines = 0;
+        } else if (strcmp(argv[i], "--no-widescreen") == 0) {
+            options.widescreen = 0;
         } else if (strcmp(argv[i], "--no-interp") == 0) {
             sInterpolate = FALSE;
             options.vsync = 0;
@@ -2493,6 +2534,7 @@ int main(int argc, char **argv) {
     if (pc_trace_active()) {
         sInterpolate = FALSE; // a trace is the logic frames, nothing in between
         options.vsync = 0;
+        options.widescreen = 0; // the trace hashes 4:3 coordinates
     }
     sHostThread.id = 3;
     sHostThread.priority = 10;
