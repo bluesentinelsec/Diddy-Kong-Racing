@@ -923,10 +923,11 @@ static const f32 *vtx_batch_record(s32 entry, const Vertex *src, s32 count) {
     }
     sVtxRawCount[cur] += count;
 
-    // Only meshes positioned by an object transform: level geometry (ORIGIN)
-    // draws a different set of segments as the camera moves, so its batch
-    // ordinals pair unrelated vertices.
-    if (e->prevIndex >= 0 && (e->site == PC_MTX_SITE_MODEL || e->site == PC_MTX_SITE_HEAD)) {
+    // Only meshes with an identity of their own: an object, a racer's head, a
+    // water tile. Level geometry (ORIGIN) draws a different set of segments as
+    // the camera moves, so its batch ordinals would pair unrelated vertices.
+    if (e->prevIndex >= 0 &&
+        (e->site == PC_MTX_SITE_MODEL || e->site == PC_MTX_SITE_HEAD || e->site == PC_MTX_SITE_WATER)) {
         const MtxEntry *pe = &sMtxTable[prv][e->prevIndex];
 
         if (ordinal < pe->batchCount) {

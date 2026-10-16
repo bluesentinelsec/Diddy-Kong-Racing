@@ -26,7 +26,8 @@ enum PcMtxSite {
     PC_MTX_SITE_HEAD,            // mtx_head_push: a racer's head
     PC_MTX_SITE_BILLBOARD,       // render_sprite_billboard
     PC_MTX_SITE_ORTHO_IMAGE,     // render_ortho_triangle_image
-    PC_MTX_SITE_WEATHER          // weather.c snow
+    PC_MTX_SITE_WEATHER,         // weather.c snow
+    PC_MTX_SITE_WATER            // waves.c: one water tile (or quadrant), re-tagged over its MODEL push
 };
 
 void pc_gfx_mtx_tag(const void *mtx, const void *key, int site);
