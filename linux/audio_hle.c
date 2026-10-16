@@ -1,4 +1,5 @@
 #include "trace.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -274,6 +275,60 @@ static const s16 sResampleTable[64][4] = {
 };
 
 // ---------------------------------------------------------------------------
+// The optional higher-quality resampler: a 14-tap windowed-sinc interpolator
+// with 256 phases, in place of the ucode's 4-tap filter. The longer filter
+// passes the sample's own band flatter and rejects the images above it far
+// better, which is what the 4-tap's residual aliasing/warble on pitched notes
+// comes from. It is not what the console did, so it is a runtime choice
+// (--resampler, pc_audio_hle_set_resampler); a trace never uses it.
+//
+// It has to live within the same 16-short state block the game allocates per
+// voice: [0..3] and [4] stay the ucode's window and phase, so the two filters
+// can read each other's state, and [5..14] hold the ten older samples the
+// longer window needs. The window ends at the ucode's (pos+3), never reading
+// ahead of what the command provided, so its centre sits five input samples
+// behind the ucode's — a fixed, sub-millisecond delay.
+// ---------------------------------------------------------------------------
+#define HQ_TAPS 14
+#define HQ_PHASES 256
+#define HQ_HISTORY 10 // stream[pos-10 .. pos-1], kept in state[5..14]
+#define HQ_CENTRE 6   // tap index of the sample just before the (delayed) output position
+
+static s32 sHqResample = 0;
+static float sSincTable[HQ_PHASES][HQ_TAPS];
+static s32 sSincTableReady = 0;
+
+void pc_audio_hle_set_resampler(int hq) {
+    sHqResample = hq;
+}
+
+static void sinc_table_init(void) {
+    s32 p, t;
+
+    for (p = 0; p < HQ_PHASES; p++) {
+        double frac = (double) p / (double) HQ_PHASES;
+        double sum = 0.0;
+
+        for (t = 0; t < HQ_TAPS; t++) {
+            // Tap t sits at offset d from the output position; Blackman-windowed
+            // sinc with the cutoff a little under Nyquist to give the window room.
+            double d = (double) (t - HQ_CENTRE) - frac;
+            double x = 2.0 * M_PI * d / (double) HQ_TAPS; // window argument, |d| < 7
+            double w = 0.42 + 0.5 * cos(x) + 0.08 * cos(2.0 * x);
+            double fc = 0.47;
+            double h = (d == 0.0) ? 2.0 * fc : sin(2.0 * M_PI * fc * d) / (M_PI * d);
+
+            sSincTable[p][t] = (float) (h * w);
+            sum += h * w;
+        }
+        for (t = 0; t < HQ_TAPS; t++) {
+            sSincTable[p][t] = (float) (sSincTable[p][t] / sum); // unity DC gain in every phase
+        }
+    }
+    sSincTableReady = 1;
+}
+
+// ---------------------------------------------------------------------------
 // A_RESAMPLE — pitch shift, 4-tap polyphase (ucode-accurate).
 //
 // The phase accumulator is 16.16: `pitch` from the command is a u16 that steps by
@@ -295,22 +350,54 @@ static void op_resample(u32 w0, uintptr_t w1) {
     s32 n = sCount >> 1; // output samples wanted
     u32 accu;
     s16 hist[4];
-    s32 pos = 0; // window start in the virtual stream (hist, then src)
+    s16 older[HQ_HISTORY]; // stream[pos-10 .. pos-1] at entry, for the sinc filter
+    s32 pos = 0;           // window start in the virtual stream (hist, then src)
     s32 k;
 
     if (flags & A_INIT) {
         memset(hist, 0, sizeof(hist));
+        memset(older, 0, sizeof(older));
         accu = 0;
     } else {
         memcpy(hist, &state[0], sizeof(hist));
+        memcpy(older, &state[5], sizeof(older));
         accu = (u16) state[4];
     }
 
     // The virtual input stream is the 4 history samples followed by the DMEM input
-    // buffer, so the filter window is continuous across command lists.
-#define RESAMPLE_TAP(i) (((i) < 4) ? hist[i] : src[(i) - 4])
+    // buffer, so the filter window is continuous across command lists. Negative
+    // indices reach the older history the sinc filter keeps.
+#define RESAMPLE_TAP(i) (((i) < 0) ? older[(i) + HQ_HISTORY] : ((i) < 4) ? hist[i] : src[(i) - 4])
 
     n = dmem_clamp(n, dst);
+    if (sHqResample) {
+        if (!sSincTableReady) {
+            sinc_table_init();
+        }
+        for (k = 0; k < n; k++) {
+            const float *h = sSincTable[accu >> 8]; // 256 phases
+            float acc = 0.0f;
+            s32 t;
+
+            for (t = 0; t < HQ_TAPS; t++) {
+                acc += (float) RESAMPLE_TAP(pos - HQ_HISTORY + t) * h[t];
+            }
+            dst[k] = clamp16((s32) lrintf(acc));
+
+            accu += pitch;
+            pos += accu >> 16;
+            accu &= 0xFFFF;
+        }
+        for (k = 0; k < HQ_HISTORY; k++) {
+            s16 v = RESAMPLE_TAP(pos - HQ_HISTORY + k);
+            state[5 + k] = v;
+        }
+        for (k = 0; k < 4; k++) {
+            state[k] = RESAMPLE_TAP(pos + k);
+        }
+        state[4] = (s16) (u16) accu;
+        return;
+    }
     for (k = 0; k < n; k++) {
         const s16 *tbl = sResampleTable[accu >> 10]; // 64 phases
         s32 sample =
@@ -324,7 +411,12 @@ static void op_resample(u32 w0, uintptr_t w1) {
         accu &= 0xFFFF;
     }
 
-    // Carry the window and the phase into the next command list.
+    // Carry the window and the phase into the next command list — and the older
+    // history too, so switching to the sinc filter mid-stream has it ready.
+    for (k = 0; k < HQ_HISTORY; k++) {
+        s16 v = RESAMPLE_TAP(pos - HQ_HISTORY + k);
+        state[5 + k] = v;
+    }
     for (k = 0; k < 4; k++) {
         state[k] = RESAMPLE_TAP(pos + k);
     }
@@ -598,7 +690,8 @@ void pc_audio_hle_run(void *cmdList, s32 cmdLen, void *outBuf, s32 frameSamples)
 
     // DKR_TRACE_ACMD=<frame>: write this tick's command list (and a hash of every
     // block it loads from memory) to dkr_acmd_<frame>.txt, host-pointer free.
-    if (pc_trace_active() && getenv("DKR_TRACE_ACMD") != NULL && atol(getenv("DKR_TRACE_ACMD")) == pc_trace_frame() + 1) {
+    if (pc_trace_active() && getenv("DKR_TRACE_ACMD") != NULL &&
+        atol(getenv("DKR_TRACE_ACMD")) == pc_trace_frame() + 1) {
         char name[64];
         snprintf(name, sizeof(name), "dkr_acmd_%ld.txt", pc_trace_frame() + 1);
         acmdDump = fopen(name, "a");
