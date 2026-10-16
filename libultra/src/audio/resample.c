@@ -19,6 +19,9 @@
  *====================================================================*/
 
 #include <libaudio.h>
+#ifdef TARGET_PC
+#include "pc_audio.h"
+#endif
 #include "synthInternals.h"
 #include <os.h>
 #include <stdio.h>
@@ -134,7 +137,11 @@ s32 alResampleParam(void *filter, s32 paramID, void *param)
             
         case (AL_FILTER_SET_PITCH):
             data.i = (s32) param;
+#ifdef TARGET_PC
+            r->ratio = data.f * gPcPitchScale; // the host may mix faster than the samples were authored for
+#else
             r->ratio = data.f;
+#endif
             break;
             
 	case (AL_FILTER_SET_UNITY_PITCH):

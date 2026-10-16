@@ -138,6 +138,7 @@ branch is the decompilation's own line. Two checks keep that honest:
 | `--no-interp`       | no interpolated frames: draw only the 30Hz logic frames        |
 | `--no-scanlines`    | start with the scanline effect off                             |
 | `--no-widescreen`   | keep the 4:3 image letterboxed instead of widening it          |
+| `--audio-rate HZ`   | mix audio at HZ (default 44100; 22050 is what the console did) |
 | `--trace FILE`      | write the per-frame hash trace to FILE, then exit (see above)  |
 | `--trace-frames N`  | frames to trace (default 1800)                                 |
 | `--help`, `-h`      | print the options                                              |
@@ -174,6 +175,19 @@ All shaders are plain OpenGL (GLSL 3.30 core / ES 3.00) and are embedded in the
 executable as byte arrays at build time (`cmake/EmbedFile.cmake`), so nothing
 ships beside the binary.
 
+### Audio
+
+The port runs the game's own synthesizer (the libultra sequence and sound
+players and a host implementation of the RSP audio microcode), so the mix is
+the console's. One thing is different by default: it mixes at 44.1 kHz instead
+of the console's 22.05 kHz. The samples and the reverb are authored for 22.05
+kHz, so the host tells the synthesizer to scale every voice pitch and the
+reverb's delay lines by the ratio (`include/pc_audio.h`); the result is the same
+notes and the same timing, with the resampler and reverb working at the higher
+rate and no extra upsampling of a 22 kHz stream by the sound device.
+`--audio-rate 22050` gives the console's rate for comparison. Traces always
+mix at 22.05 kHz, so `make golden` is unaffected.
+
 ### Frame rate
 
 The game's logic runs at the N64's 30Hz with its original fixed timestep, which
@@ -203,6 +217,7 @@ Environment variables:
 | `DKR_DUMP_FRAME=<n>[,<m>...]` | write those frames to `dkr_frame_<n>.ppm` in the current directory (for testing without a screen) |
 | `DKR_DUMP_EVERY=<k>`  | also write every *k*-th frame                            |
 | `DKR_DUMP_PRESENT=<a>-<b>` | write every presented frame (logic and interpolated) numbered *a* to *b* as `dkr_present_<n>.ppm` |
+| `DKR_DUMP_PCM=<file>` | write the mixed audio as raw stereo 16-bit PCM at the mix rate, for listening tests and comparisons |
 | `DKR_INPUT_SCRIPT=<file>` | replay a controller script instead of reading the keyboard and gamepad; each line is `<frame> <buttons> <stickX> <stickY>` (buttons: comma-separated `A B Z START L R DU DD DL DR CU CD CL CR`, or `-`), held until the next line. Works with `--trace`; see `tests/golden/drive.txt` |
 | `DKR_FPS_LOG=1`       | print logic frames, logic steps consumed, frames presented and camera cuts detected, once a second |
 | `DKR_TRACE=<file>`, `DKR_TRACE_FRAMES=<n>` | same as `--trace` / `--trace-frames`      |

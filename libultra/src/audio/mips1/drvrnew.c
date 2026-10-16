@@ -18,6 +18,9 @@
  * Copyright Laws of the United States.
  *====================================================================*/
 #include <libaudio.h>
+#ifdef TARGET_PC
+#include "pc_audio.h"
+#endif
 #include "synthInternals.h"
 #include <os.h>
 #include <stdio.h>
@@ -140,6 +143,12 @@ void alFxNew(ALFx *r, ALSynConfig *c, s16 bus, UNUSED ALHeap *hp)
     
     r->section_count = param[j++];
     r->length 	     = param[j++];
+#ifdef TARGET_PC
+    // Delay lengths are in samples at OUTPUT_RATE; at a higher mix rate the
+    // same time needs proportionally more of them (with room for the per-section
+    // rounding below).
+    r->length = (s32) ((f32) r->length * gPcAudioRateScale) + 16;
+#endif
 
     r->delay = mempool_alloc_safe(sizeof(ALDelay) * r->section_count, COLOUR_TAG_CYAN);
     r->base = mempool_alloc_safe(sizeof(s16) * r->length, COLOUR_TAG_CYAN);
@@ -152,6 +161,11 @@ void alFxNew(ALFx *r, ALSynConfig *c, s16 bus, UNUSED ALHeap *hp)
 	d = &r->delay[i];
 	d->input  = param[j++];
 	d->output = param[j++];
+#ifdef TARGET_PC
+	// Scaled like r->length, and kept 8-sample aligned as alFxParamHdl requires.
+	d->input  = ((s32) ((f32) d->input * gPcAudioRateScale) + 4) & ~7;
+	d->output = ((s32) ((f32) d->output * gPcAudioRateScale) + 4) & ~7;
+#endif
 	d->fbcoef = param[j++];
 	d->ffcoef = param[j++];
 	d->gain   = param[j++];
@@ -192,6 +206,14 @@ void alFxNew(ALFx *r, ALSynConfig *c, s16 bus, UNUSED ALHeap *hp)
         d->lp = mempool_alloc_safe(sizeof(ALLowPass), COLOUR_TAG_CYAN);
         d->lp->fstate = mempool_alloc_safe(sizeof(POLEF_STATE), COLOUR_TAG_CYAN);
 	    d->lp->fc = param[j++];
+#ifdef TARGET_PC
+	    // A one-pole coefficient c gives a cutoff proportional to the sample
+	    // rate; c^(1/k) keeps the same cutoff in Hz at k times the rate.
+	    if (gPcAudioRateScale != 1.0f) {
+	        extern double pow(double, double);
+	        d->lp->fc = (s16) (32768.0 * pow((double) d->lp->fc / 32768.0, 1.0 / (double) gPcAudioRateScale));
+	    }
+#endif
 	    _init_lpfilter(d->lp);
 	} else {
 	    d->lp = 0;

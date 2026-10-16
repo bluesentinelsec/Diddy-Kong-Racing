@@ -6,9 +6,11 @@
 // backend: we push each buffer, ask how much is still queued, and pace the
 // manager against that.
 
+#include "pc_audio.h"
 #include "trace.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef signed int s32;
@@ -29,6 +31,20 @@ static SDL_AudioStream *sStream;
 static s32 sAudioReady;
 static s32 sAudioRate;
 static u32 sUnderruns;
+static FILE *sPcmDump; // DKR_DUMP_PCM=file: the mixed output, raw stereo s16, at the mix rate
+
+// The mix rate. The game asks for OUTPUT_RATE (22050 Hz, what the console
+// mixed at); mixing at a higher rate here gives the synthesizer's resampler and
+// reverb more to work with and skips the device's own upsampling of a 22 kHz
+// stream. pc_audio.h explains how the game is told. 0 means "what the game asks".
+#define PC_AUDIO_DEFAULT_MIX_RATE 44100
+static s32 sMixRate = PC_AUDIO_DEFAULT_MIX_RATE;
+float gPcPitchScale = 1.0f;
+float gPcAudioRateScale = 1.0f;
+
+void pc_audio_set_mix_rate(int hz) {
+    sMixRate = hz;
+}
 
 // ---------------------------------------------------------------------------
 // AI shims (replacing libultra/src/io/ai.c, aigetlen.c, aisetfreq.c,
@@ -40,31 +56,49 @@ static u32 sUnderruns;
 // return here, so it must be the truth.
 s32 osAiSetFrequency(u32 frequency) {
     SDL_AudioSpec spec;
+    u32 rate = frequency;
+    const char *dump;
 
     if (sAudioReady) {
         return sAudioRate;
     }
+    // The golden traces hash the mixed audio, so a trace always mixes at the
+    // rate the game asked for.
+    if (!pc_trace_active() && sMixRate >= 8000 && sMixRate <= 96000) {
+        rate = (u32) sMixRate;
+    }
+    gPcPitchScale = (float) frequency / (float) rate;
+    gPcAudioRateScale = (float) rate / (float) frequency;
+
+    dump = getenv("DKR_DUMP_PCM");
+    if (dump != NULL && sPcmDump == NULL) {
+        sPcmDump = fopen(dump, "wb");
+        if (sPcmDump == NULL) {
+            fprintf(stderr, "AUDIO: cannot write %s\n", dump);
+        }
+    }
+
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
         fprintf(stderr, "AUDIO: SDL_InitSubSystem failed: %s — running silent\n", SDL_GetError());
-        return (s32) frequency;
+        return (s32) rate;
     }
 
     memset(&spec, 0, sizeof(spec));
     spec.format = SDL_AUDIO_S16;
     spec.channels = PC_AUDIO_CHANNELS;
-    spec.freq = (int) frequency;
+    spec.freq = (int) rate;
 
     // The stream converts from our spec to whatever the device wants.
     sStream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
     if (sStream == NULL) {
         fprintf(stderr, "AUDIO: SDL_OpenAudioDeviceStream failed: %s — running silent\n", SDL_GetError());
-        return (s32) frequency;
+        return (s32) rate;
     }
     SDL_ResumeAudioStreamDevice(sStream);
 
     sAudioReady = 1;
-    sAudioRate = (s32) frequency;
-    printf("AUDIO: %d Hz, %d ch (SDL3 stream)\n", spec.freq, spec.channels);
+    sAudioRate = (s32) rate;
+    printf("AUDIO: mixing at %d Hz, %d ch (SDL3 stream)\n", spec.freq, spec.channels);
     return sAudioRate;
 }
 
@@ -76,6 +110,9 @@ s32 osAiSetNextBuffer(void *buf, u32 size) {
         pc_trace_audio(buf, size);
         pc_trace_pcm(buf, size);
         pc_trace_mark("audio");
+        if (sPcmDump != NULL) {
+            fwrite(buf, 1, size, sPcmDump);
+        }
     }
     if (!sAudioReady || buf == NULL || size == 0) {
         return 0;
