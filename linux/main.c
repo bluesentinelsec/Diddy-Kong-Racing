@@ -2201,6 +2201,7 @@ static void print_usage(const char *prog) {
            "  --scale N        window size as a multiple of 320x240 (default 3)\n"
            "  --no-vsync       present as fast as the GPU allows instead of once per refresh\n"
            "  --no-interp      no interpolated frames: draw the 30Hz logic frames only\n"
+           "  --no-scanlines   start with the scanline effect off (F2 toggles it)\n"
            "  --trace FILE     write a per-frame gfx/audio hash trace, then exit (see tests/golden.sh)\n"
            "  --trace-frames N frames to trace (default 1800)\n"
            "  --help           this text\n"
@@ -2211,7 +2212,7 @@ static void print_usage(const char *prog) {
 }
 
 int main(int argc, char **argv) {
-    GfxOptions options = { 1, WINDOW_SCALE, 1 };
+    GfxOptions options = { 1, WINDOW_SCALE, 1, 1 };
     int i;
 
     for (i = 1; i < argc; i++) {
@@ -2223,6 +2224,8 @@ int main(int argc, char **argv) {
             options.scale = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--no-vsync") == 0) {
             options.vsync = 0;
+        } else if (strcmp(argv[i], "--no-scanlines") == 0) {
+            options.scanlines = 0;
         } else if (strcmp(argv[i], "--no-interp") == 0) {
             sInterpolate = FALSE;
             options.vsync = 0;

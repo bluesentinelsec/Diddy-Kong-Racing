@@ -59,7 +59,7 @@ set(DKR_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/linux/shaders)
 set(DKR_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${DKR_GENERATED_DIR})
 set(DKR_SHADER_HEADERS)
-foreach(shader dkr.vert dkr.frag)
+foreach(shader dkr.vert dkr.frag post.vert post.frag)
     string(REPLACE "." "_" symbol "shader_${shader}")
     set(header ${DKR_GENERATED_DIR}/${symbol}.h)
     add_custom_command(
