@@ -80,6 +80,33 @@ unchanged; `assets/` is packed into `dkracing.data` and served beside the
 page. CI builds the page without assets to check the code still compiles for
 wasm (it has no game data), so the CI artifact is not playable.
 
+### Android (Kindle Fire / mobile)
+
+An Android app lives in `android/`. It builds the game as `libmain.so` through
+the same root `CMakeLists.txt` (which has an `ANDROID` branch), loaded by SDL's
+activity; the renderer's OpenGL ES 3.0 path is used as-is. Because a gamepad or
+keyboard is not guaranteed, an on-screen control layer (`linux/vcontrols.c`) is
+drawn above the game: a left analog stick for steering, three action buttons in
+a triangle at the bottom-right (accelerate, brake, use item) and a pause button
+at the bottom-centre. It is on automatically on Android, and on the desktop with
+`DKR_VCONTROLS=1` (the mouse then acts as one finger, for testing).
+
+Requirements: the Android SDK and NDK, an SDK CMake 3.24+ (`sdkmanager
+"cmake;3.31.5"`), and a JDK 17+ for Gradle. Then:
+
+```
+make assets                 # once, to produce assets/ from your ROM (see Assets)
+cd android
+./fetch-sdl.sh              # clones the SDL3 source used by the app into android/SDL
+./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+`fetch-sdl.sh` keeps SDL out of git (as the desktop build does) while giving
+Gradle the SDL Java activity and the native build one shared SDL tree. The
+assets are copied into the APK automatically from `assets/`. The build targets
+`arm64-v8a`; add ABIs in `android/app/build.gradle` if you need them.
+
 ## Assets
 
 The executable loads two files, `assets/assets.bin` and `assets/assets.lut.bin`,
@@ -234,16 +261,25 @@ Saves are kept in the per-user data directory as `eeprom.bin`:
 
 Gamepads can be plugged in while the game is running.
 
+On Android (or with `DKR_VCONTROLS=1`) an on-screen layer adds touch controls:
+the left stick steers, and three buttons in a triangle at the bottom-right map to
+A (accelerate, green ▲), B (brake, red ▼) and Z (use item, blue ◆); a pause
+button (Start) sits at the bottom-centre. Touching the stick overrides a physical
+controller; the buttons are additive, so a real gamepad still works too.
+
 ## Layout
 
 - `linux/` - the host layer: `main.c` (display-list interpreter, frame
   recording and interpolation, frame loop),
   `gfx.c` (SDL3 window and shader renderer), `audio_hle.c` (RSP audio
-  interpreter), `audio.c`, `input.c`, `reimpl.c` (libultra replacements, asset
-  loading, saves), `pc_asset.c` (64-bit-safe asset unpacking), `shaders/`.
+  interpreter), `audio.c`, `input.c`, `vcontrols.c` (on-screen touch controls),
+  `reimpl.c` (libultra replacements, asset loading, saves), `pc_asset.c`
+  (64-bit-safe asset unpacking), `shaders/`.
 - `src/`, `libultra/`, `include/` - the decompiled game and its SDK, with
   `TARGET_PC` sections where the port diverges. `include/pc_*.h` are the host
   interfaces those sections call.
+- `android/` - the Android app (Gradle + SDL activity) that builds the game as
+  `libmain.so` through the root CMakeLists and packages the assets into the APK.
 - `tests/` - unit tests for the host layer (`make test`).
 - `Makefile.n64` - the decompilation's own build and asset pipeline.
 

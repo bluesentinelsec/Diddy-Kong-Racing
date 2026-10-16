@@ -107,4 +107,7 @@ void gfx_present(void);
 // Whether there is a window to draw into at all.
 int gfx_window_valid(void);
 
+// Whether the GL context is OpenGL ES (vs. desktop core profile).
+int gfx_is_gles(void);
+
 #endif

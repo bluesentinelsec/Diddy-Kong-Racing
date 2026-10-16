@@ -11,6 +11,7 @@
 #include "gfx.h"
 #include "gl3_loader.h"
 #include "trace.h"
+#include "vcontrols.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h> // SDL_SetMainReady; SDL_MAIN_HANDLED keeps our plain main()
@@ -445,7 +446,9 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
     sScanlines = options == NULL || options->scanlines;
     sWidescreen = options == NULL || options->widescreen;
 
-    SDL_SetMainReady(); // we provide a plain main(); no SDL_main redirection on Windows
+#ifndef __ANDROID__
+    SDL_SetMainReady(); // we provide a plain main(); on Android SDL owns main()
+#endif
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "GFX: SDL_Init failed: %s\n", SDL_GetError());
         set_state_defaults();
@@ -934,6 +937,12 @@ int gfx_window_valid(void) {
     return sWindow != NULL;
 }
 
+// Whether the live GL context is OpenGL ES (vs. desktop core). The touch overlay
+// needs it to pick the matching GLSL version, same as the renderer's shaders.
+int gfx_is_gles(void) {
+    return sIsES;
+}
+
 void gfx_present(void) {
     present(0);
 }
@@ -952,10 +961,19 @@ static void present(int dumpLogicFrame) {
     if ((long) sPresentCount >= sDumpPresentLo && (long) sPresentCount <= sDumpPresentHi) {
         dump_frame_named("present", sPresentCount);
     }
+    vcontrols_render(sWinWidth, sWinHeight); // touch controls, drawn above the game
+    if (vcontrols_active()) {
+        // The overlay drew with its own program and VAO; rebind the renderer's
+        // (as post_process does) so the next frame's gfx_draw_tris has them bound.
+        glUseProgram(sProgram);
+        glBindVertexArray(sVao);
+        glBindBuffer(GL_ARRAY_BUFFER, sVbo);
+    }
     SDL_GL_SwapWindow(sWindow);
     scene_target_bind();
 
     while (SDL_PollEvent(&event)) {
+        vcontrols_event(&event, sWinWidth, sWinHeight);
         if (event.type == SDL_EVENT_QUIT || (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)) {
             SDL_Quit();
             exit(0);

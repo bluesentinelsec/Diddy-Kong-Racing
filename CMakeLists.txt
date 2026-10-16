@@ -39,20 +39,36 @@ endif()
 # shared library to ship or find at runtime). OpenGL itself is not linked: the
 # renderer resolves its GL 3.3 core / GL ES 3.0 entry points through SDL.
 set(DKR_SDL3_TAG "release-3.4.18" CACHE STRING "SDL3 git tag to build against")
-include(FetchContent)
-set(SDL_SHARED OFF CACHE BOOL "" FORCE)
-set(SDL_STATIC ON CACHE BOOL "" FORCE)
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 set(SDL_TESTS OFF CACHE BOOL "" FORCE)
 set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(SDL3
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG ${DKR_SDL3_TAG}
-    GIT_SHALLOW TRUE
-    GIT_PROGRESS TRUE)
-FetchContent_MakeAvailable(SDL3)
-message(STATUS "SDL3 ${DKR_SDL3_TAG} via FetchContent, static")
+if(ANDROID)
+    # Android loads libSDL3.so from SDLActivity, so SDL is a shared library here.
+    # It is taken from the checkout at android/SDL (created by android/fetch-sdl.sh)
+    # so this native build and the Gradle build share one SDL tree — Gradle also
+    # compiles SDL's Java activity classes out of that same directory.
+    set(SDL_SHARED ON CACHE BOOL "" FORCE)
+    set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+    set(DKR_SDL_TARGET SDL3::SDL3-shared)
+    if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/android/SDL/CMakeLists.txt)
+        message(FATAL_ERROR "android/SDL not found. Run android/fetch-sdl.sh first.")
+    endif()
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/android/SDL ${CMAKE_BINARY_DIR}/SDL)
+    message(STATUS "SDL3 from android/SDL (shared) for Android")
+else()
+    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+    set(SDL_STATIC ON CACHE BOOL "" FORCE)
+    set(DKR_SDL_TARGET SDL3::SDL3-static)
+    include(FetchContent)
+    FetchContent_Declare(SDL3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG ${DKR_SDL3_TAG}
+        GIT_SHALLOW TRUE
+        GIT_PROGRESS TRUE)
+    FetchContent_MakeAvailable(SDL3)
+    message(STATUS "SDL3 ${DKR_SDL3_TAG} via FetchContent, static")
+endif()
 
 # Shaders are embedded as byte arrays so the executable is self-contained.
 set(DKR_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/linux/shaders)
@@ -81,10 +97,12 @@ set(DKR_PLATFORM_SOURCES
     linux/audio_hle.c
     linux/gfx.c
     linux/input.c
+    linux/vcontrols.c
     linux/reimpl.c
     linux/pc_asset.c
     linux/trace.c
     linux/crash.c
+    linux/android_compat.c
 )
 
 set(DKR_GAME_SOURCES
@@ -153,7 +171,6 @@ set(DKR_LIBULTRA_SOURCES
 
 set(DKR_DEFINES
     TARGET_PC
-    SDL_MAIN_HANDLED
     _LANGUAGE_C
     _FINALROM
     NDEBUG
@@ -169,6 +186,11 @@ set(DKR_DEFINES
 )
 if(DKR_EEPROM_PRESET_100)
     list(APPEND DKR_DEFINES EEPROM_PRESET_100)
+endif()
+# On Android, SDL owns the entry point (SDL_main via SDLActivity); everywhere
+# else we provide a plain main() and tell SDL so.
+if(NOT ANDROID)
+    list(APPEND DKR_DEFINES SDL_MAIN_HANDLED)
 endif()
 
 set(DKR_C_FLAGS
@@ -214,7 +236,7 @@ function(dkr_configure_target tgt)
     target_compile_options(${tgt} PRIVATE ${DKR_C_FLAGS})
     target_compile_features(${tgt} PRIVATE c_std_23)
     target_include_directories(${tgt} PRIVATE ${DKR_INCLUDE_DIRS})
-    target_link_libraries(${tgt} PRIVATE SDL3::SDL3-static)
+    target_link_libraries(${tgt} PRIVATE ${DKR_SDL_TARGET})
 endfunction()
 
 add_library(dkr_game OBJECT ${DKR_GAME_SOURCES} ${DKR_LIBULTRA_SOURCES})
@@ -226,17 +248,24 @@ dkr_configure_target(dkr_platform)
 target_include_directories(dkr_platform PRIVATE ${DKR_GENERATED_DIR})
 add_dependencies(dkr_platform dkr_shaders)
 
-add_executable(dkracing $<TARGET_OBJECTS:dkr_game> $<TARGET_OBJECTS:dkr_platform>)
-target_link_libraries(dkracing PRIVATE SDL3::SDL3-static)
-if(NOT WIN32)
-    target_link_libraries(dkracing PRIVATE m)
-endif()
-if(DKR_LINK_FLAGS)
-    target_link_options(dkracing PRIVATE ${DKR_LINK_FLAGS})
-endif()
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # glibc's backtrace_symbols resolves names through the dynamic symbol table.
-    target_link_options(dkracing PRIVATE -rdynamic)
+if(ANDROID)
+    # The whole game is one shared library, libmain.so, which SDLActivity loads
+    # after libSDL3.so and enters through SDL_main. No executable is produced.
+    add_library(main SHARED $<TARGET_OBJECTS:dkr_game> $<TARGET_OBJECTS:dkr_platform>)
+    target_link_libraries(main PRIVATE ${DKR_SDL_TARGET} m)
+else()
+    add_executable(dkracing $<TARGET_OBJECTS:dkr_game> $<TARGET_OBJECTS:dkr_platform>)
+    target_link_libraries(dkracing PRIVATE ${DKR_SDL_TARGET})
+    if(NOT WIN32)
+        target_link_libraries(dkracing PRIVATE m)
+    endif()
+    if(DKR_LINK_FLAGS)
+        target_link_options(dkracing PRIVATE ${DKR_LINK_FLAGS})
+    endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # glibc's backtrace_symbols resolves names through the dynamic symbol table.
+        target_link_options(dkracing PRIVATE -rdynamic)
+    endif()
 endif()
 
 # --- Browser build (Emscripten) ------------------------------------------------

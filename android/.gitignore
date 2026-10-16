@@ -1,0 +1,12 @@
+# Fetched SDL source (android/fetch-sdl.sh)
+/SDL/
+
+# Gradle / build output
+/.gradle/
+/build/
+/app/build/
+/app/.cxx/
+/local.properties
+
+# Game assets copied into the APK (produced from the ROM, not Nintendo data we ship)
+/app/src/main/assets/

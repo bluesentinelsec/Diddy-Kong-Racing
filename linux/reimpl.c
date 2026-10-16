@@ -63,6 +63,7 @@ static u32 sAssetsBinSize = 0;
 // Opens `path` relative to the working directory, or failing that relative to
 // the directory holding the executable, so a build can be launched by double-
 // clicking it with assets/ sitting next to it.
+#ifndef __ANDROID__
 static FILE *pc_open_asset(const char *path) {
     FILE *f = fopen(path, "rb");
     const char *base;
@@ -78,8 +79,24 @@ static FILE *pc_open_asset(const char *path) {
     snprintf(full, sizeof(full), "%s%s", base, path);
     return fopen(full, "rb");
 }
+#endif
 
 static u8 *pc_load_file(const char *path, u32 *sizeOut) {
+#ifdef __ANDROID__
+    // Assets live inside the APK, which is not a real directory, so fopen cannot
+    // reach them. SDL's IO maps a relative path onto the Android asset manager.
+    // These buffers are loaded once and kept for the process's lifetime.
+    size_t sz = 0;
+    void *data = SDL_LoadFile(path, &sz);
+
+    if (data == NULL) {
+        fprintf(stderr, "ASSETS: cannot open %s from the APK (%s). Was `make assets` packaged?\n", path,
+                SDL_GetError());
+        exit(1);
+    }
+    *sizeOut = (u32) sz;
+    return (u8 *) data;
+#else
     FILE *f = pc_open_asset(path);
     long size;
     u8 *buf;
@@ -102,6 +119,7 @@ static u8 *pc_load_file(const char *path, u32 *sizeOut) {
     fclose(f);
     *sizeOut = (u32) size;
     return buf;
+#endif
 }
 
 static void pc_assets_init(void) {

@@ -1,0 +1,73 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'org.dkr.port'
+    compileSdk 35
+    ndkVersion '29.0.14206865'
+
+    defaultConfig {
+        applicationId 'org.dkr.port'
+        minSdk 21
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+        // The Kindle Fire HD 8 (12th gen) is arm64; add others here if needed.
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+        externalNativeBuild {
+            cmake {
+                // The whole game (and SDL3) is built by the repo's CMakeLists as
+                // libmain.so / libSDL3.so. DKR_VERSION defaults to us_v80.
+                arguments '-DANDROID_STL=c++_shared'
+            }
+        }
+    }
+
+    // The repo root CMakeLists has an ANDROID branch that builds libmain.so.
+    externalNativeBuild {
+        cmake {
+            path '../../CMakeLists.txt'
+            version '3.31.5'
+        }
+    }
+
+    sourceSets {
+        main {
+            // SDL3's Java runtime (SDLActivity and friends), from android/SDL.
+            java.srcDirs += ['../SDL/android-project/app/src/main/java']
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig = false
+    }
+
+    // Keep the APK's native libs uncompressed/aligned as SDL expects.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+}
+
+// The game assets (assets.bin / assets.lut.bin) are produced from the ROM
+// (`make assets`) and are not in git. Copy them into the APK's assets/assets/
+// so SDL_IOFromFile("assets/assets.bin") finds them via the asset manager.
+tasks.register('copyGameAssets', Copy) {
+    from("${rootDir}/../assets") {
+        include 'assets.bin'
+        include 'assets.lut.bin'
+    }
+    into "${projectDir}/src/main/assets/assets"
+}
+tasks.named('preBuild') {
+    dependsOn 'copyGameAssets'
+}

@@ -4,6 +4,7 @@
 
 #include "gfx.h"
 #include "trace.h"
+#include "vcontrols.h"
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -321,4 +322,8 @@ void input_host_read(unsigned short *button, signed char *stickX, signed char *s
     *button = buttons;
     *stickX = (signed char) x;
     *stickY = (signed char) y;
+
+    // On-screen touch controls (Android, or DKR_VCONTROLS=1): OR the virtual
+    // buttons in, and take over the stick while the screen is being touched.
+    vcontrols_merge(button, stickX, stickY);
 }

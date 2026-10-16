@@ -7,6 +7,14 @@
 
 #include "gfx.h"
 #include "trace.h"
+// On Android, SDL owns the process entry: this renames main() to SDL_main(),
+// the symbol SDLActivity calls from the SDL thread. Elsewhere SDL_MAIN_HANDLED
+// is defined and this leaves our plain main() alone.
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+#ifdef __ANDROID__
+#include <unistd.h> // access(), for the opt-in debug-log marker file
+#endif
 
 void pc_crash_handler_install(void); // linux/crash.c
 
@@ -2527,6 +2535,29 @@ static void print_usage(const char *prog) {
 int main(int argc, char **argv) {
     GfxOptions options = { 1, WINDOW_SCALE, 1, 1, 1 };
     int i;
+
+#ifdef __ANDROID__
+    // There is no console on Android. When a marker file "DKR_DEBUG" exists in the
+    // app's internal storage, send the game's stdout/stderr to dkr.log beside it
+    // for diagnostics; otherwise leave them alone so a normal run does no logging.
+    // Enable with:  adb shell run-as org.dkr.port touch files/DKR_DEBUG
+    {
+        const char *dir = SDL_GetAndroidInternalStoragePath();
+        char path[1024];
+        if (dir != NULL) {
+            snprintf(path, sizeof(path), "%s/DKR_DEBUG", dir);
+            if (access(path, F_OK) == 0) {
+                snprintf(path, sizeof(path), "%s/dkr.log", dir);
+                if (freopen(path, "w", stdout) != NULL) {
+                    setvbuf(stdout, NULL, _IOLBF, 0);
+                }
+                if (freopen(path, "a", stderr) != NULL) {
+                    setvbuf(stderr, NULL, _IOLBF, 0);
+                }
+            }
+        }
+    }
+#endif
 
 #ifdef __EMSCRIPTEN__
     options.fullscreen = 0; // a page can only go fullscreen from a key press (Tab)
