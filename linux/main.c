@@ -2357,6 +2357,7 @@ static void run_dl(const Gfx *dl, s32 count, s32 depth) {
 // linux/audio.c
 extern void pc_audio_frame(void);
 extern void pc_audio_report(void);
+extern void pc_audio_set_mix_rate(int hz);
 
 /**
  * Draw the recorded frame again with its matrices at `alpha` between last
@@ -2523,6 +2524,7 @@ static void print_usage(const char *prog) {
            "  --no-interp      no interpolated frames: draw the 30Hz logic frames only\n"
            "  --no-scanlines   start with the scanline effect off (1 toggles it)\n"
            "  --no-widescreen  keep the 4:3 image letterboxed (2 toggles widescreen)\n"
+           "  --audio-rate HZ  mix audio at HZ instead of 44100 (22050 is what the console mixed at)\n"
            "  --trace FILE     write a per-frame gfx/audio hash trace, then exit (see tests/golden.sh)\n"
            "  --trace-frames N frames to trace (default 1800)\n"
            "  --help           this text\n"
@@ -2576,6 +2578,8 @@ int main(int argc, char **argv) {
             options.scanlines = 0;
         } else if (strcmp(argv[i], "--no-widescreen") == 0) {
             options.widescreen = 0;
+        } else if (strcmp(argv[i], "--audio-rate") == 0 && i + 1 < argc) {
+            pc_audio_set_mix_rate(atoi(argv[++i]));
         } else if (strcmp(argv[i], "--no-interp") == 0) {
             sInterpolate = FALSE;
             options.vsync = 0;
