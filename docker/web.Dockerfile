@@ -8,7 +8,8 @@
 # silicon runs it natively. It ships cmake but not ninja, which comes from pip.
 # The repository is bind-mounted at /src at run time; nothing from the game is
 # baked into the image.
-FROM emscripten/emsdk:6.0.11
+# Fully qualified so Podman (which refuses short names without a TTY) works too.
+FROM docker.io/emscripten/emsdk:6.0.11
 
 RUN python3 -m pip install --no-cache-dir --break-system-packages ninja
 

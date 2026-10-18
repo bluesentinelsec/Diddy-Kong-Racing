@@ -79,7 +79,6 @@ tools/ido-recomp
 tools/binutils
 *.d
 treemap.html
-docs/
 dkracing
 log.txt
 dkracing.elf
@@ -101,5 +100,8 @@ amap
 !.github/workflows/
 !.github/workflows/*.yml
 
-# Doxygen output (make doc)
+# Doxygen output (make doc); the hand-written guides beside it in docs/ are tracked
 docs/html/
+
+# The Gradle wrapper's Windows launcher (the *.bat rule above would drop it)
+!android/gradlew.bat

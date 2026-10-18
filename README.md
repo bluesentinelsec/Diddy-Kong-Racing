@@ -16,6 +16,9 @@ ROM to produce the asset files the executable loads (see *Assets*).
 
 ## Building
 
+Step-by-step guides for each platform (Linux, Windows, macOS, web, Android,
+and the iOS status) are in [`docs/`](docs/README.md). The short version:
+
 Requirements: CMake 3.24+, a C compiler (clang, GCC or MinGW-w64), git, and on
 Linux the usual SDL build dependencies (X11, Wayland, ALSA/PulseAudio
 development packages; see `.github/workflows/pc.yml` for the exact list). SDL3
@@ -88,8 +91,10 @@ activity; the renderer's OpenGL ES 3.0 path is used as-is. Because a gamepad or
 keyboard is not guaranteed, an on-screen control layer (`linux/vcontrols.c`) is
 drawn above the game: a left analog stick for steering, three action buttons in
 a triangle at the bottom-right (accelerate, brake, use item) and a pause button
-at the bottom-centre. It is on automatically on Android, and on the desktop with
-`DKR_VCONTROLS=1` (the mouse then acts as one finger, for testing).
+at the bottom-centre. It appears only on mobile: Android (Kindle Fire included),
+iOS, and the browser build on a phone or tablet (a touch-first, `pointer:
+coarse` device). `DKR_VCONTROLS=1` forces it on anywhere (the mouse then acts as
+one finger, for testing) and `DKR_VCONTROLS=0` forces it off.
 
 Requirements: the Android SDK and NDK, an SDK CMake 3.24+ (`sdkmanager
 "cmake;3.31.5"`), and a JDK 17+ for Gradle. Then:
@@ -105,7 +110,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 `fetch-sdl.sh` keeps SDL out of git (as the desktop build does) while giving
 Gradle the SDL Java activity and the native build one shared SDL tree. The
 assets are copied into the APK automatically from `assets/`. The build targets
-`arm64-v8a`; add ABIs in `android/app/build.gradle` if you need them.
+`arm64-v8a`; add ABIs in `android/app/build.gradle` if you need them. CI
+(`.github/workflows/android.yml`) builds the APK, without assets, on every push
+and pull request.
 
 ## Assets
 
@@ -261,7 +268,7 @@ Saves are kept in the per-user data directory as `eeprom.bin`:
 
 Gamepads can be plugged in while the game is running.
 
-On Android (or with `DKR_VCONTROLS=1`) an on-screen layer adds touch controls:
+On phones and tablets (or with `DKR_VCONTROLS=1`) an on-screen layer adds touch controls:
 the left stick steers, and three buttons in a triangle at the bottom-right map to
 A (accelerate, green ▲), B (brake, red ▼) and Z (use item, blue ◆); a pause
 button (Start) sits at the bottom-centre. Touching the stick overrides a physical
