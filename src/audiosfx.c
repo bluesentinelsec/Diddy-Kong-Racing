@@ -147,6 +147,15 @@ ALMicroTime sndp_voice_handler(void *node) {
                 break;
         }
         sndp->nextDelta = alEvtqNextEvent(&sndp->evtq, &sndp->nextEvent);
+#ifdef TARGET_PC
+        // Match the sequence-player safety net: an empty queue must yield to
+        // the game loop and recreate the periodic API event on the next tick,
+        // rather than spinning forever on the zero-delay sentinel.
+        if (sndp->nextDelta == 0 && sndp->nextEvent.type == -1) {
+            sndp->nextEvent.type = AL_SNDP_API_EVT;
+            sndp->nextDelta = sndp->frameTime;
+        }
+#endif
 
     } while (sndp->nextDelta == 0);
     sndp->curTime += sndp->nextDelta;

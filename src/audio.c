@@ -13,6 +13,17 @@
 #include "pc_swap.h"
 #endif
 
+#ifdef TARGET_PC
+// The N64 audio thread consumes events while a level is being replaced. The
+// PC port runs the audio manager synchronously after the game submits a frame,
+// so level_free(), level_music_start(), and music_sequence_init() can queue 112
+// zero-delay channel events before it gets to run. Preserve the original 120
+// event working set plus that transition burst, rounded up for headroom.
+#define MUSIC_PLAYER_MAX_EVENTS 256
+#else
+#define MUSIC_PLAYER_MAX_EVENTS 120
+#endif
+
 /************ .data ************/
 
 ALCSPlayer *gMusicPlayer = NULL;  // Official Name: tuneSeqPlayer
@@ -167,7 +178,7 @@ void audio_init(OSSched *sc) {
     synth_config.outputRate = 0;
     synth_config.heap = &gALHeap;
     amCreateAudioMgr(&synth_config, 12, sc);
-    gMusicPlayer = sound_seqplayer_init(24, 120);
+    gMusicPlayer = sound_seqplayer_init(24, MUSIC_PLAYER_MAX_EVENTS);
     set_voice_limit(gMusicPlayer, 18);
     gJinglePlayer = sound_seqplayer_init(16, 50);
     gMusicSequenceData = mempool_alloc_safe(seqLength, COLOUR_TAG_CYAN);
