@@ -464,6 +464,7 @@ static s32 site_has_xform(int site) {
         case PC_MTX_SITE_MODEL:
         case PC_MTX_SITE_SHEAR:
         case PC_MTX_SITE_BILLBOARD:
+        case PC_MTX_SITE_ORTHO_MODEL:
             return TRUE;
         default:
             return FALSE;
@@ -1446,11 +1447,21 @@ static void project(const GfxVertex *v, GfxTriVert *out) {
     f32 scaleX = sVpScaleX;
     f32 scaleY = sVpScaleY;
 
-    if (v->mtx >= 0 && sMtxTable[sMtxCur][v->mtx].site == PC_MTX_SITE_TRANSITION) {
-        // The screen-wipe mask: shapes sized to clear a 4:3 screen when fully
-        // open, so zoom them until they clear the wider frame too.
-        scaleX *= sWideScale;
-        scaleY *= sWideScale;
+    if (v->mtx >= 0) {
+        u8 site = sMtxTable[sMtxCur][v->mtx].site;
+
+        if (site == PC_MTX_SITE_TRANSITION) {
+            // The screen-wipe mask: shapes sized to clear a 4:3 screen when fully
+            // open, so zoom them until they clear the wider frame too.
+            scaleX *= sWideScale;
+            scaleY *= sWideScale;
+        } else if (site == PC_MTX_SITE_ORTHO || site == PC_MTX_SITE_ORTHO_MODEL ||
+                   site == PC_MTX_SITE_ORTHO_IMAGE) {
+            // Menu panels, frames and other 2D art are surfaces rather than HUD
+            // coordinates. Stretch them with the wide framebuffer; texrect text
+            // and HUD icons take the separate centred, aspect-preserving path.
+            scaleX *= sWideScale;
+        }
     }
     out->x = (v->clip[0] * invW * scaleX) + (sVpTransX * sWideScale);
     out->y = sVpTransY - (v->clip[1] * invW * scaleY);
@@ -2367,6 +2378,7 @@ extern void pc_audio_hle_set_resampler(int hq); // linux/audio_hle.c
  */
 static s32 pc_gfx_replay(f32 alpha) {
     DrawSnap live;
+    s32 presented;
     s32 i, j, k;
 
     if (!sTapeValid || !gfx_window_valid()) {
@@ -2454,10 +2466,10 @@ static s32 pc_gfx_replay(f32 alpha) {
         }
     }
 
-    gfx_present();
+    presented = gfx_present();
     sImmediate = TRUE;
     snap_apply(&live);
-    return TRUE;
+    return presented;
 }
 
 void pc_gfx_task_submit(void *dlBegin, void *dlEnd) {
@@ -2504,8 +2516,9 @@ void pc_gfx_task_submit(void *dlBegin, void *dlEnd) {
 
     run_dl((const Gfx *) dlBegin, (const Gfx *) dlEnd - (const Gfx *) dlBegin, 0);
 
-    gfx_frame_end();
-    note_present();
+    if (gfx_frame_end()) {
+        note_present();
+    }
     sTapeValid = !sTapeStale;
     vtx_index_build(sMtxCur); // next frame pairs its vertex batches against this one
     sMtxTagCount = 0;         // the game builds its next frame from here on

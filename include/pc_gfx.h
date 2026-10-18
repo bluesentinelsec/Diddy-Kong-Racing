@@ -28,7 +28,8 @@ enum PcMtxSite {
     PC_MTX_SITE_ORTHO_IMAGE,     // render_ortho_triangle_image
     PC_MTX_SITE_WEATHER,         // weather.c snow
     PC_MTX_SITE_WATER,           // waves.c: one water tile (or quadrant), re-tagged over its MODEL push
-    PC_MTX_SITE_TRANSITION       // fade_transition.c: the screen-wipe mask's ortho matrix, re-tagged over ORTHO
+    PC_MTX_SITE_TRANSITION,      // fade_transition.c: the screen-wipe mask's ortho matrix, re-tagged over ORTHO
+    PC_MTX_SITE_ORTHO_MODEL      // mtx_cam_push while the parent projection is orthographic
 };
 
 void pc_gfx_mtx_tag(const void *mtx, const void *key, int site);

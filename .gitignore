@@ -105,3 +105,5 @@ docs/html/
 
 # The Gradle wrapper's Windows launcher (the *.bat rule above would drop it)
 !android/gradlew.bat
+# Native Windows equivalent of the root Makefile wrapper.
+!build-windows.bat

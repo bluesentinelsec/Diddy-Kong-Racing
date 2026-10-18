@@ -256,6 +256,12 @@ if(ANDROID)
 else()
     add_executable(dkracing $<TARGET_OBJECTS:dkr_game> $<TARGET_OBJECTS:dkr_platform>)
     target_link_libraries(dkracing PRIVATE ${DKR_SDL_TARGET})
+    if(MINGW)
+        # The MSYS2 MinGW toolchain otherwise leaves a dependency on
+        # libwinpthread-1.dll, despite SDL itself being linked statically.
+        # Keep the documented Windows artifact usable as a single executable.
+        target_link_options(dkracing PRIVATE -static)
+    endif()
     if(NOT WIN32)
         target_link_libraries(dkracing PRIVATE m)
     endif()

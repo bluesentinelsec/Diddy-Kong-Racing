@@ -55,6 +55,10 @@ static int sWinHeight = 240;
 // The 4:3 image, centred in the window (letter/pillar-boxed), in window pixels.
 static int sVpX, sVpY, sVpW = 320, sVpH = 240;
 static int sFullscreen;
+#ifdef _WIN32
+static int sWindowedX, sWindowedY, sWindowedW, sWindowedH;
+static int sWindowedBoundsValid;
+#endif
 
 static GLuint sProgram;
 static GLuint sVao;
@@ -118,9 +122,11 @@ typedef struct {
 
 static int try_create_context(const GlConfig *cfg, int width, int height) {
     SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE;
+#ifndef _WIN32
     if (sFullscreen) {
         flags |= SDL_WINDOW_FULLSCREEN; // borderless, at the desktop resolution
     }
+#endif
     SDL_GL_ResetAttributes();
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, cfg->profile);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, cfg->major);
@@ -134,6 +140,26 @@ static int try_create_context(const GlConfig *cfg, int width, int height) {
         fprintf(stderr, "GFX: SDL_CreateWindow (%s) failed: %s\n", cfg->name, SDL_GetError());
         return 0;
     }
+#ifdef _WIN32
+    SDL_GetWindowPosition(sWindow, &sWindowedX, &sWindowedY);
+    SDL_GetWindowSize(sWindow, &sWindowedW, &sWindowedH);
+    sWindowedBoundsValid = 1;
+    if (sFullscreen) {
+        SDL_Rect bounds;
+        SDL_DisplayID display = SDL_GetDisplayForWindow(sWindow);
+
+        if (display && SDL_GetDisplayBounds(display, &bounds)) {
+            // Intel's Windows OpenGL driver promotes an exact-monitor drawable
+            // into a direct-fullscreen presentation path. Once an Alt-Tab or
+            // system OSD interrupts it, SwapBuffers can block for seconds on
+            // every frame. Keep this as a compositor-owned borderless window;
+            // the one-pixel overscan is clipped and is not visible.
+            SDL_SetWindowBordered(sWindow, false);
+            SDL_SetWindowPosition(sWindow, bounds.x - 1, bounds.y - 1);
+            SDL_SetWindowSize(sWindow, bounds.w + 2, bounds.h + 2);
+        }
+    }
+#endif
     sContext = SDL_GL_CreateContext(sWindow);
     if (sContext == NULL) {
         fprintf(stderr, "GFX: %s context unavailable: %s\n", cfg->name, SDL_GetError());
@@ -932,16 +958,19 @@ static void dump_frame(void) {
     dump_frame_named("frame", sFrameCount);
 }
 
-static void present(int dumpLogicFrame);
+static int present(int dumpLogicFrame);
 
-void gfx_frame_end(void) {
+int gfx_frame_end(void) {
+    int presented = 0;
+
     sFrameCount++;
     if (sWindow != NULL) {
-        present(dump_wanted((long) sFrameCount));
+        presented = present(dump_wanted((long) sFrameCount));
     }
     // The trace hashes what the renderer is handed, not pixels, so a run with no
     // display (ssh into a Pi, a CI box) counts frames and finishes like any other.
     pc_trace_frame_end();
+    return presented;
 }
 
 int gfx_window_valid(void) {
@@ -954,16 +983,75 @@ int gfx_is_gles(void) {
     return sIsES;
 }
 
-void gfx_present(void) {
-    present(0);
+int gfx_present(void) {
+    return present(0);
 }
 
-static void present(int dumpLogicFrame) {
+static int present(int dumpLogicFrame) {
     SDL_Event event;
+    SDL_WindowFlags flags;
 
     if (sWindow == NULL) {
-        return;
+        return 0;
     }
+
+    // Pump before presenting. On Windows, SwapBuffers can block for seconds when
+    // a fullscreen OpenGL window loses focus or is covered by a system overlay.
+    // Pumping only after the swap creates a feedback loop: the focus/minimize
+    // event that tells us to stop presenting is itself stuck behind that swap.
+    while (SDL_PollEvent(&event)) {
+        vcontrols_event(&event, sWinWidth, sWinHeight);
+        if (event.type == SDL_EVENT_QUIT || (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)) {
+            SDL_Quit();
+            exit(0);
+        }
+        if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+            update_viewport();
+        }
+        if (event.type == SDL_EVENT_KEY_DOWN && (event.key.key == SDLK_TAB || event.key.key == SDLK_F11)) {
+#ifdef _WIN32
+            if (sFullscreen) {
+                SDL_SetWindowBordered(sWindow, true);
+                if (sWindowedBoundsValid) {
+                    SDL_SetWindowSize(sWindow, sWindowedW, sWindowedH);
+                    SDL_SetWindowPosition(sWindow, sWindowedX, sWindowedY);
+                }
+                sFullscreen = 0;
+            } else {
+                SDL_Rect bounds;
+                SDL_DisplayID display;
+
+                SDL_GetWindowPosition(sWindow, &sWindowedX, &sWindowedY);
+                SDL_GetWindowSize(sWindow, &sWindowedW, &sWindowedH);
+                sWindowedBoundsValid = 1;
+                display = SDL_GetDisplayForWindow(sWindow);
+                if (display && SDL_GetDisplayBounds(display, &bounds)) {
+                    SDL_SetWindowBordered(sWindow, false);
+                    SDL_SetWindowPosition(sWindow, bounds.x - 1, bounds.y - 1);
+                    SDL_SetWindowSize(sWindow, bounds.w + 2, bounds.h + 2);
+                    sFullscreen = 1;
+                }
+            }
+#else
+            sFullscreen = !sFullscreen;
+            SDL_SetWindowFullscreen(sWindow, sFullscreen);
+#endif
+        }
+        if (event.type == SDL_EVENT_KEY_DOWN && (event.key.key == SDLK_1 || event.key.key == SDLK_F2)) {
+            sScanlines = !sScanlines;
+        }
+        if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_2) {
+            sWidescreen = !sWidescreen;
+            update_viewport();
+        }
+    }
+
+    flags = SDL_GetWindowFlags(sWindow);
+    if ((flags & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED)) ||
+        (sFullscreen && !(flags & SDL_WINDOW_INPUT_FOCUS))) {
+        return 0;
+    }
+
     post_process();
     sPresentCount++;
     if (dumpLogicFrame) {
@@ -980,26 +1068,5 @@ static void present(int dumpLogicFrame) {
     }
     SDL_GL_SwapWindow(sWindow);
     scene_target_bind();
-
-    while (SDL_PollEvent(&event)) {
-        vcontrols_event(&event, sWinWidth, sWinHeight);
-        if (event.type == SDL_EVENT_QUIT || (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)) {
-            SDL_Quit();
-            exit(0);
-        }
-        if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
-            update_viewport();
-        }
-        if (event.type == SDL_EVENT_KEY_DOWN && (event.key.key == SDLK_TAB || event.key.key == SDLK_F11)) {
-            sFullscreen = !sFullscreen;
-            SDL_SetWindowFullscreen(sWindow, sFullscreen);
-        }
-        if (event.type == SDL_EVENT_KEY_DOWN && (event.key.key == SDLK_1 || event.key.key == SDLK_F2)) {
-            sScanlines = !sScanlines;
-        }
-        if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_2) {
-            sWidescreen = !sWidescreen;
-            update_viewport();
-        }
-    }
+    return 1;
 }
