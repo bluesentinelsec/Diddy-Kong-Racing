@@ -29,6 +29,14 @@ make            # debug build  -> build/debug/dkracing
 make release    # optimized    -> build/release/dkracing
 ```
 
+From Command Prompt or PowerShell on Windows, the equivalent wrapper is:
+
+```
+build-windows.bat          # debug build  -> build\debug\dkracing.exe
+build-windows.bat release  # optimized    -> build\release\dkracing.exe
+build-windows.bat run      # debug build, then run windowed
+```
+
 Other targets:
 
 | Target        | What it does                                                          |
@@ -118,17 +126,23 @@ and pull request.
 
 The executable loads two files, `assets/assets.bin` and `assets/assets.lut.bin`,
 from the working directory or from the directory it lives in. They are produced
-from your ROM by the decompilation's tooling, which needs Python 3 and the MIPS
-binutils (`binutils-mips-linux-gnu` on Debian, see `Makefile.n64`):
+from your ROM by the decompilation's tooling. The Windows path needs Python 3;
+the full asset rebuild on Linux and macOS also needs the MIPS binutils
+(`binutils-mips-linux-gnu` on Debian, see `Makefile.n64`):
 
 ```
 cp /path/to/your/rom.z64 baseroms/
 make assets
 ```
 
-This writes the two asset files and regenerates `include/asset_enums.h`.
-Supported ROMs are identified by SHA-1; US 1.1 is the one this port is tested
-with.
+On Windows, the ROM may instead remain in the repository root and may use a
+`.z64`, `.v64`, or `.n64` extension; `make assets` identifies it by SHA-1. See
+[`docs/building-windows.md`](docs/building-windows.md) for the native workflow.
+
+This writes the two asset files. The full decompilation asset pipeline also
+regenerates `include/asset_enums.h`; the Windows PC-only path uses the committed
+header. Supported ROMs are identified by SHA-1; US 1.1 is the one this port is
+tested with.
 
 ## Correctness
 

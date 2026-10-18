@@ -89,10 +89,15 @@ doc:
 	doxygen Doxyfile
 	@echo "Documentation written to docs/html/index.html"
 
+ifeq ($(OS),Windows_NT)
+assets:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/extract-pc-assets-windows.ps1
+else
 assets:
 	$(MAKE) -f Makefile.n64 setup
 	$(MAKE) -f Makefile.n64 extract REGION=us VERSION=v80
 	$(MAKE) -f Makefile.n64 build_assets REGION=us VERSION=v80
+endif
 
 # The correctness gate: the decompilation's own build (IDO 5.3 via the recomp
 # toolchain, Linux only) must reproduce the retail ROM bit for bit from this tree.

@@ -7,7 +7,7 @@ compiler, CMake and git, plus a few per-platform extras.
 | Platform | Guide | Output | Checked in CI |
 | -------- | ----- | ------ | ------------- |
 | Linux (x86_64, arm64, Raspberry Pi) | [building-linux.md](building-linux.md) | `build/release/dkracing` | yes (`pc.yml`) |
-| Windows (x86_64, MinGW-w64) | [building-windows.md](building-windows.md) | `build\dkracing.exe` | yes (`pc.yml`) |
+| Windows (x86_64, MinGW-w64) | [building-windows.md](building-windows.md) | `build\release\dkracing.exe` | yes (`pc.yml`) |
 | macOS (Apple silicon, Intel) | [building-macos.md](building-macos.md) | `build/release/dkracing` | yes, arm64 (`pc.yml`) |
 | Web (Emscripten / WebGL 2) | [building-web.md](building-web.md) | `build/web/dkracing.html` | yes (`pc.yml`) |
 | Android (Kindle Fire and phones) | [building-android.md](building-android.md) | `app-debug.apk` | yes (`android.yml`) |
@@ -29,10 +29,11 @@ cp /path/to/your/rom.z64 baseroms/
 make assets
 ```
 
-This needs Python 3 and the MIPS binutils (`binutils-mips-linux-gnu` on
-Debian/Ubuntu) and is easiest on Linux. On Windows use WSL. The output is the
-same on every platform, so produce it once and copy `assets/` wherever you need
-it:
+This needs Python 3. The full decompilation asset rebuild on Linux and macOS
+also uses the MIPS binutils (`binutils-mips-linux-gnu` on Debian/Ubuntu).
+Windows uses the native PowerShell/Splat extraction path documented in the
+[Windows guide](building-windows.md). The output is the same on every platform,
+so produce it once and copy `assets/` wherever you need it:
 
 - **Desktop:** the executable looks for `assets/` in the working directory and
   next to itself.

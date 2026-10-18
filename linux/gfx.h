@@ -98,11 +98,15 @@ void gfx_set_scissor(float x0, float y0, float x1, float y1);
 void gfx_disable_scissor(void);
 
 // Presents the frame and pumps the event queue (exits the process on quit).
-void gfx_frame_end(void);
+// Returns false when the frame could not be presented (for example while a
+// fullscreen window is inactive), allowing the caller to avoid counting it.
+int gfx_frame_end(void);
 
-// Presents an interpolated frame: swaps and pumps events, but does not count as
-// a frame for scripts and dumps, which follow the game's own logic frames.
-void gfx_present(void);
+// Presents an interpolated frame, but does not count as a frame for scripts and
+// dumps, which follow the game's own logic frames. Returns false when the
+// window is not currently presentable (minimized, occluded, or an unfocused
+// fullscreen window), so the frame pacer can sleep instead of busy-looping.
+int gfx_present(void);
 
 // Whether there is a window to draw into at all.
 int gfx_window_valid(void);

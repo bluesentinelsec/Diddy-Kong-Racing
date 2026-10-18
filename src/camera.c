@@ -21,6 +21,12 @@
 
 s8 gAntiPiracyViewport = FALSE;
 
+#ifdef TARGET_PC
+// Model pushes are used by both the 3D world and model-backed menu surfaces.
+// Remember which projection owns them so the host can widen only the latter.
+static s8 sPcOrthoProjection = FALSE;
+#endif
+
 // x1, y1, x2, y2
 // posX, posY, width, height
 // scissorX1, scissorY1, scissorX2, scissorY2
@@ -31,11 +37,23 @@ s8 gAntiPiracyViewport = FALSE;
 
 #define SCISSOR_INTERLACE G_SC_NON_INTERLACE
 
-ScreenViewport gScreenViewports[4] = {
+ScreenViewport gScreenViewports[
+#ifdef TARGET_PC
+    5
+#else
+    4
+#endif
+] = {
     { DEFAULT_VIEWPORT },
     { DEFAULT_VIEWPORT },
     { DEFAULT_VIEWPORT },
     { DEFAULT_VIEWPORT },
+#ifdef TARGET_PC
+    // viewport_reset() uses camera slot 4 as a full-screen sentinel. The N64
+    // layout happened to make the out-of-bounds read benign, but native globals
+    // are laid out differently and could turn the reset into a zero-size clip.
+    { DEFAULT_VIEWPORT },
+#endif
 };
 
 u32 gViewportWithBG = FALSE;
@@ -958,6 +976,9 @@ void mtx_ortho(Gfx **dList, Mtx **mtx) {
     s32 i, j;
 
     widthAndHeight = fb_size();
+#ifdef TARGET_PC
+    sPcOrthoProjection = TRUE;
+#endif
     height = GET_VIDEO_HEIGHT(widthAndHeight);
     width = GET_VIDEO_WIDTH(widthAndHeight);
     mtxf_to_mtx(&gOrthoMatrixF, *mtx);
@@ -990,6 +1011,9 @@ void mtx_ortho(Gfx **dList, Mtx **mtx) {
  * Official Name: camStandardPersp?
  */
 void mtx_perspective(Gfx **dList, Mtx **mtx) {
+#ifdef TARGET_PC
+    sPcOrthoProjection = FALSE;
+#endif
     mtxf_from_inverse_transform(&gCurrentModelMatrixF, &D_800DD288);
     mtxf_mul(&gCurrentModelMatrixF, &gPerspectiveMatrixF, &gViewProjMatrixF);
     mtxf_from_inverse_transform(gModelMatrixF[0], &D_800DD2A0);
@@ -1478,7 +1502,7 @@ s32 mtx_cam_push(Gfx **dList, Mtx **mtx, ObjectTransform *trans, f32 scaleY, f32
 
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_1);
 #ifdef TARGET_PC
-    pc_gfx_mtx_tag((*mtx) - 1, trans, PC_MTX_SITE_MODEL);
+    pc_gfx_mtx_tag((*mtx) - 1, trans, sPcOrthoProjection ? PC_MTX_SITE_ORTHO_MODEL : PC_MTX_SITE_MODEL);
 #endif
 
     // Compute world-space position of the model's origin (0, 0, 0)
