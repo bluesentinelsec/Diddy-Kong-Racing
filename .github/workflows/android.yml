@@ -1,0 +1,54 @@
+name: Android build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  apk:
+    name: Android arm64 (APK)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gradle 9 and the Android Gradle Plugin need a JDK 17 or newer.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The runner ships the Android SDK; add the exact NDK and SDK CMake that
+      # android/app/build.gradle pins, so the build matches a developer's.
+      - name: Install SDK components
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "platforms;android-35" "ndk;29.0.14206865" "cmake;3.31.5"
+
+      # Same SDL release as the desktop build (DKR_SDL3_TAG in CMakeLists.txt).
+      - name: Fetch SDL
+        run: |
+          tag=$(sed -n 's/^set(DKR_SDL3_TAG "\([^"]*\)".*/\1/p' CMakeLists.txt)
+          android/fetch-sdl.sh "$tag"
+
+      # CI has no game data, so the APK is built without assets: this checks the
+      # game and SDL compile and link for Android, not that the APK is playable.
+      - name: Build
+        working-directory: android
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Check the APK carries the native libraries
+        run: |
+          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          unzip -l "$apk" | tee /tmp/apk.txt
+          grep -q 'lib/arm64-v8a/libmain.so' /tmp/apk.txt
+          grep -q 'lib/arm64-v8a/libSDL3.so' /tmp/apk.txt
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dkracing-android-arm64
+          path: android/app/build/outputs/apk/debug/app-debug.apk

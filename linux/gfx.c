@@ -316,6 +316,21 @@ static void scene_target_bind(void) {
     }
 }
 
+/**
+ * Put back the scene pipeline state the renderer assumes between draws, after
+ * something else (the post shader, the touch overlay) drew with its own. The
+ * renderer enables blending and depth testing once and never again, so leaving
+ * either off makes every translucent or alpha-cut surface draw solid.
+ */
+static void scene_pipeline_restore(void) {
+    glUseProgram(sProgram);
+    glBindVertexArray(sVao);
+    glBindBuffer(GL_ARRAY_BUFFER, sVbo);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_DEPTH_TEST);
+}
+
 /** Draw the offscreen scene onto the window through the post shader. */
 static void post_process(void) {
     float x0, y0, x1, y1;
@@ -373,11 +388,7 @@ static void post_process(void) {
     // draw with a texture bound to the framebuffer it is drawing to, even
     // when the shader never samples it.
     glBindTexture(GL_TEXTURE_2D, 0);
-    glUseProgram(sProgram);
-    glBindVertexArray(sVao);
-    glBindBuffer(GL_ARRAY_BUFFER, sVbo);
-    glEnable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
+    scene_pipeline_restore();
     sTexBound = 0;
     set_tex_mode_uniform();
 }
@@ -963,11 +974,9 @@ static void present(int dumpLogicFrame) {
     }
     vcontrols_render(sWinWidth, sWinHeight); // touch controls, drawn above the game
     if (vcontrols_active()) {
-        // The overlay drew with its own program and VAO; rebind the renderer's
-        // (as post_process does) so the next frame's gfx_draw_tris has them bound.
-        glUseProgram(sProgram);
-        glBindVertexArray(sVao);
-        glBindBuffer(GL_ARRAY_BUFFER, sVbo);
+        // The overlay drew with its own program and VAO and turned blending and
+        // depth testing off; the next frame needs the scene pipeline back.
+        scene_pipeline_restore();
     }
     SDL_GL_SwapWindow(sWindow);
     scene_target_bind();

@@ -10,6 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 // The CONT_* button bits (include/PR/os_cont.h), repeated here as in input.c.
 #define BTN_A 0x8000     // accelerate
 #define BTN_B 0x4000     // brake / reverse
@@ -181,17 +185,32 @@ static void ptr_up(SDL_FingerID id) {
     recompute_buttons();
 }
 
-int vcontrols_active(void) {
-#ifdef __ANDROID__
+// Phones and tablets only: Android (Kindle Fire included) and iOS natively, and
+// the browser build when touch is the primary pointer. A desktop browser, or a
+// touchscreen laptop, reports a fine (mouse) pointer and gets no overlay.
+static int host_is_mobile(void) {
+#if defined(SDL_PLATFORM_ANDROID) || defined(SDL_PLATFORM_IOS)
     return 1;
+#elif defined(__EMSCRIPTEN__)
+    return EM_ASM_INT({ return (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ? 1 : 0; });
 #else
+    return 0;
+#endif
+}
+
+int vcontrols_active(void) {
     static int cached = -1;
     if (cached < 0) {
+        // DKR_VCONTROLS=1 forces the overlay on (desktop testing, mouse as a
+        // finger); DKR_VCONTROLS=0 forces it off.
         const char *e = getenv("DKR_VCONTROLS");
-        cached = (e != NULL && e[0] == '1') ? 1 : 0;
+        if (e != NULL && (e[0] == '0' || e[0] == '1')) {
+            cached = e[0] == '1';
+        } else {
+            cached = host_is_mobile();
+        }
     }
     return cached;
-#endif
 }
 
 void vcontrols_event(const SDL_Event *e, int winW, int winH) {

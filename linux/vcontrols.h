@@ -1,15 +1,17 @@
 #ifndef LINUX_VCONTROLS_H
 #define LINUX_VCONTROLS_H
 
-// On-screen touch controls for Android / touch hosts.
+// On-screen touch controls for phones and tablets.
 //
 // A virtual left analog stick (steering) sits at the bottom-left; three action
 // buttons in a triangle at the bottom-right drive accelerate, brake and use-item;
 // a pause button sits at the bottom-centre. The layer is drawn as a GL overlay
 // above the presented frame (vcontrols_render), fed from SDL touch/mouse events
 // (vcontrols_event), and merged into the host controller state the game reads
-// (vcontrols_merge). It is on automatically on Android, and on any host with
-// DKR_VCONTROLS=1 (the mouse then stands in for one finger, for testing).
+// (vcontrols_merge). It is on only on mobile: Android (Kindle Fire included),
+// iOS, and the browser build on a touch-first device. DKR_VCONTROLS=1 forces it
+// on anywhere (the mouse then stands in for one finger, for testing) and
+// DKR_VCONTROLS=0 forces it off.
 
 #include <SDL3/SDL.h>
 
