@@ -2358,6 +2358,7 @@ static void run_dl(const Gfx *dl, s32 count, s32 depth) {
 extern void pc_audio_frame(void);
 extern void pc_audio_report(void);
 extern void pc_audio_set_mix_rate(int hz);
+extern void pc_audio_hle_set_resampler(int hq); // linux/audio_hle.c
 
 /**
  * Draw the recorded frame again with its matrices at `alpha` between last
@@ -2525,6 +2526,7 @@ static void print_usage(const char *prog) {
            "  --no-scanlines   start with the scanline effect off (1 toggles it)\n"
            "  --no-widescreen  keep the 4:3 image letterboxed (2 toggles widescreen)\n"
            "  --audio-rate HZ  mix audio at HZ instead of 44100 (22050 is what the console mixed at)\n"
+           "  --resampler R    voice resampling filter: sinc (14-tap, the default) or n64 (the console's 4-tap)\n"
            "  --trace FILE     write a per-frame gfx/audio hash trace, then exit (see tests/golden.sh)\n"
            "  --trace-frames N frames to trace (default 1800)\n"
            "  --help           this text\n"
@@ -2564,6 +2566,7 @@ int main(int argc, char **argv) {
 #ifdef __EMSCRIPTEN__
     options.fullscreen = 0; // a page can only go fullscreen from a key press (Tab)
 #endif
+    pc_audio_hle_set_resampler(1); // --resampler n64 for the console's filter
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--windowed") == 0 || strcmp(argv[i], "-w") == 0) {
@@ -2580,6 +2583,16 @@ int main(int argc, char **argv) {
             options.widescreen = 0;
         } else if (strcmp(argv[i], "--audio-rate") == 0 && i + 1 < argc) {
             pc_audio_set_mix_rate(atoi(argv[++i]));
+        } else if (strcmp(argv[i], "--resampler") == 0 && i + 1 < argc) {
+            const char *r = argv[++i];
+            if (strcmp(r, "sinc") == 0) {
+                pc_audio_hle_set_resampler(1);
+            } else if (strcmp(r, "n64") == 0) {
+                pc_audio_hle_set_resampler(0);
+            } else {
+                fprintf(stderr, "Unknown resampler: %s (sinc or n64)\n", r);
+                return 1;
+            }
         } else if (strcmp(argv[i], "--no-interp") == 0) {
             sInterpolate = FALSE;
             options.vsync = 0;
@@ -2602,7 +2615,8 @@ int main(int argc, char **argv) {
     if (pc_trace_active()) {
         sInterpolate = FALSE; // a trace is the logic frames, nothing in between
         options.vsync = 0;
-        options.widescreen = 0; // the trace hashes 4:3 coordinates
+        options.widescreen = 0;        // the trace hashes 4:3 coordinates
+        pc_audio_hle_set_resampler(0); // and the console's mix
     }
     sHostThread.id = 3;
     sHostThread.priority = 10;
