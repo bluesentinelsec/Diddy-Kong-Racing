@@ -1,5 +1,6 @@
 #ifdef TARGET_PC
 #include "pc_asset.h"
+#include "pc_gfx.h"
 #endif
 #include "menu.h"
 #include "asset_enums.h"
@@ -8710,6 +8711,10 @@ s32 func_8008F618(Gfx **dList, Mtx **mtx) {
     camDisableUserView(0, TRUE);
     camera_init_tracks_menu(dList, mtx);
     mtx_ortho(dList, mtx);
+#ifdef TARGET_PC
+    // These vertices are the full-screen patterned backdrop, not an object or HUD layer.
+    pc_gfx_mtx_tag((*mtx) - 1, gTrackSelectBgVertices, PC_MTX_SITE_WIDE_SURFACE);
+#endif
     rendermode_reset(dList);
     gDPPipeSync((*dList)++);
     sp7C = gTrackSelectX;
@@ -14037,6 +14042,14 @@ void menu_element_render(s32 elementID) {
                     gDPSetEnvColor(sMenuCurrDisplayList++, 255, 255, 255, 0);
                     mtx_cam_push(&sMenuCurrDisplayList, &sMenuCurrHudMat, &gMenuImages[elementID].trans,
                                  gTrackSelectWoodFrameHeightScale, 0);
+#ifdef TARGET_PC
+                    // Elements 4-6 are the wood/iron/gold frames around the widened course-preview
+                    // viewport. Element 7 is the vehicle icon frame and must keep its original aspect.
+                    if (elementID >= 4 && elementID <= 6) {
+                        pc_gfx_mtx_tag(sMenuCurrHudMat - 1, &gMenuImages[elementID].trans,
+                                       PC_MTX_SITE_WIDE_SURFACE);
+                    }
+#endif
                     model = gMenuAssets[gMenuImages[elementID].trans.spriteID];
                     render_track_selection_viewport_border(model->objModel);
                     mtx_pop(&sMenuCurrDisplayList);

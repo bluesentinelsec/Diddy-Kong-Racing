@@ -464,7 +464,6 @@ static s32 site_has_xform(int site) {
         case PC_MTX_SITE_MODEL:
         case PC_MTX_SITE_SHEAR:
         case PC_MTX_SITE_BILLBOARD:
-        case PC_MTX_SITE_ORTHO_MODEL:
             return TRUE;
         default:
             return FALSE;
@@ -1455,11 +1454,10 @@ static void project(const GfxVertex *v, GfxTriVert *out) {
             // open, so zoom them until they clear the wider frame too.
             scaleX *= sWideScale;
             scaleY *= sWideScale;
-        } else if (site == PC_MTX_SITE_ORTHO || site == PC_MTX_SITE_ORTHO_MODEL ||
-                   site == PC_MTX_SITE_ORTHO_IMAGE) {
-            // Menu panels, frames and other 2D art are surfaces rather than HUD
-            // coordinates. Stretch them with the wide framebuffer; texrect text
-            // and HUD icons take the separate centred, aspect-preserving path.
+        } else if (site == PC_MTX_SITE_WIDE_SURFACE) {
+            // Only surfaces explicitly paired with a wide viewport are stretched.
+            // Inferring this from an ortho/model/billboard matrix tears composite
+            // characters and vehicles apart because their parts use different sites.
             scaleX *= sWideScale;
         }
     }
