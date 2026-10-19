@@ -341,6 +341,16 @@ static ALMicroTime __CSPVoiceHandler(void *node)
 	    break;
         }
         seqp->nextDelta = alEvtqNextEvent(&seqp->evtq, &seqp->nextEvent); 
+#ifdef TARGET_PC
+        // An exhausted queue returns an invalid event with a zero delay. The
+        // original handler would then spin forever because there is no event
+        // left to recreate its periodic API callback. Queue sizing should keep
+        // this unreachable; recover the callback as a last line of defence.
+        if (seqp->nextDelta == 0 && seqp->nextEvent.type == -1) {
+            seqp->nextEvent.type = AL_SEQP_API_EVT;
+            seqp->nextDelta = seqp->frameTime;
+        }
+#endif
         
     } while (seqp->nextDelta == 0);
 
