@@ -127,6 +127,13 @@ typedef struct {
 
 static GLuint sWindowFbo; // the framebuffer that is the window (0 except on iOS)
 static GLuint sWindowRbo; // iOS: the renderbuffer SDL presents; must be bound at swap
+#ifdef SDL_PLATFORM_IOS
+// iOS has no swap interval: SDL_GL_SwapWindow returns at once, and presenting
+// ran at whatever rate the loop managed (hundreds a second). Pace presents to
+// the display's refresh here instead, sleeping until the next slot.
+static Uint64 sSwapPeriodNs;
+static Uint64 sNextSwapNs;
+#endif
 
 unsigned int gfx_window_fbo(void) {
     return sWindowFbo;
@@ -532,6 +539,15 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
     // The game's logic is paced by pc_retrace_wait(); vsync only decides whether
     // the frames presented in between wait for the display or run uncapped.
     SDL_GL_SetSwapInterval(options != NULL && options->vsync ? 1 : 0);
+#ifdef SDL_PLATFORM_IOS
+    {
+        const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(sWindow));
+        float hz = (mode != NULL && mode->refresh_rate > 0.0f) ? mode->refresh_rate : 60.0f;
+
+        sSwapPeriodNs = (Uint64) (1.0e9 / hz);
+        printf("GFX: presenting at %.0f Hz (host paced)\n", hz);
+    }
+#endif
 
     if (!build_program()) {
         SDL_GL_DestroyContext(sContext);
@@ -1093,6 +1109,19 @@ static int present(int dumpLogicFrame) {
         // depth renderbuffer was bound last (SDL_uikitopenglview.m swapBuffers).
         glBindRenderbuffer(GL_RENDERBUFFER, sWindowRbo);
     }
+#ifdef SDL_PLATFORM_IOS
+    {
+        Uint64 now = SDL_GetTicksNS();
+
+        if (sNextSwapNs > now && sNextSwapNs - now < sSwapPeriodNs) {
+            SDL_DelayPrecise(sNextSwapNs - now);
+            now = sNextSwapNs;
+        } else {
+            sNextSwapNs = now; // first frame, or a stall: do not try to catch up
+        }
+        sNextSwapNs += sSwapPeriodNs;
+    }
+#endif
     SDL_GL_SwapWindow(sWindow);
     scene_target_bind();
     return 1;
