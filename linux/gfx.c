@@ -126,6 +126,7 @@ typedef struct {
 } GlConfig;
 
 static GLuint sWindowFbo; // the framebuffer that is the window (0 except on iOS)
+static GLuint sWindowRbo; // iOS: the renderbuffer SDL presents; must be bound at swap
 
 unsigned int gfx_window_fbo(void) {
     return sWindowFbo;
@@ -184,6 +185,8 @@ static int try_create_context(const GlConfig *cfg, int width, int height) {
     // Everywhere else the window is 0 and the property is absent.
     sWindowFbo = (GLuint) SDL_GetNumberProperty(SDL_GetWindowProperties(sWindow),
                                                 SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0);
+    sWindowRbo = (GLuint) SDL_GetNumberProperty(SDL_GetWindowProperties(sWindow),
+                                                SDL_PROP_WINDOW_UIKIT_OPENGL_RENDERBUFFER_NUMBER, 0);
     return 1;
 }
 
@@ -1084,6 +1087,11 @@ static int present(int dumpLogicFrame) {
         // The overlay drew with its own program and VAO and turned blending and
         // depth testing off; the next frame needs the scene pipeline back.
         scene_pipeline_restore();
+    }
+    if (sWindowRbo != 0) {
+        // iOS presents whatever renderbuffer is bound; the offscreen scene's
+        // depth renderbuffer was bound last (SDL_uikitopenglview.m swapBuffers).
+        glBindRenderbuffer(GL_RENDERBUFFER, sWindowRbo);
     }
     SDL_GL_SwapWindow(sWindow);
     scene_target_bind();
