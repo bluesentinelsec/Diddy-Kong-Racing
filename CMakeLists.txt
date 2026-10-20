@@ -1,5 +1,28 @@
 cmake_minimum_required(VERSION 3.24)
-project(dkracing C)
+
+# The port's own version (semantic, in VERSION) and the commit it was built
+# from; shown by --version and at startup, and stamped into the app bundles.
+file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/VERSION DKR_PORT_VERSION LIMIT_COUNT 1)
+string(STRIP "${DKR_PORT_VERSION}" DKR_PORT_VERSION)
+project(dkracing VERSION ${DKR_PORT_VERSION} LANGUAGES C)
+find_package(Git QUIET)
+set(DKR_PORT_COMMIT "unknown")
+set(DKR_PORT_BUILD 1) # monotonic build number for the app stores' CFBundleVersion / versionCode
+if(GIT_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE commit
+                    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET RESULT_VARIABLE rc)
+    if(rc EQUAL 0)
+        set(DKR_PORT_COMMIT ${commit})
+    endif()
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count HEAD
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE count
+                    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET RESULT_VARIABLE rc)
+    if(rc EQUAL 0)
+        set(DKR_PORT_BUILD ${count})
+    endif()
+endif()
+message(STATUS "Diddy Kong Racing PC port ${DKR_PORT_VERSION} (${DKR_PORT_COMMIT}, build ${DKR_PORT_BUILD})")
 
 # ---------------------------------------------------------------------------
 # Diddy Kong Racing - native PC build.
@@ -183,6 +206,8 @@ set(DKR_DEFINES
     _MIPS_SZLONG=32
     PC_MAIN_POOL_BYTES=${DKR_MAIN_POOL_MB}*1024*1024
     GBI_FLOAT_MTX
+    DKR_PORT_VERSION="${DKR_PORT_VERSION}"
+    DKR_PORT_COMMIT="${DKR_PORT_COMMIT}"
 )
 if(DKR_EEPROM_PRESET_100)
     list(APPEND DKR_DEFINES EEPROM_PRESET_100)
@@ -260,7 +285,7 @@ elseif(IOS)
     # its UIKit/OpenGLES/CoreAudio frameworks come in through SDL3::SDL3-static.
     # The game data is copied into the bundle's Resources/assets when it exists,
     # where SDL_GetBasePath() points and the desktop asset loader already looks.
-    set(DKR_IOS_BUNDLE_ID "com.bluesentinelsoftware.dkracing" CACHE STRING "iOS bundle identifier")
+    set(DKR_IOS_BUNDLE_ID "com.bluesentinelsec.dkracing" CACHE STRING "iOS bundle identifier")
     set(DKR_IOS_TEAM "" CACHE STRING "Apple Development Team ID for automatic signing (empty: unsigned)")
     set(DKR_IOS_ASSETS)
     foreach(f assets.bin assets.lut.bin)
@@ -273,18 +298,22 @@ elseif(IOS)
     endif()
     # ios/app.c is compiled into the app itself: Xcode only links a target that
     # compiles at least one source, and it is where the iOS-only code lives.
+    set(DKR_IOS_XCASSETS ${CMAKE_CURRENT_SOURCE_DIR}/ios/Assets.xcassets) # app icon, launch colour (tools/make-icons.py)
     add_executable(dkracing MACOSX_BUNDLE ios/app.c $<TARGET_OBJECTS:dkr_game> $<TARGET_OBJECTS:dkr_platform>
-                   ${DKR_IOS_ASSETS})
+                   ${DKR_IOS_ASSETS} ${DKR_IOS_XCASSETS})
     dkr_configure_target(dkracing)
     target_link_libraries(dkracing PRIVATE m)
     set_source_files_properties(${DKR_IOS_ASSETS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/assets)
+    set_source_files_properties(${DKR_IOS_XCASSETS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     set_target_properties(dkracing PROPERTIES
         OUTPUT_NAME "Diddy Kong Racing"
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/ios/Info.plist.in
         MACOSX_BUNDLE_BUNDLE_NAME "Diddy Kong Racing"
         MACOSX_BUNDLE_GUI_IDENTIFIER ${DKR_IOS_BUNDLE_ID}
-        MACOSX_BUNDLE_BUNDLE_VERSION 1
-        MACOSX_BUNDLE_SHORT_VERSION_STRING 1.0
+        MACOSX_BUNDLE_BUNDLE_VERSION ${DKR_PORT_BUILD}
+        MACOSX_BUNDLE_SHORT_VERSION_STRING ${DKR_PORT_VERSION}
+        MACOSX_BUNDLE_COPYRIGHT "Port by bluesentinelsec. Diddy Kong Racing is a trademark of Nintendo; the game content belongs to Rare and Nintendo. Not affiliated with or endorsed by either."
+        XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME AppIcon
         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${DKR_IOS_BUNDLE_ID}
         XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic
         XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${DKR_IOS_TEAM}"

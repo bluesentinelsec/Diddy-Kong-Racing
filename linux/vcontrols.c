@@ -19,6 +19,8 @@
 #define BTN_B 0x4000     // brake / reverse
 #define BTN_Z 0x2000     // use item (fire weapon)
 #define BTN_START 0x1000 // pause
+#define BTN_R 0x0010     // hop / powerslide
+#define BTN_CUP 0x0008   // camera zoom
 
 #define STICK_MAX 80 // N64 full deflection
 
@@ -35,7 +37,9 @@ typedef struct {
 typedef struct {
     Disc base;   // stick base
     float knobR; // stick knob radius
-    Disc accel, brake, item, pause;
+    Disc accel, brake, item, hop, cam;
+    Disc pause; // a pill: `r` is its half-height, pauseW its full width
+    float pauseW;
 } Layout;
 
 static Layout vc_layout(int w, int h) {
@@ -48,28 +52,38 @@ static Layout vc_layout(int w, int h) {
     L.base.y = fh - L.base.r - 0.055f * fh;
     L.knobR = L.base.r * 0.46f;
 
-    float b = 0.088f * s; // action button radius
-    float ax = fw - (b + 0.05f * fw);
-    float ay = fh - (b + 0.06f * fh);
-    L.accel.x = ax;
-    L.accel.y = ay;
-    L.accel.r = b; // bottom-right
-    L.brake.x = ax - 2.5f * b;
-    L.brake.y = ay - 0.15f * b;
-    L.brake.r = b; // left
-    L.item.x = ax - 1.2f * b;
-    L.item.y = ay - 2.4f * b;
-    L.item.r = b; // up => triangle
+    // Four face buttons in a diamond at the bottom-right, the N64's A at the
+    // thumb's resting place: A bottom, B left, Z top, R right.
+    float b = 0.082f * s; // face button radius
+    float cx = fw - 0.045f * fw - 2.35f * b;
+    float cy = fh - 0.06f * fh - 2.35f * b;
+    L.accel.x = cx;
+    L.accel.y = cy + 1.35f * b;
+    L.accel.r = b;
+    L.brake.x = cx - 1.35f * b;
+    L.brake.y = cy;
+    L.brake.r = b;
+    L.item.x = cx;
+    L.item.y = cy - 1.35f * b;
+    L.item.r = b;
+    L.hop.x = cx + 1.35f * b;
+    L.hop.y = cy;
+    L.hop.r = b;
 
-    L.pause.r = 0.045f * s;
+    // Start as a pill at the bottom-centre; the camera button beside it.
+    L.pause.r = 0.034f * s;
+    L.pauseW = L.pause.r * 5.2f;
     L.pause.x = fw * 0.5f;
     L.pause.y = fh - L.pause.r - 0.03f * fh;
+    L.cam.r = L.pause.r;
+    L.cam.x = L.pause.x + L.pauseW * 0.5f + L.cam.r * 1.8f;
+    L.cam.y = L.pause.y;
     return L;
 }
 
 // --- touch/pointer state -----------------------------------------------------
 
-enum { ROLE_NONE = 0, ROLE_STICK, ROLE_ACCEL, ROLE_BRAKE, ROLE_ITEM, ROLE_PAUSE };
+enum { ROLE_NONE = 0, ROLE_STICK, ROLE_ACCEL, ROLE_BRAKE, ROLE_ITEM, ROLE_HOP, ROLE_CAM, ROLE_PAUSE };
 
 typedef struct {
     SDL_FingerID id;
@@ -112,6 +126,10 @@ static unsigned short role_bit(int role) {
             return BTN_B;
         case ROLE_ITEM:
             return BTN_Z;
+        case ROLE_HOP:
+            return BTN_R;
+        case ROLE_CAM:
+            return BTN_CUP;
         case ROLE_PAUSE:
             return BTN_START;
         default:
@@ -124,6 +142,19 @@ static int inside(const Disc *d, float px, float py) {
     return dx * dx + dy * dy <= d->r * d->r;
 }
 
+static int inside_pill(const Disc *d, float w, float px, float py) {
+    float half = w * 0.5f - d->r;
+    float dx = px - d->x;
+    if (dx > half) {
+        dx -= half;
+    } else if (dx < -half) {
+        dx += half;
+    } else {
+        dx = 0.0f;
+    }
+    return dx * dx + (py - d->y) * (py - d->y) <= d->r * d->r;
+}
+
 static int hit_role(const Layout *L, float px, float py) {
     if (inside(&L->base, px, py))
         return ROLE_STICK;
@@ -133,7 +164,11 @@ static int hit_role(const Layout *L, float px, float py) {
         return ROLE_BRAKE;
     if (inside(&L->item, px, py))
         return ROLE_ITEM;
-    if (inside(&L->pause, px, py))
+    if (inside(&L->hop, px, py))
+        return ROLE_HOP;
+    if (inside(&L->cam, px, py))
+        return ROLE_CAM;
+    if (inside_pill(&L->pause, L->pauseW, px, py))
         return ROLE_PAUSE;
     return ROLE_NONE;
 }
@@ -459,27 +494,59 @@ static void ring(float cx, float cy, float rOut, float rIn, const float c[4]) {
 }
 
 // Up- or down-pointing triangle glyph centred at (cx,cy).
-static void glyph_tri(float cx, float cy, float sz, int up, const float c[4]) {
-    if (up) {
-        tri(cx, cy - sz, cx - sz * 0.9f, cy + sz * 0.7f, cx + sz * 0.9f, cy + sz * 0.7f, c);
-    } else {
-        tri(cx, cy + sz, cx - sz * 0.9f, cy - sz * 0.7f, cx + sz * 0.9f, cy - sz * 0.7f, c);
+// A 5x7 pixel font for the button labels, drawn as little squares so it stays
+// crisp at any size and matches the game's look. Only the letters used here.
+typedef struct {
+    char ch;
+    const char *rows[7];
+} Glyph;
+
+static const Glyph sFont[] = {
+    { 'A', { " ### ", "#   #", "#   #", "#####", "#   #", "#   #", "#   #" } },
+    { 'B', { "#### ", "#   #", "#   #", "#### ", "#   #", "#   #", "#### " } },
+    { 'C', { " ####", "#    ", "#    ", "#    ", "#    ", "#    ", " ####" } },
+    { 'R', { "#### ", "#   #", "#   #", "#### ", "# #  ", "#  # ", "#   #" } },
+    { 'S', { " ####", "#    ", "#    ", " ### ", "    #", "    #", "#### " } },
+    { 'T', { "#####", "  #  ", "  #  ", "  #  ", "  #  ", "  #  ", "  #  " } },
+    { 'Z', { "#####", "    #", "   # ", "  #  ", " #   ", "#    ", "#####" } },
+    { '^', { "  #  ", " ### ", "#####", "  #  ", "  #  ", "  #  ", "  #  " } }, // up arrow
+};
+
+static const Glyph *glyph_find(char ch) {
+    size_t i;
+    for (i = 0; i < sizeof(sFont) / sizeof(sFont[0]); i++) {
+        if (sFont[i].ch == ch) {
+            return &sFont[i];
+        }
+    }
+    return NULL;
+}
+
+/** Draw `text` centred on (cx, cy); `cell` is the size of one font pixel. */
+static void glyph_text(float cx, float cy, float cell, const char *text, const float c[4]) {
+    int n = (int) strlen(text);
+    float w = (float) (n * 5 + (n - 1)) * cell;
+    float x0 = cx - w * 0.5f;
+    float y0 = cy - 3.5f * cell;
+    int i, row, col;
+
+    for (i = 0; i < n; i++) {
+        const Glyph *g = glyph_find(text[i]);
+        float gx = x0 + (float) i * 6.0f * cell;
+        if (g == NULL) {
+            continue;
+        }
+        for (row = 0; row < 7; row++) {
+            for (col = 0; col < 5; col++) {
+                if (g->rows[row][col] == '#') {
+                    rect(gx + (float) col * cell, y0 + (float) row * cell, cell, cell, c);
+                }
+            }
+        }
     }
 }
 
-static void glyph_diamond(float cx, float cy, float sz, const float c[4]) {
-    tri(cx, cy - sz, cx + sz, cy, cx, cy + sz, c);
-    tri(cx, cy - sz, cx, cy + sz, cx - sz, cy, c);
-}
-
-static void glyph_pause(float cx, float cy, float sz, const float c[4]) {
-    float bw = sz * 0.5f;
-    rect(cx - sz * 0.9f, cy - sz, bw, 2.0f * sz, c);
-    rect(cx + sz * 0.4f, cy - sz, bw, 2.0f * sz, c);
-}
-
-static void draw_button(const Disc *d, const float fill[4], int pressed, int latched, int glyph) {
-    const float white[4] = { 1.0f, 1.0f, 1.0f, 0.92f };
+static void button_face(float x, float y, float r, const float fill[4], int pressed, int latched) {
     float c[4];
     int i;
     for (i = 0; i < 3; i++) {
@@ -489,32 +556,43 @@ static void draw_button(const Disc *d, const float fill[4], int pressed, int lat
     if (latched) {
         c[3] = 0.95f; // cruise: a solid disc, unmistakably different from a press
     }
-    disc(d->x, d->y, d->r, c);
+    disc(x, y, r, c);
     {
         float ringc[4] = { 1.0f, 1.0f, 1.0f, (pressed || latched) ? 0.6f : 0.3f };
-        ring(d->x, d->y, d->r, d->r * 0.9f, ringc);
+        ring(x, y, r, r * 0.9f, ringc);
     }
+}
+
+/** A round face button labelled like the N64 pad: "A", "B", "Z", "R", "C^". */
+static void draw_button(const Disc *d, const float fill[4], int pressed, int latched, const char *label) {
+    const float white[4] = { 1.0f, 1.0f, 1.0f, 0.92f };
+    float cell = d->r * (strlen(label) > 1 ? 0.11f : 0.13f);
+
+    button_face(d->x, d->y, d->r, fill, pressed, latched);
+    glyph_text(d->x, d->y - (latched ? d->r * 0.12f : 0.0f), cell, label, white);
     if (latched) {
-        // Two bars under the glyph: the "held down" mark.
+        // Two bars under the letter: the "held down" mark.
         rect(d->x - d->r * 0.3f, d->y + d->r * 0.42f, d->r * 0.6f, d->r * 0.07f, white);
         rect(d->x - d->r * 0.3f, d->y + d->r * 0.58f, d->r * 0.6f, d->r * 0.07f, white);
     }
-    switch (glyph) {
-        case 1:
-            glyph_tri(d->x, d->y, d->r * 0.45f, 1, white);
-            break; // accelerate: up
-        case 2:
-            glyph_tri(d->x, d->y, d->r * 0.45f, 0, white);
-            break; // brake: down
-        case 3:
-            glyph_diamond(d->x, d->y, d->r * 0.45f, white);
-            break; // item: diamond
-        case 4:
-            glyph_pause(d->x, d->y, d->r * 0.42f, white);
-            break; // pause: bars
-        default:
-            break;
-    }
+}
+
+/** The Start button: a pill with the word on it. */
+static void draw_pill(const Disc *d, float w, const float fill[4], int pressed, const char *label) {
+    const float white[4] = { 1.0f, 1.0f, 1.0f, 0.92f };
+    float half = w * 0.5f - d->r;
+    float c[4] = { fill[0], fill[1], fill[2], pressed ? 0.85f : 0.5f };
+    float ringc[4] = { 1.0f, 1.0f, 1.0f, pressed ? 0.6f : 0.3f };
+    float t = d->r * 0.1f;
+
+    disc(d->x - half, d->y, d->r, c);
+    disc(d->x + half, d->y, d->r, c);
+    rect(d->x - half, d->y - d->r, 2.0f * half, 2.0f * d->r, c);
+    ring(d->x - half, d->y, d->r, d->r - t, ringc);
+    ring(d->x + half, d->y, d->r, d->r - t, ringc);
+    rect(d->x - half, d->y - d->r, 2.0f * half, t, ringc);
+    rect(d->x - half, d->y + d->r - t, 2.0f * half, t, ringc);
+    glyph_text(d->x, d->y, d->r * 0.16f, label, white);
 }
 
 void vcontrols_render(int winW, int winH) {
@@ -525,6 +603,7 @@ void vcontrols_render(int winW, int winH) {
     const float accelCol[4] = { 0.20f, 0.78f, 0.32f, 1.0f };
     const float brakeCol[4] = { 0.86f, 0.26f, 0.22f, 1.0f };
     const float itemCol[4] = { 0.26f, 0.52f, 0.92f, 1.0f };
+    const float hopCol[4] = { 0.95f, 0.78f, 0.20f, 1.0f };
     const float pauseCol[4] = { 0.65f, 0.65f, 0.70f, 1.0f };
     float kx, ky;
 
@@ -549,10 +628,12 @@ void vcontrols_render(int winW, int winH) {
     ky = L.base.y + sStickNy * (L.base.r - L.knobR);
     disc(kx, ky, L.knobR, knobFill);
 
-    draw_button(&L.accel, accelCol, (sButtons & BTN_A) != 0, sCruise, 1);
-    draw_button(&L.brake, brakeCol, (sButtons & BTN_B) != 0, 0, 2);
-    draw_button(&L.item, itemCol, (sButtons & BTN_Z) != 0, 0, 3);
-    draw_button(&L.pause, pauseCol, (sButtons & BTN_START) != 0, 0, 4);
+    draw_button(&L.accel, accelCol, (sButtons & BTN_A) != 0, sCruise, "A");
+    draw_button(&L.brake, brakeCol, (sButtons & BTN_B) != 0, 0, "B");
+    draw_button(&L.item, itemCol, (sButtons & BTN_Z) != 0, 0, "Z");
+    draw_button(&L.hop, hopCol, (sButtons & BTN_R) != 0, 0, "R");
+    draw_button(&L.cam, pauseCol, (sButtons & BTN_CUP) != 0, 0, "C^");
+    draw_pill(&L.pause, L.pauseW, pauseCol, (sButtons & BTN_START) != 0, "START");
     {
         // A ring that swells out of the accelerator and fades when cruise
         // engages or releases, so the change registers without looking down.

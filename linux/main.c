@@ -2540,6 +2540,7 @@ static void print_usage(const char *prog) {
            "  --resampler R    voice resampling filter: sinc (14-tap, the default) or n64 (the console's 4-tap)\n"
            "  --trace FILE     write a per-frame gfx/audio hash trace, then exit (see tests/golden.sh)\n"
            "  --trace-frames N frames to trace (default 1800)\n"
+           "  --version        print the port's version and exit\n"
            "  --help           this text\n"
            "Environment: DKR_INPUT_SCRIPT=FILE replays a controller script, DKR_DUMP_FRAME=n[,m..]\n"
            "and DKR_DUMP_EVERY=k write frames as .ppm, DKR_FPS_LOG=1 logs the frame rate (see README).\n"
@@ -2611,6 +2612,9 @@ int main(int argc, char **argv) {
             pc_trace_configure(argv[++i], 0);
         } else if (strcmp(argv[i], "--trace-frames") == 0 && i + 1 < argc) {
             pc_trace_configure(NULL, atol(argv[++i]));
+        } else if (strcmp(argv[i], "--version") == 0) {
+            printf("Diddy Kong Racing PC port %s (%s)\n", DKR_PORT_VERSION, DKR_PORT_COMMIT);
+            return 0;
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             return 0;
@@ -2620,7 +2624,7 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
-    printf("=== DKR PC ===\n");
+    printf("=== Diddy Kong Racing PC port %s (%s) ===\n", DKR_PORT_VERSION, DKR_PORT_COMMIT);
     pc_crash_handler_install();
     pc_trace_init();
     if (pc_trace_active()) {

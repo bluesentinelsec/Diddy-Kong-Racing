@@ -136,7 +136,7 @@ run-web: web
 # Needs the assets (make assets) for a playable app; see docs/building-ios.md.
 IOS_DIR    := build/ios
 IOS_APP    := $(IOS_DIR)/Release-iphoneos/Diddy Kong Racing.app
-IOS_BUNDLE ?= com.bluesentinelsoftware.dkracing
+IOS_BUNDLE ?= com.bluesentinelsec.dkracing
 IOS_TEAM   ?= $(shell defaults read com.apple.dt.Xcode IDEProvisioningTeams 2>/dev/null | sed -n 's/.*teamID = \([A-Z0-9]*\);.*/\1/p' | head -1)
 IOS_DEVICE ?= $(shell ios/device.sh 2>/dev/null)
 XCODEBUILD := xcodebuild -project $(IOS_DIR)/dkracing.xcodeproj -scheme dkracing -configuration Release -quiet
