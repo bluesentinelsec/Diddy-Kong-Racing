@@ -3,18 +3,9 @@
 *.n64
 *.v64
 
-#Ignore any custom boot files if any.
-boot_custom.bin 
-
-#compiled or ripped asm
-asm/*
-asm
 build/*
 build/
 
-#permuter folder
-nonmatchings/*
-nonmatchings/
 
 #binaries ripped from the ROMs
 assets/*
@@ -22,7 +13,6 @@ assets_*/
 assets_*/*
 bin/
 bin/*
-ucode/*
 
 # Asset enums, since it is auto-generated.
 
@@ -31,9 +21,6 @@ ucode/*
 *.lo
 *.o
 *.obj
-
-# Do not ignore .obj files in the mods/ directory
-!mods/**/*.obj
 
 #Precompiled Headers
 *.gch
@@ -56,44 +43,13 @@ ucode/*
 
 #misc
 __pycache__/
-*__pycache__/
 expected/
 .*/
-ver/*.ld
-*.map
-*/*.map
-*auto.txt
-*_auto.*.txt
-*.*auto.txt
-*/.splat_cache
-.splat_cache
-.splat_cache*
-ctx.c
-ctx.c.m2c
-ctx_includes.c
-tools/n64crc
-!tools/build
-m2cfiles/
-tools/ido-recomp
-*.DS_Store
-tools/binutils
 *.d
-treemap.html
+*.DS_Store
 dkracing
-log.txt
 dkracing.elf
-cd/
-testcast
-pc/
-amap
-
-# Generated Dreamcast disc staging and images
-/cdrom/
-/*.cdi
-/dkracing-*.elf
-/bonus/dkr_music_player/cdrom/
-/bonus/dkr_music_player/include/songs.h
-/captures/
+log.txt
 
 # GitHub Actions workflows (the upstream rule above ignores every dot-directory)
 !.github/

@@ -1,18 +1,18 @@
 # Diddy Kong Racing - PC port
 
-A native port of Diddy Kong Racing (Nintendo 64, 1997) to Windows, macOS and
-Linux, built from the [community decompilation](https://github.com/DavidSM64/Diddy-Kong-Racing)
-by way of [Bruceleeto's PC/Dreamcast port](https://github.com/Bruceleeto/Diddy-Kong-Racing).
-The game logic is the decompiled C; this repository adds the host layer: an
-interpreter for the F3DDKR display lists, a shader renderer (OpenGL 3.3 core or
-OpenGL ES 3.0), an interpreter for the RSP audio microcode, and SDL3 for the
-window, input and sound.
+A native port of Diddy Kong Racing (Nintendo 64, 1997) to Windows, macOS,
+Linux, the browser, Android and iOS. The game logic is the decompiled C of the
+original; this repository adds everything that makes it run on a modern host:
+an interpreter for the game's F3DDKR display lists, a shader renderer (OpenGL
+3.3 core or OpenGL ES 3.0), an interpreter for the RSP audio microcode, SDL3
+for the window, input and sound, frame interpolation for an uncapped frame
+rate, widescreen, and on-screen touch controls for phones and tablets.
 
 It runs as a single self-contained executable on 64-bit and 32-bit hosts,
-including the Raspberry Pi 5.
+including the Raspberry Pi 5, and as an app on Android and iOS.
 
 **No game data is in this repository.** You need your own copy of the US 1.1
-ROM to produce the asset files the executable loads (see *Assets*).
+ROM to produce the two asset files the game loads (see *Assets*).
 
 ## Building
 
@@ -48,10 +48,9 @@ Other targets:
 | `make run`    | debug build, then run windowed (`RUN_ARGS` to change the flags)       |
 | `make run-debugger` | the same under lldb (macOS) or gdb (Linux); a crash prints a backtrace and leaves you at the debugger prompt |
 | `make test`   | build and run the unit tests with ctest                               |
-| `make fmt`    | clang-format the port's own sources (the decomp keeps its formatting) |
+| `make fmt`    | clang-format the host layer's sources                                 |
 | `make doc`    | Doxygen HTML documentation into `docs/html`                           |
 | `make assets` | extract and pack the game assets from the ROM in `baseroms/`          |
-| `make rom`    | build the N64 ROM from this tree and check it is byte-identical       |
 | `make golden` | run the game deterministically and compare it with the golden trace   |
 | `make web`    | browser build through Docker (Emscripten) into `build/web`            |
 | `make run-web`| build it and serve it on http://localhost:8000                        |
@@ -101,18 +100,16 @@ An Android app lives in `android/`. It builds the game as `libmain.so` through
 the same root `CMakeLists.txt` (which has an `ANDROID` branch), loaded by SDL's
 activity; the renderer's OpenGL ES 3.0 path is used as-is. Because a gamepad or
 keyboard is not guaranteed, an on-screen control layer (`linux/vcontrols.c`) is
-drawn above the game: a left analog stick for steering, three action buttons in
-a triangle at the bottom-right (accelerate, brake, use item) and a pause button
-with the N64's four face buttons in a diamond at the bottom-right, labelled as
-on the pad: A (accelerate), B (brake / reverse), Z (use item), R (hop /
-powerslide); a Start pill at the bottom-centre and a C-up (camera zoom) button
-beside it. While driving, a double tap on A latches it (cruise control: the
-button turns solid and pulses); a single tap or the brake releases it, and it
-never engages in a menu. The overlay appears only on
-mobile: Android (Kindle Fire included),
-iOS, and the browser build on a phone or tablet (a touch-first, `pointer:
-coarse` device). `DKR_VCONTROLS=1` forces it on anywhere (the mouse then acts as
-one finger, for testing) and `DKR_VCONTROLS=0` forces it off.
+drawn above the game: a left analog stick for steering and the N64's four face
+buttons in a diamond at the bottom-right, labelled as on the pad: A
+(accelerate), B (brake / reverse), Z (use item), R (hop / powerslide); a Start
+pill at the bottom-centre and a C-up (camera zoom) button beside it. While
+driving, a double tap on A latches it (cruise control: the button turns solid
+and pulses); a single tap or the brake releases it, and it never engages in a
+menu. The overlay appears only on mobile: Android (Kindle Fire included), iOS,
+and the browser build on a phone or tablet (a touch-first, `pointer: coarse`
+device). `DKR_VCONTROLS=1` forces it on anywhere (the mouse then acts as one
+finger, for testing) and `DKR_VCONTROLS=0` forces it off.
 
 Requirements: the Android SDK and NDK, an SDK CMake 3.24+ (`sdkmanager
 "cmake;3.31.5"`), and a JDK 17+ for Gradle. Then:
@@ -134,38 +131,31 @@ and pull request.
 
 ## Assets
 
-The executable loads two files, `assets/assets.bin` and `assets/assets.lut.bin`,
-from the working directory or from the directory it lives in. They are produced
-from your ROM by the decompilation's tooling. The Windows path needs Python 3;
-the full asset rebuild on Linux and macOS also needs the MIPS binutils
-(`binutils-mips-linux-gnu` on Debian, see `Makefile.n64`):
+The game loads two files, `assets/assets.bin` and `assets/assets.lut.bin`,
+from the working directory or from the directory the executable lives in
+(mobile and web builds pack them in). They are byte ranges of the ROM, so
+producing them is a copy:
 
 ```
 cp /path/to/your/rom.z64 baseroms/
-make assets
+make assets        # python3 tools/extract-assets.py
 ```
 
-On Windows, the ROM may instead remain in the repository root and may use a
-`.z64`, `.v64`, or `.n64` extension; `make assets` identifies it by SHA-1. See
-[`docs/building-windows.md`](docs/building-windows.md) for the native workflow.
-
-This writes the two asset files. The full decompilation asset pipeline also
-regenerates `include/asset_enums.h`; the Windows PC-only path uses the committed
-header. Supported ROMs are identified by SHA-1; US 1.1 is the one this port is
-tested with.
+The ROM is identified by SHA-1, never modified, and never copied anywhere
+else; `.v64` and `.n64` dumps are converted on the fly. US 1.1 (SHA-1
+`6d96743d46f8c0cd0edb0ec5600b003c89b93755`) is the revision the port is built
+and tested for; US 1.0 is also recognised (build with `-DDKR_VERSION=us_v77`).
+On Windows, `build-windows.bat assets [ROM]` does the same with the system
+Python.
 
 ## Correctness
 
-The game code in `src/`, `include/` and `libultra/` is the decompilation, and
-every place the port diverges is an `#ifdef TARGET_PC` region whose `#else`
-branch is the decompilation's own line. Two checks keep that honest:
+The game code in `src/`, `include/` and `libultra/` is the decompiled
+original, and every place the port changes it is an `#ifdef TARGET_PC` region
+whose `#else` branch keeps the original line, so the console's behaviour is
+always there to compare against. The check that keeps the port honest:
 
-- `make rom` (Linux, needs the IDO toolchain that `make assets` sets up) builds
-  the N64 ROM from this tree with the decompilation's own build and fails unless
-  the result is byte-identical to the retail US 1.1 ROM
-  (SHA-1 `6d96743d46f8c0cd0edb0ec5600b003c89b93755`). This proves the N64 side
-  of every `#ifdef` is still exactly the matching code.
-- `make golden` runs the port for a fixed number of frames with no input, an
+- `make golden` runs the game for a fixed number of frames with no input, an
   erased save and a frame-counted clock, hashing everything the renderer is
   handed (state changes, vertices, texture pixels) and every audio buffer the
   mixer produces, one line per frame, and compares the result with
@@ -179,7 +169,7 @@ branch is the decompilation's own line. Two checks keep that honest:
   an optional input script. `DKR_TRACE_DETAIL=1` adds a line per renderer and
   audio event to locate a divergence within a frame, `DKR_TRACE_DRAW=<frame>:<n>`
   prints the vertices of one draw call, and `DKR_DUMP_FRAME` can capture the
-  frame itself.
+  frame itself. Traces run headless too, so the check works over ssh.
 
 ## Running
 
@@ -343,11 +333,11 @@ Saves are kept in the per-user data directory as `eeprom.bin`:
 
 Gamepads can be plugged in while the game is running.
 
-On phones and tablets (or with `DKR_VCONTROLS=1`) an on-screen layer adds touch controls:
-the left stick steers, and three buttons in a triangle at the bottom-right map to
-A (accelerate, green ▲), B (brake, red ▼) and Z (use item, blue ◆); a pause
-button (Start) sits at the bottom-centre. Touching the stick overrides a physical
-controller; the buttons are additive, so a real gamepad still works too.
+On phones and tablets (or with `DKR_VCONTROLS=1`) an on-screen layer adds touch
+controls: the left stick steers, the lettered A, B, Z and R buttons at the
+bottom-right are the N64's face buttons, START pauses and C-up changes the
+camera. Touching the stick overrides a physical controller; the buttons are
+additive, so a real gamepad still works too.
 
 ## Layout
 
@@ -359,16 +349,25 @@ controller; the buttons are additive, so a real gamepad still works too.
   (64-bit-safe asset unpacking), `shaders/`.
 - `src/`, `libultra/`, `include/` - the decompiled game and its SDK, with
   `TARGET_PC` sections where the port diverges. `include/pc_*.h` are the host
-  interfaces those sections call.
+  interfaces those sections call; `include/asset_enums.h` names every asset.
 - `android/` - the Android app (Gradle + SDL activity) that builds the game as
   `libmain.so` through the root CMakeLists and packages the assets into the APK.
 - `ios/` - the iOS app's own source, Info.plist template, asset catalog (app
   icon, launch colour) and device helper; the app itself is generated into
   `build/ios` by CMake's Xcode generator.
-- `tools/make-icons.py` - regenerates the app icons (iOS catalog and Android
-  mipmaps) from the design in the script; the PNGs are committed.
-- `tests/` - unit tests for the host layer (`make test`).
-- `Makefile.n64` - the decompilation's own build and asset pipeline.
+- `tools/extract-assets.py` - produces `assets/` from your ROM (`make assets`);
+  `tools/make-icons.py` regenerates the app icons (the PNGs are committed).
+- `tests/` - the golden traces and the unit tests (`make golden`, `make test`).
+- `docs/` - the per-platform build guides and the asset format reference
+  (`docs/asset-format.md`).
+
+## Credits
+
+The game code is the work of the
+[Diddy Kong Racing decompilation](https://github.com/DavidSM64/Diddy-Kong-Racing)
+project, and this port began from
+[Bruceleeto's PC/Dreamcast port](https://github.com/Bruceleeto/Diddy-Kong-Racing)
+of it. The asset format reference in `docs/asset-format.md` is theirs too.
 
 ## License
 
