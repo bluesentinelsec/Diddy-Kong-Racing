@@ -99,7 +99,10 @@ activity; the renderer's OpenGL ES 3.0 path is used as-is. Because a gamepad or
 keyboard is not guaranteed, an on-screen control layer (`linux/vcontrols.c`) is
 drawn above the game: a left analog stick for steering, three action buttons in
 a triangle at the bottom-right (accelerate, brake, use item) and a pause button
-at the bottom-centre. It appears only on mobile: Android (Kindle Fire included),
+at the bottom-centre. While driving, a double tap on the accelerator latches it
+(cruise control: the button turns solid and pulses); a single tap or the brake
+releases it, and it never engages in a menu. The overlay appears only on
+mobile: Android (Kindle Fire included),
 iOS, and the browser build on a phone or tablet (a touch-first, `pointer:
 coarse` device). `DKR_VCONTROLS=1` forces it on anywhere (the mouse then acts as
 one finger, for testing) and `DKR_VCONTROLS=0` forces it off.

@@ -854,6 +854,21 @@ GameMode get_game_mode(void) {
     return gGameMode;
 }
 
+#ifdef TARGET_PC
+/**
+ * PC port: whether the player is in control of a vehicle right now - in a
+ * level, not paused, not in a cutscene or dialogue, not loading, past the
+ * race countdown and before the post-race camera. The same conditions gate
+ * the pause menu above. The on-screen touch controls use this to decide when
+ * their accelerator may latch (linux/vcontrols.c): never in a menu.
+ */
+s32 pc_player_is_driving(void) {
+    return gGameMode == GAMEMODE_INGAME && !gIsPaused && gPostRaceViewPort == FALSE && gLevelLoadTimer == 0 &&
+           gDrumstickSceneLoadTimer == 0 && level_properties_get() == 0 && check_if_showing_cutscene_camera() == 0 &&
+           get_race_countdown() == 0;
+}
+#endif
+
 /**
  *  Sets the current game mode.
  *  Official Name: mainSetMode?

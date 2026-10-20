@@ -85,6 +85,25 @@ static float sStickNx, sStickNy; // knob offset in screen space, -1..1 (y down)
 static int sStickActive;
 static unsigned short sButtons; // currently-held action buttons
 
+// Cruise control. While the player is driving, a double tap on the accelerator
+// latches it down so the thumb is free for the brake and item buttons; a single
+// tap, or the brake, releases it. It can only engage while driving
+// (pc_player_is_driving, src/thread3_main.c) and drops the moment driving
+// stops, so a menu never sees a held A.
+#define CRUISE_DOUBLE_TAP_MS 300
+#define CRUISE_PULSE_MS 250
+static int sCruise;                    // latched
+static Uint64 sAccelDownMs;            // when the accelerator was last pressed (for the double tap)
+static Uint64 sCruisePulseMs;          // when the latch last changed (for the pulse)
+extern int pc_player_is_driving(void); // src/thread3_main.c (s32 there)
+
+static void cruise_set(int on) {
+    if (sCruise != on) {
+        sCruise = on;
+        sCruisePulseMs = SDL_GetTicks();
+    }
+}
+
 static unsigned short role_bit(int role) {
     switch (role) {
         case ROLE_ACCEL:
@@ -148,6 +167,9 @@ static void recompute_buttons(void) {
     if (!sStickActive) {
         sStickNx = sStickNy = 0.0f;
     }
+    if (sCruise) {
+        sButtons |= BTN_A;
+    }
 }
 
 static Pointer *ptr_find(SDL_FingerID id) {
@@ -174,6 +196,19 @@ static void ptr_down(SDL_FingerID id, float px, float py, int w, int h) {
             sPtr[i].role = role;
             if (role == ROLE_STICK) {
                 stick_update(&L, px, py);
+            } else if (role == ROLE_ACCEL) {
+                Uint64 now = SDL_GetTicks();
+
+                if (sCruise) {
+                    cruise_set(0); // a tap releases; this press still holds A until it lifts
+                } else if (pc_player_is_driving() && sAccelDownMs != 0 && now - sAccelDownMs < CRUISE_DOUBLE_TAP_MS) {
+                    cruise_set(1);
+                    sAccelDownMs = 0;
+                } else {
+                    sAccelDownMs = now;
+                }
+            } else if (role == ROLE_BRAKE) {
+                cruise_set(0);
             }
             recompute_buttons();
             return;
@@ -267,6 +302,10 @@ void vcontrols_event(const SDL_Event *e, int winW, int winH) {
 void vcontrols_merge(unsigned short *button, signed char *stickX, signed char *stickY) {
     if (!vcontrols_active()) {
         return;
+    }
+    if (sCruise && !pc_player_is_driving()) {
+        cruise_set(0); // pause menu, results, cutscene: never hand them a held A
+        recompute_buttons();
     }
     *button |= sButtons;
     if (sStickActive) {
@@ -439,7 +478,7 @@ static void glyph_pause(float cx, float cy, float sz, const float c[4]) {
     rect(cx + sz * 0.4f, cy - sz, bw, 2.0f * sz, c);
 }
 
-static void draw_button(const Disc *d, const float fill[4], int pressed, int glyph) {
+static void draw_button(const Disc *d, const float fill[4], int pressed, int latched, int glyph) {
     const float white[4] = { 1.0f, 1.0f, 1.0f, 0.92f };
     float c[4];
     int i;
@@ -447,10 +486,18 @@ static void draw_button(const Disc *d, const float fill[4], int pressed, int gly
         c[i] = fill[i];
     }
     c[3] = pressed ? 0.85f : 0.5f;
+    if (latched) {
+        c[3] = 0.95f; // cruise: a solid disc, unmistakably different from a press
+    }
     disc(d->x, d->y, d->r, c);
     {
-        float ringc[4] = { 1.0f, 1.0f, 1.0f, pressed ? 0.6f : 0.3f };
+        float ringc[4] = { 1.0f, 1.0f, 1.0f, (pressed || latched) ? 0.6f : 0.3f };
         ring(d->x, d->y, d->r, d->r * 0.9f, ringc);
+    }
+    if (latched) {
+        // Two bars under the glyph: the "held down" mark.
+        rect(d->x - d->r * 0.3f, d->y + d->r * 0.42f, d->r * 0.6f, d->r * 0.07f, white);
+        rect(d->x - d->r * 0.3f, d->y + d->r * 0.58f, d->r * 0.6f, d->r * 0.07f, white);
     }
     switch (glyph) {
         case 1:
@@ -502,10 +549,23 @@ void vcontrols_render(int winW, int winH) {
     ky = L.base.y + sStickNy * (L.base.r - L.knobR);
     disc(kx, ky, L.knobR, knobFill);
 
-    draw_button(&L.accel, accelCol, (sButtons & BTN_A) != 0, 1);
-    draw_button(&L.brake, brakeCol, (sButtons & BTN_B) != 0, 2);
-    draw_button(&L.item, itemCol, (sButtons & BTN_Z) != 0, 3);
-    draw_button(&L.pause, pauseCol, (sButtons & BTN_START) != 0, 4);
+    draw_button(&L.accel, accelCol, (sButtons & BTN_A) != 0, sCruise, 1);
+    draw_button(&L.brake, brakeCol, (sButtons & BTN_B) != 0, 0, 2);
+    draw_button(&L.item, itemCol, (sButtons & BTN_Z) != 0, 0, 3);
+    draw_button(&L.pause, pauseCol, (sButtons & BTN_START) != 0, 0, 4);
+    {
+        // A ring that swells out of the accelerator and fades when cruise
+        // engages or releases, so the change registers without looking down.
+        Uint64 age = SDL_GetTicks() - sCruisePulseMs;
+
+        if (sCruisePulseMs != 0 && age < CRUISE_PULSE_MS) {
+            float t = (float) age / (float) CRUISE_PULSE_MS;
+            float pulse[4] = { 1.0f, 1.0f, 1.0f, 0.8f * (1.0f - t) };
+            float r = L.accel.r * (1.0f + 0.6f * t);
+
+            ring(L.accel.x, L.accel.y, r, r * 0.9f, pulse);
+        }
+    }
 
     if (sVertCount == 0) {
         return;
