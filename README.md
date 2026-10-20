@@ -17,7 +17,11 @@ ROM to produce the asset files the executable loads (see *Assets*).
 ## Building
 
 Step-by-step guides for each platform (Linux, Windows, macOS, web, Android
-and iOS) are in [`docs/`](docs/README.md). The short version:
+and iOS) are in [`docs/`](docs/README.md). The port is versioned
+([semantic](https://semver.org), the `VERSION` file at the root): `dkracing
+--version` prints it with the commit it was built from, and the Android and iOS
+apps carry it as their app version with the commit count as the build number.
+The short version:
 
 Requirements: CMake 3.24+, a C compiler (clang, GCC or MinGW-w64), git, and on
 Linux the usual SDL build dependencies (X11, Wayland, ALSA/PulseAudio
@@ -99,9 +103,12 @@ activity; the renderer's OpenGL ES 3.0 path is used as-is. Because a gamepad or
 keyboard is not guaranteed, an on-screen control layer (`linux/vcontrols.c`) is
 drawn above the game: a left analog stick for steering, three action buttons in
 a triangle at the bottom-right (accelerate, brake, use item) and a pause button
-at the bottom-centre. While driving, a double tap on the accelerator latches it
-(cruise control: the button turns solid and pulses); a single tap or the brake
-releases it, and it never engages in a menu. The overlay appears only on
+with the N64's four face buttons in a diamond at the bottom-right, labelled as
+on the pad: A (accelerate), B (brake / reverse), Z (use item), R (hop /
+powerslide); a Start pill at the bottom-centre and a C-up (camera zoom) button
+beside it. While driving, a double tap on A latches it (cruise control: the
+button turns solid and pulses); a single tap or the brake releases it, and it
+never engages in a menu. The overlay appears only on
 mobile: Android (Kindle Fire included),
 iOS, and the browser build on a phone or tablet (a touch-first, `pointer:
 coarse` device). `DKR_VCONTROLS=1` forces it on anywhere (the mouse then acts as
@@ -355,8 +362,11 @@ controller; the buttons are additive, so a real gamepad still works too.
   interfaces those sections call.
 - `android/` - the Android app (Gradle + SDL activity) that builds the game as
   `libmain.so` through the root CMakeLists and packages the assets into the APK.
-- `ios/` - the iOS app's own source, Info.plist template and device helper; the
-  app itself is generated into `build/ios` by CMake's Xcode generator.
+- `ios/` - the iOS app's own source, Info.plist template, asset catalog (app
+  icon, launch colour) and device helper; the app itself is generated into
+  `build/ios` by CMake's Xcode generator.
+- `tools/make-icons.py` - regenerates the app icons (iOS catalog and Android
+  mipmaps) from the design in the script; the PNGs are committed.
 - `tests/` - unit tests for the host layer (`make test`).
 - `Makefile.n64` - the decompilation's own build and asset pipeline.
 

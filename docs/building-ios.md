@@ -7,7 +7,10 @@ builds. The renderer uses its OpenGL ES 3.0 path, the on-screen touch controls
 alongside them. The app runs in landscape only, like the Android app.
 
 The iOS-only host code is `ios/app.c`; `ios/Info.plist.in` is the bundle's
-Info.plist template.
+Info.plist template and `ios/Assets.xcassets` holds the app icon and the launch
+screen colour (regenerate the icon with `tools/make-icons.py`). The app's
+version is the repo's `VERSION` file and its build number is the commit count,
+so a fresh build always supersedes the one installed before it.
 
 ## Requirements
 
@@ -44,14 +47,14 @@ one, and `IOS_DEVICE=<udid>` to pick a device when several are connected
 device with your team and creates a development certificate and provisioning
 profile, which can take a minute.
 
-The bundle identifier defaults to `com.bluesentinelsoftware.dkracing`; override
+The bundle identifier defaults to `com.bluesentinelsec.dkracing`; override
 it with `IOS_BUNDLE=...` if it clashes with an identifier in another team.
 
 To see the game's log while it runs:
 
 ```
 xcrun devicectl device process launch --console --terminate-existing \
-    --device "$(ios/device.sh)" com.bluesentinelsoftware.dkracing
+    --device "$(ios/device.sh)" com.bluesentinelsec.dkracing
 ```
 
 Saves live in the app's own data container (SDL's preference path), so they

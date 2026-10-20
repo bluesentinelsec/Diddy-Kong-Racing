@@ -45,6 +45,14 @@ Build the game first and add the assets later if you like. Desktop builds
 pick them up at run time. Web, Android and iOS builds pack them in, so rebuild
 those after running `make assets`.
 
+## Version
+
+The port's version is the `VERSION` file at the repository root (semantic
+versioning; `0.1.0` is the first numbered build). CMake reads it and stamps
+the executable (`dkracing --version`, and the startup banner) and the Android
+and iOS apps, whose build numbers are the git commit count. Bump `VERSION`
+when cutting a release.
+
 ## Common CMake options
 
 | Option | Default | Meaning |
