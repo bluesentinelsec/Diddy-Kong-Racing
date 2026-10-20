@@ -16,8 +16,8 @@ ROM to produce the asset files the executable loads (see *Assets*).
 
 ## Building
 
-Step-by-step guides for each platform (Linux, Windows, macOS, web, Android,
-and the iOS status) are in [`docs/`](docs/README.md). The short version:
+Step-by-step guides for each platform (Linux, Windows, macOS, web, Android
+and iOS) are in [`docs/`](docs/README.md). The short version:
 
 Requirements: CMake 3.24+, a C compiler (clang, GCC or MinGW-w64), git, and on
 Linux the usual SDL build dependencies (X11, Wayland, ALSA/PulseAudio
@@ -195,6 +195,28 @@ branch is the decompilation's own line. Two checks keep that honest:
 Keys while running: Tab toggles fullscreen, 1 toggles the scanline effect, 2
 toggles widescreen, Escape quits. The window is resizable.
 
+
+### iOS (iPhone / iPad)
+
+The iOS app is built from the same root `CMakeLists.txt` (its `IOS` branch) as
+an `.app` bundle with SDL3 linked statically; `ios/app.c` holds the iOS-only
+code and `ios/Info.plist.in` the bundle's Info.plist. The game runs landscape
+only with the same on-screen touch controls as Android, and a paired game
+controller works alongside them. The assets are copied into the bundle at
+build time.
+
+```
+make assets      # once, needs your ROM
+make ios         # unsigned app (what CI builds) -> build/ios/Release-iphoneos/
+make run-ios     # sign for the connected iPhone/iPad, install and launch
+```
+
+`make run-ios` uses the Apple team Xcode is signed into (`IOS_TEAM=` overrides
+it) and the first connected device (`IOS_DEVICE=` picks one). Details, including
+Developer Mode and what the first run sets up, are in
+[`docs/building-ios.md`](docs/building-ios.md). CI builds the unsigned app on
+every push.
+
 ### Widescreen
 
 On by default: the image is widened to the window's (or display's) aspect
@@ -330,6 +352,8 @@ controller; the buttons are additive, so a real gamepad still works too.
   interfaces those sections call.
 - `android/` - the Android app (Gradle + SDL activity) that builds the game as
   `libmain.so` through the root CMakeLists and packages the assets into the APK.
+- `ios/` - the iOS app's own source, Info.plist template and device helper; the
+  app itself is generated into `build/ios` by CMake's Xcode generator.
 - `tests/` - unit tests for the host layer (`make test`).
 - `Makefile.n64` - the decompilation's own build and asset pipeline.
 

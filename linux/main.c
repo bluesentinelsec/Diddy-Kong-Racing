@@ -7,9 +7,9 @@
 
 #include "gfx.h"
 #include "trace.h"
-// On Android, SDL owns the process entry: this renames main() to SDL_main(),
-// the symbol SDLActivity calls from the SDL thread. Elsewhere SDL_MAIN_HANDLED
-// is defined and this leaves our plain main() alone.
+// On Android and iOS, SDL owns the process entry: this renames main() to
+// SDL_main(), the symbol SDLActivity / SDL's UIApplication delegate calls.
+// Elsewhere SDL_MAIN_HANDLED is defined and this leaves our plain main() alone.
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #ifdef __ANDROID__

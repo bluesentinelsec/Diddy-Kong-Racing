@@ -187,9 +187,10 @@ set(DKR_DEFINES
 if(DKR_EEPROM_PRESET_100)
     list(APPEND DKR_DEFINES EEPROM_PRESET_100)
 endif()
-# On Android, SDL owns the entry point (SDL_main via SDLActivity); everywhere
-# else we provide a plain main() and tell SDL so.
-if(NOT ANDROID)
+# On Android and iOS, SDL owns the entry point (SDL_main, called from SDL's
+# activity / UIApplication delegate); everywhere else we provide a plain main()
+# and tell SDL so.
+if(NOT ANDROID AND NOT IOS)
     list(APPEND DKR_DEFINES SDL_MAIN_HANDLED)
 endif()
 
@@ -253,6 +254,44 @@ if(ANDROID)
     # after libSDL3.so and enters through SDL_main. No executable is produced.
     add_library(main SHARED $<TARGET_OBJECTS:dkr_game> $<TARGET_OBJECTS:dkr_platform>)
     target_link_libraries(main PRIVATE ${DKR_SDL_TARGET} m)
+elseif(IOS)
+    # The iOS app: an .app bundle built by Xcode (`cmake -G Xcode
+    # -DCMAKE_SYSTEM_NAME=iOS`, see `make ios`). SDL is static, as on desktop;
+    # its UIKit/OpenGLES/CoreAudio frameworks come in through SDL3::SDL3-static.
+    # The game data is copied into the bundle's Resources/assets when it exists,
+    # where SDL_GetBasePath() points and the desktop asset loader already looks.
+    set(DKR_IOS_BUNDLE_ID "com.bluesentinelsoftware.dkracing" CACHE STRING "iOS bundle identifier")
+    set(DKR_IOS_TEAM "" CACHE STRING "Apple Development Team ID for automatic signing (empty: unsigned)")
+    set(DKR_IOS_ASSETS)
+    foreach(f assets.bin assets.lut.bin)
+        if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/assets/${f})
+            list(APPEND DKR_IOS_ASSETS ${CMAKE_CURRENT_SOURCE_DIR}/assets/${f})
+        endif()
+    endforeach()
+    if(NOT DKR_IOS_ASSETS)
+        message(WARNING "assets/assets.bin not found: the iOS app will have no game data (run `make assets` first)")
+    endif()
+    # ios/app.c is compiled into the app itself: Xcode only links a target that
+    # compiles at least one source, and it is where the iOS-only code lives.
+    add_executable(dkracing MACOSX_BUNDLE ios/app.c $<TARGET_OBJECTS:dkr_game> $<TARGET_OBJECTS:dkr_platform>
+                   ${DKR_IOS_ASSETS})
+    dkr_configure_target(dkracing)
+    target_link_libraries(dkracing PRIVATE m)
+    set_source_files_properties(${DKR_IOS_ASSETS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/assets)
+    set_target_properties(dkracing PROPERTIES
+        OUTPUT_NAME "Diddy Kong Racing"
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/ios/Info.plist.in
+        MACOSX_BUNDLE_BUNDLE_NAME "Diddy Kong Racing"
+        MACOSX_BUNDLE_GUI_IDENTIFIER ${DKR_IOS_BUNDLE_ID}
+        MACOSX_BUNDLE_BUNDLE_VERSION 1
+        MACOSX_BUNDLE_SHORT_VERSION_STRING 1.0
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${DKR_IOS_BUNDLE_ID}
+        XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic
+        XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${DKR_IOS_TEAM}"
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+        XCODE_ATTRIBUTE_ENABLE_BITCODE NO
+        XCODE_ATTRIBUTE_SKIP_INSTALL YES
+        XCODE_GENERATE_SCHEME YES)
 else()
     add_executable(dkracing $<TARGET_OBJECTS:dkr_game> $<TARGET_OBJECTS:dkr_platform>)
     target_link_libraries(dkracing PRIVATE ${DKR_SDL_TARGET})
