@@ -47,7 +47,7 @@ exit /b %RUN_RESULT%
 
 :assets
 shift
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\tools\extract-pc-assets-windows.ps1" %*
+python "%ROOT%\tools\extract-assets.py" %*
 exit /b %ERRORLEVEL%
 
 :help

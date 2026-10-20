@@ -63,8 +63,8 @@ Explorer. You can invoke the extraction script directly from PowerShell and
 optionally give it an explicit ROM path:
 
 ```
-powershell -ExecutionPolicy Bypass -File tools/extract-pc-assets-windows.ps1
-powershell -ExecutionPolicy Bypass -File tools/extract-pc-assets-windows.ps1 C:\path\to\rom.z64
+python tools\extract-assets.py
+python tools\extract-assets.py C:\path\to\rom.z64
 ```
 
 ## Run

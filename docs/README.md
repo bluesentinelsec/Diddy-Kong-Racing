@@ -29,10 +29,10 @@ cp /path/to/your/rom.z64 baseroms/
 make assets
 ```
 
-This needs Python 3. The full decompilation asset rebuild on Linux and macOS
-also uses the MIPS binutils (`binutils-mips-linux-gnu` on Debian/Ubuntu).
-Windows uses the native PowerShell/Splat extraction path documented in the
-[Windows guide](building-windows.md). The output is the same on every platform,
+The two files are byte ranges of the ROM, so `make assets` (which runs
+`tools/extract-assets.py`, Python 3 only) verifies the ROM by SHA-1 and copies
+them out; `.v64` and `.n64` dumps are converted first. The output is the same
+on every platform,
 so produce it once and copy `assets/` wherever you need it:
 
 - **Desktop:** the executable looks for `assets/` in the working directory and

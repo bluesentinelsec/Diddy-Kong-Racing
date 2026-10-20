@@ -35,9 +35,8 @@ cmake --build build/release
 ```
 
 Put `assets/` (see [README.md](README.md#game-data-every-platform)) in the
-working directory or next to the executable. `make assets` needs the MIPS
-binutils, which Homebrew doesn't package well. The simplest route is to
-produce the files on Linux (or in a Linux container) and copy `assets/` over.
+working directory or next to the executable; `make assets` produces it from
+the ROM in `baseroms/` with the system Python 3.
 
 `make run-debugger` runs the debug build under lldb.
 

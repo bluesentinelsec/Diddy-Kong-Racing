@@ -1,7 +1,7 @@
 # Diddy Kong Racing PC port - developer Makefile.
 #
-# This wraps the CMake build in the targets people expect. The N64 ROM build and
-# the asset pipeline from the decompilation live in Makefile.n64 (see `assets`).
+# This wraps the CMake build in the targets people expect; `make assets`
+# produces the game data from your ROM (tools/extract-assets.py).
 #
 #   make            debug build        -> build/debug/dkracing
 #   make release    optimized build    -> build/release/dkracing
@@ -11,7 +11,6 @@
 #   make fmt        clang-format the port's own sources
 #   make doc        Doxygen HTML into docs/html
 #   make assets     extract and pack the game assets from baseroms/ (needs the ROM)
-#   make rom        build the N64 ROM with the IDO toolchain and verify it is byte-identical
 #   make golden     run the game deterministically and compare per-frame hashes with tests/golden/
 #   make web        browser build (Emscripten, in Docker) -> build/web/dkracing.html
 #   make run-web    build it and serve it on http://localhost:8000
@@ -31,7 +30,7 @@ RELEASE_DIR := build/release
 # keep their upstream formatting so merges stay easy.
 FORMAT_SOURCES := $(wildcard linux/*.c linux/*.h ios/*.c include/pc_asset.h include/pc_gfx.h tests/*.c tests/*.h)
 
-.PHONY: rom golden golden-update all debug release run run-debugger test fmt doc assets clean web web-image run-web ios run-ios
+.PHONY: golden golden-update all debug release run run-debugger test fmt doc assets clean web web-image run-web ios run-ios
 
 all: debug
 
@@ -91,22 +90,16 @@ doc:
 	doxygen Doxyfile
 	@echo "Documentation written to docs/html/index.html"
 
+# The game data: assets/assets.bin and assets/assets.lut.bin are byte ranges
+# of the ROM, so tools/extract-assets.py verifies the ROM in baseroms/ (any
+# file name; it is identified by SHA-1) and copies them out. Python 3 only.
 ifeq ($(OS),Windows_NT)
 assets:
-	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/extract-pc-assets-windows.ps1
+	python tools/extract-assets.py
 else
 assets:
-	$(MAKE) -f Makefile.n64 setup
-	$(MAKE) -f Makefile.n64 extract REGION=us VERSION=v80
-	$(MAKE) -f Makefile.n64 build_assets REGION=us VERSION=v80
+	python3 tools/extract-assets.py
 endif
-
-# The correctness gate: the decompilation's own build (IDO 5.3 via the recomp
-# toolchain, Linux only) must reproduce the retail ROM bit for bit from this tree.
-# Makefile.n64 checks the SHA-1 itself and fails the build on a mismatch.
-rom:
-	$(MAKE) -f Makefile.n64 REGION=us VERSION=v80 -j$(JOBS)
-	cmp build/dkr.us.v80.z64 baseroms/baserom.us.v80.z64 && echo "rom: build/dkr.us.v80.z64 is byte-identical to the retail ROM"
 
 # Browser build. The Emscripten toolchain lives in a Docker image
 # (docker/web.Dockerfile) so nothing has to be installed on the host; the
