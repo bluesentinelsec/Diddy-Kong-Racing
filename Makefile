@@ -15,6 +15,8 @@
 #   make golden     run the game deterministically and compare per-frame hashes with tests/golden/
 #   make web        browser build (Emscripten, in Docker) -> build/web/dkracing.html
 #   make run-web    build it and serve it on http://localhost:8000
+#   make ios        iOS app (Xcode, macOS only) -> build/ios/Release-iphoneos/Diddy Kong Racing.app
+#   make run-ios    build it signed for the connected iPhone/iPad, install and launch it
 #   make clean      remove every build directory
 
 CMAKE      ?= cmake
@@ -27,9 +29,9 @@ RELEASE_DIR := build/release
 
 # Everything the port adds on top of the decompilation; the decomp's own sources
 # keep their upstream formatting so merges stay easy.
-FORMAT_SOURCES := $(wildcard linux/*.c linux/*.h include/pc_asset.h include/pc_gfx.h tests/*.c tests/*.h)
+FORMAT_SOURCES := $(wildcard linux/*.c linux/*.h ios/*.c include/pc_asset.h include/pc_gfx.h tests/*.c tests/*.h)
 
-.PHONY: rom golden golden-update all debug release run run-debugger test fmt doc assets clean web web-image run-web
+.PHONY: rom golden golden-update all debug release run run-debugger test fmt doc assets clean web web-image run-web ios run-ios
 
 all: debug
 
@@ -126,6 +128,33 @@ web: web-image
 run-web: web
 	@echo "Serving $(WEB_DIR) on http://localhost:$(WEB_PORT)/dkracing.html (Ctrl-C to stop)"
 	$(DOCKER) run --rm -p $(WEB_PORT):8000 -v "$(CURDIR)/$(WEB_DIR)":/srv:ro -w /srv $(WEB_IMAGE) python3 -m http.server 8000
+
+# iOS app. CMake generates an Xcode project (the only way to sign) and
+# xcodebuild builds it. `make ios` builds unsigned, which is what CI does and
+# enough to check the code; `make run-ios` signs for the connected device with
+# the team Xcode is signed into (or IOS_TEAM=XXXXXXXXXX), installs and launches.
+# Needs the assets (make assets) for a playable app; see docs/building-ios.md.
+IOS_DIR    := build/ios
+IOS_APP    := $(IOS_DIR)/Release-iphoneos/Diddy Kong Racing.app
+IOS_BUNDLE ?= com.bluesentinelsoftware.dkracing
+IOS_TEAM   ?= $(shell defaults read com.apple.dt.Xcode IDEProvisioningTeams 2>/dev/null | sed -n 's/.*teamID = \([A-Z0-9]*\);.*/\1/p' | head -1)
+IOS_DEVICE ?= $(shell ios/device.sh 2>/dev/null)
+XCODEBUILD := xcodebuild -project $(IOS_DIR)/dkracing.xcodeproj -scheme dkracing -configuration Release -quiet
+
+$(IOS_DIR)/CMakeCache.txt:
+	$(CMAKE) -S . -B $(IOS_DIR) -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+	  -DCMAKE_OSX_ARCHITECTURES=arm64 -DDKR_IOS_BUNDLE_ID=$(IOS_BUNDLE) -DDKR_IOS_TEAM=$(IOS_TEAM) $(CMAKE_ARGS)
+
+ios: $(IOS_DIR)/CMakeCache.txt
+	$(XCODEBUILD) -destination generic/platform=iOS CODE_SIGNING_ALLOWED=NO build
+	@ls -d "$(IOS_APP)"
+
+run-ios: $(IOS_DIR)/CMakeCache.txt
+	@test -n "$(IOS_DEVICE)" || { echo "run-ios: no iOS device connected (or set IOS_DEVICE=<udid>)"; exit 1; }
+	@test -n "$(IOS_TEAM)" || { echo "run-ios: no Apple team; sign into Xcode or set IOS_TEAM=<team id>"; exit 1; }
+	$(XCODEBUILD) -destination 'platform=iOS,id=$(IOS_DEVICE)' -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+	xcrun devicectl device install app --device $(IOS_DEVICE) "$(IOS_APP)"
+	xcrun devicectl device process launch --device $(IOS_DEVICE) --terminate-existing $(IOS_BUNDLE)
 
 clean:
 	rm -rf build docs/html

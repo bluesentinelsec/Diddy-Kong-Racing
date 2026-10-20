@@ -97,3 +97,28 @@ jobs:
             build/web/dkracing.html
             build/web/dkracing.js
             build/web/dkracing.wasm
+
+  ios:
+    name: iOS arm64 (unsigned)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same CMake + Xcode path as `make ios`. No signing identity on a
+      # runner and no game data, so this checks the game and SDL compile and
+      # link for iOS and produce the app bundle, not that it is playable.
+      - name: Build
+        run: make ios
+
+      - name: Check the bundle carries the game
+        run: |
+          app="build/ios/Release-iphoneos/Diddy Kong Racing.app"
+          ls -la "$app"
+          file "$app/Diddy Kong Racing" | grep -q arm64
+          plutil -p "$app/Info.plist" | grep -q LandscapeLeft
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: dkracing-ios-arm64-unsigned
+          path: build/ios/Release-iphoneos/Diddy Kong Racing.app

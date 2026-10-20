@@ -14,10 +14,15 @@
 #include "vcontrols.h"
 
 #include <SDL3/SDL.h>
+#define SDL_MAIN_NOIMPL    // only main.c may carry SDL's main() on the platforms where SDL owns it
 #include <SDL3/SDL_main.h> // SDL_SetMainReady; SDL_MAIN_HANDLED keeps our plain main()
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef SDL_PLATFORM_IOS
+void pc_ios_configure(void); // ios/app.c
+#endif
 
 #include "shader_dkr_frag.h"
 #include "shader_dkr_vert.h"
@@ -120,6 +125,12 @@ typedef struct {
     const char *name;
 } GlConfig;
 
+static GLuint sWindowFbo; // the framebuffer that is the window (0 except on iOS)
+
+unsigned int gfx_window_fbo(void) {
+    return sWindowFbo;
+}
+
 static int try_create_context(const GlConfig *cfg, int width, int height) {
     SDL_WindowFlags flags = SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE;
 #ifndef _WIN32
@@ -168,6 +179,11 @@ static int try_create_context(const GlConfig *cfg, int width, int height) {
         return 0;
     }
     sIsES = (cfg->profile == SDL_GL_CONTEXT_PROFILE_ES);
+    // On iOS the screen is not framebuffer 0: SDL presents its OpenGL view
+    // through a framebuffer object of its own, and drawing to 0 goes nowhere.
+    // Everywhere else the window is 0 and the property is absent.
+    sWindowFbo = (GLuint) SDL_GetNumberProperty(SDL_GetWindowProperties(sWindow),
+                                                SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0);
     return 1;
 }
 
@@ -177,9 +193,9 @@ static int create_context(int width, int height) {
     const GlConfig *order[2];
     int i;
 
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || \
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || defined(SDL_PLATFORM_IOS) || \
     (defined(__linux__) && (defined(__arm__) || defined(__aarch64__)))
-    // Mesa's V3D (Raspberry Pi) exposes GL ES 3.1 but only desktop GL 3.1.
+    // Mesa's V3D (Raspberry Pi) exposes GL ES 3.1 but only desktop GL 3.1; iOS has GL ES only.
     order[0] = &es30;
     order[1] = &core33;
 #else
@@ -319,7 +335,7 @@ static int scene_buffers_create(void) {
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, sSceneDepth);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         fprintf(stderr, "GFX: offscreen framebuffer incomplete; post-processing effects unavailable\n");
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, sWindowFbo);
         glDeleteFramebuffers(1, &sSceneFbo);
         glDeleteTextures(1, &sSceneTex);
         glDeleteRenderbuffers(1, &sSceneDepth);
@@ -337,7 +353,7 @@ static void scene_target_bind(void) {
         glBindFramebuffer(GL_FRAMEBUFFER, sSceneFbo);
         glViewport(0, 0, sVpW, sVpH);
     } else {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, sWindowFbo);
         glViewport(sVpX, sVpY, sVpW, sVpH);
     }
 }
@@ -365,7 +381,7 @@ static void post_process(void) {
     if (sSceneFbo == 0) {
         return; // the scene is already on the window
     }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, sWindowFbo);
     glViewport(0, 0, sWinWidth, sWinHeight);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_DEPTH_TEST);
@@ -483,8 +499,11 @@ void gfx_window_init(int width, int height, const GfxOptions *options) {
     sScanlines = options == NULL || options->scanlines;
     sWidescreen = options == NULL || options->widescreen;
 
-#ifndef __ANDROID__
-    SDL_SetMainReady(); // we provide a plain main(); on Android SDL owns main()
+#ifdef SDL_MAIN_HANDLED
+    SDL_SetMainReady(); // we provide a plain main(); on Android and iOS SDL owns main()
+#endif
+#ifdef SDL_PLATFORM_IOS
+    pc_ios_configure(); // ios/app.c: landscape lock and the other phone hints
 #endif
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "GFX: SDL_Init failed: %s\n", SDL_GetError());

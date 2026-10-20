@@ -111,6 +111,11 @@ int gfx_present(void);
 // Whether there is a window to draw into at all.
 int gfx_window_valid(void);
 
+// The GL framebuffer that is the window: 0 everywhere but iOS, where SDL's view
+// presents through its own framebuffer object. Bind this, never 0, to draw to
+// the screen.
+unsigned int gfx_window_fbo(void);
+
 // Whether the GL context is OpenGL ES (vs. desktop core profile).
 int gfx_is_gles(void);
 

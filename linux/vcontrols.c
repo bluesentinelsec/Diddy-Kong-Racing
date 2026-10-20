@@ -33,7 +33,7 @@ typedef struct {
 } Disc;
 
 typedef struct {
-    Disc base;  // stick base
+    Disc base;   // stick base
     float knobR; // stick knob radius
     Disc accel, brake, item, pause;
 } Layout;
@@ -51,9 +51,15 @@ static Layout vc_layout(int w, int h) {
     float b = 0.088f * s; // action button radius
     float ax = fw - (b + 0.05f * fw);
     float ay = fh - (b + 0.06f * fh);
-    L.accel.x = ax;            L.accel.y = ay;             L.accel.r = b; // bottom-right
-    L.brake.x = ax - 2.5f * b; L.brake.y = ay - 0.15f * b; L.brake.r = b; // left
-    L.item.x  = ax - 1.2f * b; L.item.y  = ay - 2.4f * b;  L.item.r = b;  // up => triangle
+    L.accel.x = ax;
+    L.accel.y = ay;
+    L.accel.r = b; // bottom-right
+    L.brake.x = ax - 2.5f * b;
+    L.brake.y = ay - 0.15f * b;
+    L.brake.r = b; // left
+    L.item.x = ax - 1.2f * b;
+    L.item.y = ay - 2.4f * b;
+    L.item.r = b; // up => triangle
 
     L.pause.r = 0.045f * s;
     L.pause.x = fw * 0.5f;
@@ -72,7 +78,7 @@ typedef struct {
 } Pointer;
 
 #define MAX_POINTERS 8
-#define MOUSE_ID ((SDL_FingerID) -12345)
+#define MOUSE_ID ((SDL_FingerID) - 12345)
 
 static Pointer sPtr[MAX_POINTERS];
 static float sStickNx, sStickNy; // knob offset in screen space, -1..1 (y down)
@@ -81,11 +87,16 @@ static unsigned short sButtons; // currently-held action buttons
 
 static unsigned short role_bit(int role) {
     switch (role) {
-    case ROLE_ACCEL: return BTN_A;
-    case ROLE_BRAKE: return BTN_B;
-    case ROLE_ITEM: return BTN_Z;
-    case ROLE_PAUSE: return BTN_START;
-    default: return 0;
+        case ROLE_ACCEL:
+            return BTN_A;
+        case ROLE_BRAKE:
+            return BTN_B;
+        case ROLE_ITEM:
+            return BTN_Z;
+        case ROLE_PAUSE:
+            return BTN_START;
+        default:
+            return 0;
     }
 }
 
@@ -95,11 +106,16 @@ static int inside(const Disc *d, float px, float py) {
 }
 
 static int hit_role(const Layout *L, float px, float py) {
-    if (inside(&L->base, px, py)) return ROLE_STICK;
-    if (inside(&L->accel, px, py)) return ROLE_ACCEL;
-    if (inside(&L->brake, px, py)) return ROLE_BRAKE;
-    if (inside(&L->item, px, py)) return ROLE_ITEM;
-    if (inside(&L->pause, px, py)) return ROLE_PAUSE;
+    if (inside(&L->base, px, py))
+        return ROLE_STICK;
+    if (inside(&L->accel, px, py))
+        return ROLE_ACCEL;
+    if (inside(&L->brake, px, py))
+        return ROLE_BRAKE;
+    if (inside(&L->item, px, py))
+        return ROLE_ITEM;
+    if (inside(&L->pause, px, py))
+        return ROLE_PAUSE;
     return ROLE_NONE;
 }
 
@@ -218,33 +234,33 @@ void vcontrols_event(const SDL_Event *e, int winW, int winH) {
         return;
     }
     switch (e->type) {
-    case SDL_EVENT_FINGER_DOWN:
-        ptr_down(e->tfinger.fingerID, e->tfinger.x * winW, e->tfinger.y * winH, winW, winH);
-        break;
-    case SDL_EVENT_FINGER_MOTION:
-        ptr_move(e->tfinger.fingerID, e->tfinger.x * winW, e->tfinger.y * winH, winW, winH);
-        break;
-    case SDL_EVENT_FINGER_UP:
-        ptr_up(e->tfinger.fingerID);
-        break;
-    // Mouse stands in for a single finger when DKR_VCONTROLS=1 on the desktop.
-    case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        if (e->button.button == SDL_BUTTON_LEFT) {
-            ptr_down(MOUSE_ID, e->button.x, e->button.y, winW, winH);
-        }
-        break;
-    case SDL_EVENT_MOUSE_MOTION:
-        if (e->motion.state & SDL_BUTTON_LMASK) {
-            ptr_move(MOUSE_ID, e->motion.x, e->motion.y, winW, winH);
-        }
-        break;
-    case SDL_EVENT_MOUSE_BUTTON_UP:
-        if (e->button.button == SDL_BUTTON_LEFT) {
-            ptr_up(MOUSE_ID);
-        }
-        break;
-    default:
-        break;
+        case SDL_EVENT_FINGER_DOWN:
+            ptr_down(e->tfinger.fingerID, e->tfinger.x * winW, e->tfinger.y * winH, winW, winH);
+            break;
+        case SDL_EVENT_FINGER_MOTION:
+            ptr_move(e->tfinger.fingerID, e->tfinger.x * winW, e->tfinger.y * winH, winW, winH);
+            break;
+        case SDL_EVENT_FINGER_UP:
+            ptr_up(e->tfinger.fingerID);
+            break;
+        // Mouse stands in for a single finger when DKR_VCONTROLS=1 on the desktop.
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            if (e->button.button == SDL_BUTTON_LEFT) {
+                ptr_down(MOUSE_ID, e->button.x, e->button.y, winW, winH);
+            }
+            break;
+        case SDL_EVENT_MOUSE_MOTION:
+            if (e->motion.state & SDL_BUTTON_LMASK) {
+                ptr_move(MOUSE_ID, e->motion.x, e->motion.y, winW, winH);
+            }
+            break;
+        case SDL_EVENT_MOUSE_BUTTON_UP:
+            if (e->button.button == SDL_BUTTON_LEFT) {
+                ptr_up(MOUSE_ID);
+            }
+            break;
+        default:
+            break;
     }
 }
 
@@ -256,12 +272,18 @@ void vcontrols_merge(unsigned short *button, signed char *stickX, signed char *s
     if (sStickActive) {
         int x = (int) lrintf(sStickNx * (float) STICK_MAX);
         int y = (int) lrintf(-sStickNy * (float) STICK_MAX); // screen y is down; N64 y is up
-        if (x > STICK_MAX) x = STICK_MAX;
-        if (x < -STICK_MAX) x = -STICK_MAX;
-        if (y > STICK_MAX) y = STICK_MAX;
-        if (y < -STICK_MAX) y = -STICK_MAX;
-        if (abs(x) < 6) x = 0; // small centre dead zone
-        if (abs(y) < 6) y = 0;
+        if (x > STICK_MAX)
+            x = STICK_MAX;
+        if (x < -STICK_MAX)
+            x = -STICK_MAX;
+        if (y > STICK_MAX)
+            y = STICK_MAX;
+        if (y < -STICK_MAX)
+            y = -STICK_MAX;
+        if (abs(x) < 6)
+            x = 0; // small centre dead zone
+        if (abs(y) < 6)
+            y = 0;
         *stickX = (signed char) x;
         *stickY = (signed char) y;
     }
@@ -431,11 +453,20 @@ static void draw_button(const Disc *d, const float fill[4], int pressed, int gly
         ring(d->x, d->y, d->r, d->r * 0.9f, ringc);
     }
     switch (glyph) {
-    case 1: glyph_tri(d->x, d->y, d->r * 0.45f, 1, white); break;    // accelerate: up
-    case 2: glyph_tri(d->x, d->y, d->r * 0.45f, 0, white); break;    // brake: down
-    case 3: glyph_diamond(d->x, d->y, d->r * 0.45f, white); break;   // item: diamond
-    case 4: glyph_pause(d->x, d->y, d->r * 0.42f, white); break;     // pause: bars
-    default: break;
+        case 1:
+            glyph_tri(d->x, d->y, d->r * 0.45f, 1, white);
+            break; // accelerate: up
+        case 2:
+            glyph_tri(d->x, d->y, d->r * 0.45f, 0, white);
+            break; // brake: down
+        case 3:
+            glyph_diamond(d->x, d->y, d->r * 0.45f, white);
+            break; // item: diamond
+        case 4:
+            glyph_pause(d->x, d->y, d->r * 0.42f, white);
+            break; // pause: bars
+        default:
+            break;
     }
 }
 
@@ -480,7 +511,7 @@ void vcontrols_render(int winW, int winH) {
         return;
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, gfx_window_fbo());
     glViewport(0, 0, winW, winH);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_SCISSOR_TEST);

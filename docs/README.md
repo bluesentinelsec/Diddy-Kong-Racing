@@ -11,7 +11,7 @@ compiler, CMake and git, plus a few per-platform extras.
 | macOS (Apple silicon, Intel) | [building-macos.md](building-macos.md) | `build/release/dkracing` | yes, arm64 (`pc.yml`) |
 | Web (Emscripten / WebGL 2) | [building-web.md](building-web.md) | `build/web/dkracing.html` | yes (`pc.yml`) |
 | Android (Kindle Fire and phones) | [building-android.md](building-android.md) | `app-debug.apk` | yes (`android.yml`) |
-| iOS | [building-ios.md](building-ios.md) | not supported yet | no |
+| iOS (iPhone and iPad) | [building-ios.md](building-ios.md) | `build/ios/Release-iphoneos/Diddy Kong Racing.app` | yes, unsigned (`pc.yml`) |
 
 CI builds every supported platform on each push to `master` and on every pull
 request, and uploads the binaries as workflow artifacts. CI has no game data,
@@ -39,10 +39,11 @@ so produce it once and copy `assets/` wherever you need it:
   next to itself.
 - **Web:** `assets/` is packed into `dkracing.data` at build time.
 - **Android:** `assets/` is copied into the APK at build time.
+- **iOS:** `assets/` is copied into the app bundle at build time.
 
 Build the game first and add the assets later if you like. Desktop builds
-pick them up at run time. Web and Android builds pack them in, so rebuild those
-after running `make assets`.
+pick them up at run time. Web, Android and iOS builds pack them in, so rebuild
+those after running `make assets`.
 
 ## Common CMake options
 
