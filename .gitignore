@@ -63,3 +63,6 @@ docs/html/
 !android/gradlew.bat
 # Native Windows equivalent of the root Makefile wrapper.
 !build-windows.bat
+
+# Release signing key for `make android-package` (generated locally, never committed)
+android/release.keystore

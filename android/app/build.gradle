@@ -65,6 +65,27 @@ android {
         buildConfig = false
     }
 
+    // `make android-package` passes a keystore for a release-signed APK; without
+    // one, assembleRelease produces an unsigned APK (CI).
+    signingConfigs {
+        release {
+            if (project.hasProperty('dkr.keystore')) {
+                storeFile file(project.property('dkr.keystore'))
+                storePassword project.property('dkr.keystorePassword')
+                keyAlias 'dkracing'
+                keyPassword project.property('dkr.keystorePassword')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (project.hasProperty('dkr.keystore')) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
     // Keep the APK's native libs uncompressed/aligned as SDL expects.
     packagingOptions {
         jniLibs {

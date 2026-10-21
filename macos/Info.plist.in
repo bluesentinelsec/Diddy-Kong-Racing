@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>dkracing</string>
+	<key>CFBundleIconFile</key>
+	<string>dkracing</string>
+	<key>CFBundleIdentifier</key>
+	<string>@DKR_BUNDLE_ID@</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Diddy Kong Racing</string>
+	<key>CFBundleDisplayName</key>
+	<string>Diddy Kong Racing</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@DKR_PORT_VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@DKR_PORT_BUILD@</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>@DKR_PORT_COPYRIGHT@</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.racing-games</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>GCSupportsControllerUserInteraction</key>
+	<true/>
+</dict>
+</plist>

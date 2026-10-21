@@ -56,6 +56,13 @@ Other targets:
 | `make run-web`| build it and serve it on http://localhost:8000                        |
 | `make clean`  | remove all build output                                               |
 
+`make package` (or `make windows-package`, `linux-package`, `macos-package`,
+`web-package`, `android-package`, `ios-package`) builds a distributable for that
+platform into `build/dist/`: a zip with a versioned, icon-bearing `.exe`, an
+AppImage, a signed `.app` bundle, a zip of the web page, a release APK or
+an `.ipa`. Desktop executables embed the game data at build time, so a release
+is one file. See [`docs/packaging.md`](docs/packaging.md).
+
 The Makefile is a thin wrapper; the build itself is CMake, so this works too:
 
 ```
@@ -64,9 +71,11 @@ cmake --build build/release -j
 ```
 
 CMake options: `DKR_VERSION` (`us_v80`, the default, or `us_v77`),
-`DKR_SDL3_TAG` (the SDL release to build), `DKR_SANITIZE=ON` for an
-AddressSanitizer build, `DKR_BUILD_TESTS=ON` for the test executables,
-`DKR_EEPROM_PRESET_100=ON` to start new save files 100% complete.
+`DKR_SDL3_TAG` (the SDL release to build), `DKR_EMBED_ASSETS` (on when
+`assets/` exists: the executable carries the game data and needs no folder
+beside it), `DKR_SANITIZE=ON` for an AddressSanitizer build,
+`DKR_BUILD_TESTS=ON` for the test executables, `DKR_EEPROM_PRESET_100=ON` to
+start new save files 100% complete.
 
 Cross-building a 32-bit binary on a 64-bit Raspberry Pi:
 `cmake -S . -B build/pi -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-armhf.cmake`.
@@ -131,10 +140,11 @@ and pull request.
 
 ## Assets
 
-The game loads two files, `assets/assets.bin` and `assets/assets.lut.bin`,
-from the working directory or from the directory the executable lives in
-(mobile and web builds pack them in). They are byte ranges of the ROM, so
-producing them is a copy:
+The game needs two files, `assets/assets.bin` and `assets/assets.lut.bin`.
+Desktop builds embed them in the executable when they exist at build time
+(otherwise the executable looks for `assets/` in the working directory or
+beside itself); mobile and web builds pack them in. They are byte ranges of
+the ROM, so producing them is a copy:
 
 ```
 cp /path/to/your/rom.z64 baseroms/

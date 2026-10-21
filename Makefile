@@ -16,6 +16,9 @@
 #   make run-web    build it and serve it on http://localhost:8000
 #   make ios        iOS app (Xcode, macOS only) -> build/ios/Release-iphoneos/Diddy Kong Racing.app
 #   make run-ios    build it signed for the connected iPhone/iPad, install and launch it
+#   make package    distributable package for this host (one of the below)
+#   make windows-package / linux-package / macos-package / web-package /
+#        android-package / ios-package   -> build/dist/DiddyKongRacing-<version>-<platform>.*
 #   make clean      remove every build directory
 
 CMAKE      ?= cmake
@@ -30,7 +33,7 @@ RELEASE_DIR := build/release
 # keep their upstream formatting so merges stay easy.
 FORMAT_SOURCES := $(wildcard linux/*.c linux/*.h ios/*.c include/pc_asset.h include/pc_gfx.h tests/*.c tests/*.h)
 
-.PHONY: golden golden-update all debug release run run-debugger test fmt doc assets clean web web-image run-web ios run-ios
+.PHONY: golden golden-update all debug release run run-debugger test fmt doc assets clean web web-image run-web ios run-ios package windows-package linux-package macos-package web-package android-package ios-package
 
 all: debug
 
@@ -148,6 +151,111 @@ run-ios: $(IOS_DIR)/CMakeCache.txt
 	$(XCODEBUILD) -destination 'platform=iOS,id=$(IOS_DEVICE)' -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
 	xcrun devicectl device install app --device $(IOS_DEVICE) "$(IOS_APP)"
 	xcrun devicectl device process launch --device $(IOS_DEVICE) --terminate-existing $(IOS_BUNDLE)
+
+# --- Packaging -----------------------------------------------------------------
+# Each target builds the release configuration for its platform and wraps it the
+# way that platform distributes software, named
+# build/dist/DiddyKongRacing-<version>-<platform>[-<arch>]. The game data is
+# embedded in desktop executables and packed into the mobile and web builds at
+# build time, so run `make assets` first; a package built without it is not
+# playable (that is what CI produces). See docs/packaging.md.
+PORT_VERSION := $(shell cat VERSION)
+HOST_ARCH    := $(shell uname -m | sed 's/aarch64/arm64/;s/amd64/x86_64/')
+DIST_DIR     := build/dist
+PKG          := DiddyKongRacing-$(PORT_VERSION)
+
+package:
+ifeq ($(OS),Windows_NT)
+	$(MAKE) windows-package
+else ifeq ($(UNAME_S),Darwin)
+	$(MAKE) macos-package
+else
+	$(MAKE) linux-package
+endif
+
+# Windows: a zip with the executable (icon and version resource built in).
+windows-package: release
+	rm -rf $(DIST_DIR)/$(PKG)-windows-x86_64 && mkdir -p $(DIST_DIR)/$(PKG)-windows-x86_64
+	cp $(RELEASE_DIR)/dkracing.exe README.md LICENSE.md $(DIST_DIR)/$(PKG)-windows-x86_64/
+	cd $(DIST_DIR) && rm -f $(PKG)-windows-x86_64.zip && \
+	  powershell.exe -NoProfile -Command "Compress-Archive -Force -Path '$(PKG)-windows-x86_64' -DestinationPath '$(PKG)-windows-x86_64.zip'"
+	@ls -la $(DIST_DIR)/$(PKG)-windows-x86_64.zip
+
+# Linux: an AppImage (desktop entry, icon, AppStream metadata, one file).
+# appimagetool is fetched on first use into build/tools.
+APPIMAGE_ARCH := $(shell uname -m | sed 's/arm64/aarch64/;s/amd64/x86_64/')
+APPIMAGETOOL  := build/tools/appimagetool-$(APPIMAGE_ARCH).AppImage
+$(APPIMAGETOOL):
+	mkdir -p build/tools
+	curl -sSL -o $@ https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$(APPIMAGE_ARCH).AppImage
+	chmod +x $@
+
+linux-package: release $(APPIMAGETOOL)
+	rm -rf $(DIST_DIR)/AppDir && mkdir -p $(DIST_DIR)/AppDir/usr/bin $(DIST_DIR)/AppDir/usr/share/applications \
+	  $(DIST_DIR)/AppDir/usr/share/icons/hicolor/256x256/apps $(DIST_DIR)/AppDir/usr/share/metainfo
+	cp $(RELEASE_DIR)/dkracing $(DIST_DIR)/AppDir/usr/bin/
+	cp linux/packaging/com.bluesentinelsec.dkracing.desktop $(DIST_DIR)/AppDir/ 
+	cp linux/packaging/com.bluesentinelsec.dkracing.desktop $(DIST_DIR)/AppDir/usr/share/applications/
+	cp linux/packaging/dkracing.png $(DIST_DIR)/AppDir/com.bluesentinelsec.dkracing.png
+	cp linux/packaging/dkracing.png $(DIST_DIR)/AppDir/usr/share/icons/hicolor/256x256/apps/com.bluesentinelsec.dkracing.png
+	cp $(RELEASE_DIR)/com.bluesentinelsec.dkracing.metainfo.xml $(DIST_DIR)/AppDir/usr/share/metainfo/
+	ln -sf usr/bin/dkracing $(DIST_DIR)/AppDir/AppRun
+	cd $(DIST_DIR) && ARCH=$(APPIMAGE_ARCH) ../../$(APPIMAGETOOL) --appimage-extract-and-run AppDir $(PKG)-linux-$(HOST_ARCH).AppImage
+	@ls -la $(DIST_DIR)/$(PKG)-linux-$(HOST_ARCH).AppImage
+
+# macOS: the app bundle itself, signed with a Developer ID certificate when the
+# keychain has one (MACOS_IDENTITY overrides the choice), otherwise ad hoc. It is
+# also zipped with ditto, the one archiver that keeps a bundle and its signature
+# intact, for transport.
+MACOS_IDENTITY ?= $(shell security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)
+MACOS_APP := $(DIST_DIR)/Diddy Kong Racing.app
+macos-package: release
+	rm -rf "$(MACOS_APP)" && mkdir -p "$(MACOS_APP)/Contents/MacOS" "$(MACOS_APP)/Contents/Resources"
+	cp $(RELEASE_DIR)/dkracing "$(MACOS_APP)/Contents/MacOS/dkracing"
+	cp $(RELEASE_DIR)/Info.plist "$(MACOS_APP)/Contents/Info.plist"
+	cp macos/dkracing.icns "$(MACOS_APP)/Contents/Resources/dkracing.icns"
+	printf 'APPL????' > "$(MACOS_APP)/Contents/PkgInfo"
+	@if [ -n "$(MACOS_IDENTITY)" ] && codesign --force --options runtime --timestamp -s "$(MACOS_IDENTITY)" "$(MACOS_APP)" 2>/dev/null; then \
+	  echo "signed with: $(MACOS_IDENTITY)"; \
+	else \
+	  codesign --force -s - "$(MACOS_APP)" && echo "signed ad hoc (no Developer ID certificate usable)"; \
+	fi
+	codesign --verify --strict "$(MACOS_APP)"
+	rm -f $(DIST_DIR)/$(PKG)-macos-$(HOST_ARCH).app.zip
+	ditto -c -k --keepParent "$(MACOS_APP)" $(DIST_DIR)/$(PKG)-macos-$(HOST_ARCH).app.zip
+	@ls -lad "$(MACOS_APP)" $(DIST_DIR)/$(PKG)-macos-$(HOST_ARCH).app.zip
+
+# Web: the page, its script, the wasm, the packed assets and the icons, zipped
+# for any static host.
+web-package: web
+	mkdir -p $(DIST_DIR) && rm -f $(DIST_DIR)/$(PKG)-web.zip
+	cd $(WEB_DIR) && python3 -m zipfile -c ../../$(DIST_DIR)/$(PKG)-web.zip dkracing.html dkracing.js dkracing.wasm \
+	  $$(ls dkracing.data 2>/dev/null) favicon.png icon-192.png icon-512.png manifest.webmanifest
+	@ls -la $(DIST_DIR)/$(PKG)-web.zip
+
+# Android: a release APK signed with a local key (android/release.keystore,
+# generated on first use and kept out of git; ANDROID_KEYSTORE_PASSWORD sets
+# its password). Needs the SDK as described in docs/building-android.md.
+ANDROID_KEYSTORE_PASSWORD ?= dkracing
+android/release.keystore:
+	keytool -genkeypair -keystore $@ -alias dkracing -keyalg RSA -keysize 2048 -validity 10000 \
+	  -storepass $(ANDROID_KEYSTORE_PASSWORD) -keypass $(ANDROID_KEYSTORE_PASSWORD) -dname "CN=bluesentinelsec"
+
+android-package: android/release.keystore
+	test -d android/SDL || android/fetch-sdl.sh
+	cd android && ./gradlew :app:assembleRelease -Pdkr.keystore=$(CURDIR)/android/release.keystore \
+	  -Pdkr.keystorePassword=$(ANDROID_KEYSTORE_PASSWORD)
+	mkdir -p $(DIST_DIR) && cp android/app/build/outputs/apk/release/app-release.apk $(DIST_DIR)/$(PKG)-android-arm64.apk
+	@ls -la $(DIST_DIR)/$(PKG)-android-arm64.apk
+
+# iOS: an .ipa of the app signed with the team Xcode is signed into, for
+# installing on your own devices (sideloading); there is no store listing.
+ios-package: $(IOS_DIR)/CMakeCache.txt
+	@test -n "$(IOS_TEAM)" || { echo "ios-package: no Apple team; sign into Xcode or set IOS_TEAM=<team id>"; exit 1; }
+	$(XCODEBUILD) -destination generic/platform=iOS -allowProvisioningUpdates build
+	rm -rf $(DIST_DIR)/Payload && mkdir -p $(DIST_DIR)/Payload && cp -R "$(IOS_APP)" $(DIST_DIR)/Payload/
+	cd $(DIST_DIR) && rm -f $(PKG)-ios.ipa && python3 -m zipfile -c $(PKG)-ios.ipa Payload && rm -rf Payload
+	@ls -la $(DIST_DIR)/$(PKG)-ios.ipa
 
 clean:
 	rm -rf build docs/html

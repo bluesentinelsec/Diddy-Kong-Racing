@@ -18,6 +18,9 @@ request, and uploads the binaries as workflow artifacts. CI has no game data,
 so those artifacts don't include assets: they show the code builds, but you
 can't play them as-is.
 
+Distributable packages (zip, AppImage, dmg, web zip, APK, ipa) are built by
+`make <platform>-package`; see [packaging.md](packaging.md).
+
 ## Game data (every platform)
 
 **No game data is in this repository.** Every build loads two files,
@@ -35,8 +38,8 @@ them out; `.v64` and `.n64` dumps are converted first. The output is the same
 on every platform,
 so produce it once and copy `assets/` wherever you need it:
 
-- **Desktop:** the executable looks for `assets/` in the working directory and
-  next to itself.
+- **Desktop:** the executable embeds the files when they exist at build time;
+  otherwise it looks for `assets/` in the working directory and next to itself.
 - **Web:** `assets/` is packed into `dkracing.data` at build time.
 - **Android:** `assets/` is copied into the APK at build time.
 - **iOS:** `assets/` is copied into the app bundle at build time.
