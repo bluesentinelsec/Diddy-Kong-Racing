@@ -45,7 +45,6 @@ extern u32 load_num, load_cnt, load_max, load_min, save_num, save_cnt, save_max,
      in = t;		\
 }
 
-
 Acmd *_loadOutputBuffer(ALFx *r, ALDelay *d, s32 buff, s32 incount, Acmd *p);
 Acmd *_loadBuffer(ALFx *r, s16 *curr_ptr, s32 buff, s32 count, Acmd *p);
 Acmd *_saveBuffer(ALFx *r, s16 *curr_ptr, s32 buff, s32 count, Acmd *p);
@@ -101,16 +100,8 @@ Acmd *alFxPull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset,
 
     for (i = 0; i < r->section_count; i++) {
 	d  = &r->delay[i];  /* get the ALDelay structure */
-#ifdef TARGET_PC
 	in_ptr  = r->input - d->input; /* -u32 wraps to a subtraction on the N64; not on a 64-bit host */
-#else
-	in_ptr  = &r->input[-d->input];
-#endif
-#ifdef TARGET_PC
 	out_ptr = r->input - d->output; /* -u32 wraps to a subtraction on the N64; not on a 64-bit host */
-#else
-	out_ptr = &r->input[-d->output];
-#endif
 	
 	if (in_ptr == prev_out_ptr) {
 	    SWAP(buff1, buff2);
@@ -284,11 +275,7 @@ Acmd *_loadOutputBuffer(ALFx *r, ALDelay *d, s32 buff, s32 incount, Acmd *p)
          * negative of that as an index into the delay buffer. loadBuffer that uses this
          * value then bumps it up if it is below the  delay buffer.
          */ 
-#ifdef TARGET_PC
         out_ptr = r->input - (s32) (d->output - d->rsdelta); /* -u32 wraps to a subtraction on the N64; not on a 64-bit host */
-#else
-        out_ptr = &r->input[-(d->output - d->rsdelta)];
-#endif
         ramalign = ((s32)out_ptr & 0x7) >> 1; /* calculate the number of samples needed 
                                                to align the buffer*/
 #ifdef _DEBUG
@@ -318,11 +305,7 @@ Acmd *_loadOutputBuffer(ALFx *r, ALDelay *d, s32 buff, s32 incount, Acmd *p)
         d->rs->first = 0; /* turn off first time flag */
         d->rsdelta += count - incount; /* add the number of samples to d->rsdelta */
     } else {
-#ifdef TARGET_PC
         out_ptr = r->input - d->output; /* -u32 wraps to a subtraction on the N64; not on a 64-bit host */
-#else
-        out_ptr = &r->input[-d->output];
-#endif
         ptr = _loadBuffer(r, out_ptr, buff, incount, ptr);
     }
 
@@ -431,8 +414,6 @@ Acmd *_filterBuffer(ALLowPass *lp, s32 buff, s32 count, Acmd *p)
 
     return ptr;
 }
-
-
 
 /*
  * Generate a triangle wave from -1 to 1, and find the current position

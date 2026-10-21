@@ -11,45 +11,17 @@
  **************************************************************************/
 
 #include "guint.h"
-#ifdef TARGET_PC
-#ifdef TARGET_DC
-#include <sh4zam/shz_sh4zam.h>
-#endif
-#endif
 
 void guMtxF2L(float mf[4][4], Mtx *m)
 {
-#ifdef TARGET_PC
 #ifdef GBI_FLOAT_MTX
 	// Float matrix ABI (DC): store the 16 floats raw; mtx_to_float reads them
 	// back as float. See mtxf_to_mtx() for the rationale.
-#ifdef TARGET_DC
-	shz_mat4x4_copy((shz_mat4x4_t *) m, (const shz_mat4x4_t *) mf); // paired fmov.d
-#else
 	__builtin_memcpy(m, mf, 16 * sizeof(float));
-#endif
 #else
 	int	i, j;
 	int	e1,e2;
 	int	*ai,*af;
-
-
-	ai=(int *) &m->m[0][0];
-	af=(int *) &m->m[2][0];
-
-	for (i=0; i<4; i++)
-	for (j=0; j<2; j++) {
-		e1=FTOFIX32(mf[i][j*2]);
-		e2=FTOFIX32(mf[i][j*2+1]);
-		*(ai++) = ( e1 & 0xffff0000 ) | ((e2 >> 16)&0xffff);
-		*(af++) = ((e1 << 16) & 0xffff0000) | (e2 & 0xffff);
-	}
-#endif
-#else
-	int	i, j;
-	int	e1,e2;
-	int	*ai,*af;
-
 
 	ai=(int *) &m->m[0][0];
 	af=(int *) &m->m[2][0];

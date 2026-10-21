@@ -7,9 +7,7 @@
 #include "textures_sprites.h"
 #include "tracks.h"
 #include <ultra64.h>
-#ifdef TARGET_PC
 #include "pc_swap.h"
-#endif
 
 /************ .rodata ************/
 
@@ -62,9 +60,7 @@ ParticleDescriptor **gParticlesAssetTable = NULL;
 s32 gParticleBehavioursAssetTableCount = 0;
 s32 *gParticleBehavioursAssets = NULL;
 ParticleBehaviour **gParticleBehavioursAssetTable = NULL;
-#ifdef TARGET_PC
 static ParticleBehaviour *sPcBehaviours = NULL; // host-layout behaviours, see init_particle_assets
-#endif
 ColourRGBA gParticleOverrideColor[2] = { { { { 0 } } }, { { { 0 } } } };
 
 Triangle gLineParticleTriangles[5] = {
@@ -240,12 +236,10 @@ void free_particle_vertices_triangles(void) {
  * Unload all assets related to particles.
  */
 void free_particle_assets(void) {
-#ifdef TARGET_PC
     if (sPcBehaviours != NULL) {
         mempool_free(sPcBehaviours);
         sPcBehaviours = NULL;
     }
-#endif
     if (gParticlesAssets != NULL) {
         mempool_free(gParticlesAssets);
         gParticlesAssets = NULL;
@@ -264,7 +258,6 @@ void free_particle_assets(void) {
     }
 }
 
-#ifdef TARGET_PC
 // Particle assets are big-endian. ParticleDescriptor carries no pointers and is
 // swapped in place; ParticleBehaviour ends in a pointer slot (colourLoop), so
 // behaviours are unpacked into a host-layout array (sPcBehaviours) that the
@@ -347,7 +340,6 @@ void pc_swap_colour_loop_shared(void *cl) {
     pc_swap_colour_loop((ColorLoopEntry *) cl);
 }
 
-#endif
 /**
  * Load all assets related to particles.
  */
@@ -355,11 +347,7 @@ void init_particle_assets(void) {
     s32 i;
 
     free_particle_assets();
-#ifdef TARGET_PC
     gParticlesAssetTable = (ParticleDescriptor **) asset_table_load_pointers(ASSET_PARTICLES_TABLE);
-#else
-    gParticlesAssetTable = (ParticleDescriptor **) asset_table_load(ASSET_PARTICLES_TABLE);
-#endif
     gParticlesAssetTableCount = -1;
     while (((s32) gParticlesAssetTable[gParticlesAssetTableCount + 1]) != -1) {
         gParticlesAssetTableCount++;
@@ -368,43 +356,28 @@ void init_particle_assets(void) {
     gParticlesAssets = (s32 *) asset_table_load(ASSET_PARTICLES);
     for (i = 0; i < gParticlesAssetTableCount; i++) {
         gParticlesAssetTable[i] = (ParticleDescriptor *) (((u8 *) gParticlesAssets) + ((s32) gParticlesAssetTable[i]));
-#ifdef TARGET_PC
         pc_swap_record(gParticlesAssetTable[i], sizeof(ParticleDescriptor), sParticleDescriptorFields);
-#endif
     }
 
-#ifdef TARGET_PC
     gParticleBehavioursAssetTable = (ParticleBehaviour **) asset_table_load_pointers(ASSET_PARTICLE_BEHAVIORS_TABLE);
-#else
-    gParticleBehavioursAssetTable = (ParticleBehaviour **) asset_table_load(ASSET_PARTICLE_BEHAVIORS_TABLE);
-#endif
     gParticleBehavioursAssetTableCount = -1;
     while (((s32) gParticleBehavioursAssetTable[gParticleBehavioursAssetTableCount + 1]) != -1) {
         gParticleBehavioursAssetTableCount++;
     }
 
     gParticleBehavioursAssets = (s32 *) asset_table_load(ASSET_PARTICLE_BEHAVIORS);
-#ifdef TARGET_PC
     sPcBehaviours = mempool_alloc_safe(
         (gParticleBehavioursAssetTableCount > 0 ? gParticleBehavioursAssetTableCount : 1) * sizeof(ParticleBehaviour),
         COLOUR_TAG_GREY);
-#endif
     for (i = 0; i < gParticleBehavioursAssetTableCount; i++) {
-#ifdef TARGET_PC
         pc_unpack(&sPcBehaviours[i], sizeof(ParticleBehaviour),
                   (u8 *) gParticleBehavioursAssets + (uintptr_t) gParticleBehavioursAssetTable[i],
                   PARTICLE_BEHAVIOUR_DISK_SIZE, sParticleBehaviourFields);
         gParticleBehavioursAssetTable[i] = &sPcBehaviours[i];
-#else
-        gParticleBehavioursAssetTable[i] =
-            (ParticleBehaviour *) (((u8 *) gParticleBehavioursAssets) + ((s32) gParticleBehavioursAssetTable[i]));
-#endif
         if (((u32) gParticleBehavioursAssetTable[i]->colourLoop) != 0xFFFFFFFF) {
             gParticleBehavioursAssetTable[i]->colourLoop =
                 (ColorLoopEntry *) get_misc_asset((s32) gParticleBehavioursAssetTable[i]->colourLoop);
-#ifdef TARGET_PC
             pc_swap_colour_loop(gParticleBehavioursAssetTable[i]->colourLoop);
-#endif
         }
     }
 }
@@ -547,23 +520,17 @@ void init_particle_buffers(s32 maxTriangleParticles, s32 maxRectangleParticles, 
 
     if (gParticleDummys == NULL) {
         assetBuffer = (s16 *) asset_table_load(ASSET_DUMMY_PARTICLE_IDS);
-#ifdef TARGET_PC
         {
             // Big-endian s16 sprite-id table (helper in linux/reimpl.c).
             extern void pc_swap16_buf(void *buf, u32 numBytes);
             pc_swap16_buf(assetBuffer, asset_table_size(ASSET_DUMMY_PARTICLE_IDS));
         }
-#endif
         gParticleDummyCount = 0;
         while (assetBuffer[gParticleDummyCount] != -1) {
             gParticleDummyCount++;
         }
 
-#ifdef TARGET_PC
         gParticleDummys = mempool_alloc_safe(gParticleDummyCount * sizeof(Sprite *), COLOUR_TAG_BLUE);
-#else
-        gParticleDummys = mempool_alloc_safe(gParticleDummyCount * 4, COLOUR_TAG_BLUE);
-#endif
         for (i = 0; i < gParticleDummyCount; i++) {
             gParticleDummys[i] = (Sprite *) tex_load_sprite(assetBuffer[i] & 0x3FFF, 1);
         }

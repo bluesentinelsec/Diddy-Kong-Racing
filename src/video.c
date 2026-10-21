@@ -292,7 +292,6 @@ s32 fb_update(s32 mesg) {
     if (mesg != MESG_SKIP_BUFFER_SWAP) {
         fb_swap();
     }
-#ifdef TARGET_PC
     {
         // No VI retrace interrupts on PC. pc_retrace_wait (linux/main.c)
         // paces to the 60Hz wall clock and returns how many retrace periods
@@ -302,7 +301,6 @@ s32 fb_update(s32 mesg) {
         osViSwapBuffer(gVideoLastFramebuffer);
         return tempUpdateRate;
     }
-#endif
     while (osRecvMesg(gVideoMesgQueue, NULL, OS_MESG_NOBLOCK) != -1) {
         tempUpdateRate++;
     }

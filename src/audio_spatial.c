@@ -498,12 +498,10 @@ s32 audspat_distance_to_segment(f32 inX, f32 inY, f32 inZ, f32 coords[6], f32 *o
  * Official Name: amSndPlayXYZ
  */
 void audspat_play_sound_at_position(u16 soundId, f32 x, f32 y, f32 z, u8 flags, AudioPoint **handlePtr) {
-#ifdef TARGET_PC
     // Audio is not initialized on PC; the sound table (from sound_init) is NULL.
     if (gSpatialSoundTable == NULL) {
         return;
     }
-#endif
     audspat_point_create(gSpatialSoundTable[soundId].soundBite, x, y, z, flags, gSpatialSoundTable[soundId].minVolume,
                          gSpatialSoundTable[soundId].volume, gSpatialSoundTable[soundId].range, FALSE,
                          gSpatialSoundTable[soundId].pitch, gSpatialSoundTable[soundId].priority, handlePtr);
@@ -745,11 +743,7 @@ void audspat_calculate_echo(SoundHandle soundHandle, f32 x, f32 y, f32 z) {
                 if (distToSegment < minDist) {
                     // Check if the point is below the ceiling (indicating it is inside a tunnel).
                     // This check should ideally be performed only once per call.
-#ifdef TARGET_PC
                     numOfYVals = collision_get_y(levelSegmentIndex, x, z, yVals, 10);
-#else
-                    numOfYVals = collision_get_y(levelSegmentIndex, x, z, yVals);
-#endif
                     for (k = 0; k < numOfYVals; k++) {
                         if (y < yVals[k]) {
                             minDist = distToSegment;

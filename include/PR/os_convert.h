@@ -44,7 +44,6 @@ extern "C" {
  *
  */
 
-
 #endif /* defined(_LANGUAGE_C) || defined(_LANGUAGE_C_PLUS_PLUS) */
 
 /**************************************************************************
@@ -55,7 +54,6 @@ extern "C" {
 
 #define	OS_CLOCK_RATE		62500000LL
 #define	OS_CPU_COUNTER		(OS_CLOCK_RATE*3/4)
-
 
 #if defined(_LANGUAGE_C) || defined(_LANGUAGE_C_PLUS_PLUS)
 
@@ -71,7 +69,6 @@ extern "C" {
 #define OS_CYCLES_TO_USEC(c)	(((u64)(c)*(1000000LL/15625LL))/(OS_CPU_COUNTER/15625LL))
 
 /* OS_K?_TO_PHYSICAL macro bug fix for CodeWarrior */
-#ifdef TARGET_PC
 #include <stdint.h>
 
 /* On PC there are no CPU segments — pass pointers through unchanged. Same as
@@ -83,26 +80,11 @@ extern "C" {
 #define	OS_PHYSICAL_TO_K0(x)	(void *)(x)
 #define	OS_PHYSICAL_TO_K1(x)	(void *)(x)
 
-#else
-#ifndef __MWERKS__
-#define	OS_K0_TO_PHYSICAL(x)	(u32)(((char *)(x)-0x80000000))
-#define	OS_K1_TO_PHYSICAL(x)	(u32)(((char *)(x)-0xa0000000))
-#else
-#define	OS_K0_TO_PHYSICAL(x)	((char *)(x)-0x80000000)
-#define	OS_K1_TO_PHYSICAL(x)	((char *)(x)-0xa0000000)
-#endif
-
-#define	OS_PHYSICAL_TO_K0(x)	(void *)(((u32)(x)+0x80000000))
-#define	OS_PHYSICAL_TO_K1(x)	(void *)(((u32)(x)+0xa0000000))
-#endif
-
-
 /**************************************************************************
  *
  * Extern variables
  *
  */
-
 
 /**************************************************************************
  *
@@ -112,14 +94,9 @@ extern "C" {
 
 /* Address translation routines and macros */
 
-#ifdef TARGET_PC
 #include <stdint.h>
 extern uintptr_t	 osVirtualToPhysical(void *);
-#else
-extern u32		 osVirtualToPhysical(void *);
-#endif
 extern void *		 osPhysicalToVirtual(u32);
-
 
 #endif  /* defined(_LANGUAGE_C) || defined(_LANGUAGE_C_PLUS_PLUS) */
 

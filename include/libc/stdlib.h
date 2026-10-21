@@ -4,14 +4,7 @@
 		stdlib.h
 */
 
-#ifdef TARGET_PC
 #include <stddef.h> /* host size_t */
-#else
-#ifndef _SIZE_T_DEF
-#define _SIZE_T_DEF
-typedef unsigned size_t;
-#endif
-#endif
 
 #ifndef _DIV_T_DEF
 #define _DIV_T_DEF

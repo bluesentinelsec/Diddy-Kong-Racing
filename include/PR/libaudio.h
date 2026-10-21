@@ -118,12 +118,8 @@ typedef struct ALLink_s {
 void    alUnlink(ALLink *element);
 void    alLink(ALLink *element, ALLink *after);
 
-#ifdef TARGET_PC
 typedef uintptr_t ALDMAAddr; /* a DMA'd buffer is a host pointer */
 typedef ALDMAAddr (*ALDMAproc)(s32 addr, s32 len, void *state);
-#else
-typedef s32 (*ALDMAproc)(s32 addr, s32 len, void *state);
-#endif
 typedef ALDMAproc (*ALDMANew)(void *state);
 
 void    alCopy(void *src, void *dest, s32 len);
@@ -517,7 +513,6 @@ enum AL_MIDImeta {
     AL_MIDI_META_EOT            = 0x2f
 };
 
-
 #define AL_CMIDI_BLOCK_CODE           0xFE
 #define AL_CMIDI_LOOPSTART_CODE       0x2E
 #define AL_CMIDI_LOOPEND_CODE         0x2D
@@ -633,7 +628,6 @@ void            alEvtqPostEvent(ALEventQueue *evtq, ALEvent *evt,
                                 ALMicroTime delta);
 void        	alEvtqFlush(ALEventQueue *evtq);
 void        	alEvtqFlushType(ALEventQueue *evtq, s16 type);
-
 
 #define AL_PHASE_ATTACK         0
 #define AL_PHASE_NOTEON         0
@@ -897,7 +891,6 @@ void    alSeqpSetChlPriority(ALSeqPlayer *seqp, u8 chan, u8 priority);
 u8      alSeqpGetChlPriority(ALSeqPlayer *seqp, u8 chan);
 void    alSeqpSendMidi(ALSeqPlayer *seqp, s32 ticks, u8 status, u8 byte1, u8 byte2);
 
-
 /* Maintain backwards compatibility with old routine names. */
 #define alSeqpSetProgram		alSeqpSetChlProgram
 #define alSeqpGetProgram		alSeqpGetChlProgram
@@ -907,8 +900,6 @@ void    alSeqpSendMidi(ALSeqPlayer *seqp, s32 ticks, u8 status, u8 byte1, u8 byt
 #define	alSeqpGetPan			alSeqpGetChlPan
 #define alSeqpSetChannelPriority	alSeqpSetChlPriority
 #define alSeqpGetChannelPriority	alSeqpGetChlPriority
-
-
 
 /*
  * Compressed Sequence Player routines
@@ -939,7 +930,6 @@ u8      alCSPGetChlPriority(ALCSPlayer *seqp, u8 chan);
 void    alCSPSendMidi(ALCSPlayer *seqp, s32 ticks, u8 status,
                        u8 byte1, u8 byte2);
 
-
 /* Maintain backwards compatibility with old routine names. */
 #define alCSPSetProgram		alCSPSetChlProgram
 #define alCSPGetProgram		alCSPGetChlProgram
@@ -949,8 +939,6 @@ void    alCSPSendMidi(ALCSPlayer *seqp, s32 ticks, u8 status,
 #define	alCSPGetPan		alCSPGetChlPan
 #define alCSPSetChannelPriority	alCSPSetChlPriority
 #define alCSPGetChannelPriority	alCSPGetChlPriority
-
-
 
 /***********************************************************************
  * Sound Player stuff
@@ -1006,6 +994,4 @@ void alParseAbiCL(Acmd *cmdList, u32 nbytes);
 #endif
 
 #endif /* !__LIB_AUDIO__ */
-
-
 

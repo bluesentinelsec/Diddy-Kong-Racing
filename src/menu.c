@@ -1,7 +1,5 @@
-#ifdef TARGET_PC
 #include "pc_asset.h"
 #include "pc_gfx.h"
-#endif
 #include "menu.h"
 #include "asset_enums.h"
 #include "asset_loading.h"
@@ -187,7 +185,6 @@ unk80126878 D_80126878[8];
 f32 D_801268D8;
 UNUSED s32 D_801268DC; // Set to 0 during the title screen, never read.
 s32 gOpeningNameID;
-#ifdef TARGET_PC
 //!@bug: menu_track_select_init() fills this with a `for (i = 0; i < 5; i++)`
 // loop, so it writes five rows into a four-row array. Retail really is 48 bytes
 // (gTrackSelectIDs = 0x801268E8, gFFLUnlocked = 0x80126918), so the console
@@ -197,14 +194,7 @@ s32 gOpeningNameID;
 // real, drifting corruption. The fifth row is never read back (every read
 // indexes by gTrackSelectCursorY, which stops at 3), so giving the write a row
 // of its own is behaviour-neutral and keeps the stray store in bounds.
-#ifdef TARGET_PC
 s16 gTrackSelectIDs[5][6]; // Track Select values?
-#else
-s16 gTrackSelectIDs[4][6]; // Track Select values?
-#endif
-#else
-s16 gTrackSelectIDs[4][6]; // Track Select values?
-#endif
 s16 gFFLUnlocked;
 UNUSED s32 D_80128464;
 UNUSED s32 D_80128468;
@@ -418,7 +408,6 @@ f32 D_801268D8;
 UNUSED s32 D_801268DC; // Set to 0 during the title screen, never read.
 s32 gOpeningNameID;
 UNUSED s32 D_801268E4;
-#ifdef TARGET_PC
 //!@bug: menu_track_select_init() fills this with a `for (i = 0; i < 5; i++)`
 // loop, so it writes five rows into a four-row array. Retail really is 48 bytes
 // (gTrackSelectIDs = 0x801268E8, gFFLUnlocked = 0x80126918), so the console
@@ -428,14 +417,7 @@ UNUSED s32 D_801268E4;
 // real, drifting corruption. The fifth row is never read back (every read
 // indexes by gTrackSelectCursorY, which stops at 3), so giving the write a row
 // of its own is behaviour-neutral and keeps the stray store in bounds.
-#ifdef TARGET_PC
 s16 gTrackSelectIDs[5][6]; // Track Select values?
-#else
-s16 gTrackSelectIDs[4][6]; // Track Select values?
-#endif
-#else
-s16 gTrackSelectIDs[4][6]; // Track Select values?
-#endif
 s16 gFFLUnlocked;
 UNUSED s32 D_8012691C;
 UNUSED s32 D_80126920;
@@ -1244,7 +1226,6 @@ s16 gTrackSelectObjectIndices[14] = {
 
 s16 gTrackSelectImageIndices[4] = { 0x04, 0x05, 0x06, -1 };
 
-
 s16 gTrackSelectPreviewObjectIndices[36] = { 0x0004, 0x0000, 0x0001, 0x0002, 0x0003, 0x0018, 0x0019, 0x001A, 0x001B,
                                              0x001C, 0x001D, 0x0024, 0x0025, 0x0026, 0x0027, 0x0028, 0x0029, 0x002A,
                                              0x002B, 0x001E, 0x001F, 0x0020, 0x0021, 0x0022, 0x0023, 0x002C, 0x002D,
@@ -1820,7 +1801,6 @@ char *gCreditsArray[87] = {
     NULL,
     NULL };
 
-
 // clang-format off
 
 // Developer's best times for each track
@@ -1986,13 +1966,11 @@ void load_menu_text(s32 language) {
 
     if (gMenuTextLangTable == NULL) {
         gMenuTextLangTable = (s32 *) asset_table_load(ASSET_MENU_TEXT_TABLE);
-#ifdef TARGET_PC
         {
             // Big-endian table: [0] string count, [1..4] per-language offsets.
             extern void pc_swap32_buf(void *buf, u32 numBytes);
             pc_swap32_buf(gMenuTextLangTable, asset_table_size(ASSET_MENU_TEXT_TABLE));
         }
-#endif
     }
 
     switch (language) {
@@ -2019,7 +1997,6 @@ void load_menu_text(s32 language) {
         return;
     }
 
-#ifdef TARGET_PC
     {
         // The blob leads with a big-endian string-offset table and the strings
         // follow. On N64 it is loaded over the pointer table itself and the
@@ -2037,20 +2014,6 @@ void load_menu_text(s32 language) {
             gMenuText[langIndex] = (offset == 0xFFFFFFFF) ? NULL : (char *) sPcMenuTextBlob + offset;
         }
     }
-#else
-    asset_load(ASSET_MENU_TEXT, (u32) temp, langIndex, size);
-
-    // TODO: Find a way to clean up the ugly hacks.
-    // Fill up the lookup table with proper RAM addresses
-    for (langIndex = 0; langIndex < gMenuTextLangTable[0]; langIndex++) {
-        menuText = (char **) gMenuText[langIndex];
-        if ((((s32) menuText) & 0xFFFFFFFF) == 0xFFFFFFFF) {
-            gMenuText[langIndex] = NULL;
-        } else {
-            gMenuText[langIndex] = &((char *) gMenuText)[(s32) (fake = menuText)];
-        }
-    }
-#endif
 
     menuText = gMenuText;
     gAudioOutputStrings[0] = menuText[ASSET_MENU_TEXT_STEREO];                       // "STEREO"
@@ -3386,9 +3349,7 @@ void func_80083098(f32 updateRateF) {
  * Load the title textures and reset player allocation.
  * Set the current level and demo.
  */
-#ifdef TARGET_PC
 
-#endif
 void menu_title_screen_init(void) {
     s32 i;
     s32 numberOfPlayers;
@@ -3425,22 +3386,14 @@ void menu_title_screen_init(void) {
     set_time_trial_enabled(FALSE);
     gTitleDemoIndex = 0;
     sTitleScreenDemoIds = (s8 *) get_misc_asset(ASSET_MISC_TITLE_SCREEN_DEMO_IDS);
-#ifdef TARGET_PC
     numberOfPlayers = sTitleScreenDemoIds[gTitleDemoIndex + DEMO_PLAYER_COUNT];
-#else
-    numberOfPlayers = sTitleScreenDemoIds[DEMO_PLAYER_COUNT];
-#endif
     gTitleDemoTimer = 0;
     if (numberOfPlayers == -2) {
         numberOfPlayers = 0;
         gTitleDemoTimer = 600;
     }
-#ifdef TARGET_PC
     load_level_for_menu(sTitleScreenDemoIds[gTitleDemoIndex + DEMO_LEVEL_ID], numberOfPlayers,
                         sTitleScreenDemoIds[gTitleDemoIndex + DEMO_CUTSCENE_ID]);
-#else
-    load_level_for_menu(sTitleScreenDemoIds[DEMO_LEVEL_ID], numberOfPlayers, sTitleScreenDemoIds[DEMO_CUTSCENE_ID]);
-#endif
     D_801268D8 = 0;
     gOpeningNameID = 0;
     D_801268DC = 0;
@@ -3558,11 +3511,7 @@ s32 menu_title_screen_loop(s32 updateRate) {
             gTitleDemoTimer = 1500;
         }
         load_level_for_menu(demo[DEMO_LEVEL_ID], playerCount, demo[DEMO_CUTSCENE_ID]);
-#ifdef TARGET_PC
             if (sTitleScreenDemoIds[gTitleDemoIndex] == sTitleScreenDemoIds[DEMO_LEVEL_ID]) {
-#else
-        if (sTitleScreenDemoIds[gTitleDemoIndex] == sTitleScreenDemoIds[DEMO_LEVEL_ID]) {
-#endif
             D_801268D8 = 0.0f;
             gOpeningNameID = 0;
             D_801268DC = 0;
@@ -3602,15 +3551,11 @@ s32 menu_title_screen_loop(s32 updateRate) {
         } else if (gTitleAudioCounter < 5.0f) {
             music_volume_set((s32) ((f32) sMenuMusicVolume * (gTitleAudioCounter - 4.0f)));
         } else {
-#ifdef TARGET_PC
             // Retail reads byte 3 of the s32 to grab its low byte (= the full
             // restore volume, 0x7F) — correct only on big-endian. On little-endian
             // PC byte 3 is the high byte (0), which sets music volume to 0 and
             // leaves it there. Read the low byte value-neutrally instead.
             music_volume_set((u8) sMenuMusicVolume);
-#else
-            music_volume_set(*((s8 *) &sMenuMusicVolume + 3));
-#endif
         }
     }
     if (gTitleRevealTimer == 0) {
@@ -7683,13 +7628,9 @@ void fileselect_render(UNUSED s32 updateRate) {
     u32 colour;
     s32 i;
     UNUSED s32 pad[3];
-#ifdef TARGET_PC
     // Also receives the untrimmed menu-text names ("GAME A" etc.) for unstarted
     // slots, which are longer than SavefileInfo.name.
     char trimmedFilename[16];
-#else
-    char trimmedFilename[4];
-#endif
 
     if (osTvType == OS_TV_TYPE_PAL) {
         yPos = 12;
@@ -8711,10 +8652,8 @@ s32 func_8008F618(Gfx **dList, Mtx **mtx) {
     camDisableUserView(0, TRUE);
     camera_init_tracks_menu(dList, mtx);
     mtx_ortho(dList, mtx);
-#ifdef TARGET_PC
     // These vertices are the full-screen patterned backdrop, not an object or HUD layer.
     pc_gfx_mtx_tag((*mtx) - 1, gTrackSelectBgVertices, PC_MTX_SITE_WIDE_SURFACE);
-#endif
     rendermode_reset(dList);
     gDPPipeSync((*dList)++);
     sp7C = gTrackSelectX;
@@ -8844,12 +8783,7 @@ void trackmenu_render_2D(s32 x, s32 y, char *hubName, char *trackName, s32 rectO
         opacity = 255;
     }
     if (hubName != gTrackMenuHubName) {
-#ifdef TARGET_PC
         if (hubName == level_name(level_world_id(WORLD_SNOWFLAKE_MOUNTAIN))) {
-#else
-        temp = (s32) level_name(level_world_id(WORLD_SNOWFLAKE_MOUNTAIN));
-        if ((s32) hubName == temp) {
-#endif
             set_kerning(TRUE);
         }
         set_text_colour(0, 0, 0, 255, opacity / 2);
@@ -9275,21 +9209,10 @@ void trackmenu_setup_render(UNUSED s32 updateRate) {
             }
         }
 #endif
-#ifdef TARGET_PC
-#ifndef TARGET_PC
-        i = (s32) level_name(gTrackIdForPreview);
-#endif
-#else
-        i = (s32) level_name(gTrackIdForPreview);
-#endif
         set_text_font(ASSET_FONTS_BIGFONT);
         set_text_colour(192, 192, 255, 0, sMenuGuiOpacity);
         set_text_background_colour(0, 0, 0, 0);
-#ifdef TARGET_PC
         draw_text(&sMenuCurrDisplayList, POS_CENTRED, 43, level_name(gTrackIdForPreview), ALIGN_MIDDLE_CENTER);
-#else
-        draw_text(&sMenuCurrDisplayList, POS_CENTRED, 43, (char *) i, ALIGN_MIDDLE_CENTER); // Draw track name?
-#endif
         sp84 = gOptionBlinkTimer * 8;
         if (sp84 > 255) {
             sp84 = 511 - sp84;
@@ -13854,24 +13777,12 @@ void menu_asset_free(s32 assetID) {
                 mempool_free_timer(2);
             } else {
                 if ((*gAssetsMenuElementIds)[assetID] & ASSET_MASK_SPRITE) {
-#ifdef TARGET_PC
                     sprite_free((Sprite *) gMenuAssets[assetID]);
-#else
-                    sprite_free((Sprite *) (u32) gMenuAssets[assetID]);
-#endif
                 } else {
                     if ((*gAssetsMenuElementIds)[assetID] & ASSET_MASK_OBJECT) {
-#ifdef TARGET_PC
                         free_object((Object *) gMenuAssets[assetID]);
-#else
-                        free_object((Object *) (u32) gMenuAssets[assetID]);
-#endif
                     } else {
-#ifdef TARGET_PC
                         free_3d_model((ModelInstance *) gMenuAssets[assetID]);
-#else
-                        free_3d_model((ModelInstance *) (u32) gMenuAssets[assetID]);
-#endif
                     }
                 }
             }
@@ -13915,13 +13826,11 @@ void menu_asset_load(s32 assetID) {
 
     if (*gAssetsMenuElementIds == NULL) {
         *gAssetsMenuElementIds = (s16 *) asset_table_load(ASSET_MENU_ELEMENT_IDS);
-#ifdef TARGET_PC
         {
             // Big-endian s16 id table (helper in linux/reimpl.c).
             extern void pc_swap16_buf(void *buf, u32 numBytes);
             pc_swap16_buf(*gAssetsMenuElementIds, asset_table_size(ASSET_MENU_ELEMENT_IDS));
         }
-#endif
         for (gMenuElementIdCount = 0; (*gAssetsMenuElementIds)[gMenuElementIdCount] != -1; gMenuElementIdCount++) {}
         gMenuObjectsCount = 0;
         for (i = 0; i < gMenuElementIdCount; i++) {
@@ -14042,14 +13951,12 @@ void menu_element_render(s32 elementID) {
                     gDPSetEnvColor(sMenuCurrDisplayList++, 255, 255, 255, 0);
                     mtx_cam_push(&sMenuCurrDisplayList, &sMenuCurrHudMat, &gMenuImages[elementID].trans,
                                  gTrackSelectWoodFrameHeightScale, 0);
-#ifdef TARGET_PC
                     // Elements 4-6 are the wood/iron/gold frames around the widened course-preview
                     // viewport. Element 7 is the vehicle icon frame and must keep its original aspect.
                     if (elementID >= 4 && elementID <= 6) {
                         pc_gfx_mtx_tag(sMenuCurrHudMat - 1, &gMenuImages[elementID].trans,
                                        PC_MTX_SITE_WIDE_SURFACE);
                     }
-#endif
                     model = gMenuAssets[gMenuImages[elementID].trans.spriteID];
                     render_track_selection_viewport_border(model->objModel);
                     mtx_pop(&sMenuCurrDisplayList);

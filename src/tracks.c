@@ -25,16 +25,10 @@
 #include "video.h"
 #include "waves.h"
 #include "weather.h"
-#ifdef TARGET_PC
 #include "pc_swap.h"
-#endif
 
 // Maximum size for a level model is 522.5 KiB
-#ifdef TARGET_PC
 #define LEVEL_MODEL_MAX_SIZE 0xA0000 // host layout adds a header delta plus segment/texture tables
-#else
-#define LEVEL_MODEL_MAX_SIZE 0x82A00
-#endif
 #define LEVEL_SEGMENT_MAX 128
 
 #define FLAGS_8002E904 (RENDER_HIDDEN | RENDER_DECAL | RENDER_WATER | RENDER_NO_SHADOW)
@@ -157,11 +151,7 @@ ShadowHeapProperties *gCurrShadowHeapData;
 s32 gShadowTail;           // Position in the heap the shadow data ends at.
 s32 gNewShadowTriCount;    // xOffset?
 s32 gNewShadowVtxCount;    // yOffset?
-#ifdef TARGET_PC
 ptrint_t *gCollisionCandidates; // Allocated 0x7D0 (N64); pointer-sized entries on the host
-#else
-s32 *gCollisionCandidates; // Allocated 0x7D0
-#endif
 s8 *gCollisionSurfaces;
 s32 gNumCollisionCandidates;
 s32 gScenePlayerViewports;
@@ -242,41 +232,27 @@ void init_track(u32 geometry, u32 skybox, s32 numberOfPlayers, Vehicle vehicle, 
         i = numberOfPlayers + 1;
     }
 
-#ifdef TARGET_PC
     stubbed_printf("pre waves_init waveCount=%d\n", gWaveBlockCount);
-#endif
     if (gWaveBlockCount) {
         waves_init(gCurrentLevelModel, gCurrentLevelHeader2, i);
     }
-#ifdef TARGET_PC
     stubbed_printf("post waves_init waveCount=%d\n", gWaveBlockCount);
-#endif
 
     cam_set_layout(numberOfPlayers);
     skydome_spawn(skybox);
-#ifdef TARGET_PC
     stubbed_printf("post skydome_spawn\n");
-#endif
     gTrackTexAnimOffset = 0;
     gTrackTexAnimFlags = RENDER_TEX_ANIM;
     path_enable();
     track_spawn_objects(arg6, 0);
-#ifdef TARGET_PC
     stubbed_printf("post track_spawn_objects arg6\n");
-#endif
     track_spawn_objects(collectables, 1);
-#ifdef TARGET_PC
     stubbed_printf("post track_spawn_objects collectables\n");
-#endif
     gScenePlayerViewports = numberOfPlayers;
     track_setup_racers(vehicle, entranceId, numberOfPlayers);
-#ifdef TARGET_PC
     stubbed_printf("post track_setup_racers\n");
-#endif
     racerfx_alloc(72, 64);
-#ifdef TARGET_PC
     stubbed_printf("post racerfx_alloc\n");
-#endif
 
     if (geometry == 0 && entranceId == 0) {
         transition_begin(&gCircleFadeToBlack);
@@ -294,9 +270,7 @@ void init_track(u32 geometry, u32 skybox, s32 numberOfPlayers, Vehicle vehicle, 
         gShadowHeapTris[i] = (Triangle *) mempool_alloc_safe(sizeof(Triangle) * 800, COLOUR_TAG_YELLOW);
         gShadowHeapVerts[i] = (Vertex *) mempool_alloc_safe(sizeof(Vertex) * 2000, COLOUR_TAG_YELLOW);
     }
-#ifdef TARGET_PC
     stubbed_printf("post shadow heap alloc\n");
-#endif
 
     gShadowHeapFlip = 0;
     shadow_update(SHADOW_SCENERY, SHADOW_SCENERY, LOGIC_NULL);
@@ -305,21 +279,15 @@ void init_track(u32 geometry, u32 skybox, s32 numberOfPlayers, Vehicle vehicle, 
     shadow_update(SHADOW_SCENERY, SHADOW_SCENERY, LOGIC_NULL);
     shadow_update(SHADOW_ACTORS, SHADOW_ACTORS, LOGIC_NULL);
     gShadowHeapFlip = 0;
-#ifdef TARGET_PC
     stubbed_printf("post shadow_update\n");
-#endif
     if (gCurrentLevelHeader2->useVoid) {
         gVoidColourR = gCurrentLevelHeader2->voidColour.red;
         gVoidColourG = gCurrentLevelHeader2->voidColour.green;
         gVoidColourB = gCurrentLevelHeader2->voidColour.blue;
         void_init(numberOfPlayers + 1);
-#ifdef TARGET_PC
         stubbed_printf("post void_init\n");
-#endif
     }
-#ifdef TARGET_PC
     stubbed_printf("init_track end\n");
-#endif
 }
 
 /**
@@ -533,11 +501,7 @@ void void_init(s32 viewportCount) {
 
         D_8011D47C = (s8 *) ptr;
         // Align by 8
-#ifdef TARGET_PC
         ptr = (u8 *) ((uintptr_t) (ptr + sp2C + 8) & ~7);
-#else
-        ptr = (u8 *) ((s32) (ptr + sp2C + 8) & ~7);
-#endif
 
         for (i = 0; i < viewportCount; i++) {
             gVoidMesh[i].tris[0] = (Triangle *) ptr;
@@ -1128,11 +1092,7 @@ s32 func_80027568(void) {
     f32 camDist;
     f32 scalingFactor;
     s32 curViewport;
-#ifdef TARGET_PC
     ptrint_t flipSide;
-#else
-    s32 flipSide;
-#endif
     s32 numRacers; // spC4
     s32 i;
     s32 j;
@@ -1173,17 +1133,9 @@ s32 func_80027568(void) {
     ret = FALSE;
     for (var_t4 = 0; var_t4 < gNumCollisionCandidates && ret == FALSE; var_t4++) {
         flipSide = gCollisionCandidates[var_t4];
-#ifdef TARGET_PC
         if (COLLISION_ENTRY_IS_SEGMENT(flipSide)) {
-#else
-        if (flipSide > 0) {
-#endif
             // this is segment Entry
-#ifdef TARGET_PC
             segment = COLLISION_ENTRY_SEGMENT(flipSide);
-#else
-            segment = (LevelModelSegment *) PHYS_TO_K0(flipSide);
-#endif
         } else {
             colNode = (CollisionNode *) flipSide;
             curViewport = colNode->colPlaneIndex << 2;
@@ -1947,13 +1899,8 @@ void render_level_segment(s32 segmentId, s32 nonOpaque) {
     s32 renderBatch;
     s32 numberVertices;
     s32 numberTriangles;
-#ifdef TARGET_PC
     ptrint_t vertices;
     ptrint_t triangles;
-#else
-    s32 vertices;
-    s32 triangles;
-#endif
     s32 color;
     s32 isInvisible;
     s32 levelHeaderIndex;
@@ -1963,15 +1910,7 @@ void render_level_segment(s32 segmentId, s32 nonOpaque) {
     s32 endPos;
     s32 batchFlags;
     s32 textureFlags;
-#ifdef TARGET_PC
     //! @bug: batchInfo is uninitalized (the result is recomputed below; skipped on the host)
-#ifndef TARGET_PC
-    numberVertices = (batchInfo + 1)->verticesOffset - batchInfo->verticesOffset;
-#endif
-#else
-    //! @bug: batchInfo is uninitalized
-    numberVertices = (batchInfo + 1)->verticesOffset - batchInfo->verticesOffset;
-#endif
     segment = &gCurrentLevelModel->segments[segmentId];
     sp78 = (nonOpaque && gWaveBlockCount) ? waves_block_hq(segment) : 0;
     if (nonOpaque) {
@@ -2016,17 +1955,9 @@ void render_level_segment(s32 segmentId, s32 nonOpaque) {
         do { // Fakematch
             numberVertices = (batchInfo + 1)->verticesOffset - batchInfo->verticesOffset;
             numberTriangles = (batchInfo + 1)->facesOffset - numberTriangles;
-#ifdef TARGET_PC
             vertices = (ptrint_t) &segment->vertices[batchInfo->verticesOffset];
-#else
-            vertices = (s32) &segment->vertices[batchInfo->verticesOffset];
-#endif
         } while (0);
-#ifdef TARGET_PC
         triangles = (ptrint_t) &segment->triangles[batchInfo->facesOffset];
-#else
-        triangles = (s32) &segment->triangles[batchInfo->facesOffset];
-#endif
         texOffset = batchInfo->texOffset << 14;
         levelHeaderIndex = (batchFlags >> 28) & 7;
         if (levelHeaderIndex != (batchInfo->verticesOffset * 0)) {
@@ -2492,11 +2423,7 @@ UNUSED void func_8002AC00(s32 arg0, s32 arg1, s32 arg2) {
 /**
  * Writes back the track collision data pointers.
  */
-#ifdef TARGET_PC
 UNUSED void get_collision_candidate_data(s32 *numCollsionCandidates, ptrint_t **collisionCandidates,
-#else
-UNUSED void get_collision_candidate_data(s32 *numCollsionCandidates, s32 **collisionCandidates,
-#endif
                                          s8 **collisionSurfaces) {
     *numCollsionCandidates = gNumCollisionCandidates;
     *collisionCandidates = gCollisionCandidates;
@@ -2777,19 +2704,11 @@ s32 func_8002B9BC(Object *obj, f32 *arg1, Vec3f *arg2, s32 arg3) {
     }
 }
 
-#ifdef TARGET_PC
 /**
  * Searches for intersecting surfaces, then returns the Y values of all the intersecting points, in order.
  * Writes at most maxYOut values to yOut; surfaces beyond that are dropped.
  */
 s32 collision_get_y(s32 levelSegmentIndex, f32 xIn, f32 zIn, f32 *yOut, s32 maxYOut) {
-#else
-/**
- * Searches for intersecting surfaces, then returns the Y values of all the intersecting points, in order.
- * There is no limit for surfaces returned, so not feeding a large enough yOut array could cause problems.
- */
-s32 collision_get_y(s32 levelSegmentIndex, f32 xIn, f32 zIn, f32 *yOut) {
-#endif
     LevelModelSegment *currentSegment;
     LevelModelSegmentBoundingBox *currentBoundingBox;
     Triangle *tri;
@@ -2896,11 +2815,7 @@ s32 collision_get_y(s32 levelSegmentIndex, f32 xIn, f32 zIn, f32 *yOut) {
                     tempVec4f.y = currentSegment->collisionPlanes[4 * temp + 1];
                     tempVec4f.z = currentSegment->collisionPlanes[4 * temp + 2];
                     tempVec4f.w = currentSegment->collisionPlanes[4 * temp + 3];
-#ifdef TARGET_PC
                     if (tempVec4f.y != 0.0 && yOutCount < maxYOut) {
-#else
-                    if (tempVec4f.y != 0.0) {
-#endif
                         yOut[yOutCount] = -(((tempVec4f.x * xIn) + (tempVec4f.z * zIn) + tempVec4f.w) / tempVec4f.y);
                         yOutCount++;
                     }
@@ -2924,7 +2839,6 @@ s32 collision_get_y(s32 levelSegmentIndex, f32 xIn, f32 zIn, f32 *yOut) {
     return yOutCount;
 }
 
-#ifdef TARGET_PC
 // Decompressed level models are big-endian. The 0x4C-byte LevelModel header and
 // the 0x44-byte LevelModelSegment records both carry pointer slots, so on the
 // host the image is placed LEVEL_MODEL_PC_DELTA bytes into the track heap, the
@@ -3056,15 +2970,10 @@ static void pc_swap_level_segment_contents(LevelModelSegment *seg) {
     }
 }
 
-#endif
 // Loads a level track from the index in the models table.
 void generate_track(s32 modelId) {
-#ifdef TARGET_PC
     s32 i, k;
     ptrint_t j;
-#else
-    s32 i, j, k;
-#endif
     s32 temp_s4;
     s32 temp;
     s32 mdl;
@@ -3072,21 +2981,15 @@ void generate_track(s32 modelId) {
     set_texture_colour_tag(COLOUR_TAG_GREEN);
     gTrackModelHeap = mempool_alloc_safe(LEVEL_MODEL_MAX_SIZE, COLOUR_TAG_YELLOW);
     gCurrentLevelModel = gTrackModelHeap;
-#ifdef TARGET_PC
     gCollisionCandidates = mempool_alloc_safe(MAX_COLLISION_CANDIDATES * sizeof(ptrint_t), COLOUR_TAG_YELLOW);
-#else
-    gCollisionCandidates = mempool_alloc_safe(MAX_COLLISION_CANDIDATES * 4, COLOUR_TAG_YELLOW);
-#endif
     gCollisionSurfaces = mempool_alloc_safe(MAX_COLLISION_CANDIDATES, COLOUR_TAG_YELLOW);
     gNumCollisionCandidates = 0;
     gLevelModelTable = (s32 *) asset_table_load(ASSET_LEVEL_MODELS_TABLE);
-#ifdef TARGET_PC
     {
         // Big-endian asset offset table (helper in linux/reimpl.c).
         extern void pc_swap32_buf(void *buf, u32 numBytes);
         pc_swap32_buf(gLevelModelTable, asset_table_size(ASSET_LEVEL_MODELS_TABLE));
     }
-#endif
 
     for (i = 0; gLevelModelTable[i] != -1; i++) {}
     i--;
@@ -3097,27 +3000,10 @@ void generate_track(s32 modelId) {
     mdl = gLevelModelTable[modelId];
     temp_s4 = gLevelModelTable[modelId + 1] - mdl;
 
-#ifdef TARGET_PC
     pc_load_level_model(gCurrentLevelModel, mdl, temp_s4);
     stubbed_printf("post gzip_inflate segs=%d tex=%d\n", gCurrentLevelModel->numberOfSegments,
                    gCurrentLevelModel->numberOfTextures);
-#else
-    temp = (s32) gCurrentLevelModel;
-    temp += (LEVEL_MODEL_MAX_SIZE - temp_s4);
-    temp -= ((s32) temp % 16); // Align to 16-byte boundary.
-
-    asset_load(ASSET_LEVEL_MODELS, temp, mdl, temp_s4);
-    gzip_inflate((u8 *) temp, (u8 *) gCurrentLevelModel);
-#endif
     mempool_free(gLevelModelTable); // Done with the level models table, so free it.
-
-#ifdef TARGET_PC
-#ifndef TARGET_PC
-    mdl = (s32) gCurrentLevelModel;
-#endif
-#else
-    mdl = (s32) gCurrentLevelModel;
-#endif
 
     LOCAL_OFFSET_TO_RAM_ADDRESS(TextureInfo *, gCurrentLevelModel->textures);
     LOCAL_OFFSET_TO_RAM_ADDRESS(LevelModelSegment *, gCurrentLevelModel->segments);
@@ -3126,55 +3012,30 @@ void generate_track(s32 modelId) {
     LOCAL_OFFSET_TO_RAM_ADDRESS(u8 *, gCurrentLevelModel->segmentsBitfields);
     LOCAL_OFFSET_TO_RAM_ADDRESS(BspTreeNode *, gCurrentLevelModel->segmentsBspTree);
 
-#ifdef TARGET_PC
-
-#endif
     for (k = 0; k < gCurrentLevelModel->numberOfSegments; k++) {
         LOCAL_OFFSET_TO_RAM_ADDRESS(Vertex *, gCurrentLevelModel->segments[k].vertices);
         LOCAL_OFFSET_TO_RAM_ADDRESS(Triangle *, gCurrentLevelModel->segments[k].triangles);
         LOCAL_OFFSET_TO_RAM_ADDRESS(TriangleBatchInfo *, gCurrentLevelModel->segments[k].batches);
         LOCAL_OFFSET_TO_RAM_ADDRESS(CollisionFacetPlanes *, gCurrentLevelModel->segments[k].collisionFacets);
-#ifdef TARGET_PC
         pc_swap_level_segment_contents(&gCurrentLevelModel->segments[k]);
-#endif
     }
     for (k = 0; k < gCurrentLevelModel->numberOfTextures; k++) {
         gCurrentLevelModel->textures[k].texture =
             load_texture(((s32) gCurrentLevelModel->textures[k].texture) | 0x8000);
     }
-#ifdef TARGET_PC
     j = (ptrint_t) gCurrentLevelModel + gCurrentLevelModel->modelSize;
-#else
-    j = (s32) gCurrentLevelModel + gCurrentLevelModel->modelSize;
-#endif
     for (k = 0; k < gCurrentLevelModel->numberOfSegments; k++) {
         gCurrentLevelModel->segments[k].unk10 = (s16 *) j;
-#ifdef TARGET_PC
         j = (ptrint_t) align16(((u8 *) (gCurrentLevelModel->segments[k].numberOfTriangles * 2)) + j);
-#else
-        j = (s32) align16(((u8 *) (gCurrentLevelModel->segments[k].numberOfTriangles * 2)) + j);
-#endif
         gCurrentLevelModel->segments[k].collisionPlanes = (f32 *) j;
-#ifdef TARGET_PC
         j = (ptrint_t) & ((u8 *) j)[track_init_collision(&gCurrentLevelModel->segments[k])];
-#else
-        j = (s32) & ((u8 *) j)[track_init_collision(&gCurrentLevelModel->segments[k])];
-#endif
         func_8002C954(&gCurrentLevelModel->segments[k], &gCurrentLevelModel->segmentsBoundingBoxes[k], k);
         gCurrentLevelModel->segments[k].unk30 = 0;
         gCurrentLevelModel->segments[k].unk34 = (s16 *) j;
         func_8002C71C(&gCurrentLevelModel->segments[k]);
-#ifdef TARGET_PC
         j = (ptrint_t) align16(((u8 *) (gCurrentLevelModel->segments[k].unk32 * 2)) + j);
-#else
-        j = (s32) align16(((u8 *) (gCurrentLevelModel->segments[k].unk32 * 2)) + j);
-#endif
     }
-#ifdef TARGET_PC
     temp_s4 = (s32) (j - (ptrint_t) gCurrentLevelModel);
-#else
-    temp_s4 = j - (s32) gCurrentLevelModel;
-#endif
     if (temp_s4 > LEVEL_MODEL_MAX_SIZE) {
         rmonPrintf("ERROR!! TrackMem overflow .. %d\n", temp_s4);
     }
@@ -3182,13 +3043,9 @@ void generate_track(s32 modelId) {
     mempool_free(gTrackModelHeap);
     mempool_alloc_fixed(temp_s4, (u8 *) gTrackModelHeap, COLOUR_TAG_YELLOW);
     mempool_free_timer(2);
-#ifdef TARGET_PC
     stubbed_printf("pre minimap_init\n");
-#endif
     minimap_init(gCurrentLevelModel);
-#ifdef TARGET_PC
     stubbed_printf("post minimap_init\n");
-#endif
 
     for (i = 0; i < gCurrentLevelModel->numberOfSegments; i++) {
         for (temp_s4 = 0; temp_s4 < gCurrentLevelModel->segments[i].numberOfBatches; temp_s4++) {
@@ -3207,9 +3064,7 @@ void generate_track(s32 modelId) {
         }
     }
     set_texture_colour_tag(COLOUR_TAG_MAGENTA);
-#ifdef TARGET_PC
     stubbed_printf("generate_track end\n");
-#endif
 }
 
 void func_8002C71C(LevelModelSegment *segment) {
@@ -3526,18 +3381,10 @@ void trackMakeAbsolute(unk8002D30C_a0 *arg0, s32 arg1) {
             return;
         }
         if (arg0->unk04) {
-#ifdef TARGET_PC
             arg0->unk04 = (unk8002D30C_a0 *) ((ptrint_t) arg0->unk04 + arg1);
-#else
-            arg0->unk04 = (unk8002D30C_a0 *) ((s32) arg0->unk04 + arg1);
-#endif
         }
         if (arg0->unk08) {
-#ifdef TARGET_PC
             arg0->unk08 = (unk8002D30C_a0 *) ((ptrint_t) arg0->unk08 + arg1);
-#else
-            arg0->unk08 = (unk8002D30C_a0 *) ((s32) arg0->unk08 + arg1);
-#endif
         }
 
         trackMakeAbsolute(arg0->unk04, arg1);
@@ -4159,13 +4006,9 @@ void func_8002F2AC(void) {
     }
 
     for (i = 0; i < ARRAY_COUNT(D_8011B320); i++) {
-#ifdef TARGET_PC
         // Bucket stride: the N64 source spells the 32-entry stride as sizeof(unk8011B330),
         // which is 0x20 there but larger on a host with 8-byte pointers.
         for (j = 0, k = i * 0x20; j < D_8011B320[i]; j++, k++) {
-#else
-        for (j = 0, k = i * sizeof(unk8011B330); j < D_8011B320[i]; j++, k++) {
-#endif
             var_v0 = D_8011B330[k].unkC;
             temp_f16 = D_8011B330[k].x * var_v0->x;
             temp_f12 = D_8011B330[k].z * var_v0->z;
@@ -4180,20 +4023,12 @@ void func_8002F440(void) {
     Triangle *tri;
     Vertex *vert;
     s32 alpha;
-#ifdef TARGET_PC
     // These must hold up to 7 vertices: func_8002FF6C clips a triangle against 4
     // planes, and unk0 (the loop bound writing these) can reach 3+4=7. They were
     // sized [6], and the overflow corrupted gcc's stack frame (infinite loop).
     s16 sp90[8];
-#else
-    s16 sp90[6];
-#endif
     s32 var_s2;
-#ifdef TARGET_PC
     s16 sp80[8];
-#else
-    s16 sp80[6];
-#endif
     f32 temp_f18;
     f32 yRotCos;
     f32 yRotSin;

@@ -12,7 +12,6 @@
 #include "printf.h"
 #include "racer.h"
 #include "types.h"
-#ifdef TARGET_PC
 #include "pc_asset.h"
 
 // Golden-trace detail events (DKR_TRACE_DETAIL=1): see linux/trace.h.
@@ -26,7 +25,6 @@ extern void pc_trace_event(const char *fmt, ...);
 // signature-mismatch trap on wasm.
 #define log dkr_log
 f32 log(f32 x);
-#endif
 
 /************ .data ************/
 
@@ -81,18 +79,14 @@ VehicleSoundData *racer_sound_init(s32 characterId, s32 vehicleId) {
     // There is no type check for vehicleId, so passing an unsupported type (e.g. VEHICLE_LOOPDELOOP)
     // will cause out-of-bounds access and undefined behavior.
     table = (s32 *) asset_table_load(ASSET_AUDIO_TABLE);
-#ifdef TARGET_PC
     pc_swap32_buf(table, asset_table_size(ASSET_AUDIO_TABLE)); // big-endian sub-table
-#endif
     assetOffset = table[ASSET_AUDIO_7] + (vehicleId * 10 + characterId) * sizeof(VehicleSoundAsset);
     asset = (VehicleSoundAsset *) mempool_alloc_safe(sizeof(VehicleSoundAsset), COLOUR_TAG_CYAN);
     asset_load(ASSET_AUDIO, (uintptr_t) asset, assetOffset, sizeof(VehicleSoundAsset));
-#ifdef TARGET_PC
     // Big-endian asset: swap the u16/s16 fields in place (the u8 fields need nothing).
     PC_SWAP16_AT(asset, soundId, sizeof(asset->soundId));
     PC_SWAP16_AT(asset, pitchLevels, sizeof(asset->pitchLevels));
     PC_SWAP16_AT(asset, pitchLateralSpeedScale, 7 * sizeof(s16)); // pitchLateralSpeedScale..thrustPitchSpeedScale
-#endif
 
     soundData = (VehicleSoundData *) mempool_alloc_safe(sizeof(VehicleSoundData), COLOUR_TAG_CYAN);
 
@@ -868,9 +862,7 @@ void racer_sound_update_all(Object **racerObjs, s32 numRacers, Camera *cameras, 
                 // If volume is above threshold, update idle sound parameters.
                 if (volume >= 16) {
                     if (gRacerSound->engineIdleSoundHandle == NULL) {
-                        #ifdef TARGET_PC
                         pc_trace_event("vehicle_sound snd=%d", (int) gRacerSound->engineIdleSound);
-#endif
                         sound_play_direct(gRacerSound->engineIdleSound, &gRacerSound->engineIdleSoundHandle);
                     }
                     pitch = gRacerSound->engineIdleMaxPitch / 100.0f + ((f32) gRacerSound->engineIdleMinPitch / 100.0f -
@@ -919,9 +911,7 @@ void racer_sound_update_all(Object **racerObjs, s32 numRacers, Camera *cameras, 
                     } else {
                         // Otherwise, start or update the engine sound parameters.
                         if (gRacerSound->soundHandle[j] == NULL) {
-                            #ifdef TARGET_PC
                             pc_trace_event("vehicle_sound snd=%d", (int) gRacerSound->soundId[j]);
-#endif
                             sound_play_direct(gRacerSound->soundId[j], &gRacerSound->soundHandle[j]);
                         }
                         if (gRacerSound->soundHandle[j] != NULL) {
@@ -1103,9 +1093,7 @@ void racer_sound_update_all(Object **racerObjs, s32 numRacers, Camera *cameras, 
                         soundData->backgroundState = VEHICLE_BACKGROUND_PLAYING;
                     } else {
                         if (soundData->soundHandle[0] == NULL) {
-                            #ifdef TARGET_PC
                             pc_trace_event("vehicle_sound snd=%d", (int) soundData->soundId[0]);
-#endif
                             sound_play_direct(soundData->soundId[0], &soundData->soundHandle[0]);
                         }
                         if (soundData->soundHandle[0] != NULL) {

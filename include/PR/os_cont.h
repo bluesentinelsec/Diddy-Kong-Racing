@@ -37,7 +37,6 @@ extern "C" {
 #include <PR/ultratypes.h>
 #include "os_message.h"
 
-
 #if defined(_LANGUAGE_C) || defined(_LANGUAGE_C_PLUS_PLUS)
 
 /**************************************************************************
@@ -49,14 +48,10 @@ extern "C" {
 /*
  * Structure for controllers 
  */
-#ifdef TARGET_PC
 
-#ifdef TARGET_PC
 /* Windows C runtimes define errno as a macro; the pad structs below have a
  * field of that name, so drop the macro for anything that includes this. */
 #undef errno
-#endif
-#endif
 
 typedef struct {
 	u16     type;                   /* Controller Type */
@@ -78,7 +73,6 @@ typedef struct {
 	u8      dataCrc;                /* CRC code for data */
 	u8	errno;
 } OSContRamIo;
-
 
 #endif /* defined(_LANGUAGE_C) || defined(_LANGUAGE_C_PLUS_PLUS) */
 
@@ -171,7 +165,6 @@ typedef struct {
 #define	CONT_ERR_VOICE_WORD		14
 #define	CONT_ERR_VOICE_NO_RESPONSE	15
 
-
 #if defined(_LANGUAGE_C) || defined(_LANGUAGE_C_PLUS_PLUS)
 
 /**************************************************************************
@@ -180,13 +173,11 @@ typedef struct {
  *
  */
 
-
 /**************************************************************************
  *
  * Extern variables
  *
  */
-
 
 /**************************************************************************
  *
@@ -205,7 +196,6 @@ extern s32		osContSetCh(u8);
 #endif
 extern void		osContGetQuery(OSContStatus *);
 extern void		osContGetReadData(OSContPad *);
-
 
 #endif  /* defined(_LANGUAGE_C) || defined(_LANGUAGE_C_PLUS_PLUS) */
 

@@ -12,7 +12,6 @@ u8 *gzip_inflate_output = NULL;
 
 /*******************************/
 
-#ifdef TARGET_PC
 /************ .rodata ************/
 
 /* Tables for deflate from PKZIP's appnote.txt. */
@@ -53,7 +52,6 @@ u16 gzip_mask_bits[17] = {
 
 /*********************************/
 
-#endif
 /************ .bss ************/
 
 u32 gzip_bit_buffer;
@@ -284,7 +282,6 @@ void gzip_huft_build(u32 *b, u32 n, u32 s, u16 *d, u16 *e, huft **t, s32 *m) {
     }
     return;
 }
-#ifdef TARGET_PC
 
 /* Bit-buffer macros for the inflate functions, following the classic gzip
    NEEDBITS/DUMPBITS pattern. Unlike stock gzip there is no input refill
@@ -618,4 +615,3 @@ void gzip_inflate_codes(huft *tl, huft *td, s32 bl, s32 bd) {
     gzip_bit_buffer = b;
     gzip_num_bits = k;
 }
-#endif

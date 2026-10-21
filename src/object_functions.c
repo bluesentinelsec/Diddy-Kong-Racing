@@ -3723,11 +3723,7 @@ void obj_loop_door(Object *doorObj, s32 updateRate) {
         } else {
             door->openDir = DOOR_CLOSED;
             if (door->soundMask != NULL) {
-#ifdef TARGET_PC
                 audspat_point_stop((AudioPoint *) door->soundMask);
-#else
-                audspat_point_stop((AudioPoint *) (s32) door->soundMask);
-#endif
                 door->soundMask = NULL;
             }
         }
@@ -3866,11 +3862,7 @@ void obj_loop_ttdoor(Object *obj, s32 updateRate) {
                                            obj->trans.z_position, AUDIO_POINT_FLAG_1, &ttDoor->soundMask);
         }
     } else if (ttDoor->soundMask != NULL) {
-#ifdef TARGET_PC
         audspat_point_stop((AudioPoint *) ttDoor->soundMask);
-#else
-        audspat_point_stop((AudioPoint *) ((s32) ttDoor->soundMask));
-#endif
         ttDoor->soundMask = NULL;
     }
     obj->interactObj->distance = 0xFF;
@@ -6553,11 +6545,7 @@ void obj_loop_frog(Object *obj, s32 updateRate) {
             obj->z_velocity = frog->hopTargetZ * cosine;
             ignore_bounds_check();
             move_object(obj, obj->x_velocity, 0.0f, obj->z_velocity);
-#ifdef TARGET_PC
             if (collision_get_y(obj->segmentID, obj->trans.x_position, obj->trans.z_position, colY, 8) != 0) {
-#else
-            if (collision_get_y(obj->segmentID, obj->trans.x_position, obj->trans.z_position, colY) != 0) {
-#endif
                 obj->trans.y_position = 0.0f;
                 ignore_bounds_check();
                 move_object(obj, 0.0f, (f32) colY[0], 0.0f);

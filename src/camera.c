@@ -8,9 +8,7 @@
 #include "PRinternal/piint.h"
 #include "PRinternal/viint.h"
 #include "textures_sprites.h"
-#ifdef TARGET_PC
 #include "pc_gfx.h"
-#endif
 #include "tracks.h"
 #include "video.h"
 #include "weather.h"
@@ -32,22 +30,16 @@ s8 gAntiPiracyViewport = FALSE;
 #define SCISSOR_INTERLACE G_SC_NON_INTERLACE
 
 ScreenViewport gScreenViewports[
-#ifdef TARGET_PC
     5
-#else
-    4
-#endif
 ] = {
     { DEFAULT_VIEWPORT },
     { DEFAULT_VIEWPORT },
     { DEFAULT_VIEWPORT },
     { DEFAULT_VIEWPORT },
-#ifdef TARGET_PC
     // viewport_reset() uses camera slot 4 as a full-screen sentinel. The N64
     // layout happened to make the out-of-bounds read benign, but native globals
     // are laid out differently and could turn the reset into a zero-size clip.
     { DEFAULT_VIEWPORT },
-#endif
 };
 
 u32 gViewportWithBG = FALSE;
@@ -119,16 +111,12 @@ f32 gCameraRelPosStackZ[CAMERA_MODEL_STACK_SIZE];
 u16 perspNorm;
 MtxF *gModelMatrixF[CAMERA_MODEL_STACK_SIZE + 1];
 Mtx *gModelMatrix[CAMERA_MODEL_STACK_SIZE + 1];
-#ifdef TARGET_PC
 // Backing store for gModelMatrixF[] (each entry is (MtxF*)&D_80120DA0[i<<4]).
 // Under the float matrix ABI it must be >=8-aligned or those MtxF pointers are
 // 4-aligned and the SH4 fmov.d matrix copy faults on them. N64/fixed builds keep
 // the bare array (matching).
 #ifdef GBI_FLOAT_MTX
 f32 D_80120DA0[CAMERA_MODEL_STACK_SIZE * 16] __attribute__((aligned(8)));
-#else
-f32 D_80120DA0[CAMERA_MODEL_STACK_SIZE * 16];
-#endif
 #else
 f32 D_80120DA0[CAMERA_MODEL_STACK_SIZE * 16];
 #endif
@@ -171,16 +159,6 @@ void cam_init(void) {
     gNoCamShake = FALSE;
     gAdjustViewportHeight = FALSE;
     gAntiPiracyViewport = FALSE;
-
-#ifdef TARGET_PC
-#ifndef TARGET_PC
-    // PI status poll before the raw cart read below — no PI hardware on PC
-    // (linux/reimpl.c's D_B0000578 already answers the read with the magic).
-    WAIT_ON_IOBUSY(stat);
-#endif
-#else
-    WAIT_ON_IOBUSY(stat);
-#endif
 
     // 0xB0000578 is a direct read from the ROM as opposed to RAM
     if (((D_B0000578 & 0xFFFF) & 0xFFFF) != 0x8965) {
@@ -980,9 +958,7 @@ void mtx_ortho(Gfx **dList, Mtx **mtx) {
     gViewportStack[gActiveCameraID + 5].vp.vtrans[1] = height * 2;
     gSPViewport((*dList)++, OS_K0_TO_PHYSICAL(&gViewportStack[gActiveCameraID + 5]));
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_0);
-#ifdef TARGET_PC
     pc_gfx_mtx_tag((*mtx) - 1, &gCameras[gActiveCameraID], PC_MTX_SITE_ORTHO);
-#endif
     gModelMatrixStackPos = 0;
     gMtxOriginID = G_MTX_DKR_INDEX_0;
 
@@ -1008,9 +984,7 @@ void mtx_perspective(Gfx **dList, Mtx **mtx) {
     mtxf_mul(gModelMatrixF[0], &gViewProjMatrixF, &gCurrentModelMatrixF);
     mtxf_to_mtx(&gCurrentModelMatrixF, *mtx);
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_0);
-#ifdef TARGET_PC
     pc_gfx_mtx_tag((*mtx) - 1, &gCameras[gActiveCameraID], PC_MTX_SITE_PERSPECTIVE);
-#endif
     gModelMatrixStackPos = 0;
     gMtxOriginID = G_MTX_DKR_INDEX_0;
 }
@@ -1074,9 +1048,7 @@ void mtx_world_origin(Gfx **dList, Mtx **mtx) {
     mtxf_to_mtx(&gCurrentModelMatrixF, *mtx);
     gModelMatrix[gModelMatrixStackPos] = *mtx;
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), gMtxOriginID);
-#ifdef TARGET_PC
     pc_gfx_mtx_tag((*mtx) - 1, &gCameras[gActiveCameraID], PC_MTX_SITE_ORIGIN);
-#endif
 }
 
 /**
@@ -1156,13 +1128,9 @@ s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, S
         tiltAngle = (tiltAngle * tanX) >> 8;
         frameID = (tanY >> 7) & 0xFF;
         if (frameID > 127) {
-#ifdef TARGET_PC
             // Fires for every back-facing billboard, every frame — pure noise
             // now that stubbed_printf is real. The mirror below handles it.
             // stubbed_printf("CamDo2DSprite FrameNo Overflow !!!\n");
-#else
-            stubbed_printf("CamDo2DSprite FrameNo Overflow !!!\n");
-#endif
             frameID = 255 - frameID;
             tiltAngle += 0x8000;
             result = FALSE;
@@ -1189,9 +1157,7 @@ s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, S
         mtxf_to_mtx(&gCurrentModelMatrixF, *mtx);
         gModelMatrix[gModelMatrixStackPos] = *mtx;
         gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_2);
-#ifdef TARGET_PC
         pc_gfx_mtx_tag((*mtx) - 1, obj, PC_MTX_SITE_BILLBOARD);
-#endif
         // Push an empty vertex because sprite vertices are hardcoded to start from index 1,
         // and billboard mode is not enabled for vehicle parts.
         gSPVertexDKR((*dList)++, OS_K0_TO_PHYSICAL(&gVehiclePartVertex), 1, 0);
@@ -1224,9 +1190,7 @@ s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, S
         mtxf_to_mtx(gModelMatrixF[gModelMatrixStackPos], *mtx);
         gModelMatrix[gModelMatrixStackPos] = *mtx;
         gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_2);
-#ifdef TARGET_PC
         pc_gfx_mtx_tag((*mtx) - 1, obj, PC_MTX_SITE_BILLBOARD);
-#endif
         // Enable billboard mode; subsequent vertices will be rendered relative to the anchor point
         gDkrEnableBillboard((*dList)++);
     }
@@ -1319,9 +1283,7 @@ void render_ortho_triangle_image(Gfx **dList, Mtx **mtx, Vertex **vtx, ObjectSeg
     mtxf_to_mtx(gModelMatrixF[gModelMatrixStackPos], *mtx);
     gModelMatrix[gModelMatrixStackPos] = *mtx;
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_2);
-#ifdef TARGET_PC
     pc_gfx_mtx_tag((*mtx) - 1, segment, PC_MTX_SITE_ORTHO_IMAGE);
-#endif
     gDkrEnableBillboard((*dList)++);
     if (gSpriteAnimMode == SPRITE_ANIM_NORMALIZED) {
         index = (((u8) index) * sprite->numberOfFrames) >> 8;
@@ -1442,9 +1404,7 @@ void mtx_shear_push(Gfx **dList, Mtx **mtx, Object *obj, Object *objBase, f32 sh
     mtxf_mul(&matrix_mult, &gViewProjMatrixF, &gCurrentMVPMatrixF);
     mtxf_to_mtx(&gCurrentMVPMatrixF, *mtx);
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_1);
-#ifdef TARGET_PC
     pc_gfx_mtx_tag((*mtx) - 1, obj, PC_MTX_SITE_SHEAR);
-#endif
 }
 
 /**
@@ -1489,9 +1449,7 @@ s32 mtx_cam_push(Gfx **dList, Mtx **mtx, ObjectTransform *trans, f32 scaleY, f32
     }
 
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_1);
-#ifdef TARGET_PC
     pc_gfx_mtx_tag((*mtx) - 1, trans, PC_MTX_SITE_MODEL);
-#endif
 
     // Compute world-space position of the model's origin (0, 0, 0)
     mtxf_transform_point(*gModelMatrixF[gModelMatrixStackPos], 0.0f, 0.0f, 0.0f, &camRelX, &camRelY, &camRelZ);
@@ -1583,9 +1541,7 @@ void mtx_head_push(Gfx **dList, Mtx **mtx, ModelInstance *modInst, s16 headAngle
     mtxf_mul(&headMtxF, &gCurrentMVPMatrixF, &rotationMtxF);
     mtxf_to_mtx(&rotationMtxF, *mtx);
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_2);
-#ifdef TARGET_PC
     pc_gfx_mtx_tag((*mtx) - 1, modInst, PC_MTX_SITE_HEAD);
-#endif
     gSPSelectMatrixDKR((*dList)++, G_MTX_DKR_INDEX_1);
 }
 

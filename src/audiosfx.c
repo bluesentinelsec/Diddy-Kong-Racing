@@ -5,9 +5,7 @@
 #include "objects.h"
 #include "PR/libaudio.h"
 #include "video.h"
-#ifdef TARGET_PC
 extern void pc_trace_event(const char *fmt, ...);
-#endif
 
 #define SOUND_PARAM_DURATION(m) (m->velocityMax * 33333)
 #define SOUND_PARAM_NEXT_SOUND(m) (m->velocityMin + (m->keyMin & 0xC0) * 4)
@@ -147,7 +145,6 @@ ALMicroTime sndp_voice_handler(void *node) {
                 break;
         }
         sndp->nextDelta = alEvtqNextEvent(&sndp->evtq, &sndp->nextEvent);
-#ifdef TARGET_PC
         // Match the sequence-player safety net: an empty queue must yield to
         // the game loop and recreate the periodic API event on the next tick,
         // rather than spinning forever on the zero-delay sentinel.
@@ -155,7 +152,6 @@ ALMicroTime sndp_voice_handler(void *node) {
             sndp->nextEvent.type = AL_SNDP_API_EVT;
             sndp->nextDelta = sndp->frameTime;
         }
-#endif
 
     } while (sndp->nextDelta == 0);
     sndp->curTime += sndp->nextDelta;
@@ -220,9 +216,7 @@ void sndp_handle_event(SoundPlayer *sndp, ALSndpEvent *event) {
                 config.unityPitch = 0;
 
                 limitReached = sndp->maxActiveSounds <= gNumActiveSounds;
-#ifdef TARGET_PC
                 pc_trace_event("sndp_play_evt prio=%d limit=%d active=%d flags=%x", soundState->priority, limitReached, gNumActiveSounds, soundState->flags);
-#endif
 
                 if (!limitReached || (soundState->flags & SOUND_FLAG_RETRIGGER)) {
                     // Allocate a voice for the sound
@@ -709,9 +703,7 @@ ALSoundState *sndp_play_with_priority(ALBank *bank, s16 sndIndx, u8 priority, AL
         return NULL;
     }
 
-#ifdef TARGET_PC
     pc_trace_event("sndp_play snd=%d prio=%d active=%d", sndIndx, priority, gNumActiveSounds);
-#endif
     do {
         sound = bank->instArray[0]->soundArray[sndIndx - 1];
         soundState = sndp_allocate(bank, sound);

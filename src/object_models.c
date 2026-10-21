@@ -10,9 +10,7 @@
 #include "racer.h"
 #include "textures_sprites.h"
 #include "tracks.h"
-#ifdef TARGET_PC
 #include "pc_swap.h"
-#endif
 
 #define MODEL_LOADED_MAX 70
 
@@ -26,11 +24,7 @@ s32 gRenderSceneFuncLength = 1980;
 /************ .bss ************/
 
 s32 *gObjectModelTable;
-#ifdef TARGET_PC
 uintptr_t *gModelCache; // id / pointer pairs: pointer-sized on the host
-#else
-s32 *gModelCache; // A table of two entries. The first half is the model ID, while the second half is the model data.
-#endif
 s32 *D_8011D628;
 s32 gModelCacheCount;
 s32 gNumModelIDs;
@@ -38,11 +32,7 @@ s32 D_8011D634;
 s16 *gAnimationTable;
 s32 *gObjectAnimationTable;
 s32 gModelAnimOffsetID;
-#ifdef TARGET_PC
 s16 *gAnimFracDeltas;
-#else
-s32 gAnimFracDeltas;
-#endif
 
 /******************************/
 
@@ -58,13 +48,11 @@ void allocate_object_model_pools(void) {
     gModelCacheCount = 0;
     D_8011D634 = 0;
     gObjectModelTable = (s32 *) asset_table_load(ASSET_OBJECT_MODELS_TABLE);
-#ifdef TARGET_PC
     {
         // Big-endian asset offset tables (helpers in linux/reimpl.c).
         extern void pc_swap32_buf(void *buf, u32 numBytes);
         pc_swap32_buf(gObjectModelTable, asset_table_size(ASSET_OBJECT_MODELS_TABLE));
     }
-#endif
     gNumModelIDs = 0;
     while (gObjectModelTable[gNumModelIDs] != -1) {
         gNumModelIDs++;
@@ -72,7 +60,6 @@ void allocate_object_model_pools(void) {
     gNumModelIDs--;
     gAnimationTable = (s16 *) asset_table_load(ASSET_ANIMATION_IDS);
     gObjectAnimationTable = (s32 *) asset_table_load(ASSET_OBJECT_ANIMATIONS_TABLE);
-#ifdef TARGET_PC
     {
         extern void pc_swap16_buf(void *buf, u32 numBytes);
         extern void pc_swap32_buf(void *buf, u32 numBytes);
@@ -80,9 +67,6 @@ void allocate_object_model_pools(void) {
         pc_swap32_buf(gObjectAnimationTable, asset_table_size(ASSET_OBJECT_ANIMATIONS_TABLE));
     }
     gAnimFracDeltas = (s16 *) mempool_alloc_safe(0xC00, COLOUR_TAG_GREEN);
-#else
-    gAnimFracDeltas = (s32) mempool_alloc_safe(0xC00, COLOUR_TAG_GREEN);
-#endif
     gModelAnimOffsetID = 0;
 
 #ifdef ANTI_TAMPER
@@ -96,9 +80,7 @@ void allocate_object_model_pools(void) {
     }
 #endif
 }
-#ifdef TARGET_PC
 
-#ifdef TARGET_PC
 // Inflated object models are big-endian: a 0x80-byte header whose offsets point
 // at the vertex/triangle/batch/attach arrays in the same image. On the host the
 // image is placed OBJECT_MODEL_PC_DELTA bytes into the allocation so a
@@ -203,8 +185,6 @@ static void pc_unpack_object_model(ObjectModel *mdl) {
     sPcModelDisk = NULL;
 }
 #undef PC_REBASE
-#endif
-#endif
 
 /**
  * Load the associated model ID and assign it to the objects gfx data.
@@ -263,18 +243,12 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
 
     temp_s0 = gObjectModelTable[modelID];
     sp48 = gObjectModelTable[modelID + 1] - temp_s0;
-#ifdef TARGET_PC
     pc_object_model_inflate(temp_s0, sp48);
     modelSize = pc_object_model_alloc_size();
-#else
-    modelSize = gzip_size_uncompressed(ASSET_OBJECT_MODELS, temp_s0) + sizeof(ObjectModel);
-#endif
     objMdl = (ObjectModel *) mempool_alloc(modelSize, COLOUR_TAG_RED);
     if (objMdl == NULL) {
-#ifdef TARGET_PC
         pc_free(sPcModelDisk);
         sPcModelDisk = NULL;
-#endif
 #if VERSION >= VERSION_79
         if (var_a2) {
             D_8011D634++;
@@ -285,13 +259,7 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
 #endif
         return NULL;
     }
-#ifdef TARGET_PC
     pc_unpack_object_model(objMdl);
-#else
-    compressedData = (u32) ((u8 *) objMdl + modelSize) - sp48;
-    asset_load(ASSET_OBJECT_MODELS, compressedData, temp_s0, sp48);
-    gzip_inflate((u8 *) compressedData, (u8 *) objMdl);
-#endif
     objMdl->textures = (TextureInfo *) ((s32) objMdl->textures + (u8 *) objMdl);
     objMdl->vertices = (Vertex *) ((s32) objMdl->vertices + (u8 *) objMdl);
     objMdl->triangles = (Triangle *) ((s32) objMdl->triangles + (u8 *) objMdl);
@@ -326,11 +294,7 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
             instance = model_instance_init(objMdl, flags);
             if (instance != NULL) {
                 gModelCache[ASSETCACHE_ID(cacheIndex)] = modelID;
-#ifdef TARGET_PC
                 gModelCache[ASSETCACHE_PTR(cacheIndex)] = (uintptr_t) objMdl;
-#else
-                gModelCache[ASSETCACHE_PTR(cacheIndex)] = (s32) objMdl;
-#endif
                 if (gModelCacheCount < MODEL_LOADED_MAX) {
                     instance->animUpdateTimer = 0;
                     return instance;
@@ -1053,11 +1017,7 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
     s32 assetSize;
     s32 i;
     s32 i2;
-#ifdef TARGET_PC
     uintptr_t animAddress;
-#else
-    u32 animAddress;
-#endif
     s32 *temp;
 
     start = gAnimationTable[modelID];
@@ -1072,11 +1032,7 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
         }
     }
     model->numberOfAnimations = end - start;
-#ifdef TARGET_PC
     allocAnimData = (ObjectModel_44 *) mempool_alloc(model->numberOfAnimations * sizeof(ObjectModel_44), COLOUR_TAG_RED);
-#else
-    allocAnimData = (ObjectModel_44 *) mempool_alloc(model->numberOfAnimations * 8, COLOUR_TAG_RED);
-#endif
     model->animations = allocAnimData;
     if (allocAnimData == NULL) {
         return 1;
@@ -1101,19 +1057,15 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
         asset_load(ASSET_OBJECT_ANIMATIONS, animAddress, assetOffset, assetSize);
         gzip_inflate((u8 *) animAddress, (u8 *) model->animations[i].anim);
         temp = model->animations[i].anim;
-#ifdef TARGET_PC
         // Big-endian length word.
         pc_swap32_buf(temp, 4);
-#endif
         model->animations[i].animLength = *temp;
         model->animations[i].anim++;
-#ifdef TARGET_PC
         // Keyframe-0 base pose: numberOfAnimatedVertices x 3 big-endian s16
         // deltas at animData+0xC (obj_animate). Keyframe headers are read
         // bytewise there and the per-keyframe deltas are s8 — neither needs
         // swapping.
         pc_swap16_buf(model->animations[i].animData + 0xC, model->numberOfAnimatedVertices * 6);
-#endif
         i++;
         start++;
         i2++;

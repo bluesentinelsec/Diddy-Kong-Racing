@@ -10,11 +10,7 @@
 
 #define MAX_UPDATES             32
 #define MAX_EVENTS              32
-#ifdef TARGET_PC
 #define AUDIO_HEAP_SIZE         (0x29D88 * 4) // host audio structs carry 8-byte pointers
-#else
-#define AUDIO_HEAP_SIZE         0x29D88
-#endif
 #define AUDBUF_SIZE             0xA000  /* Audio command buffer size */
 
 #define MAX_VOICES              22
@@ -26,7 +22,6 @@
 
 #define DMA_BUFFER_LENGTH       0x400  /* Larger buffers result in fewer DMA' but more  */
                                        /* memory being used.  */
-
 
 #define NUM_ACMD_LISTS          2      /* two lists used by this example                */
 #define MAX_RSP_CMDS            4096   /* max number of commands in any command list.   */

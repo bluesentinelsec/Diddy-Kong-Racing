@@ -5,15 +5,11 @@
 #include <ultra64.h>
 #include "macros.h"
 
-#ifdef TARGET_PC
 // Renamed on PC targets: the host libc declares its own __assert with a
 // different signature, and letting the two collide means a host assert()
 // dispatches into this one with mismatched arguments.
-#ifdef TARGET_PC
 #define __assert __n64_assert
-#endif
 
-#endif
 void __assert(const char* exp, const char* filename, int line);
 
 #endif

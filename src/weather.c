@@ -3,9 +3,7 @@
 #include "audio.h"
 #include "audio_spatial.h"
 #include "camera.h"
-#ifdef TARGET_PC
 #include "pc_gfx.h"
-#endif
 #include "common.h"
 #include "f3ddkr.h"
 #include "fade_transition.h"
@@ -31,11 +29,7 @@ SnowGfxData gWeatherPresets[3] = {
 };
 
 SnowPosData *gSnowPhysics = NULL;
-#ifdef TARGET_PC
 SnowGfxData gSnowGfx = { NULL, 0, { 0 }, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-#else
-SnowGfxData gSnowGfx = { NULL, 0, { NULL }, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-#endif
 
 Vertex *gSnowVerts = NULL;
 s32 gSnowVertCount = 0;
@@ -179,13 +173,11 @@ void weather_init(void) {
     gLensFlareOverrideObjs = 0;
     if (gWeatherAssetTable == NULL) {
         gWeatherAssetTable = (s32 *) asset_table_load(ASSET_WEATHER_PARTICLES);
-#ifdef TARGET_PC
         {
             // Big-endian asset offset table (helper in linux/reimpl.c).
             extern void pc_swap32_buf(void *buf, u32 numBytes);
             pc_swap32_buf(gWeatherAssetTable, asset_table_size(ASSET_WEATHER_PARTICLES));
         }
-#endif
         gWeatherAssetTableLength = 0;
         while ((s32) gWeatherAssetTable[gWeatherAssetTableLength] != -1) {
             gWeatherAssetTableLength++;
@@ -545,9 +537,7 @@ void snow_render(void) {
             i = 0;
             mtx = get_projection_matrix_s16();
             gSPMatrixDKR(gCurrWeatherDisplayList++, OS_K0_TO_PHYSICAL(mtx), G_MTX_DKR_INDEX_0);
-#ifdef TARGET_PC
             pc_gfx_mtx_tag(mtx, mtx, PC_MTX_SITE_WEATHER);
-#endif
             gSPSelectMatrixDKR(gCurrWeatherDisplayList++, G_MTX_DKR_INDEX_0);
             material_set_no_tex_offset(&gCurrWeatherDisplayList, gSnowGfx.texture, RENDER_Z_COMPARE);
             while (i + gSnowVertOffset < gSnowVertCount) {
@@ -665,7 +655,6 @@ void lensflare_render(Gfx **dList, Mtx **mats, Vertex **verts, Camera *camera) {
     f32 magSquared;
     f32 magSquareSquared;
     LensFlareData *lensFlareData;
-#ifdef TARGET_PC
     //!@bug: the flare is drawn by handing render_sprite_billboard() a bare
     // ObjectTransform cast to an Object *, but that function also reads
     // obj->animFrame, which sits at Object offset 0x18 — one field past the end
@@ -677,9 +666,6 @@ void lensflare_render(Gfx **dList, Mtx **mats, Vertex **verts, Camera *camera) {
         ObjectTransform trans;
         s16 animFrame;
     } lensObj;
-#else
-    ObjectTransform trans;
-#endif
     Gfx *gfxTemp;
     s32 width;
     LevelObjectEntry_LensFlare *lensFlareEntry;
@@ -701,16 +687,10 @@ void lensflare_render(Gfx **dList, Mtx **mats, Vertex **verts, Camera *camera) {
                 pos[0].z = (gLensFlarePos.z * 256.0f) + camera->trans.z_position;
                 magSquared = magnitude * magnitude;
                 magSquareSquared = magSquared * magSquared;
-#ifdef TARGET_PC
                 lensObj.animFrame = 0;
                 lensObj.trans.rotation.y_rotation = 0;
                 lensObj.trans.rotation.x_rotation = 0;
                 lensObj.trans.rotation.z_rotation = 0;
-#else
-                trans.rotation.y_rotation = 0;
-                trans.rotation.x_rotation = 0;
-                trans.rotation.z_rotation = 0;
-#endif
                 pos[1].x = (pos[1].x * (0, (2 * magnitude))) - gLensFlarePos.x;
                 pos[1].y = (pos[1].y * (0, (2 * magnitude))) - gLensFlarePos.y;
                 pos[1].z = (pos[1].z * (0, (2 * magnitude))) - gLensFlarePos.z;
@@ -724,39 +704,19 @@ void lensflare_render(Gfx **dList, Mtx **mats, Vertex **verts, Camera *camera) {
                     }
                     if (lensFlareData != NULL) {
                         while (lensFlareData->count > 0) {
-#ifdef TARGET_PC
                             lensObj.trans.x_position = pos[0].x;
                             lensObj.trans.y_position = pos[0].y;
                             lensObj.trans.z_position = pos[0].z;
-#else
-                            trans.x_position = pos[0].x;
-                            trans.y_position = pos[0].y;
-                            trans.z_position = pos[0].z;
-#endif
                             if (i != 0) {
-#ifdef TARGET_PC
                                 lensObj.trans.x_position = (lensFlareData->offset * pos[1].x) + pos[0].x;
                                 lensObj.trans.y_position = (lensFlareData->offset * pos[1].y) + pos[0].y;
                                 lensObj.trans.z_position = (lensFlareData->offset * pos[1].z) + pos[0].z;
-#else
-                                trans.x_position = (lensFlareData->offset * pos[1].x) + pos[0].x;
-                                trans.y_position = (lensFlareData->offset * pos[1].y) + pos[0].y;
-                                trans.z_position = (lensFlareData->offset * pos[1].z) + pos[0].z;
-#endif
                             }
-#ifdef TARGET_PC
                             lensObj.trans.scale = lensFlareData->scale * magSquared;
-#else
-                            trans.scale = lensFlareData->scale * magSquared;
-#endif
                             gDPSetPrimColor((*dList)++, 0, 0, lensFlareData->colour.r, lensFlareData->colour.g,
                                             lensFlareData->colour.b,
                                             (s32) (lensFlareData->colour.a * magSquareSquared));
-#ifdef TARGET_PC
                             render_sprite_billboard(dList, mats, verts, (Object *) &lensObj,
-#else
-                            render_sprite_billboard(dList, mats, verts, (Object *) &trans,
-#endif
                                                     gLensFlare->sprites[lensFlareData->count],
                                                     (RENDER_SEMI_TRANSPARENT | RENDER_Z_UPDATE));
                             lensFlareData++;

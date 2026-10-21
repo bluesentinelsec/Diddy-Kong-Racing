@@ -198,7 +198,6 @@ s32 gfxtask_run_xbus(Gfx *dlBegin, Gfx *dlEnd, UNUSED s32 recvMesg) {
     dkrtask->unused60 = COLOUR_TAG_BLACK;
     dkrtask->unused64 = COLOUR_TAG_BLACK;
     osWritebackDCacheAll();
-#ifdef TARGET_PC
     // No scheduler/RSP thread on PC: hand the display list to the host
     // renderer (linux/reimpl.c) and complete the task instantly, posting the
     // same done-message shape the scheduler would (two words, [1] = 0 means
@@ -209,9 +208,6 @@ s32 gfxtask_run_xbus(Gfx *dlBegin, Gfx *dlEnd, UNUSED s32 recvMesg) {
         pc_gfx_task_submit(dlBegin, dlEnd);
         osSendMesg(&gGfxTaskMesgQueue, pcTaskDoneMsg, OS_MESG_BLOCK);
     }
-#else
-    osSendMesg(osScInterruptQ, dkrtask, OS_MESG_BLOCK);
-#endif
     return 0;
 }
 
@@ -382,11 +378,7 @@ s32 gfxtask_wait(void) {
     }
     osRecvMesg(&gGfxTaskMesgQueue, (OSMesg) &mesg, OS_MESG_BLOCK);
     gGfxTaskIsRunning = FALSE;
-#ifdef TARGET_PC
     return (s32) (uintptr_t) mesg[1];
-#else
-    return (s32) mesg[1];
-#endif
 }
 
 /**
