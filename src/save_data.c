@@ -304,7 +304,8 @@ void rumble_update(s32 updateRate) {
 }
 
 // arg0 is the number of bits we care about.
-s32 func_80072C54(s32 arg0) {
+/** Bit-level save serialisation: reads the next `arg0` bits from the save stream. */
+s32 save_read_bits(s32 arg0) {
     s32 ret;
     u32 var_v0;
 
@@ -335,7 +336,8 @@ s32 func_80072C54(s32 arg0) {
 
 // arg0 is the number of bits we care about
 // arg1 is the bit being looked for.
-void func_80072E28(s32 arg0, u32 arg1) {
+/** Writes the low `arg0` bits of a value to the save stream. */
+void save_write_bits(s32 arg0, u32 arg1) {
     u32 var_v0;
 
     if (arg0 > 0) {
@@ -370,7 +372,7 @@ void populate_settings_from_save_data(Settings *settings, u8 *saveData) {
     level_count(&levelCount, &worldCount);
     D_801241EC = saveData;
     D_801241F0 = D_801241F4 = 0;
-    var_a0 = func_80072C54(16) - 5;
+    var_a0 = save_read_bits(16) - 5;
     // clang-format off
     // Must be one line
     for (i = 2; i < 40; i++) { var_a0 -= saveData[i]; }
@@ -379,7 +381,7 @@ void populate_settings_from_save_data(Settings *settings, u8 *saveData) {
         for (i = 0, var_s1 = 0; i < levelCount; i++) {
             raceType = leveltable_type(i);
             if ((raceType == RACETYPE_DEFAULT) || (raceType & RACETYPE_CHALLENGE) || (raceType == RACETYPE_BOSS)) {
-                temp_v1 = func_80072C54(2);
+                temp_v1 = save_read_bits(2);
                 if (temp_v1 > 0) {
                     // Set Map Visited
                     settings->courseFlagsPtr[i] |= RACE_VISITED;
@@ -395,27 +397,27 @@ void populate_settings_from_save_data(Settings *settings, u8 *saveData) {
                 var_s1 += 2;
             }
         }
-        func_80072C54(68 - var_s1);
-        settings->tajFlags = func_80072C54(6);
-        settings->trophies = func_80072C54(10);
-        settings->bosses = func_80072C54(12);
+        save_read_bits(68 - var_s1);
+        settings->tajFlags = save_read_bits(6);
+        settings->trophies = save_read_bits(10);
+        settings->bosses = save_read_bits(12);
         for (i = 0; i < worldCount; i++) {
-            settings->balloonsPtr[i] = func_80072C54(7);
+            settings->balloonsPtr[i] = save_read_bits(7);
         }
-        settings->ttAmulet = func_80072C54(3);
-        settings->wizpigAmulet = func_80072C54(3);
+        settings->ttAmulet = save_read_bits(3);
+        settings->wizpigAmulet = save_read_bits(3);
         for (i = 0; i < worldCount; i++) {
-            settings->courseFlagsPtr[level_world_id(i)] |= func_80072C54(16) << 16;
+            settings->courseFlagsPtr[level_world_id(i)] |= save_read_bits(16) << 16;
         }
-        settings->keys = func_80072C54(8);
-        settings->cutsceneFlags = func_80072C54(32);
-        settings->filename = func_80072C54(16);
-        func_80072C54(8);
+        settings->keys = save_read_bits(8);
+        settings->cutsceneFlags = save_read_bits(32);
+        settings->filename = save_read_bits(16);
+        save_read_bits(8);
         settings->newGame = FALSE;
     }
 }
 
-void func_800732E8(Settings *settings, u8 *saveData) {
+void save_pack_progress(Settings *settings, u8 *saveData) {
     s16 var_v0;
     s8 raceType;
     u8 courseStatus;
@@ -428,7 +430,7 @@ void func_800732E8(Settings *settings, u8 *saveData) {
     D_801241EC = saveData;
     D_801241F0 = 0;
     D_801241F4 = 128;
-    func_80072E28(16, 0);
+    save_write_bits(16, 0);
     for (i = 0, var_s0 = 0; i < levelCount; i++) {
         raceType = leveltable_type(i);
         if ((raceType == RACETYPE_DEFAULT) || (raceType & RACETYPE_CHALLENGE) || (raceType == RACETYPE_BOSS)) {
@@ -445,38 +447,38 @@ void func_800732E8(Settings *settings, u8 *saveData) {
             if (settings->courseFlagsPtr[i] & RACE_CLEARED_SILVER_COINS) {
                 courseStatus++;
             }
-            func_80072E28(2, courseStatus);
+            save_write_bits(2, courseStatus);
             var_s0 += 2;
         }
     }
-    func_80072E28(68 - var_s0, 0);
-    func_80072E28(6, settings->tajFlags);
-    func_80072E28(10, settings->trophies);
-    func_80072E28(12, settings->bosses);
+    save_write_bits(68 - var_s0, 0);
+    save_write_bits(6, settings->tajFlags);
+    save_write_bits(10, settings->trophies);
+    save_write_bits(12, settings->bosses);
     for (i = 0; i < worldCount; i++) {
-        func_80072E28(7, settings->balloonsPtr[i]);
+        save_write_bits(7, settings->balloonsPtr[i]);
     }
-    func_80072E28(3, settings->ttAmulet);
-    func_80072E28(3, settings->wizpigAmulet);
+    save_write_bits(3, settings->ttAmulet);
+    save_write_bits(3, settings->wizpigAmulet);
     for (i = 0; i < worldCount; i++) {
-        func_80072E28(16, (settings->courseFlagsPtr[level_world_id(i)] >> 16) & 0xFFFF);
+        save_write_bits(16, (settings->courseFlagsPtr[level_world_id(i)] >> 16) & 0xFFFF);
     }
-    func_80072E28(8, settings->keys);
-    func_80072E28(32, settings->cutsceneFlags);
-    func_80072E28(16, settings->filename);
-    func_80072E28(8, 0);
+    save_write_bits(8, settings->keys);
+    save_write_bits(32, settings->cutsceneFlags);
+    save_write_bits(16, settings->filename);
+    save_write_bits(8, 0);
     for (i = 2, var_v0 = 5; i < 40; i++) {
         var_v0 += saveData[i];
     }
     D_801241EC = saveData;
     D_801241F0 = 0;
     D_801241F4 = 128;
-    func_80072E28(16, var_v0);
+    save_write_bits(16, var_v0);
 }
 
 // arg1 is eepromData, from read_eeprom_data
 // arg2 seems to be a flag for either lap times or course initials?
-void func_80073588(Settings *settings, u8 *saveData, u8 arg2) {
+void save_unpack_records(Settings *settings, u8 *saveData, u8 arg2) {
     s16 availableVehicles;
     s32 levelCount;
     s32 worldCount;
@@ -493,25 +495,25 @@ void func_80073588(Settings *settings, u8 *saveData, u8 arg2) {
         for (i = 2, sum = 5; i < 192; i++) {
             sum += D_801241EC[i];
         }
-        sum -= func_80072C54(16);
+        sum -= save_read_bits(16);
         if (sum == 0) {
             for (i = 0; i < levelCount; i++) {
                 if (leveltable_type(i) == RACETYPE_DEFAULT) {
                     availableVehicles = leveltable_vehicle_usable(i);
                     // Car Available
                     if (availableVehicles & (1 << VEHICLE_CAR)) {
-                        settings->flapTimesPtr[0][i] = func_80072C54(16);
-                        settings->flapInitialsPtr[0][i] = func_80072C54(16);
+                        settings->flapTimesPtr[0][i] = save_read_bits(16);
+                        settings->flapInitialsPtr[0][i] = save_read_bits(16);
                     }
                     // Hovercraft Available
                     if (availableVehicles & (1 << VEHICLE_HOVERCRAFT)) {
-                        settings->flapTimesPtr[1][i] = func_80072C54(16);
-                        settings->flapInitialsPtr[1][i] = func_80072C54(16);
+                        settings->flapTimesPtr[1][i] = save_read_bits(16);
+                        settings->flapInitialsPtr[1][i] = save_read_bits(16);
                     }
                     // Plane Available
                     if (availableVehicles & (1 << VEHICLE_PLANE)) {
-                        settings->flapTimesPtr[2][i] = func_80072C54(16);
-                        settings->flapInitialsPtr[2][i] = func_80072C54(16);
+                        settings->flapTimesPtr[2][i] = save_read_bits(16);
+                        settings->flapInitialsPtr[2][i] = save_read_bits(16);
                     }
                 }
             }
@@ -524,25 +526,25 @@ void func_80073588(Settings *settings, u8 *saveData, u8 arg2) {
         for (i = 2, sum = 5; i < 192; i++) {
             sum += D_801241EC[i];
         }
-        sum -= func_80072C54(16);
+        sum -= save_read_bits(16);
         if (sum == 0) {
             for (i = 0; i < levelCount; i++) {
                 if (leveltable_type(i) == RACETYPE_DEFAULT) {
                     availableVehicles = leveltable_vehicle_usable(i);
                     // Car Available
                     if (availableVehicles & (1 << VEHICLE_CAR)) {
-                        settings->courseTimesPtr[0][i] = func_80072C54(16);
-                        settings->courseInitialsPtr[0][i] = func_80072C54(16);
+                        settings->courseTimesPtr[0][i] = save_read_bits(16);
+                        settings->courseInitialsPtr[0][i] = save_read_bits(16);
                     }
                     // Hovercraft Available
                     if (availableVehicles & (1 << VEHICLE_HOVERCRAFT)) {
-                        settings->courseTimesPtr[1][i] = func_80072C54(16);
-                        settings->courseInitialsPtr[1][i] = func_80072C54(16);
+                        settings->courseTimesPtr[1][i] = save_read_bits(16);
+                        settings->courseInitialsPtr[1][i] = save_read_bits(16);
                     }
                     // Plane Available
                     if (availableVehicles & (1 << VEHICLE_PLANE)) {
-                        settings->courseTimesPtr[2][i] = func_80072C54(16);
-                        settings->courseInitialsPtr[2][i] = func_80072C54(16);
+                        settings->courseTimesPtr[2][i] = save_read_bits(16);
+                        settings->courseInitialsPtr[2][i] = save_read_bits(16);
                     }
                 }
             }
@@ -550,7 +552,7 @@ void func_80073588(Settings *settings, u8 *saveData, u8 arg2) {
     }
 }
 
-void func_800738A4(Settings *settings, u8 *saveData) {
+void save_pack_records(Settings *settings, u8 *saveData) {
     s16 availableVehicles;
     s32 levelCount;
     s32 worldCount;
@@ -562,26 +564,26 @@ void func_800738A4(Settings *settings, u8 *saveData) {
     D_801241EC = saveData;
     D_801241F0 = 0;
     D_801241F4 = 128;
-    func_80072E28(16, 0);
+    save_write_bits(16, 0);
     for (vehicleCount = 0, i = 0; i < levelCount; i++) {
         if (leveltable_type(i) == RACETYPE_DEFAULT) {
             availableVehicles = leveltable_vehicle_usable(i);
             // Car Available
             if (availableVehicles & (1 << VEHICLE_CAR)) {
-                func_80072E28(16, settings->flapTimesPtr[0][i]);
-                func_80072E28(16, settings->flapInitialsPtr[0][i]);
+                save_write_bits(16, settings->flapTimesPtr[0][i]);
+                save_write_bits(16, settings->flapInitialsPtr[0][i]);
                 vehicleCount++;
             }
             // Hovercraft Available
             if (availableVehicles & (1 << VEHICLE_HOVERCRAFT)) {
-                func_80072E28(16, settings->flapTimesPtr[1][i]);
-                func_80072E28(16, settings->flapInitialsPtr[1][i]);
+                save_write_bits(16, settings->flapTimesPtr[1][i]);
+                save_write_bits(16, settings->flapInitialsPtr[1][i]);
                 vehicleCount++;
             }
             // Plane Available
             if (availableVehicles & (1 << VEHICLE_PLANE)) {
-                func_80072E28(16, settings->flapTimesPtr[2][i]);
-                func_80072E28(16, settings->flapInitialsPtr[2][i]);
+                save_write_bits(16, settings->flapTimesPtr[2][i]);
+                save_write_bits(16, settings->flapInitialsPtr[2][i]);
                 vehicleCount++;
             }
             if (vehicleCount >= 48) {
@@ -599,28 +601,28 @@ void func_800738A4(Settings *settings, u8 *saveData) {
     for (i = 2, sum = 5; i < 192; i++) {
         sum += D_801241EC[i];
     }
-    func_80072E28(16, sum);
+    save_write_bits(16, sum);
     D_801241EC = saveData + 192;
     D_801241F0 = 0;
     D_801241F4 = 128;
-    func_80072E28(16, 0);
+    save_write_bits(16, 0);
     for (i = 0; i < levelCount; i++) {
         if (leveltable_type(i) == RACETYPE_DEFAULT) {
             availableVehicles = leveltable_vehicle_usable(i);
             // Car Available
             if (availableVehicles & (1 << VEHICLE_CAR)) {
-                func_80072E28(16, settings->courseTimesPtr[0][i]);
-                func_80072E28(16, settings->courseInitialsPtr[0][i]);
+                save_write_bits(16, settings->courseTimesPtr[0][i]);
+                save_write_bits(16, settings->courseInitialsPtr[0][i]);
             }
             // Hovercraft Available
             if (availableVehicles & (1 << VEHICLE_HOVERCRAFT)) {
-                func_80072E28(16, settings->courseTimesPtr[1][i]);
-                func_80072E28(16, settings->courseInitialsPtr[1][i]);
+                save_write_bits(16, settings->courseTimesPtr[1][i]);
+                save_write_bits(16, settings->courseInitialsPtr[1][i]);
             }
             // Plane Available
             if (availableVehicles & (1 << VEHICLE_PLANE)) {
-                func_80072E28(16, settings->courseTimesPtr[2][i]);
-                func_80072E28(16, settings->courseInitialsPtr[2][i]);
+                save_write_bits(16, settings->courseTimesPtr[2][i]);
+                save_write_bits(16, settings->courseInitialsPtr[2][i]);
             }
         }
     }
@@ -630,7 +632,7 @@ void func_800738A4(Settings *settings, u8 *saveData) {
     for (i = 2, sum = 5; i < 192; i++) {
         sum += D_801241EC[i];
     }
-    func_80072E28(16, sum);
+    save_write_bits(16, sum);
 }
 
 s32 get_game_data_file_size(void) {
@@ -748,7 +750,7 @@ s32 write_game_data_to_controller_pak(s32 controllerIndex, Settings *arg1) {
     fileSize = get_game_data_file_size(); // 256 bytes
     gameData = mempool_alloc_safe(fileSize, COLOUR_TAG_WHITE);
     *((s32 *) gameData) = GAMD;
-    func_800732E8(arg1, gameData + 4);
+    save_pack_progress(arg1, gameData + 4);
     ret = get_file_extension(controllerIndex, 3, (char *) &fileExt);
     if (ret == CONTROLLER_PAK_GOOD) {
         ret = write_controller_pak_file(controllerIndex, -1, "DKRACING-ADV", (char *) &fileExt, gameData, fileSize);
@@ -786,7 +788,7 @@ s32 read_time_data_from_controller_pak(s32 controllerIndex, char *fileExt, Setti
             status = read_data_from_controller_pak(controllerIndex, fileNumber, (u8 *) cpakData, fileSize);
             if (status == CONTROLLER_PAK_GOOD) {
                 if (*cpakData == TIMD) {
-                    func_80073588(settings, (u8 *) (cpakData + 1),
+                    save_unpack_records(settings, (u8 *) (cpakData + 1),
                                   SAVE_DATA_FLAG_READ_FLAP_TIMES | SAVE_DATA_FLAG_READ_COURSE_TIMES);
                 } else {
                     status = CONTROLLER_PAK_BAD_DATA;
@@ -815,7 +817,7 @@ s32 write_time_data_to_controller_pak(s32 controllerIndex, Settings *arg1) {
     fileSize = get_time_data_file_size(); // 512 bytes
     timeData = mempool_alloc_safe(fileSize, COLOUR_TAG_WHITE);
     *((s32 *) timeData) = TIMD;
-    func_800738A4(arg1, timeData + 4);
+    save_pack_records(arg1, timeData + 4);
     ret = get_file_extension(controllerIndex, 4, (char *) &fileExt);
     if (ret == CONTROLLER_PAK_GOOD) {
         ret = write_controller_pak_file(controllerIndex, -1, "DKRACING-TIMES", (char *) &fileExt, timeData, fileSize);
@@ -962,7 +964,7 @@ s32 write_save_data(s32 saveFileNum, Settings *settings) {
 
     blocks = 5;
     alloc = mempool_alloc_safe(blocks * sizeof(u64), COLOUR_TAG_WHITE);
-    func_800732E8(settings, (u8 *) alloc);
+    save_pack_progress(settings, (u8 *) alloc);
 
     if (!is_reset_pressed()) {
         for (i = 0, address = startingAddress; i < blocks; i++, address++) {
@@ -998,7 +1000,7 @@ s32 read_eeprom_data(Settings *settings, u8 flags) {
         for (i = 0; i < blocks; i++) {
             osEepromRead(si_mesg(), BLOCK_SIZE(FASTEST_LAPS_START) + i, (u8 *) &alloc[i]);
         }
-        func_80073588(settings, (u8 *) alloc, SAVE_DATA_FLAG_READ_FLAP_TIMES);
+        save_unpack_records(settings, (u8 *) alloc, SAVE_DATA_FLAG_READ_FLAP_TIMES);
     }
 
     if (flags & SAVE_DATA_FLAG_READ_COURSE_TIMES) {
@@ -1007,7 +1009,7 @@ s32 read_eeprom_data(Settings *settings, u8 flags) {
             osEepromRead(si_mesg(), BLOCK_SIZE(COURSE_TIMES_START) + i,
                          (u8 *) (&alloc[sizeof(CourseRecords) / sizeof(u64)] + i));
         }
-        func_80073588(settings, (u8 *) alloc, SAVE_DATA_FLAG_READ_COURSE_TIMES);
+        save_unpack_records(settings, (u8 *) alloc, SAVE_DATA_FLAG_READ_COURSE_TIMES);
     }
 
     mempool_free(alloc);
@@ -1033,7 +1035,7 @@ s32 write_eeprom_data(Settings *settings, u8 flags) {
 
     alloc = mempool_alloc_safe(COURSE_TIMES_START + sizeof(CourseRecords), COLOUR_TAG_WHITE);
 
-    func_800738A4(settings, (u8 *) alloc);
+    save_pack_records(settings, (u8 *) alloc);
 
     if (flags & SAVE_DATA_FLAG_READ_FLAP_TIMES) {
         s32 blocks = BLOCK_SIZE(sizeof(CourseRecords));
@@ -1151,7 +1153,7 @@ s16 calculate_ghost_header_checksum(GhostHeader *ghostHeader) {
     return sum;
 }
 
-void func_80074AA8(GhostHeader *ghostHeader, s16 characterID, s16 time, s16 nodeCount, u8 *dest) {
+void ghost_header_fill(GhostHeader *ghostHeader, s16 characterID, s16 time, s16 nodeCount, u8 *dest) {
     ghostHeader->checksum = 0;
     ghostHeader->characterID = characterID;
     ghostHeader->unk3 = 0;
@@ -1167,7 +1169,8 @@ s32 get_ghost_data_file_size(void) {
     return (&x)[0] * 6 + 0x100;
 }
 
-s32 func_80074B34(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharacterId, s16 *ghostTime,
+/** Loads a time-trial ghost for a level and vehicle from the controller pak. */
+s32 ghost_load(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharacterId, s16 *ghostTime,
                   s16 *ghostNodeCount, unk80075000 *ghostData) {
     unk80075000_body *ghostDataBody;
     unk80075000 *cPakFile;
@@ -1286,7 +1289,7 @@ typedef struct GhostData {
     /* 0x1E */ s16 unk1E;
 } GhostData;
 
-SIDeviceStatus func_80074EB8(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
+SIDeviceStatus ghost_file_create(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
                              s16 ghostNodeCount, u8 *dest) {
     unk80075000_body *ghostBody;
     unk80075000 *ghost = NULL;
@@ -1311,14 +1314,15 @@ SIDeviceStatus func_80074EB8(s32 controllerIndex, s16 levelId, s16 vehicleId, s1
         ghostBody[i].unk2 = ghostBody[1].unk2;
     }
 
-    func_80074AA8((GhostHeader *) (AS_BYTES(ghost) + ghostBody[0].unk2), ghostCharacterId, ghostTime, ghostNodeCount,
+    ghost_header_fill((GhostHeader *) (AS_BYTES(ghost) + ghostBody[0].unk2), ghostCharacterId, ghostTime, ghostNodeCount,
                   dest);
     pakStatus = write_controller_pak_file(controllerIndex, -1, "DKRACING-GHOSTS", "", (u8 *) ghost, sp24 + GHSS_SIZE);
     mempool_free(ghost);
     return pakStatus;
 }
 
-SIDeviceStatus func_80075000(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
+/** Saves a time-trial ghost to the controller pak, replacing an older one for the same track. */
+SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
                              s16 ghostNodeCount, unk80075000_body *ghostData) {
     unk80075000 *fileData;
     unk80075000_body *sp70;
@@ -1348,7 +1352,7 @@ SIDeviceStatus func_80075000(s32 controllerIndex, s16 levelId, s16 vehicleId, s1
     pakStatus = get_file_number(controllerIndex, "DKRACING-GHOSTS", "", &fileNumber);
     if (pakStatus == CONTROLLER_PAK_CHANGED) {
         start_reading_controller_data(controllerIndex);
-        return func_80074EB8(controllerIndex, levelId, vehicleId, ghostCharacterId, ghostTime, ghostNodeCount,
+        return ghost_file_create(controllerIndex, levelId, vehicleId, ghostCharacterId, ghostTime, ghostNodeCount,
                              &ghostData->unk0);
     }
     if (pakStatus != CONTROLLER_PAK_GOOD) {
@@ -1414,7 +1418,7 @@ SIDeviceStatus func_80075000(s32 controllerIndex, s16 levelId, s16 vehicleId, s1
                                   AS_BYTES(fileDataToWrite) + sp70[i.w].unk2,
                                   ghostFileData[i.w + 1].unk2 - ghostFileData[i.w].unk2);
                         }
-                        func_80074AA8((GhostHeader *) (AS_BYTES(fileDataToWrite) + sp70[ghostIndex].unk2),
+                        ghost_header_fill((GhostHeader *) (AS_BYTES(fileDataToWrite) + sp70[ghostIndex].unk2),
                                       ghostCharacterId, ghostTime, ghostNodeCount, &ghostData->unk0);
                         sp70[ghostIndex].unk0 = levelId;
                         sp70[ghostIndex].unk1 = vehicleId;
@@ -1432,7 +1436,7 @@ SIDeviceStatus func_80075000(s32 controllerIndex, s16 levelId, s16 vehicleId, s1
     return pakStatus;
 }
 
-s32 func_800753D8(s32 controllerIndex, s32 worldId) {
+s32 ghost_delete_for_world(s32 controllerIndex, s32 worldId) {
     unk80075000_body *tempData;
     unk80075000 *data;
     unk80075000 *data2;
@@ -1490,7 +1494,7 @@ s32 func_800753D8(s32 controllerIndex, s32 worldId) {
     return pakStatus;
 }
 
-SIDeviceStatus func_800756D4(s32 controllerIndex, u8 *levelIDs, u8 *vehicleIDs, u8 *characterIDs, u16 *checksumIDs) {
+SIDeviceStatus ghost_list(s32 controllerIndex, u8 *levelIDs, u8 *vehicleIDs, u8 *characterIDs, u16 *checksumIDs) {
     s32 i;
     u8 *fileData;
     s32 ret; // sp64

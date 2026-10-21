@@ -84,7 +84,7 @@ s32 gViewportFuncChecksum = ViewportFuncChecksum;
 s32 gViewportFuncLength = 0x154;
 s16 gLevelPropertyStackPos = 0;
 s16 D_800DD32C = 0;
-s8 D_800DD330 = 0;
+s8 gPostWizpigState = 0;
 
 /*******************************/
 
@@ -186,15 +186,6 @@ void level_global_init(void) {
 #endif
 }
 
-UNUSED s16 func_8006ABB4(s32 levelID) {
-    if (levelID < 0) {
-        return 0xE10;
-    }
-    if (levelID >= gNumberOfLevelHeaders) {
-        return 0xE10;
-    }
-    return gGlobalLevelTable[levelID].unk4;
-}
 
 /**
  * Iterates through the level property table and attempts to find a level ID that matches the properties you want.
@@ -441,7 +432,7 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     size = gTempAssetTable[levelId + 1] - offset;
     gCurrentLevelHeader = (LevelHeader *) mempool_alloc_safe(sizeof(LevelHeader), COLOUR_TAG_YELLOW);
     pc_load_level_header(gCurrentLevelHeader, offset);
-    D_800DD330 = 0;
+    gPostWizpigState = 0;
     prevLevelID = levelId;
     if (gCurrentLevelHeader->race_type == RACETYPE_DEFAULT) {
         level_properties_reset();
@@ -464,7 +455,7 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
                 if (wizpig) {
                     cutsceneId = 0;
                     if (var_s0 & 1) {
-                        D_800DD330 = 2;
+                        gPostWizpigState = 2;
                     }
                 }
                 someAsset = (s8 *) get_misc_asset(ASSET_MISC_67);
@@ -522,9 +513,9 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
             // The colour loop is a big-endian misc asset. Only the subset shared
             // with a particle behaviour is swapped in init_particle_assets; swap
             // the rest here (shared swap-once table, so no double-swap) or
-            // func_8007F1E8's count below reads big-endian and walks off the pool.
+            // pulse_light_reset's count below reads big-endian and walks off the pool.
             pc_swap_colour_loop_shared(gCurrentLevelHeader->unk74[var_s0]);
-            func_8007F1E8((LevelHeader_70 *) gCurrentLevelHeader->unk74[var_s0]);
+            pulse_light_reset((LevelHeader_70 *) gCurrentLevelHeader->unk74[var_s0]);
         }
     }
 
@@ -654,7 +645,7 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     bgdraw_primcolour(gCurrentLevelHeader->bgColorRed, gCurrentLevelHeader->bgColorGreen,
                       gCurrentLevelHeader->bgColorBlue);
     video_delta_reset();
-    func_8007AB24(gCurrentLevelHeader->unk4[numberOfPlayers]);
+    vi_set_max_update_rate(gCurrentLevelHeader->unk4[numberOfPlayers]);
     stubbed_printf("level_load body end\n");
 }
 
@@ -884,11 +875,12 @@ s16 level_properties_get(void) {
     return gLevelPropertyStackPos;
 }
 
-s32 func_8006C300(void) {
-    if (D_800DD330 >= 2) {
-        D_800DD330 = 1;
+/** A one-shot flag raised after the Wizpig fight (its exact meaning is not yet pinned down); reading it clears it. */
+s32 post_wizpig_state_take(void) {
+    if (gPostWizpigState >= 2) {
+        gPostWizpigState = 1;
         return 0;
     } else {
-        return D_800DD330;
+        return gPostWizpigState;
     }
 }

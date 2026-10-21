@@ -1214,33 +1214,6 @@ s32 tex_asset_size(s32 id) {
     return (((numOfTextures >> 8) & 0xFFFF) * (TEXTURE_GFX_SIZE + TEXTURE_HEADER_PC_DELTA)) + size;
 }
 
-UNUSED u8 func_8007C660(s32 texID) {
-    SpriteAsset *spriteAsset;
-    s32 j;
-    s32 i;
-    s32 numTextures;
-
-    if (texID & ASSET_MASK_TEX3D) {
-        return 0;
-    }
-    if (D_80126370 == NULL) {
-        D_80126370 = (u8 *) mempool_alloc_safe(gTextureTableSize[TEX_TABLE_2D], COLOUR_TAG_MAGENTA);
-        for (i = 0; i < gTextureTableSize[TEX_TABLE_2D]; i++) {
-            D_80126370[i] = FALSE;
-        }
-        for (i = 0; i < gSpriteTableSize; i++) {
-            spriteAsset = gCurrentSpriteAsset;
-            asset_load(ASSET_SPRITES, (uintptr_t) spriteAsset, gSpriteOffsetTable[i],
-                       gSpriteOffsetTable[i + 1] - gSpriteOffsetTable[i]);
-            pc_swap_sprite_asset(spriteAsset);
-            numTextures = spriteAsset->frameTexOffsets[spriteAsset->numberOfFrames];
-            for (j = 0; j < numTextures; j++) {
-                D_80126370[spriteAsset->baseTextureId + j] = TRUE;
-            }
-        }
-    }
-    return D_80126370[texID];
-}
 
 /**
  * Returns the texture cache asset ID from the cache table entry given by the argument.
@@ -1305,7 +1278,7 @@ s32 load_sprite_info(s32 spriteIndex, s32 *anchorXOut, s32 *anchorYOut, s32 *num
     goto textureCouldNotBeLoaded;
 }
 
-void func_8007CA68(s32 arg0, s32 arg1, s32 *arg2, s32 *arg3, s32 *arg4) {
+void sprite_get_size(s32 arg0, s32 arg1, s32 *arg2, s32 *arg3, s32 *arg4) {
     SpriteAsset *spriteAsset;
     TextureHeader *tex;
     s32 temp_a0;
@@ -1796,7 +1769,7 @@ void tex_animate_texture(TextureHeader *texture, u32 *triangleBatchInfoFlags, s3
     }
 }
 
-void func_8007F1E8(LevelHeader_70 *arg0) {
+void pulse_light_reset(LevelHeader_70 *arg0) {
     s32 i;
 
     arg0->unk4 = 0;

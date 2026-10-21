@@ -4035,7 +4035,7 @@ void update_carpet(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
             racer->unk154->trans.rotation.z_rotation = obj->trans.rotation.z_rotation;
             obj->animationID = 0;
             obj->animFrame = animFrame + updateRate;
-            func_80061C0C(obj);
+            object_update_model_animation(obj);
         }
     }
 }
@@ -8401,7 +8401,7 @@ s32 timetrial_load_player_ghost(s32 controllerID, s32 mapId, s16 arg2, s16 *char
     s16 nodeCount;
 
     nodeID = (gCurrentGhostIndex + 1) & 1;
-    cpakStatus = func_80074B34(controllerID, mapId, arg2, (u16 *) characterID, time, &nodeCount,
+    cpakStatus = ghost_load(controllerID, mapId, arg2, (u16 *) characterID, time, &nodeCount,
                                (unk80075000 *) gGhostData[nodeID]);
     if (characterID) {
         if (cpakStatus == CONTROLLER_PAK_GOOD) {
@@ -8454,7 +8454,7 @@ void timetrial_free_staff_ghost(void) {
  * Returns the controller pak status when finished.
  */
 SIDeviceStatus timetrial_write_player_ghost(s32 controllerIndex, s32 mapId, s16 arg2, s16 arg3, s16 arg4) {
-    return func_80075000(controllerIndex, (s16) mapId, arg2, arg3, arg4, gGhostNodeCount[gCurrentGhostIndex],
+    return ghost_save(controllerIndex, (s16) mapId, arg2, arg3, arg4, gGhostNodeCount[gCurrentGhostIndex],
                          (unk80075000_body *) gGhostData[gCurrentGhostIndex]);
 }
 
@@ -8710,7 +8710,7 @@ void racer_enter_door(Object_Racer *racer, s32 updateRate) {
     if (racer->transitionTimer > 0) {
         racer->transitionTimer -= updateRate;
         if (racer->transitionTimer <= 0) {
-            func_8006D968((s8 *) racer->exitObj->level_entry);
+            level_settings_store_from_exit((s8 *) racer->exitObj->level_entry);
             racer->transitionTimer = 0;
         }
     }

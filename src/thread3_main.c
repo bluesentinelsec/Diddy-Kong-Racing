@@ -480,7 +480,7 @@ void mode_game(s32 updateRate) {
                 break;
             case POSTRACE_OPT_1:
                 gPostRaceViewPort = FALSE;
-                func_8006D8F0(-1);
+                level_settings_apply(-1);
                 break;
             case POSTRACE_OPT_4:
                 level_properties_reset();
@@ -643,7 +643,7 @@ void mode_game(s32 updateRate) {
             }
         }
     } else {
-        sp3C = func_8006C300();
+        sp3C = post_wizpig_state_take();
         if (level_properties_get()) {
             if (gLevelLoadTimer == 0) {
                 i = anim_prev_frame_state();
@@ -770,7 +770,7 @@ void race_postrace_type(s32 finishState) {
     gPostRaceViewPort = finishState + 1;
 }
 
-void func_8006D8F0(UNUSED s32 arg0) {
+void level_settings_apply(UNUSED s32 arg0) {
     s32 temp;
     if (gGameMode != GAMEMODE_UNUSED_4) {
         gPlayableMapId = gLevelSettings[0];
@@ -787,7 +787,7 @@ void func_8006D8F0(UNUSED s32 arg0) {
     }
 }
 
-void func_8006D968(s8 *arg0) {
+void level_settings_store_from_exit(s8 *arg0) {
     // Is arg0 LevelObjectEntry_Exit?
     s32 i;
     if (gGameMode != GAMEMODE_UNUSED_4) {
@@ -1502,13 +1502,6 @@ void level_transition_begin(s32 type) {
     }
 }
 
-UNUSED void func_8006F20C(void) {
-    if (gLevelLoadTimer == 0) {
-        transition_begin(&gLevelFadeOutTransition);
-        gLevelLoadTimer = 40;
-        gLevelLoadType = LEVEL_LOAD_UNK1;
-    }
-}
 
 /**
  * Begins a fade transition, then signals to the level loading that it wants to be a trophy race.

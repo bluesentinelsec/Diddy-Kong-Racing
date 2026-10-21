@@ -83,27 +83,27 @@ typedef struct WaveControl {
 void waves_free(void);
 void waves_visibility_reset(void);
 s32 waves_block_hq(LevelModelSegment *block);
-void func_800BBDDC(LevelModel *level, LevelHeader *header);
-void func_800BFE98(s32 updateRate);
+void waves_init_level(LevelModel *level, LevelHeader *header);
+void wave_gens_update(s32 updateRate);
 void waves_init_header(LevelHeader *header);
-void func_800BBE08(LevelModel *level, LevelHeader *header);
+void waves_find_water_texture(LevelModel *level, LevelHeader *header);
 void obj_loop_wavepower(Object *obj);
 void wavegen_scale(WaveGen *gen, f32 radiusAdd, f32 arg2, f32 arg3, f32 arg4);
 void wavegen_destroy(Object *obj);
 f32 obj_wave_height(Object_Log *log, s32 updateRate);
-void func_800BA288(s32 arg0, s32 arg1);
+void wave_blocks_decay_ripples(s32 arg0, s32 arg1);
 void func_800BF9F8(WaveGen *gen, f32 arg1, f32 arg2);
 WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 arg4, f32 arg5, f32 arg6, f32 arg7,
                           s32 flags);
 void waves_alloc(void);
 void wave_load_material(TextureHeader *tex, s32 rtile);
 Object_Log *obj_wave_init(s32, f32, f32);
-void func_800BBF78(LevelModel *model);
-f32 func_800BB2F4(s32, f32, f32, Vec3f *);
+void waves_init_segments(LevelModel *model);
+f32 wave_height_at(s32, f32, f32, Vec3f *);
 void waves_visibility(s32, s32, s32, s32, s32);
 void wavegen_add(Object *);
 f32 waves_get_y(s32, s32, s32);
-void func_800BC6C8(void);
-void func_800BCC70(LevelModel *model);
+void waves_build_sine_table(void);
+void waves_init_collision(LevelModel *model);
 
 #endif

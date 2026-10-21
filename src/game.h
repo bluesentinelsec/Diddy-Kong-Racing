@@ -53,6 +53,6 @@ void level_properties_push(s32 levelId, s32 entranceId, Vehicle vehicleId, s32 c
 void level_properties_pop(s32 *levelId, s32 *entranceId, s32 *vehicleId, s32 *cutsceneId);
 void level_properties_reset(void);
 s16 level_properties_get(void);
-s32 func_8006C300(void);
+s32 post_wizpig_state_take(void);
 
 #endif

@@ -187,6 +187,6 @@ void generate_track(s32 modelId);
 void shadow_check_centre_in_triangle(unk8011C8B8 arg0[3]);
 s32 void_generate_primitive(f32 *arg0, f32 *arg1, f32 arg2, f32 arg3);
 s32 clip_polygon_to_rect(s32, unk8011C8B8 *, s32, Vec2f *);
-s32 func_800BDC80(s32, unk8011C3B8 *, unk8011C8B8 *, f32, f32, f32, f32);
+s32 wave_cells_in_rect(s32, unk8011C3B8 *, unk8011C8B8 *, f32, f32, f32, f32);
 
 #endif

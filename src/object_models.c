@@ -604,7 +604,7 @@ void model_init_collision(ObjectModel *model) {
 
     model->collisionFacetCount = s4;
 
-    func_80060910(model);
+    model_find_edges(model);
 
     s3 = 0;
     for (i = 0; i < model->numberOfBatches; i++) {
@@ -674,7 +674,7 @@ void model_init_collision(ObjectModel *model) {
     }
 }
 
-void func_80060910(ObjectModel *mdl) {
+void model_find_edges(ObjectModel *mdl) {
     s32 count;
     s32 i;
     s32 vertOffset;
@@ -710,7 +710,7 @@ void func_80060910(ObjectModel *mdl) {
                 vertIndex0 = mdl->triangles[triIndex].verticesArray[vertIndex + 1] + vertOffset;
                 vertIndex1 = mdl->triangles[triIndex].verticesArray[nextVertIndex + 1] + vertOffset;
 
-                result = func_80060AC8(mdl, triIndex, vertIndex0, vertIndex1, &sp5C, &sp60);
+                result = model_find_triangle_edge(mdl, triIndex, vertIndex0, vertIndex1, &sp5C, &sp60);
                 if (result != -1) {
                     mdl->collisionFacets[count].edgeBisectorPlane[vertIndex] = result;
                 } else {
@@ -721,7 +721,7 @@ void func_80060910(ObjectModel *mdl) {
     }
 }
 
-s32 func_80060AC8(ObjectModel *mdl, s32 arg1, s32 arg2, s32 arg3, s32 *outBatchIndex, s32 *outVertexIndex) {
+s32 model_find_triangle_edge(ObjectModel *mdl, s32 arg1, s32 arg2, s32 arg3, s32 *outBatchIndex, s32 *outVertexIndex) {
     s32 i;
     s32 endTri;
     s32 count;
@@ -752,7 +752,7 @@ s32 func_80060AC8(ObjectModel *mdl, s32 arg1, s32 arg2, s32 arg3, s32 *outBatchI
 
                     vertIndex0 = mdl->triangles[triIndex].verticesArray[vertIndex + 1] + vertOffset;
                     vertIndex1 = mdl->triangles[triIndex].verticesArray[nextVertIndex + 1] + vertOffset;
-                    if (func_80060C58(mdl->vertices, arg2, arg3, vertIndex0, vertIndex1) != 0) {
+                    if (vertices_edge_matches(mdl->vertices, arg2, arg3, vertIndex0, vertIndex1) != 0) {
                         *outVertexIndex = vertIndex;
                         *outBatchIndex = i;
                         return count;
@@ -765,7 +765,7 @@ s32 func_80060AC8(ObjectModel *mdl, s32 arg1, s32 arg2, s32 arg3, s32 *outBatchI
     return -1;
 }
 
-s32 func_80060C58(Vertex *vertices, s32 i1, s32 i2, s32 i3, s32 i4) {
+s32 vertices_edge_matches(Vertex *vertices, s32 i1, s32 i2, s32 i3, s32 i4) {
     Vertex *a;
     Vertex *b;
     Vertex *c;
@@ -1074,7 +1074,7 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
     return 0;
 }
 
-void func_80061C0C(Object *obj) {
+void object_update_model_animation(Object *obj) {
     ObjectModel *mdl;
     ModelInstance *modInst;
     s32 var_v1;

@@ -205,7 +205,7 @@ s8 D_8011AD26;
 f32 gObjectModelScaleY;
 f32 gCurrentLightIntensity;
 Object *gGhostObjPlayer;
-s32 gTimeTrialContPak; // gTimeTrialContPak is ultimately set by func_80074B34, and is almost definitely SIDeviceStatus
+s32 gTimeTrialContPak; // gTimeTrialContPak is ultimately set by ghost_load, and is almost definitely SIDeviceStatus
 s8 gBossRaceMode;
 s8 gAnimStage;
 s8 gAnimCameraCount;

@@ -377,7 +377,7 @@ void hud_init(UNUSED s32 viewportCount) {
     gHudBalloonSoundMask = NULL;
     gMinimapXlu = 0;
     D_80127194 = (LevelHeader_70 *) get_misc_asset(ASSET_MISC_58);
-    func_8007F1E8(D_80127194);
+    pulse_light_reset(D_80127194);
     sndp_set_group_volume(0, AL_SNDP_GROUP_VOLUME_MAX);
     sndp_set_group_volume(2, AL_SNDP_GROUP_VOLUME_MAX);
     for (i = 0; i < 2; i++) {
@@ -2181,8 +2181,6 @@ void hud_race_finish_1player(Object_Racer *racer, s32 updateRate) {
     }
 }
 
-UNUSED void func_800A4C34(UNUSED s32 countdown, UNUSED Object_Racer *racer, UNUSED s32 updateRate) {
-}
 
 /**
  * Render the current race position of the racer.
@@ -3303,7 +3301,7 @@ void minimap_init(LevelModel *model) {
     gMinimapGreen = (model->minimapColor >> 8) & 0xFF;
     gMinimapBlue = model->minimapColor & 0xFF;
     load_sprite_info(model->minimapSpriteIndex, &gMinimapDotOffsetX, &gMinimapDotOffsetY, &sp2C, &sp2C, &sp2C);
-    func_8007CA68(model->minimapSpriteIndex, 0, &D_80126D14, &D_80126D18, &sp2C);
+    sprite_get_size(model->minimapSpriteIndex, 0, &D_80126D14, &D_80126D18, &sp2C);
     model->minimapSpriteIndex = (ptrint_t) tex_load_sprite(model->minimapSpriteIndex, 1);
 }
 

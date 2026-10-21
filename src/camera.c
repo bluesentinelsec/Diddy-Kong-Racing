@@ -667,7 +667,7 @@ void viewport_main(Gfx **dlist, Mtx **mats) {
         viewport_rsp_set(dlist, 0, 0, 0, 0);
         gActiveCameraID = tempCameraID;
         if (mats != NULL) {
-            func_80067D3C(dlist, mats);
+            cam_set_projection_matrix(dlist, mats);
         }
         gActiveCameraID = originalCameraID;
         return;
@@ -786,7 +786,7 @@ void viewport_main(Gfx **dlist, Mtx **mats) {
     }
     viewport_rsp_set(dlist, sp54_width, sp58_height, posX, posY);
     if (mats != NULL) {
-        func_80067D3C(dlist, mats);
+        cam_set_projection_matrix(dlist, mats);
     }
     gActiveCameraID = originalCameraID;
 }
@@ -885,7 +885,7 @@ void viewport_scissor(Gfx **dList) {
 }
 
 // Official Name: camGetPlayerProjMtx / camSetProjMtx - ??
-void func_80067D3C(Gfx **dList, UNUSED Mtx **mtx) {
+void cam_set_projection_matrix(Gfx **dList, UNUSED Mtx **mtx) {
     s32 originalCamID;
 
     gSPPerspNormalize((*dList)++, perspNorm);

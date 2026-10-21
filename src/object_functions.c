@@ -1392,7 +1392,7 @@ void obj_loop_stopwatchman(Object *obj, s32 updateRate) {
         gNPCPosY = obj->trans.y_position;
     }
     obj->animFrame = 1.0 * tt->animFrameF;
-    func_80061C0C(obj);
+    object_update_model_animation(obj);
     if (0) {} // Fakematch
     if (obj->properties.tt.timer > 0) {
         obj->properties.tt.timer -= updateRate;
@@ -3158,7 +3158,7 @@ void obj_loop_parkwarden(Object *obj, s32 updateRate) {
                          ASSET_OBJECT_ID_WARDENSMOKE, SOUND_NONE, 1.0f, 0);
     }
     obj->animFrame = taj->animFrameF * 1.0;
-    func_80061C0C(obj);
+    object_update_model_animation(obj);
     obj_spawn_particle(obj, updateRate);
 }
 

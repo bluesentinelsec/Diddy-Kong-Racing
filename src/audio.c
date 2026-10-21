@@ -304,9 +304,6 @@ void music_jingle_voicelimit_set(u8 voiceLimit) {
     set_voice_limit(gJinglePlayer, voiceLimit);
 }
 
-UNUSED void func_80000C68(u8 arg0) {
-    func_80063A90(gMusicPlayer, arg0);
-}
 
 /**
  * Enables the timer to start fading in or out the background music.
@@ -524,28 +521,6 @@ void music_channel_reset_all(void) {
     }
 }
 
-UNUSED u8 func_80001358(u8 chan1, u8 chan2, s32 arg2) {
-    u8 val_1f;
-    u8 vol;
-    s32 updatedVol;
-
-    if (chan1 != 100) {
-        val_1f = arg2 + alCSPGetChlVol(gMusicPlayer, chan1);
-        if (val_1f > 127) {
-            val_1f = 127;
-        }
-        alCSPSetChlVol(gMusicPlayer, chan1, val_1f);
-    }
-
-    if (chan2 != 100) {
-        updatedVol = alCSPGetChlVol(gMusicPlayer, chan2);
-        vol = (updatedVol > arg2) ? updatedVol - arg2 : 0;
-        alCSPSetChlVol(gMusicPlayer, chan2, vol);
-        return vol;
-    } else {
-        return 127 - val_1f; //!@bug: This could be uninitialized!
-    }
-}
 
 /**
  * Retrieves the FX mix levels of all audio channels.
