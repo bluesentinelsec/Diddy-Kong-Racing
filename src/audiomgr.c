@@ -1,7 +1,5 @@
-#ifdef TARGET_PC
 #include <stddef.h>
 
-#endif
 #include "audiomgr.h"
 #include "asset_loading.h"
 #include "common.h"
@@ -37,14 +35,10 @@ typedef struct AudioInfo_s {
     OSScTask task;      /* scheduler structure */
     AudioMsg msg;       /* completion message */
 } AudioInfo;
-#ifdef TARGET_PC
 
-#ifdef TARGET_PC
 // amCreateAudioMgr allocates 120 bytes per AudioInfo on N64 (the trailing `msg`
 // field is never used, so retail gets away with the overrun). Host layouts
 // differ, so the PC build allocates the whole struct instead; see below.
-#endif
-#endif
 
 typedef struct {
     Acmd *ACMDList[NUM_ACMD_LISTS];
@@ -103,7 +97,6 @@ OSMesg audDMAMessageBuf[NUM_DMA_MESSAGES];
 static s16 *gLastAudioPtr = 0;
 static s32 gLastAudioFrameSamples = 0;
 
-#ifdef TARGET_PC
 // linux/reimpl.c — "ROM" reads served from the loaded asset image, and the shared
 // byteswap helper (asset sub-tables come back as raw big-endian u32s).
 extern void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes);
@@ -122,14 +115,9 @@ static void pc_audio_submit(Acmd *cmdList, s32 cmdLen, s16 *out, s32 frameSample
     pc_audio_hle_run(cmdList, cmdLen, out, frameSamples);
 }
 
-#endif
 /**** private routines ****/
 static void __amMain(UNUSED void *arg);
-#ifdef TARGET_PC
 static ALDMAAddr __amDMA(s32 addr, s32 len, void *state);
-#else
-static s32 __amDMA(s32 addr, s32 len, void *state);
-#endif
 static ALDMAproc __amDmaNew(AMDMAState **state);
 static u32 __amHandleFrameMsg(AudioInfo *info, AudioInfo *lastInfo);
 static void __amHandleDoneMsg(AudioInfo *info);
@@ -145,11 +133,7 @@ const char D_800E49F0[] =
 void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
     s32 i;
     f32 fsize;
-#ifdef TARGET_PC
     u32 *asset; // stepped by maxFrameSize *samples*: must stay a 4-byte stride on a 64-bit host
-#else
-    uintptr_t *asset;
-#endif
     u32 *assetAudioTable;
     s32 *asset8;
     s32 assetSize;
@@ -180,42 +164,19 @@ void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
 
     if (c->fxType[0] == AL_FX_CUSTOM) {
         assetAudioTable = asset_table_load(ASSET_AUDIO_TABLE);
-#ifdef TARGET_PC
         // This is a SECOND, fresh copy of the audio table — audio_init swapped its
         // own copy, not this one. Every asset_table_load returns raw big-endian
         // u32s and has to be swapped by whoever loads it.
         pc_swap32_buf(assetAudioTable, asset_table_size(ASSET_AUDIO_TABLE));
-#endif
         assetSize = assetAudioTable[ASSET_AUDIO_9] - assetAudioTable[ASSET_AUDIO_8];
         asset8 = mempool_alloc_safe(assetSize, COLOUR_TAG_CYAN);
         asset_load(ASSET_AUDIO, (uintptr_t) asset8, assetAudioTable[ASSET_AUDIO_8], assetSize);
-#ifdef TARGET_PC
         // The AL_FX_CUSTOM reverb params: a flat array of big-endian s32s
         // (section_count, length, then five per delay section — see alFxNew in
         // drvrnew.c). Unswapped, section_count/length read as garbage and alFxNew
         // asks the pool for a 0-byte delay line.
         pc_swap32_buf(asset8, assetSize);
-#endif
         c->params = asset8;
-#ifdef TARGET_PC
-#ifndef TARGET_PC
-        // OUT-OF-BOUNDS WRITE, and always has been: `params` is ALSynConfig's last
-        // field, so c[1].maxVVoices is the word just past the struct — i.e. the
-        // caller's stack frame (audio_init's `synth_config`). The intent is to NULL
-        // "params for bus 1", because alFxNew reads it as (&c->params)[bus].
-        //
-        // It is dead: that read only happens when fxType[bus] == AL_FX_CUSTOM, and
-        // DKR sets fxType[1] = AL_FX_BIGROOM. On N64 the stray word landed in frame
-        // padding and nobody noticed; on PC -fstack-protector turns it into an
-        // instant abort (ASan: stack-buffer-overflow, audio_init's frame).
-        //
-        // If a future config ever sets fxType[1] = AL_FX_CUSTOM, this needs a real
-        // params[2] field, not a wider stack frame.
-        c[1].maxVVoices = 0;
-#endif
-#else
-        c[1].maxVVoices = 0;
-#endif
         alInit(&__am.g, c);
         //!@bug: Forgot to free assetAudioTable
         mempool_free(asset8);
@@ -250,84 +211,45 @@ void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
 #endif
 
     for (i = 0; i < NUM_ACMD_LISTS; i++) {
-#ifdef TARGET_PC
         // AUDBUF_SIZE is a byte count for the N64's 8-byte Acmd. A host Acmd holds
         // two pointer-sized words, so keep the same *command* capacity; otherwise
         // a busy frame (custom reverb plus a full voice set) runs past the list
         // into the AudioInfo blocks allocated right after it.
         __am.ACMDList[i] = (Acmd *) alHeapAlloc(c->heap, 1, AUDBUF_SIZE / 8 * sizeof(Acmd));
-#else
-        __am.ACMDList[i] = (Acmd *) alHeapAlloc(c->heap, 1, AUDBUF_SIZE);
-#endif
     }
 
-#ifdef TARGET_PC
     // N64 pins the three output buffers just below the top of RAM. RAM_END is
     // meaningless against a host address space (gMainMemoryPool is a static array),
     // so take them from the pool like everything else. Same size, same layout —
     // the `asset += maxFrameSize` stride below is unchanged.
     asset = mempool_alloc_safe((maxFrameSize * 12), COLOUR_TAG_CYAN);
-#else
-    asset = mempool_alloc_fixed((maxFrameSize * 12), (u8 *) ((RAM_END - 0x200) - (maxFrameSize * 12)), COLOUR_TAG_CYAN);
-#endif
 
     /**** initialize the done messages ****/
     for (i = 0; i < NUM_ACMD_LISTS + 1; i++) {
-#ifdef TARGET_PC
         // Retail indexes past ACMDList into the audioInfo array that follows it;
         // say so explicitly (and allocate the whole host-sized struct).
         __am.audioInfo[i] = (AudioInfo *) alHeapAlloc(c->heap, 1, sizeof(AudioInfo));
         ((Acmd *) __am.audioInfo[i])->words.w0 = (uintptr_t) asset;
-#else
-        __am.ACMDList[i + NUM_ACMD_LISTS] = (Acmd *) alHeapAlloc(c->heap, 1, 120);
-        __am.ACMDList[i + NUM_ACMD_LISTS]->words.w0 = (uintptr_t) asset;
-#endif
         asset += maxFrameSize;
     }
 
     osCreateMesgQueue(&__am.audioReplyMsgQ, __am.audioReplyMsgBuf, MAX_MESGS);
     osCreateMesgQueue(&__am.audioFrameMsgQ, __am.audioFrameMsgBuf, MAX_MESGS);
     osCreateMesgQueue(&audDMAMessageQ, audDMAMessageBuf, NUM_DMA_MESSAGES);
-#ifdef TARGET_PC
-#ifndef TARGET_PC
-    // No thread system on PC (__osDispatchThread is a stub): a thread created here
-    // would never be scheduled. am_audio_frame_pc() below is the replacement — the
-    // main loop calls it once per frame, doing what __amMain's retrace case does.
-    osCreateThread(&__am.thread, 4, __amMain, 0, (void *) (audioStack + STACKSIZE(STACK_AUD)), pri);
-#endif
-#else
-    osCreateThread(&__am.thread, 4, __amMain, 0, (void *) (audioStack + STACKSIZE(STACK_AUD)), pri);
-#endif
 }
 
 /**
  * Official Name: amGo
  */
 void audioStartThread(void) {
-#ifdef TARGET_PC
-#ifndef TARGET_PC
-    osStartThread(&__am.thread);
-#endif
-#else
-    osStartThread(&__am.thread);
-#endif
 }
 
 /**
  * Official Name: amGoStop
  */
 void audioStopThread(void) {
-#ifdef TARGET_PC
-#ifndef TARGET_PC
-    osStopThread(&__am.thread);
-#endif
-#else
-    osStopThread(&__am.thread);
-#endif
 }
-#ifdef TARGET_PC
 
-#ifdef TARGET_PC
 /**
  * PC/Dreamcast: the audio thread's per-retrace tick, called from the host frame
  * loop (linux/audio.c) instead of from a scheduler message. This is __amMain's
@@ -353,8 +275,6 @@ void am_audio_frame_pc(void) {
     __amHandleDoneMsg(info);
     lastInfo = info;
 }
-#endif
-#endif
 
 /******************************************************************************
  *
@@ -455,7 +375,6 @@ static u32 __amHandleFrameMsg(AudioInfo *info, AudioInfo *lastInfo) {
 
     cmdp = alAudioFrame(__am.ACMDList[curAcmdList], &gAudioCmdLen, audioPtr, info->frameSamples);
 
-#ifdef TARGET_PC
     // No RSP and no scheduler: run the command list the synthesizer just built,
     // right here, instead of packaging it into an OSScTask. pc_audio_submit is the
     // aspMain microcode's replacement (M3); until it exists it just clears the
@@ -464,38 +383,6 @@ static u32 __amHandleFrameMsg(AudioInfo *info, AudioInfo *lastInfo) {
                     info->frameSamples);
     curAcmdList ^= 1;
     return 0;
-#else
-    t = &info->task;
-
-    t->next = 0;                    /* paranoia */
-    t->msgQ = &__am.audioReplyMsgQ; /* reply to when finished */
-    // TODO: This should be &info->msg, but the struct is likely modified.
-    t->msg = (OSMesg) &info->data; /* reply with this message */
-    t->flags = OS_SC_NEEDS_RSP;
-    t->unk58 = -1;
-    t->unk60 = 0xFF;
-    t->unk5C = 0;
-    t->unk64 = 0;
-
-    t->list.t.data_ptr = (u64 *) __am.ACMDList[curAcmdList];
-    t->list.t.data_size = (cmdp - __am.ACMDList[curAcmdList]) * sizeof(Acmd);
-    t->list.t.type = M_AUDTASK;
-    t->list.t.ucode_boot = (u64 *) rspbootTextStart;
-    t->list.t.ucode_boot_size = (s32) ((s32) rspbootTextEnd - (s32) rspbootTextStart);
-    t->list.t.flags = OS_TASK_DP_WAIT;
-    t->list.t.ucode = (u64 *) aspMainTextStart;
-    t->list.t.ucode_data = (u64 *) aspMainDataStart;
-    t->list.t.ucode_data_size = SP_UCODE_DATA_SIZE;
-    t->list.t.yield_data_ptr = NULL;
-    t->list.t.yield_data_size = 0;
-    t->unk6C = 1;
-
-    ret = osSendMesg(osScGetCmdQ(gAudioSched), (OSMesg) t, OS_MESG_NOBLOCK);
-
-    curAcmdList ^= 1; /* swap which acmd list you use each frame */
-
-    return ret;
-#endif
 }
 
 /******************************************************************************
@@ -529,11 +416,7 @@ static void __amHandleDoneMsg(UNUSED AudioInfo *info) {
  * __clearAudioDMA routine.
  *
  *****************************************************************************/
-#ifdef TARGET_PC
 static ALDMAAddr __amDMA(s32 addr, s32 len, UNUSED void *state) {
-#else
-static s32 __amDMA(s32 addr, s32 len, UNUSED void *state) {
-#endif
     void *foundBuffer;
     s32 delta, addrEnd, buffEnd;
     AMDMABuffer *dmaPtr, *lastDmaPtr;
@@ -554,11 +437,7 @@ static s32 __amDMA(s32 addr, s32 len, UNUSED void *state) {
         } else if (addrEnd <= buffEnd) {      /* yes, found a buffer with samples */
             dmaPtr->lastFrame = audFrameCt;   /* mark it used */
             foundBuffer = dmaPtr->ptr + addr - dmaPtr->startAddr;
-#ifdef TARGET_PC
             return (ALDMAAddr) osVirtualToPhysical(foundBuffer);
-#else
-            return (int) osVirtualToPhysical(foundBuffer);
-#endif
         }
         lastDmaPtr = dmaPtr;
         dmaPtr = (AMDMABuffer *) dmaPtr->node.next;
@@ -579,11 +458,7 @@ static s32 __amDMA(s32 addr, s32 len, UNUSED void *state) {
      */
     if (!dmaPtr) {
         stubbed_printf("OH DEAR - No audio DMA buffers left\n");
-#ifdef TARGET_PC
         return (ALDMAAddr) osVirtualToPhysical(lastDmaPtr->ptr) + delta;
-#else
-        return (int) osVirtualToPhysical(lastDmaPtr->ptr) + delta;
-#endif
     }
 
     dmaState.firstFree = (AMDMABuffer *) dmaPtr->node.next;
@@ -611,7 +486,6 @@ static s32 __amDMA(s32 addr, s32 len, UNUSED void *state) {
     dmaPtr->startAddr = addr;
     dmaPtr->lastFrame = audFrameCt; /* mark it */
 
-#ifdef TARGET_PC
     // No PI and no cart: "ROM" is assets.bin, resident in host memory. Copy
     // synchronously, then post the completion message __clearAudioDMA expects to
     // receive once per DMA issued — skipping it would make every frame report
@@ -619,16 +493,8 @@ static s32 __amDMA(s32 addr, s32 len, UNUSED void *state) {
     // bank-load time; ADPCM is a byte stream. See docs/audio.md.)
     pc_dmacopy((u32) (uintptr_t) addr, (uintptr_t) foundBuffer, DMA_BUFFER_LENGTH);
     osSendMesg(&audDMAMessageQ, (OSMesg) &audDMAIOMesgBuf[nextDMA++], OS_MESG_NOBLOCK);
-#else
-    osPiStartDma(&audDMAIOMesgBuf[nextDMA++], OS_MESG_PRI_HIGH, OS_READ, addr, foundBuffer, DMA_BUFFER_LENGTH,
-                 &audDMAMessageQ);
-#endif
 
-#ifdef TARGET_PC
     return (ALDMAAddr) osVirtualToPhysical(foundBuffer) + delta;
-#else
-    return (int) osVirtualToPhysical(foundBuffer) + delta;
-#endif
 }
 
 /******************************************************************************

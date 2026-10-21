@@ -22,15 +22,10 @@
 #include <os_internal.h>
 #include <ultraerror.h>
 
-
-#ifdef TARGET_PC
 extern void pc_trace_event(const char *fmt, ...);
-#endif
 void alSynStopVoice(ALSynth *synth, ALVoice *v)
 {
-#ifdef TARGET_PC
     pc_trace_event("stop prio=%d pv=%d", v->priority, v->pvoice != 0);
-#endif
     ALParam  *update;
     ALFilter *f;
     

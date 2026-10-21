@@ -23,7 +23,6 @@
 #include <ultraerror.h>
 #include "cseq.h"
 
-
 static u32 __readVarLen(ALCSeq *s,u32 track);
 static u8  __getTrackByte(ALCSeq *s,u32 track);
 static u32 __alCSeqGetTrackEvent(ALCSeq *seq, u32 track, ALEvent *event); 
@@ -49,11 +48,7 @@ void alCSeqNew(ALCSeq *seq, u8 *ptr)
         {
             flagTmp = 1 << i;
             seq->validTracks |= flagTmp;
-#ifdef TARGET_PC
             seq->curLoc[i] = (u8*)((uintptr_t)ptr + tmpOff);
-#else
-            seq->curLoc[i] = (u8*)((u32)ptr + tmpOff);
-#endif
             seq->evtDeltaTicks[i] = __readVarLen(seq,i);
             /*__alCSeqGetTrackEvent(seq,i); prime the event buffers  */
         }
@@ -92,7 +87,6 @@ void alCSeqNextEvent(ALCSeq *seq,ALEvent *evt)
         }
     }
  
-#ifdef TARGET_PC
     { extern void pc_trace_event(const char *fmt, ...);
       const u8 *bp = seq->curLoc[firstTrack]; const u8 *sb = (const u8 *) seq->base;
       pc_trace_event("cseq_track t=%u bulen=%u buoff=%d next=%02x%02x%02x%02x%02x%02x", firstTrack, seq->curBULen[firstTrack],
@@ -105,7 +99,6 @@ void alCSeqNextEvent(ALCSeq *seq,ALEvent *evt)
         (int) (seq->curLoc[4] ? seq->curLoc[4] - (u8 *) seq->base : -1), (int) (seq->curLoc[5] ? seq->curLoc[5] - (u8 *) seq->base : -1), (int) (seq->curLoc[6] ? seq->curLoc[6] - (u8 *) seq->base : -1), (int) (seq->curLoc[7] ? seq->curLoc[7] - (u8 *) seq->base : -1),
         (int) (seq->curLoc[8] ? seq->curLoc[8] - (u8 *) seq->base : -1), (int) (seq->curLoc[9] ? seq->curLoc[9] - (u8 *) seq->base : -1), (int) (seq->curLoc[10] ? seq->curLoc[10] - (u8 *) seq->base : -1), (int) (seq->curLoc[11] ? seq->curLoc[11] - (u8 *) seq->base : -1),
         (int) (seq->curLoc[12] ? seq->curLoc[12] - (u8 *) seq->base : -1), (int) (seq->curLoc[13] ? seq->curLoc[13] - (u8 *) seq->base : -1), (int) (seq->curLoc[14] ? seq->curLoc[14] - (u8 *) seq->base : -1), (int) (seq->curLoc[15] ? seq->curLoc[15] - (u8 *) seq->base : -1)); }
-#endif
     __alCSeqGetTrackEvent(seq,firstTrack,evt);
 
     evt->msg.midi.ticks = firstTime;
@@ -116,7 +109,6 @@ void alCSeqNextEvent(ALCSeq *seq,ALEvent *evt)
     seq->deltaFlag = 1;
 
 }
-
 
 /*
   Note: If there are no valid tracks (ie. all tracks have
@@ -272,12 +264,10 @@ u32 alCSeqSecToTicks(ALCSeq *seq, f32 sec, u32 tempo)
     return (u32)(((sec * 1000000.0) * seq->base->division) / tempo);
 }
 
-
 s32 alCSeqGetTicks(ALCSeq *seq)
 {
     return seq->lastTicks; 
 }
-
 
 void alCSeqNewMarker(ALCSeq *seq, ALCSeqMarker *m, u32 ticks)
 {
@@ -415,13 +405,4 @@ static u32 __readVarLen(ALCSeq *seq,u32 track)
     }
     return (value);
 }
-
-
-
-
-
-
-
-
-
 

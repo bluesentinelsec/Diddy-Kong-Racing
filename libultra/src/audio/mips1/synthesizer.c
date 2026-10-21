@@ -18,9 +18,7 @@
 #include "synthInternals.h"
 #include <assert.h>
 #include <PR/os_version.h>
-#ifdef TARGET_PC
 extern void pc_trace_event(const char *fmt, ...);
-#endif
 // TODO: this comes from a header
 #ident "$Revision: 1.17 $"
 
@@ -127,7 +125,6 @@ void alSynNew(ALSynth *drvr, ALSynConfig *c)
     /*
      * build the parameter update list
      */
-#ifdef TARGET_PC
     /* Host layouts: ALStartParamAlt (with its 8-byte wave pointer) outgrows
      * ALParam, which the N64 sized identically. Size the free-list entries by
      * the largest parameter struct so a start-voice update cannot spill into
@@ -145,15 +142,6 @@ void alSynNew(ALSynth *drvr, ALSynConfig *c)
             drvr->paramList = paramPtr;
         }
     }
-#else
-    params = alHeapAlloc(hp, c->maxUpdates, sizeof(ALParam));
-    drvr->paramList = 0;
-    for (i = 0; i < c->maxUpdates; i++) {
-        paramPtr= &params[i];
-        paramPtr->next = drvr->paramList;
-        drvr->paramList = paramPtr;
-    }
-#endif
     
     drvr->heap = hp;
 }
@@ -209,12 +197,8 @@ Acmd *alAudioFrame(Acmd *cmdList, s32 *cmdLen, s16 *outBuf, s32 outLen)
 	 drvr->paramSamples = __nextSampleTime(drvr, &client))
     {
 	drvr->paramSamples &= ~0xf;
-#ifdef TARGET_PC
 	{ s32 us = (*client->handler)(client); s32 smp = _timeToSamplesNoRound(drvr, us); client->samplesLeft += smp;
 	  pc_trace_event("client us=%d smp=%d left=%d cur=%d", us, smp, client->samplesLeft, drvr->curSamples); }
-#else
-	client->samplesLeft += _timeToSamplesNoRound(drvr, (*client->handler)(client));
-#endif
     }
 
     /* for safety's sake, always store paramSamples aligned to 16 sample boundary.
@@ -223,7 +207,6 @@ Acmd *alAudioFrame(Acmd *cmdList, s32 *cmdLen, s16 *outBuf, s32 outLen)
      * will be processed immediately next audio frame.
      */
     drvr->paramSamples &= ~0xf;
-
 
 #ifdef AUD_PROFILE
     PROFILE_AUD(client_num, client_cnt, client_max, client_min);
@@ -346,6 +329,4 @@ static s32 __nextSampleTime(ALSynth *drvr, ALPlayer **client)
 
     return (*client)->samplesLeft;
 }
-
-
 

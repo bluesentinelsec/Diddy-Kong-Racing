@@ -9,10 +9,6 @@
  * This is used for the colour and depth buffers.
  * Official name: segSetBase
  */
-#ifdef TARGET_PC
 void rsp_segment(Gfx **dList, s32 segment, ptrint_t base) {
-#else
-void rsp_segment(Gfx **dList, s32 segment, s32 base) {
-#endif
     gSPSegment((*dList)++, segment, base + K0BASE)
 }

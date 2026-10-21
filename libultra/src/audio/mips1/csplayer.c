@@ -44,9 +44,7 @@
 #include "cseqp.h"
 #include "cseq.h"
 #include "synthInternals.h"
-#ifdef TARGET_PC
 extern void pc_trace_event(const char *fmt, ...);
-#endif
 
 /************ .rodata ************/
 const char D_800E6C20[] = "CSP: oh oh \n";
@@ -60,7 +58,6 @@ static void             __CSPHandleMetaMsg(ALCSPlayer *seqp, ALEvent *event);
 static void             __CSPRepostEvent(ALEventQueue *evtq, ALEventListItem *item);
 static void		__setUsptFromTempo(ALCSPlayer *seqp, f32 tempo);		/* sct 1/8/96 */
        void func_80065A80(ALSynth *arg0, struct PVoice_s *arg1, s16 arg2);
-
 
 /*
  * Sequence Player public functions
@@ -341,7 +338,6 @@ static ALMicroTime __CSPVoiceHandler(void *node)
 	    break;
         }
         seqp->nextDelta = alEvtqNextEvent(&seqp->evtq, &seqp->nextEvent); 
-#ifdef TARGET_PC
         // An exhausted queue returns an invalid event with a zero delay. The
         // original handler would then spin forever because there is no event
         // left to recreate its periodic API callback. Queue sizing should keep
@@ -350,7 +346,6 @@ static ALMicroTime __CSPVoiceHandler(void *node)
             seqp->nextEvent.type = AL_SEQP_API_EVT;
             seqp->nextDelta = seqp->frameTime;
         }
-#endif
         
     } while (seqp->nextDelta == 0);
 
@@ -359,9 +354,7 @@ static ALMicroTime __CSPVoiceHandler(void *node)
      * hour away
      */
     seqp->curTime += seqp->nextDelta;		/* sct 11/7/95 */
-#ifdef TARGET_PC
     pc_trace_event("csp_delta us=%d type=%d cur=%d", seqp->nextDelta, seqp->nextEvent.type, seqp->curTime);
-#endif
     return seqp->nextDelta;
 }
 
@@ -389,12 +382,9 @@ void __CSPPostNextSeqEvent(ALCSPlayer *seqp)
 	return;
         
     evt.type = AL_SEQ_REF_EVT;
-#ifdef TARGET_PC
     pc_trace_event("seq_post ticks=%d uspt=%d", deltaTicks, seqp->uspt);
-#endif
     alEvtqPostEvent(&seqp->evtq, &evt, deltaTicks * seqp->uspt);                
 }
-
 
 /*
   Call this routine to handle the next event in the sequence.
@@ -488,9 +478,7 @@ void __CSPHandleMIDIMsg(ALCSPlayer_Custom *seqp, ALEvent *event)
     new_var = byte1 = midi->byte1;
     new_var2 = byte2 = midi->byte2;
     chanState = &seqp->chanState[chan];
-#ifdef TARGET_PC
     pc_trace_event("csp_midi status=%x chan=%d b1=%d b2=%d state=%d mask=%x", status, chan, byte1, byte2, seqp->state, seqp->chanMask);
-#endif
 
     if (status == AL_MIDI_ChannelModeSelect)
     {
@@ -518,9 +506,7 @@ void __CSPHandleMIDIMsg(ALCSPlayer_Custom *seqp, ALEvent *event)
         status != AL_MIDI_ControlChange &&
         status != AL_MIDI_PitchBendChange
     ) {
-#ifdef TARGET_PC
         pc_trace_event("csp_masked status=%x chan=%d mask=%x", status, chan, seqp->chanMask);
-#endif
         return;
     }
 
@@ -535,9 +521,7 @@ void __CSPHandleMIDIMsg(ALCSPlayer_Custom *seqp, ALEvent *event)
 		    break;
 
                 sound = __lookupSoundQuick((ALSeqPlayer*)seqp, byte1, byte2, chan);
-#ifdef TARGET_PC
                 pc_trace_event("csp_lookup chan=%d key=%d vel=%d sound=%d inst=%d", chan, byte1, byte2, sound != 0, seqp->chanState[chan].instrument != 0);
-#endif
                 ALFlagFailIf(!sound, seqp->debugFlags & NO_SOUND_ERR_MASK,
                     ERR_ALSEQP_NO_SOUND); 
                 
@@ -546,9 +530,7 @@ void __CSPHandleMIDIMsg(ALCSPlayer_Custom *seqp, ALEvent *event)
                 config.unityPitch = 0;
                 
                 vstate = __mapVoice((ALSeqPlayer*)seqp, byte1, byte2, chan);
-#ifdef TARGET_PC
                 pc_trace_event("csp_map vstate=%d", vstate != 0);
-#endif
                 ALFlagFailIf(!vstate, seqp->debugFlags & NO_VOICE_ERR_MASK,
                     ERR_ALSEQP_NO_VOICE );
 
@@ -628,9 +610,7 @@ void __CSPHandleMIDIMsg(ALCSPlayer_Custom *seqp, ALEvent *event)
                 pan   = __vsPan(vstate, (ALSeqPlayer*)seqp);
                 vol   = __vsVol(vstate, (ALSeqPlayer*)seqp);
                 deltaTime  = sound->envelope->attackTime;
-#ifdef TARGET_PC
                 pc_trace_event("csp_noteon chan=%d key=%d vel=%d", chan, byte1, byte2);
-#endif
                 
                 alSynStartVoiceParams(seqp->drvr, voice, sound->wavetable,
                                       pitch, vol, pan, fxmix, deltaTime);
@@ -880,7 +860,6 @@ static void __CSPHandleMetaMsg(ALCSPlayer *seqp, ALEvent *event)
     ALMicroTime         tempDelta,curDelta = 0;
     ALEventListItem     *thisNode,*nextNode,*firstTemp = 0;
 
-
     if (event->msg.tempo.status == AL_MIDI_Meta)
     {
         if (event->msg.tempo.type == AL_MIDI_META_TEMPO)
@@ -960,7 +939,6 @@ static void  __CSPRepostEvent(ALEventQueue *evtq, ALEventListItem *item)
     osSetIntMask(mask);
 }
 
-
 /*
   This routine safely calculates the sequence player's
   uspt value based on the given tempo.  It does this safely
@@ -976,8 +954,6 @@ static void __setUsptFromTempo (ALCSPlayer *seqp, f32 tempo)
 	seqp->uspt = (s32)((f32)tempo * seqp->target->qnpt);
     else
 	seqp->uspt = 488;		/* This is the initial value set by alSeqpNew. */
-#ifdef TARGET_PC
     { union { f32 f; u32 u; } q; q.f = seqp->target ? seqp->target->qnpt : 0.0f; pc_trace_event("csp_tempo tempo=%d qnpt=%08x uspt=%d", (int) tempo, q.u, seqp->uspt); }
-#endif
 }
 

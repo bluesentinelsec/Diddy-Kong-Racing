@@ -182,11 +182,7 @@ void thread3_main(UNUSED void *unused) {
 void init_game(void) {
     s32 viMode;
 
-#ifdef TARGET_PC
     stubbed_printf(sDebugRomBuildInfo[0]);
-#else
-    stubbed_printf(sDebugRomBuildInfo);
-#endif
     mempool_init_main();
     gzip_init();
 #ifdef ANTI_TAMPER
@@ -260,21 +256,9 @@ void main_game_loop(void) {
     if (gScreenStatus == MESG_SKIP_BUFFER_SWAP) {
         gCurrDisplayList = gDisplayLists[gSPTaskNum];
         rsp_segment(&gCurrDisplayList, SEGMENT_MAIN, 0x00000000);
-#ifdef TARGET_PC
         rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (ptrint_t) gVideoCurrFramebuffer);
-#else
-        rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (s32) gVideoCurrFramebuffer);
-#endif
-#ifdef TARGET_PC
         rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (ptrint_t) gVideoLastDepthBuffer);
-#else
-        rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (s32) gVideoLastDepthBuffer);
-#endif
-#ifdef TARGET_PC
         rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (ptrint_t) gVideoCurrFramebuffer - VI_OFFSET); // Unused
-#else
-        rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (s32) gVideoCurrFramebuffer - VI_OFFSET); // Unused
-#endif
     }
     if (gDrawFrameTimer == 0) {
         gfxtask_run_xbus(gDisplayLists[gSPTaskNum], gCurrDisplayList, 0);
@@ -291,21 +275,9 @@ void main_game_loop(void) {
     gGameCurrTriList = gTriangleHeap[gSPTaskNum];
 
     rsp_segment(&gCurrDisplayList, SEGMENT_MAIN, 0x00000000);
-#ifdef TARGET_PC
     rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (ptrint_t) gVideoLastFramebuffer);
-#else
-    rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (s32) gVideoLastFramebuffer);
-#endif
-#ifdef TARGET_PC
     rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (ptrint_t) gVideoLastDepthBuffer);
-#else
-    rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (s32) gVideoLastDepthBuffer);
-#endif
-#ifdef TARGET_PC
     rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (ptrint_t) gVideoLastFramebuffer - VI_OFFSET); // Unused
-#else
-    rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (s32) gVideoLastFramebuffer - VI_OFFSET); // Unused
-#endif
     rsp_init(&gCurrDisplayList);
     rdp_init(&gCurrDisplayList);
     bgdraw_render(&gCurrDisplayList, &gGameCurrMatrix, TRUE);
@@ -341,19 +313,6 @@ void main_game_loop(void) {
 
     // This is a good spot to place custom text if you want it to overlay it over ALL the
     // menus & gameplay.
-#ifdef TARGET_PC
-#ifdef TARGET_DC
-    // Profiler: FPS readout in the center-left, drawn with the debug small font.
-    // pc_get_fps() lives in dreamcast/gfx.c and reflects real rendered-frame cadence.
-    {
-        extern float pc_get_fps(void);
-        s32 fps10 = (s32) (pc_get_fps() * 10.0f + 0.5f);
-        set_render_printf_position(16, 108);
-        set_render_printf_colour(255, 255, 0, 255);
-        render_printf("FPS %d.%d", fps10 / 10, fps10 % 10);
-    }
-#endif
-#endif
 
     sound_update_queue(sLogicUpdateRate);
     debug_text_print(&gCurrDisplayList);
@@ -854,7 +813,6 @@ GameMode get_game_mode(void) {
     return gGameMode;
 }
 
-#ifdef TARGET_PC
 /**
  * PC port: whether the player is in control of a vehicle right now - in a
  * level, not paused, not in a cutscene or dialogue, not loading, past the
@@ -867,7 +825,6 @@ s32 pc_player_is_driving(void) {
            gDrumstickSceneLoadTimer == 0 && level_properties_get() == 0 && check_if_showing_cutscene_camera() == 0 &&
            get_race_countdown() == 0;
 }
-#endif
 
 /**
  *  Sets the current game mode.
@@ -882,9 +839,7 @@ UNUSED void set_game_mode(s32 changeTo) {
  * Used for every kind of menu that's not ingame.
  */
 void load_menu_with_level_background(s32 menuId, s32 levelId, s32 cutsceneId) {
-#ifdef TARGET_PC
     stubbed_printf("LMWLB enter menu=%d lvl=%d\n", menuId, levelId);
-#endif
     alloc_displaylist_heap(PLAYER_ONE);
     gGameMode = GAMEMODE_MENU;
     gRenderMenu = TRUE;
@@ -906,9 +861,7 @@ void load_menu_with_level_background(s32 menuId, s32 levelId, s32 cutsceneId) {
     }
     menu_init(menuId);
     gGameCurrentEntrance = 0;
-#ifdef TARGET_PC
     stubbed_printf("LMWLB exit menu=%d\n", menuId);
-#endif
 }
 
 /**
@@ -941,13 +894,9 @@ void load_level_menu(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle v
     mempool_free_timer(0);
     cam_init();
     load_game_text_table();
-#ifdef TARGET_PC
     stubbed_printf("level_load enter id=%d\n", levelId);
-#endif
     level_load(levelId, numberOfPlayers, entranceId, vehicleId, cutsceneId);
-#ifdef TARGET_PC
     stubbed_printf("level_load exit id=%d\n", levelId);
-#endif
     hud_init(cam_get_viewport_layout());
     init_particle_buffers(4, 4, 110, 48, 32, 0);
     ainode_update();
@@ -999,16 +948,12 @@ void mode_menu(s32 updateRate) {
     s32 temp;
     s32 playerVehicle;
     s32 temp5;
-#ifdef TARGET_PC
     static s32 sFirstMenuFrame = TRUE;
-#endif
 
-#ifdef TARGET_PC
     if (sFirstMenuFrame) {
         sFirstMenuFrame = FALSE;
         stubbed_printf("mode_menu first frame\n");
     }
-#endif
     gIsPaused = FALSE;
     gPostRaceViewPort = NULL;
     if (!gIsLoading && gRenderMenu) {

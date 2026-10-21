@@ -327,13 +327,11 @@ void hud_init(UNUSED s32 viewportCount) {
     gHudSettings = get_settings();
     gHudSilverCoinRace = check_if_silver_coin_race();
     gAssetHudElementIds = (s16 *) asset_table_load(ASSET_HUD_ELEMENT_IDS);
-#ifdef TARGET_PC
     {
         // Big-endian s16 id table (helper in linux/reimpl.c).
         extern void pc_swap16_buf(void *buf, u32 numBytes);
         pc_swap16_buf(gAssetHudElementIds, asset_table_size(ASSET_HUD_ELEMENT_IDS));
     }
-#endif
     gAssetHudElementIdsCount = 0;
 
     while (gAssetHudElementIds[gAssetHudElementIdsCount] != -1) {
@@ -341,11 +339,7 @@ void hud_init(UNUSED s32 viewportCount) {
     }
     gAssetHudElements = mempool_alloc_safe(gAssetHudElementIdsCount * (sizeof(void *) + 1), COLOUR_TAG_BLUE);
     // Evil pointer shenanigans to store the timer in that last byte in the struct above.
-#ifdef TARGET_PC
     gAssetHudElementStaleCounter = (u8 *) ((gAssetHudElementIdsCount + (void **) gAssetHudElements)); // past the pointer table (pointer-sized)
-#else
-    gAssetHudElementStaleCounter = (u8 *) ((gAssetHudElementIdsCount + (s32 *) gAssetHudElements));
-#endif
     for (i = 0; i < gAssetHudElementIdsCount; i++) {
         gAssetHudElementStaleCounter[i] = 0;
         gAssetHudElements->entry[i] = NULL;
@@ -3310,11 +3304,7 @@ void minimap_init(LevelModel *model) {
     gMinimapBlue = model->minimapColor & 0xFF;
     load_sprite_info(model->minimapSpriteIndex, &gMinimapDotOffsetX, &gMinimapDotOffsetY, &sp2C, &sp2C, &sp2C);
     func_8007CA68(model->minimapSpriteIndex, 0, &D_80126D14, &D_80126D18, &sp2C);
-#ifdef TARGET_PC
     model->minimapSpriteIndex = (ptrint_t) tex_load_sprite(model->minimapSpriteIndex, 1);
-#else
-    model->minimapSpriteIndex = (s32) tex_load_sprite(model->minimapSpriteIndex, 1);
-#endif
 }
 
 /**

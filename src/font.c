@@ -6,9 +6,7 @@
 #include "menu.h"
 #include "textures_sprites.h"
 #include "video.h"
-#ifdef TARGET_PC
 #include "pc_swap.h"
-#endif
 
 /************ .data ************/
 
@@ -145,7 +143,6 @@ void load_fonts(void) {
 
     fontAssetData = asset_table_load(ASSET_FONTS);
 
-#ifdef TARGET_PC
     {
         // Font asset: big-endian u32 count, then 0x400-byte FontData entries whose
         // texturePointers[32] are runtime pointers (wider on the host). Unpack into
@@ -168,11 +165,6 @@ void load_fonts(void) {
         mempool_free(fontAssetData);
         gFonts = fonts;
     }
-#else
-    gFonts = (FontData *) (fontAssetData); // ???
-    gNumberOfFonts = *(fontAssetData);
-    gFonts = (FontData *) (fontAssetData + 1);
-#endif
 
     for (i = 0; i < gNumberOfFonts; i++) {
         gFonts[i].loadedFonts[0] = 0;

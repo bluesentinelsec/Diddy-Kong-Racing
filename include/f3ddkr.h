@@ -169,23 +169,14 @@
 #define TRIN_DISABLE_TEXTURE 0
 #define TRIN_ENABLE_TEXTURE 1
 
-#ifdef TARGET_PC
 #define gSPPolygon(dl, ptr, numTris, texEnabled) {                                                                                  \
     Gfx *_g = (Gfx *)(dl);                                                                                                          \
     _g->words.w0 = _SHIFTL((((numTris) - 1) << 4) | (texEnabled), 16, 8) | _SHIFTL(G_TRIN, 24, 8) | _SHIFTL(((numTris)*16), 0, 16); \
     _g->words.w1 = (GfxWord)(ptr);                                                                                             \
 }
-#else
-#define gSPPolygon(dl, ptr, numTris, texEnabled) {                                                                                  \
-    Gfx *_g = (Gfx *)(dl);                                                                                                          \
-    _g->words.w0 = _SHIFTL((((numTris) - 1) << 4) | (texEnabled), 16, 8) | _SHIFTL(G_TRIN, 24, 8) | _SHIFTL(((numTris)*16), 0, 16); \
-    _g->words.w1 = (unsigned int)(ptr);                                                                                             \
-}
-#endif
 
 #define numberOfGfxCommands(gfxCmds) (sizeof(gfxCmds) / sizeof(Gfx))
 
-#ifdef TARGET_PC
 #define gDkrDmaDisplayList(pkt, address, numberOfCommands)                         \
 {                                                                                  \
     Gfx *_g = (Gfx *)(pkt);                                                        \
@@ -194,16 +185,6 @@
             _SHIFTL((numberOfCommands*8), 0, 16));                                 \
     _g->words.w1 = (GfxWord)(address);                                        \
 }
-#else
-#define gDkrDmaDisplayList(pkt, address, numberOfCommands)                         \
-{                                                                                  \
-    Gfx *_g = (Gfx *)(pkt);                                                        \
-                                                                                   \
-    _g->words.w0 = (_SHIFTL(G_DMADL, 24, 8) | _SHIFTL((numberOfCommands), 16, 8) | \
-            _SHIFTL((numberOfCommands*8), 0, 16));                                 \
-    _g->words.w1 = (unsigned int)(address);                                        \
-}
-#endif
 
 #define gDPSetPrimColorRGBA(pkt, rgba)             \
 {                                                  \
@@ -220,7 +201,6 @@
 }
 
 // DKR Uses these macros, from later gbi.h files
-#ifdef TARGET_PC
 #define	gDPSetOtherMode(pkt, mode0, mode1)				\
 {									\
 	Gfx *_g = (Gfx *)(pkt);						\
@@ -228,28 +208,11 @@
 	_g->words.w0 = _SHIFTL(G_RDPSETOTHERMODE,24,8)|_SHIFTL(mode0,0,24);\
 	_g->words.w1 = (GfxWord)(mode1);				\
 }
-#else
-#define	gDPSetOtherMode(pkt, mode0, mode1)				\
-{									\
-	Gfx *_g = (Gfx *)(pkt);						\
-									\
-	_g->words.w0 = _SHIFTL(G_RDPSETOTHERMODE,24,8)|_SHIFTL(mode0,0,24);\
-	_g->words.w1 = (unsigned int)(mode1);				\
-}
-#endif
 
-#ifdef TARGET_PC
 #define	gsDPSetOtherMode(mode0, mode1)					\
 {{									\
 	_SHIFTL(G_RDPSETOTHERMODE,24,8)|_SHIFTL(mode0,0,24),		\
 	(GfxWord)(mode1)						\
 }}
-#else
-#define	gsDPSetOtherMode(mode0, mode1)					\
-{{									\
-	_SHIFTL(G_RDPSETOTHERMODE,24,8)|_SHIFTL(mode0,0,24),		\
-	(unsigned int)(mode1)						\
-}}
-#endif
 
 #endif

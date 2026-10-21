@@ -21,11 +21,7 @@ void __osSetHWIntrRoutine(OSHWIntr interrupt, s32 (*handler)(void), void* stackE
 
 #else
 
-#ifdef TARGET_PC
 extern s32 (*__osHwIntTable[])(void);
-#else
-extern struct s32 (*__osHwIntTable[])(void);
-#endif
 
 void __osSetHWIntrRoutine(OSHWIntr interrupt, s32 (*handler)(void)) {
     register u32 saveMask = __osDisableInt();

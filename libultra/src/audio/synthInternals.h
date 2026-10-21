@@ -255,11 +255,7 @@ s32     alResampleParam(void *f, s32 paramID, void *param);
 
 typedef struct ALSave_s {
     ALFilter            filter;
-#ifdef TARGET_PC
     ALDMAAddr		dramout; /* host pointer on PC */
-#else
-    s32	       		dramout;
-#endif
     s32                 first;
 } ALSave;
 
@@ -295,7 +291,6 @@ void    alEnvmixerNew(ALEnvMixer *e, ALHeap *hp);
 Acmd    *alEnvmixerPull(void *f, s16 *outp, s32 out, s32 sampleOffset, Acmd *p);
 s32     alEnvmixerParam(void *filter, s32 paramID, void *param);
 
-
 /*
  * heap stuff
  */
@@ -326,7 +321,6 @@ typedef struct PVoice_s {
     s32                 offset;
     u8                  unkDC;
 } PVoice;
-
 
 /*
  * prototypes for private driver functions

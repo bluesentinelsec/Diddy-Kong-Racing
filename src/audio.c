@@ -9,20 +9,14 @@
 #include "libultra/src/audio/seqchannel.h"
 #include "sched.h"
 #include "types.h"
-#ifdef TARGET_PC
 #include "pc_swap.h"
-#endif
 
-#ifdef TARGET_PC
 // The N64 audio thread consumes events while a level is being replaced. The
 // PC port runs the audio manager synchronously after the game submits a frame,
 // so level_free(), level_music_start(), and music_sequence_init() can queue 112
 // zero-delay channel events before it gets to run. Preserve the original 120
 // event working set plus that transition burst, rounded up for headroom.
 #define MUSIC_PLAYER_MAX_EVENTS 256
-#else
-#define MUSIC_PLAYER_MAX_EVENTS 120
-#endif
 
 /************ .data ************/
 
@@ -49,13 +43,9 @@ u8 gBlockVoiceLimitChange = FALSE;
 /************ .bss ************/
 
 // The audio heap is located at the start of the BSS section.
-#ifdef TARGET_PC
 // alHeapInit rounds the base up to 16 bytes without shortening the length, so an
 // unaligned array lets the last allocation run past its end; align it instead.
 _Alignas(32) u8 gAudioHeapStack[AUDIO_HEAP_SIZE];
-#else
-u8 gAudioHeapStack[AUDIO_HEAP_SIZE];
-#endif
 
 ALHeap gALHeap;
 ALSeqFile *gSequenceTable;
@@ -108,9 +98,7 @@ void audio_init(OSSched *sc) {
     alHeapInit(&gALHeap, gAudioHeapStack, sizeof(gAudioHeapStack));
 
     addrPtr = (s32 *) asset_table_load(ASSET_AUDIO_TABLE);
-#ifdef TARGET_PC
     pc_swap32_buf(addrPtr, asset_table_size(ASSET_AUDIO_TABLE)); // big-endian sub-table
-#endif
     gSoundBank = (ALBankFile *) mempool_alloc_safe(addrPtr[ASSET_AUDIO_2] - addrPtr[ASSET_AUDIO_1], COLOUR_TAG_CYAN);
     asset_load(ASSET_AUDIO, (uintptr_t) gSoundBank, addrPtr[ASSET_AUDIO_1], addrPtr[ASSET_AUDIO_2] - addrPtr[ASSET_AUDIO_1]);
     alBnkfNew(gSoundBank, asset_rom_offset(ASSET_AUDIO, addrPtr[ASSET_AUDIO_2]));
@@ -119,13 +107,11 @@ void audio_init(OSSched *sc) {
     gSoundTable = (SoundData *) mempool_alloc_safe(gSoundTableSize, COLOUR_TAG_CYAN);
     asset_load(ASSET_AUDIO, (uintptr_t) gSoundTable, addrPtr[ASSET_AUDIO_6], gSoundTableSize);
     gSoundCount = gSoundTableSize / sizeof(SoundData);
-#ifdef TARGET_PC
     // SoundData mixes u16 and u8 fields: swap only the two u16s (gSpatialSoundTable aliases this array).
     for (i = 0; i < gSoundCount; i++) {
         pc_swap16_buf(&gSoundTable[i].soundBite, sizeof(u16));
         pc_swap16_buf(&gSoundTable[i].range, sizeof(u16));
     }
-#endif
 
     gSeqSoundTableSize = addrPtr[ASSET_AUDIO_6] - addrPtr[ASSET_AUDIO_5];
     gSeqSoundTable = (MusicData *) mempool_alloc_safe(gSeqSoundTableSize, COLOUR_TAG_CYAN);
@@ -137,29 +123,19 @@ void audio_init(OSSched *sc) {
     alBnkfNew(gSequenceBank, asset_rom_offset(ASSET_AUDIO, addrPtr[ASSET_AUDIO_0]));
     gSequenceTable = (ALSeqFile *) alHeapAlloc(&gALHeap, 1, 4);
     asset_load(ASSET_AUDIO, (uintptr_t) gSequenceTable, addrPtr[ASSET_AUDIO_4], 4);
-#ifdef TARGET_PC
     PC_SWAP16_AT(gSequenceTable, revision, sizeof(s16)); // raw big-endian peek, replaced below
     PC_SWAP16_AT(gSequenceTable, seqCount, sizeof(s16));
-#endif
 
     seqfSize = (gSequenceTable->seqCount) * 8 + 4;
-#ifdef TARGET_PC
     // ALSeqData is wider on the host; alSeqFileNew unpacks the image in place.
     gSequenceTable = mempool_alloc_safe(offsetof(ALSeqFile, seqArray) + gSequenceTable->seqCount * sizeof(ALSeqData),
                                         COLOUR_TAG_CYAN);
-#else
-    gSequenceTable = mempool_alloc_safe(seqfSize, COLOUR_TAG_CYAN);
-#endif
     asset_load(ASSET_AUDIO, (uintptr_t) gSequenceTable, addrPtr[ASSET_AUDIO_4], seqfSize);
     alSeqFileNew(gSequenceTable, asset_rom_offset(ASSET_AUDIO, addrPtr[ASSET_AUDIO_4]));
     gSeqLengthTable = (u32 *) mempool_alloc_safe((gSequenceTable->seqCount) * 4, COLOUR_TAG_CYAN);
 
     for (i = 0; i < gSequenceTable->seqCount; i++) {
-#ifdef TARGET_PC
         pad = (u32) (uintptr_t) (gSequenceTable + 8 + i * 8); // Fakematch
-#else
-        pad = (u32) (gSequenceTable + 8 + i * 8); // Fakematch
-#endif
         gSeqLengthTable[i] = gSequenceTable->seqArray[i].len;
         if (gSeqLengthTable[i] & 1) {
             gSeqLengthTable[i]++;
@@ -186,14 +162,10 @@ void audio_init(OSSched *sc) {
     audConfig.maxEvents = 150;
     audConfig.maxSounds = 32;
     audConfig.maxChannels = AUDIO_CHANNELS;
-#ifdef TARGET_PC
     // Retail allocates one group but SOUND_PARAM_GROUP() indexes up to 64, overrunning
     // the audio heap. On the N64 that lands in neighbouring allocations; here it would
     // corrupt host pointers, so give the array its real size.
     audConfig.numGroups = 64;
-#else
-    audConfig.numGroups = 1;
-#endif
     audConfig.heap = &gALHeap;
     sndp_init_player(&audConfig);
     audioStartThread();
@@ -1068,9 +1040,7 @@ void music_sequence_init(ALCSPlayer *seqp, void *sequence, u8 *seqID, ALCSeq *se
         asset_load(ASSET_AUDIO, (uintptr_t) sequence,
                    gSequenceTable->seqArray[*seqID].offset - asset_rom_offset(ASSET_AUDIO, 0),
                    (s32) gSeqLengthTable[*seqID]);
-#ifdef TARGET_PC
         pc_swap32_buf(sequence, sizeof(ALCMidiHdr)); // 17 big-endian u32s; the event stream after them stays bytes
-#endif
         alCSeqNew(seq, sequence);
         alCSPSetSeq(seqp, seq);
         alCSPPlay(seqp);

@@ -94,25 +94,14 @@ s32 gSurfaceFlagTable4P[20] = {
 // Used to know how the AI should use a balloon when they have one.
 s8 gRacerAIBalloonActionTable[NUM_WEAPON_TYPES] = { 1, 1, 2, 2, 4, 3, 0, 6, 4, 3, 2, 2, 5, 5, 5, 0 };
 
-#ifdef TARGET_PC
 //!@bug: indexed by racer->racePosition (racer.c func_80042D20), which is
 // 1-based — racerPos starts at 1 in objects.c and counts up — so an 8th-place
 // racer reads index 8 of an 8-entry table. Index 0 is never used and index 8 is
 // off the end. On console the byte past the table is D_800DCDA8[0] (they are
 // adjacent: 0x800DCDA0 + 8 == 0x800DCDA8), so the read yields 1; the ninth entry
 // below reproduces that exactly, keeping the stray load in bounds.
-#ifdef TARGET_PC
 s8 D_800DCDA0[9] = {
     0, 0, 0, 1, 1, 2, 2, 2, 1,
-#else
-s8 D_800DCDA0[8] = {
-    0, 0, 0, 1, 1, 2, 2, 2,
-#endif
-#else
-// Unused?
-s8 D_800DCDA0[8] = {
-    0, 0, 0, 1, 1, 2, 2, 2,
-#endif
 };
 
 s8 D_800DCDA8[8] = {
@@ -158,9 +147,7 @@ s32 gCurrentPlayerIndex;
 s16 D_8011D560; // Set, but never read.
 f32 *gCurrentRacerMiscAssetPtr;
 f32 *D_8011D568;
-#ifdef TARGET_PC
 
-#ifdef TARGET_PC
 /**
  * The two per-vehicle f32 tables reached through the object header, swapped
  * where they are fetched because their misc-asset index is not a constant:
@@ -180,8 +167,6 @@ static void pc_swap_racer_tables(ObjectHeader *header) {
     pc_swap_misc_f32_once(header->miscAssetIds[0]);
     pc_swap_misc_f32_once(header->miscAssetIds[1]);
 }
-#endif
-#endif
 f32 gCurrentRacerWeightStat;
 f32 gCurrentRacerHandlingStat;
 f32 gCurrentRacerUnusedMiscAsset11; // Set, but never read
@@ -4294,9 +4279,7 @@ void update_player_racer(Object *obj, s32 updateRate) {
             tempRacer->unk84 -= tempRacer->unk84 * 0.0625 * updateRateF;
             tempRacer->unk88 -= tempRacer->unk88 * 0.0625 * updateRateF;
         }
-#ifdef TARGET_PC
         pc_swap_racer_tables(obj->header);
-#endif
         gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(obj->header->miscAssetIds[0]);
         D_8011D568 = (f32 *) get_misc_asset(obj->header->miscAssetIds[1]);
 
@@ -4842,11 +4825,7 @@ void update_car(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer 
             update_car_velocity_offground(racerObj, racer, updateRate, updateRateF);
         }
         if (racer->unk1C != 0) {
-#ifdef TARGET_PC
             sndp_stop((SoundHandle) (uintptr_t) racer->unk1C); // type cast required to match
-#else
-            sndp_stop((SoundHandle) (s32) racer->unk1C); // type cast required to match
-#endif
             racer->unk1C = 0;
         }
         if (racer->buoyancy != 0.0f && racer->vehicleIDPrev != VEHICLE_BUBBLER) {
@@ -5314,43 +5293,23 @@ void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 upd
                 sound_play_spatial(SOUND_CAR_SLIDE, obj->trans.x_position, obj->trans.y_position, obj->trans.z_position,
                                    &racer->unk10);
             } else {
-#ifdef TARGET_PC
                 audspat_calculate_echo((SoundHandle) (uintptr_t) racer->unk10, obj->trans.x_position, obj->trans.y_position,
-#else
-                audspat_calculate_echo((SoundHandle) (s32) racer->unk10, obj->trans.x_position, obj->trans.y_position,
-#endif
                                        obj->trans.z_position); // type cast required to match
             }
             if (racer->unk14) {
-#ifdef TARGET_PC
                 sndp_stop((SoundHandle) (uintptr_t) racer->unk14); // type cast required to match
-#else
-                sndp_stop((SoundHandle) (s32) racer->unk14); // type cast required to match
-#endif
             }
         } else {
             if (racer->unk10) {
-#ifdef TARGET_PC
                 sndp_stop((SoundHandle) (uintptr_t) racer->unk10); // type cast required to match
-#else
-                sndp_stop((SoundHandle) (s32) racer->unk10); // type cast required to match
-#endif
             }
         }
     } else {
         if (racer->unk10) {
-#ifdef TARGET_PC
             sndp_stop((SoundHandle) (uintptr_t) racer->unk10); // type cast required to match
-#else
-            sndp_stop((SoundHandle) (s32) racer->unk10); // type cast required to match
-#endif
         }
         if (racer->unk14) {
-#ifdef TARGET_PC
             sndp_stop((SoundHandle) (uintptr_t) racer->unk14); // type cast required to match
-#else
-            sndp_stop((SoundHandle) (s32) racer->unk14); // type cast required to match
-#endif
         }
     }
     // Velocity of steering input
@@ -5531,11 +5490,7 @@ void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 upd
         sound_play(surfaceType, &racer->unk18);
     }
     if (racer->unk18 != 0 && (surfaceType == SOUND_NONE || racer->velocity > -2.0)) {
-#ifdef TARGET_PC
         sndp_stop((SoundHandle) (uintptr_t) racer->unk18); // type cast required to match
-#else
-        sndp_stop((SoundHandle) (s32) racer->unk18); // type cast required to match
-#endif
     }
     // Apply a bobbing effect when on grass and sand.
     if (racer->velocity < -2.0 && sp68 >= 4) {
@@ -5991,25 +5946,13 @@ void update_car_velocity_offground(Object *obj, Object_Racer *racer, s32 updateR
         racer->x_rotation_vel += (angle >> 3); //!@Delta
     }
     if (racer->unk18) {
-#ifdef TARGET_PC
         sndp_stop((SoundHandle) (uintptr_t) racer->unk18); // type cast required to match
-#else
-        sndp_stop((SoundHandle) (s32) racer->unk18); // type cast required to match
-#endif
     }
     if (racer->unk10) {
-#ifdef TARGET_PC
         sndp_stop((SoundHandle) (uintptr_t) racer->unk10); // type cast required to match
-#else
-        sndp_stop((SoundHandle) (s32) racer->unk10); // type cast required to match
-#endif
     }
     if (racer->unk14) {
-#ifdef TARGET_PC
         sndp_stop((SoundHandle) (uintptr_t) racer->unk14); // type cast required to match
-#else
-        sndp_stop((SoundHandle) (s32) racer->unk14); // type cast required to match
-#endif
     }
     if (racer->unk1FE == 1 || racer->unk1FE == 3) {
         racer->unk1E8 = racer->steerAngle;
@@ -6280,13 +6223,6 @@ void func_80053750(Object *objRacer, Object_Racer *racer, f32 updateRateF) {
             }
             objRacer->particleEmittersEnabled |= OBJ_EMIT_11 | OBJ_EMIT_12;
         }
-#ifdef TARGET_PC
-#ifndef TARGET_PC
-        temp_f0 = someObj->trans.y_position; // Fake (dead read; someObj can be stale here)
-#endif
-#else
-        temp_f0 = someObj->trans.y_position; // Fake
-#endif
         for (i = 0; i < 4; i++) {
             someObj = objRacer->attachPoints->obj[i];
             if (!(racer->unk1E3 & flags)) {
@@ -8870,9 +8806,7 @@ void update_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, f32 updat
             racer->unk88 -= racer->unk88 * 0.0625 * updateRateF;
         }
         gCurrentRacerHandlingStat = 1;
-#ifdef TARGET_PC
         pc_swap_racer_tables(obj->header);
-#endif
         gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(ASSET_MISC_RACERACCELERATION_UNKNOWN0);
         D_8011D568 = (f32 *) get_misc_asset(obj->header->miscAssetIds[1]);
         if ((obj->y_velocity < 4.0) && ((racer->groundedWheels >= 3) || (racer->buoyancy != 0.0))) {

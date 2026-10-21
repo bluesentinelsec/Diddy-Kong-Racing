@@ -46,7 +46,6 @@ extern "C" {
  *
  */
 
-
 #endif /* defined(_LANGUAGE_C) || defined(_LANGUAGE_C_PLUS_PLUS) */
 
 /**************************************************************************
@@ -54,7 +53,6 @@ extern "C" {
  * Global definitions
  *
  */
-
 
 #if defined(_LANGUAGE_C) || defined(_LANGUAGE_C_PLUS_PLUS)
 
@@ -64,13 +62,11 @@ extern "C" {
  *
  */
 
-
 /**************************************************************************
  *
  * Extern variables
  *
  */
-
 
 /**************************************************************************
  *
@@ -80,42 +76,15 @@ extern "C" {
 
 /* byte string operations */
 
-#ifdef TARGET_PC
-#if defined(TARGET_PC)
 /* Host builds: game code sees the N64 libc stubs (include/libc/string.h
  * declares these), platform code the real string.h, whose fortified macros
  * must not be shadowed by declarations here. */
 #include <string.h>
-#elif !defined(MODERN_CC)
-extern void     bcopy(const void *, void *, int);
-extern int      bcmp(const void *, const void *, int);
-extern void     bzero(void *, int);
-#else
-extern void     bcopy(const void *, void *, size_t);
-extern int      bcmp(const void *, const void *, size_t);
-extern void     bzero(void *, size_t);
-#endif
-#else
-#ifndef MODERN_CC
-extern void     bcopy(const void *, void *, int);
-extern int      bcmp(const void *, const void *, int);
-extern void     bzero(void *, int);
-#else
-extern void     bcopy(const void *, void *, size_t);
-extern int      bcmp(const void *, const void *, size_t);
-extern void     bzero(void *, size_t);
-#endif
-#endif
 
 /* Printf */
 
-#ifdef TARGET_PC
 #include <stdio.h> /* host sprintf may be a fortified macro; don't redeclare it */
-#else
-extern int sprintf(char *s, const char *format, ...);
-#endif
 extern void		osSyncPrintf(const char *fmt, ...);
-
 
 #endif  /* defined(_LANGUAGE_C) || defined(_LANGUAGE_C_PLUS_PLUS) */
 

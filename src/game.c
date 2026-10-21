@@ -13,9 +13,7 @@
 #include "memory.h"
 #include "menu.h"
 #include "objects.h"
-#ifdef TARGET_PC
 #include "particles.h"
-#endif
 #include "racer.h"
 #include "rcp_dkr.h"
 #include "save_data.h"
@@ -27,10 +25,8 @@
 #include "types.h"
 #include "video.h"
 #include "weather.h"
-#ifdef TARGET_PC
 #include "pc_swap.h"
 
-#ifdef TARGET_PC
 // LevelHeader is loaded from a 0xC4-byte big-endian N64 image and unpacked
 // into the host struct (see pc_asset.h). AILevelTable (0x20) is inline s8 data
 // read by aitable_init, so everything from 0x20 up to `geometry` is copied raw
@@ -75,8 +71,6 @@ static void pc_load_level_header(LevelHeader *dst, s32 offset) {
     asset_load(ASSET_LEVEL_HEADERS, (uintptr_t) disk, offset, LEVEL_HEADER_DISK_SIZE);
     pc_unpack(dst, sizeof(LevelHeader), disk, LEVEL_HEADER_DISK_SIZE, sLevelHeaderFields);
 }
-#endif
-#endif
 
 /************ .data ************/
 
@@ -125,9 +119,7 @@ void level_global_init(void) {
     s32 j;
     header = mempool_alloc_safe(sizeof(LevelHeader), COLOUR_TAG_YELLOW);
     gTempAssetTable = (s32 *) asset_table_load(ASSET_LEVEL_HEADERS_TABLE);
-#ifdef TARGET_PC
     pc_swap32_buf(gTempAssetTable, asset_table_size(ASSET_LEVEL_HEADERS_TABLE));
-#endif
     i = 0;
     while (i < 16) {
         gRaceTypeCountTable[i++] = 0;
@@ -141,11 +133,7 @@ void level_global_init(void) {
     gCurrentLevelHeader = (LevelHeader *) header;
     gNumberOfWorlds = -1;
     for (i = 0; i < gNumberOfLevelHeaders; i++) {
-#ifdef TARGET_PC
         pc_load_level_header(gCurrentLevelHeader, gTempAssetTable[i]);
-#else
-        asset_load(ASSET_LEVEL_HEADERS, (u32) gCurrentLevelHeader, gTempAssetTable[i], sizeof(LevelHeader));
-#endif
         if (gNumberOfWorlds < gCurrentLevelHeader->world) {
             gNumberOfWorlds = gCurrentLevelHeader->world;
         }
@@ -172,20 +160,14 @@ void level_global_init(void) {
     mempool_free(gTempAssetTable);
     mempool_free(header);
     gTempAssetTable = (s32 *) asset_table_load(ASSET_LEVEL_NAMES_TABLE);
-#ifdef TARGET_PC
     pc_swap32_buf(gTempAssetTable, asset_table_size(ASSET_LEVEL_NAMES_TABLE));
-#endif
     for (i = 0; gTempAssetTable[i] != (-1); i++) {}
     i--;
     size = gTempAssetTable[i] - gTempAssetTable[0];
-#ifdef TARGET_PC
     // Pointer-sized entries: the N64's i * 4 overran into the names loaded
     // right after it on a 64-bit host, leaving some level names as the upper
     // halves of pointers (garbage that differed from run to run).
     gLevelNames = mempool_alloc_safe(i * sizeof(char *), COLOUR_TAG_YELLOW);
-#else
-    gLevelNames = mempool_alloc_safe(i * sizeof(s32), COLOUR_TAG_YELLOW);
-#endif
     gTempLevelNames = mempool_alloc_safe(size, COLOUR_TAG_YELLOW);
     asset_load(ASSET_LEVEL_NAMES, (uintptr_t) gTempLevelNames, 0, size);
     for (size = 0; size < i; size++) {
@@ -446,9 +428,7 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     }
     settings = get_settings();
     gTempAssetTable = (s32 *) asset_table_load(ASSET_LEVEL_HEADERS_TABLE);
-#ifdef TARGET_PC
     pc_swap32_buf(gTempAssetTable, asset_table_size(ASSET_LEVEL_HEADERS_TABLE));
-#endif
 
     for (i = 0; gTempAssetTable[i] != -1; i++) {}
     i--;
@@ -459,13 +439,8 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
 
     offset = gTempAssetTable[levelId];
     size = gTempAssetTable[levelId + 1] - offset;
-#ifdef TARGET_PC
     gCurrentLevelHeader = (LevelHeader *) mempool_alloc_safe(sizeof(LevelHeader), COLOUR_TAG_YELLOW);
     pc_load_level_header(gCurrentLevelHeader, offset);
-#else
-    gCurrentLevelHeader = (LevelHeader *) mempool_alloc_safe(size, COLOUR_TAG_YELLOW);
-    asset_load(ASSET_LEVEL_HEADERS, (u32) gCurrentLevelHeader, offset, size);
-#endif
     D_800DD330 = 0;
     prevLevelID = levelId;
     if (gCurrentLevelHeader->race_type == RACETYPE_DEFAULT) {
@@ -504,23 +479,13 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
         if (gCurrentLevelHeader->race_type == RACETYPE_HUBWORLD) {
             if (gCurrentLevelHeader->world > WORLD_CENTRAL_AREA && gCurrentLevelHeader->world < WORLD_FUTURE_FUN_LAND) {
                 var_s0 = gCurrentLevelHeader->world;
-#ifdef TARGET_PC
                 // Shifts of 32+ on an s32 are UB in C; the N64 relied on MIPS masking the
                 // count mod 32 (so +31 means -1). GCC deletes the flag checks otherwise.
-#endif
                 if (settings->keys & (1 << var_s0) &&
-#ifdef TARGET_PC
                     !(settings->cutsceneFlags & (CUTSCENE_DINO_DOMAIN_KEY << ((var_s0 + 31) & 31)))) {
-#else
-                    !(settings->cutsceneFlags & (CUTSCENE_DINO_DOMAIN_KEY << (var_s0 + 31)))) {
-#endif
                     // Trigger World Key unlocking Challenge Door cutscene.
                     level_properties_push(levelId, entranceId, vehicleId, cutsceneId);
-#ifdef TARGET_PC
                     settings->cutsceneFlags |= CUTSCENE_DINO_DOMAIN_KEY << ((var_s0 + 31) & 31);
-#else
-                    settings->cutsceneFlags |= CUTSCENE_DINO_DOMAIN_KEY << (var_s0 + 31);
-#endif
                     someAsset = (s8 *) get_misc_asset(ASSET_MISC_68);
                     levelId = someAsset[var_s0 - 1];
                     entranceId = 0;
@@ -543,13 +508,8 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
         mempool_free(gCurrentLevelHeader);
         offset = gTempAssetTable[levelId];
         size = gTempAssetTable[levelId + 1] - offset;
-#ifdef TARGET_PC
         gCurrentLevelHeader = mempool_alloc_safe(sizeof(LevelHeader), COLOUR_TAG_YELLOW);
         pc_load_level_header(gCurrentLevelHeader, offset);
-#else
-        gCurrentLevelHeader = mempool_alloc_safe(size, COLOUR_TAG_YELLOW);
-        asset_load(ASSET_LEVEL_HEADERS, (u32) gCurrentLevelHeader, offset, size);
-#endif
     }
     mempool_free(gTempAssetTable);
     aitable_init((s8 *) &gCurrentLevelHeader->AILevelTable);
@@ -559,13 +519,11 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
         if ((s32) gCurrentLevelHeader->unk74[var_s0] != -1) {
             gCurrentLevelHeader->unk74[var_s0] =
                 (LevelHeader_70 *) get_misc_asset((s32) gCurrentLevelHeader->unk74[var_s0]);
-#ifdef TARGET_PC
             // The colour loop is a big-endian misc asset. Only the subset shared
             // with a particle behaviour is swapped in init_particle_assets; swap
             // the rest here (shared swap-once table, so no double-swap) or
             // func_8007F1E8's count below reads big-endian and walks off the pool.
             pc_swap_colour_loop_shared(gCurrentLevelHeader->unk74[var_s0]);
-#endif
             func_8007F1E8((LevelHeader_70 *) gCurrentLevelHeader->unk74[var_s0]);
         }
     }
@@ -609,16 +567,10 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
         vehicleId = gCurrentDefaultVehicle;
     }
     set_vehicle_id_for_menu(vehicleId);
-#ifdef TARGET_PC
     stubbed_printf("post vehicle swap\n");
-#endif
     if (gCurrentLevelHeader->race_type == RACETYPE_HUBWORLD) {
         if (settings->worldId - 1 >= 0) {
-#ifdef TARGET_PC
             var_s0 = 8 << ((settings->worldId + 31) & 31); // MIPS shift-mask semantics; see above
-#else
-            var_s0 = 8 << (settings->worldId + 31);
-#endif
             if (settings->worldId == 5) {
                 if (settings->balloonsPtr[0] >= 47) {
                     if (settings->ttAmulet >= 4) {
@@ -661,14 +613,10 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
         cutsceneId = CUTSCENE_ID_UNK_64;
     }
     cutscene_id_set(cutsceneId);
-#ifdef TARGET_PC
     stubbed_printf("pre init_track\n");
-#endif
     init_track(gCurrentLevelHeader->geometry, gCurrentLevelHeader->skybox, numberOfPlayers, vehicleId, entranceId,
                gCurrentLevelHeader->collectables, gCurrentLevelHeader->unkBA);
-#ifdef TARGET_PC
     stubbed_printf("post init_track\n");
-#endif
     if (gCurrentLevelHeader->fogNear == 0 && gCurrentLevelHeader->fogFar == 0 && gCurrentLevelHeader->fogR == 0 &&
         gCurrentLevelHeader->fogG == 0 && gCurrentLevelHeader->fogB == 0) {
         for (var_s0 = 0; var_s0 < 4; var_s0++) {
@@ -707,9 +655,7 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
                       gCurrentLevelHeader->bgColorBlue);
     video_delta_reset();
     func_8007AB24(gCurrentLevelHeader->unk4[numberOfPlayers]);
-#ifdef TARGET_PC
     stubbed_printf("level_load body end\n");
-#endif
 }
 
 /**
@@ -796,15 +742,10 @@ char *level_name(s32 levelId) {
  * Call multiple functions to stop and free audio, then free track, weather and wave data.
  */
 void level_free(void) {
-#ifdef TARGET_PC
     sndp_stop_all_looped();
-#endif
     aitable_free();
     bgdraw_primcolour(0, 0, 0);
     mempool_free(gCurrentLevelHeader);
-#ifndef TARGET_PC
-    sndp_stop_all_looped();
-#endif
     music_stop();
     music_jingle_stop();
     music_channel_reset_all();
@@ -859,9 +800,7 @@ void aitable_init(s8 *aiLevelTable) {
         aiLevel = 5;
     }
     gTempAssetTable = (s32 *) asset_table_load(ASSET_AI_BEHAVIOUR_TABLE);
-#ifdef TARGET_PC
     pc_swap32_buf(gTempAssetTable, asset_table_size(ASSET_AI_BEHAVIOUR_TABLE));
-#endif
     tableIndexCount = 0;
     while (-1 != (s32) gTempAssetTable[tableIndexCount]) {
         tableIndexCount++;
