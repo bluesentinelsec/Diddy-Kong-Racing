@@ -187,6 +187,11 @@ s16 gAiCatchupTimer;
 
 /******************************/
 
+/**
+ * Computer racer decisions beyond steering: taunts and voices when positions
+ * change, skill level, lane choice, and item and boost use against the
+ * opponents just ahead and behind. Called from racer_ai_drive.
+ */
 void racer_ai_tactics(Object *obj, Object_Racer *racer, s32 updateRate) {
     f32 sp94;
     f32 sp90;
@@ -1366,6 +1371,10 @@ void racer_ai_eggs(Object *obj, Object_Racer *racer, s32 updateRate) {
     }
 }
 
+/**
+ * Computer racer input: builds the stick and button state for this tick by
+ * steering toward the checkpoint spline, then runs racer_ai_tactics.
+ */
 void racer_ai_drive(Object *obj, Object_Racer *racer, s32 updateRate) {
     s32 v0;
     UNUSED s32 pad_spE0;
@@ -1573,6 +1582,10 @@ void racer_ai_drive(Object *obj, Object_Racer *racer, s32 updateRate) {
     racer_ai_tactics(obj, racer, updateRate);
 }
 
+/**
+ * Hovercraft physics for one tick: throttle, drift, water surface and waves,
+ * collision and the vehicle parts, as update_car and update_plane are for theirs.
+ */
 void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *racer) {
     s32 objectMoved;
     UNUSED s32 pad1;
@@ -2533,7 +2546,10 @@ f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 arg3,
     return velocity;
 }
 
-// Plane physics
+/**
+ * Plane physics for one tick: pitch and roll from the stick, lift, boosts and
+ * the ground and wall collision.
+ */
 void update_plane(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *racer) {
     s32 pad5;
     s32 pad7;
@@ -3666,7 +3682,10 @@ void update_camera_plane(f32 updateRate, Object *obj, Object_Racer *racer) {
     racer->cameraYaw = gCameraObject->trans.rotation.y_rotation;
 }
 
-// Handles loop de loops
+/**
+ * Movement while riding a loop-de-loop: the racer is carried along its nodes
+ * with walls ignored and the boost kept alive.
+ */
 void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer *racer) {
     s32 animFrame;
     s32 moveObjResult;
@@ -5693,6 +5712,10 @@ s32 turn_head_towards_object(Object *obj, Object_Racer *racer, Object *targetObj
     return ret;
 }
 
+/**
+ * Drives the car body animation (sliding and tyre marks, boosting, the item
+ * use pose) from the racer's state each tick.
+ */
 void update_car_drive_animation(Object *obj, Object_Racer *racer, s32 updateRate) {
     s8 *balloonAsset;
     s32 angleVel;
@@ -5799,7 +5822,11 @@ void update_car_drive_animation(Object *obj, Object_Racer *racer, s32 updateRate
     }
 }
 
-// Anims related to the car I think
+/**
+ * Starts or advances a racer animation: blends out of the idle pose first
+ * when flags & 1, holds the last frame or plays back out when flags & 2, and
+ * never holds when flags & 4. arg5 is the frame step, scaled by arg7.
+ */
 void racer_set_animation(Object *obj, Object_Racer *racer, s32 action, s32 arg3, s32 duration, s32 arg5, s32 flags,
                    s32 arg7) {
     arg5 *= arg7;
@@ -6079,6 +6106,10 @@ void handle_car_steering(Object_Racer *racer) {
     }
 }
 
+/**
+ * Rotates the world down vector into the racer's frame (steering, pitch and
+ * roll) and stores it in roll/yaw/pitch, which the body tilt reads.
+ */
 void racer_update_tilt_vector(Object *obj, Object_Racer *racer) {
     MtxF mf;
 
@@ -6118,6 +6149,10 @@ void handle_car_velocity_control(Object_Racer *racer) {
     }
 }
 
+/**
+ * Spins the wheel models with the car's speed (stopped under hard braking)
+ * and keeps the two-wheel vehicles' wheels aligned.
+ */
 void update_car_wheels(Object *objRacer, Object_Racer *racer, f32 updateRateF) {
     Object *someObj;
     f64 temp_f0;
@@ -7272,7 +7307,10 @@ void play_char_horn_sound(Object *obj, Object_Racer *racer) {
     }
 }
 
-// Used for magnet and homing rockets to get the distance to the nearest racer.
+/**
+ * The nearest racer in front, for the magnet and homing rockets; computer
+ * racers outside challenges take the nearest opponent instead.
+ */
 Object *racer_find_weapon_target(Object *racerObj, Object_Racer *racer, f32 *outDistance) {
     Object_Racer *curRacer;
     s32 i;
@@ -7574,6 +7612,10 @@ f32 handle_racer_top_speed(Object *obj, Object_Racer *racer) {
     return speedMultiplier;
 }
 
+/**
+ * Recomputes the racer's forward (o1), up (o2) and right (o3) unit vectors
+ * from its yaw and pitch.
+ */
 void racer_update_basis_vectors(Object *obj, Object_Racer *racer) {
     MtxF mtxF;
 
@@ -8150,6 +8192,10 @@ void set_position_goal_from_path(UNUSED Object *obj, Object_Racer *racer, f32 *x
     *z = catmull_rom_interpolation(splineZ, destReached, magnitude);
 }
 
+/**
+ * Tracks where the racer is along the checkpoint spline: advances or rewinds
+ * the next checkpoint, lap and course checkpoint as it crosses them.
+ */
 void racer_update_checkpoint_progress(Object *obj, Object_Racer *racer, s32 updateRate) {
     f32 ftemp;
     UNUSED s32 pad;
@@ -8981,6 +9027,11 @@ void update_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, f32 updat
     set_racer_tail_lights(racer);
 }
 
+/**
+ * Moves a computer racer along the checkpoint spline directly (the cheap
+ * path used while it is not near the player), setting its speed from the
+ * lane and vehicle and placing it on the spline.
+ */
 void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF) {
     s32 j;
     s32 checkpointIdx;
