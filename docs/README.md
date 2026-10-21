@@ -51,7 +51,7 @@ those after running `make assets`.
 ## Version
 
 The port's version is the `VERSION` file at the repository root (semantic
-versioning; `0.1.0` is the first numbered build). CMake reads it and stamps
+versioning). CMake reads it and stamps
 the executable (`dkracing --version`, and the startup banner) and the Android
 and iOS apps, whose build numbers are the git commit count. Bump `VERSION`
 when cutting a release.
