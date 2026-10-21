@@ -1,12 +1,11 @@
 #ifndef _COLLISION_H_
 #define _COLLISION_H_
 
-#include "types.h"
 #include "structs.h"
+#include "types.h"
 
 #define MAX_COLLISION_CANDIDATES 500
 
-#ifdef TARGET_PC
 // gCollisionCandidates entries are tagged pointers: segment entries vs
 // CollisionFacetPlanes entries. Retail's asm tagged via the KSEG0 sign bit
 // (segments stored as positive physical addresses), which host pointers don't
@@ -17,14 +16,9 @@
 #define COLLISION_ENTRY_IS_SEGMENT(entry) ((entry) & 1)
 #define COLLISION_ENTRY_SEGMENT(entry) ((LevelModelSegment *) ((entry) & ~1))
 
-#endif
 enum CollisionModes { COLLISION_MODE_DEFAULT, COLLISION_MODE_1, COLLISION_MODE_NO_WALLS };
 
-#ifdef TARGET_PC
 void generate_collision_candidates(s32 numPoints, Vec3f *origins, Vec3f *targets, s32 vehicleID);
-#else
-s32 generate_collision_candidates(s32 numPoints, Vec3f *origins, Vec3f *targets, s32 vehicleID);
-#endif
 s32 compute_grid_overlap_mask(LevelModelSegmentBoundingBox *bbox, s32 x1, s32 z1, s32 x2, s32 z2);
 s32 resolve_collisions(Vec3f *origin, Vec3f *target, f32 *radius, s8 *surface, s32 numEntries, s32 *numCollisions);
 

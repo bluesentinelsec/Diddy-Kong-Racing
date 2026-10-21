@@ -4,8 +4,8 @@
 #include "types.h"
 
 /* Scratch buffer (0xC00 bytes, allocated in object_models.c) holding the
- * current keyframe's interpolated s16 x/y/z delta per animated vertex. */
-extern s16 *D_8011D644;
+ * fraction-of-a-keyframe s16 x/y/z delta per animated vertex. */
+extern s16 *gAnimFracDeltas;
 
 /**
  * Step an object's keyframe vertex animation and write the resulting pose
@@ -24,7 +24,7 @@ extern s16 *D_8011D644;
  * the integer pose at the current keyframe; it persists across calls so the
  * animation can step forward/backward incrementally by applying s8 deltas.
  * The fractional part of the frame (1/16ths) is interpolated separately into
- * D_8011D644 and added on top when composing the output vertices.
+ * gAnimFracDeltas and added on top when composing the output vertices.
  *
  * Returns TRUE if a new pose was written, FALSE if there was nothing to do.
  */
@@ -37,7 +37,7 @@ s32 obj_animate(Object *obj) {
     u8 *nextHeader;
     s16 *indices;
     s16 *animState; /* accumulated s16 pose at the current keyframe */
-    s16 *fracDelta; /* D_8011D644: fraction-scaled deltas toward the next keyframe */
+    s16 *fracDelta; /* gAnimFracDeltas: fraction-scaled deltas toward the next keyframe */
     Vertex *outVtx;
     s32 modelNum;
     s32 animID;
@@ -155,7 +155,7 @@ s32 obj_animate(Object *obj) {
 
     /* scale the next keyframe's deltas by the frame fraction */
     delta = animData + recordSize * (curKeyframe + 2);
-    fracDelta = D_8011D644;
+    fracDelta = gAnimFracDeltas;
     for (i = 0; i < numAnimVtx; i++) {
         fracDelta[i * 3 + 0] = (((s8 *) delta)[0] * frac) >> 4;
         fracDelta[i * 3 + 1] = (((s8 *) delta)[1] * frac) >> 4;
@@ -191,7 +191,7 @@ s32 obj_animate(Object *obj) {
     /* compose base pose + fractional deltas into the other task buffer */
     modelInst->animationTaskNum ^= 1;
     outVtx = modelInst->vertices[(s32) modelInst->animationTaskNum];
-    fracDelta = D_8011D644;
+    fracDelta = gAnimFracDeltas;
     for (i = 0; i < model->numberOfVertices; i++) {
         slot = indices[i];
         if (slot != -1) {
