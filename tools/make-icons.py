@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Generate the app icons: a red tile with a yellow trim and white "DKR".
 
-Writes the iOS asset catalog icon (ios/Assets.xcassets) and the Android
-launcher mipmaps (android/app/src/main/res/mipmap-*). The PNGs are committed,
-so this only needs running when the design changes. Needs Pillow.
+Writes the iOS asset catalog icon (ios/Assets.xcassets), the Android launcher
+mipmaps (android/app/src/main/res/mipmap-*), the Windows .ico, the macOS
+.icns, the Linux PNG and the web favicon and manifest icons. They are all
+committed, so this only needs running when the design changes. Needs Pillow.
 """
 import os
 import sys
@@ -50,15 +51,43 @@ def icon(size):
     return im
 
 
+def rounded(size, radius_frac=0.225):
+    """The tile with rounded corners and transparency, for platforms that do not
+    mask icons themselves (Windows, Linux, the web)."""
+    im = icon(size)
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, size - 1, size - 1], radius=size * radius_frac, fill=255)
+    im.putalpha(mask)
+    return im
+
+
 def main():
+    big = icon(1024)
     ios = os.path.join(ROOT, "ios", "Assets.xcassets", "AppIcon.appiconset")
     os.makedirs(ios, exist_ok=True)
-    icon(1024).convert("RGB").save(os.path.join(ios, "icon-1024.png"))
+    big.convert("RGB").save(os.path.join(ios, "icon-1024.png"))
     android = os.path.join(ROOT, "android", "app", "src", "main", "res")
     for name, px in (("mdpi", 48), ("hdpi", 72), ("xhdpi", 96), ("xxhdpi", 144), ("xxxhdpi", 192)):
         out = os.path.join(android, f"mipmap-{name}")
         os.makedirs(out, exist_ok=True)
-        icon(1024).resize((px, px), Image.LANCZOS).save(os.path.join(out, "ic_launcher.png"))
+        big.resize((px, px), Image.LANCZOS).save(os.path.join(out, "ic_launcher.png"))
+    # Windows: a multi-size .ico for the executable's resource.
+    win = os.path.join(ROOT, "windows")
+    os.makedirs(win, exist_ok=True)
+    rounded(256).save(os.path.join(win, "dkracing.ico"), sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    # macOS: .icns for the app bundle (macOS rounds the corners itself).
+    mac = os.path.join(ROOT, "macos")
+    os.makedirs(mac, exist_ok=True)
+    big.save(os.path.join(mac, "dkracing.icns"))
+    # Linux: PNGs for the AppImage and the desktop entry.
+    lin = os.path.join(ROOT, "linux", "packaging")
+    os.makedirs(lin, exist_ok=True)
+    rounded(256).save(os.path.join(lin, "dkracing.png"))
+    # Web: favicon and the web-app manifest icons.
+    web = os.path.join(ROOT, "linux", "web")
+    rounded(64).save(os.path.join(web, "favicon.png"))
+    rounded(192).save(os.path.join(web, "icon-192.png"))
+    rounded(512).save(os.path.join(web, "icon-512.png"))
     print("icons written")
 
 

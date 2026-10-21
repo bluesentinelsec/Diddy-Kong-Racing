@@ -1,0 +1,84 @@
+name: Packages
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Every `make <platform>-package` the hosted runners can run. CI has no game
+# data, so these packages are not playable; they prove the packaging itself.
+jobs:
+  desktop:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows package
+            os: windows-latest
+            target: windows-package
+          - name: Linux x86_64 package
+            os: ubuntu-24.04
+            target: linux-package
+          - name: Linux arm64 package
+            os: ubuntu-24.04-arm
+            target: linux-package
+          - name: macOS package
+            os: macos-15
+            target: macos-package
+    defaults:
+      run:
+        shell: ${{ startsWith(matrix.os, 'windows') && 'msys2 {0}' || 'bash' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config file \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev libudev-dev libdbus-1-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
+            libxss-dev libxtst-dev libxinerama-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl-dev libgl-dev libdrm-dev libgbm-dev libibus-1.0-dev
+
+      - name: Install build dependencies (Windows)
+        if: startsWith(matrix.os, 'windows')
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            git
+            make
+
+      - name: Package
+        run: make ${{ matrix.target }} CMAKE_ARGS="-G Ninja"
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            build/dist/*.zip
+            build/dist/*.AppImage
+
+  web:
+    name: Web package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package
+        run: make web-package
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Web package
+          path: build/dist/*-web.zip

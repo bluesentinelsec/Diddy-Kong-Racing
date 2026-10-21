@@ -23,6 +23,17 @@ if(GIT_FOUND)
     endif()
 endif()
 message(STATUS "Diddy Kong Racing PC port ${DKR_PORT_VERSION} (${DKR_PORT_COMMIT}, build ${DKR_PORT_BUILD})")
+string(REPLACE "." ";" DKR_VERSION_PARTS "${DKR_PORT_VERSION}")
+list(GET DKR_VERSION_PARTS 0 DKR_VERSION_MAJOR)
+list(GET DKR_VERSION_PARTS 1 DKR_VERSION_MINOR)
+list(GET DKR_VERSION_PARTS 2 DKR_VERSION_PATCH)
+string(TIMESTAMP DKR_PORT_DATE "%Y-%m-%d" UTC)
+set(DKR_BUNDLE_ID "com.bluesentinelsec.dkracing" CACHE STRING "Bundle / application identifier on the platforms that have one")
+set(DKR_PORT_COPYRIGHT "Port by bluesentinelsec. Diddy Kong Racing is a trademark of Nintendo; the game content belongs to Rare and Nintendo. Not affiliated with or endorsed by either.")
+set(DKR_HAS_ASSETS FALSE)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.bin AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.lut.bin)
+    set(DKR_HAS_ASSETS TRUE)
+endif()
 
 # ---------------------------------------------------------------------------
 # Diddy Kong Racing - native PC build.
@@ -285,7 +296,7 @@ elseif(IOS)
     # its UIKit/OpenGLES/CoreAudio frameworks come in through SDL3::SDL3-static.
     # The game data is copied into the bundle's Resources/assets when it exists,
     # where SDL_GetBasePath() points and the desktop asset loader already looks.
-    set(DKR_IOS_BUNDLE_ID "com.bluesentinelsec.dkracing" CACHE STRING "iOS bundle identifier")
+    set(DKR_IOS_BUNDLE_ID ${DKR_BUNDLE_ID} CACHE STRING "iOS bundle identifier")
     set(DKR_IOS_TEAM "" CACHE STRING "Apple Development Team ID for automatic signing (empty: unsigned)")
     set(DKR_IOS_ASSETS)
     foreach(f assets.bin assets.lut.bin)
@@ -312,7 +323,7 @@ elseif(IOS)
         MACOSX_BUNDLE_GUI_IDENTIFIER ${DKR_IOS_BUNDLE_ID}
         MACOSX_BUNDLE_BUNDLE_VERSION ${DKR_PORT_BUILD}
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${DKR_PORT_VERSION}
-        MACOSX_BUNDLE_COPYRIGHT "Port by bluesentinelsec. Diddy Kong Racing is a trademark of Nintendo; the game content belongs to Rare and Nintendo. Not affiliated with or endorsed by either."
+        MACOSX_BUNDLE_COPYRIGHT "${DKR_PORT_COPYRIGHT}"
         XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME AppIcon
         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${DKR_IOS_BUNDLE_ID}
         XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic
@@ -342,6 +353,46 @@ else()
     endif()
 endif()
 
+# --- Embedded game data (desktop) -------------------------------------------------
+# Mobile and web builds pack assets/ into the app or the page. Desktop builds
+# embed the two files into the executable itself (linux/assets_embed.S, an
+# .incbin) when they exist at configure time, so a release is one file. CI has
+# no game data and builds an executable that looks for assets/ beside it.
+if(NOT ANDROID AND NOT IOS AND NOT EMSCRIPTEN)
+    option(DKR_EMBED_ASSETS "Embed assets/ into the executable (needs make assets first)" ${DKR_HAS_ASSETS})
+    if(DKR_EMBED_ASSETS)
+        if(NOT DKR_HAS_ASSETS)
+            message(FATAL_ERROR "DKR_EMBED_ASSETS is on but assets/assets.bin is missing: run `make assets` first")
+        endif()
+        enable_language(ASM)
+        set(DKR_EMBED_SRC ${CMAKE_CURRENT_SOURCE_DIR}/linux/assets_embed.S)
+        target_sources(dkracing PRIVATE ${DKR_EMBED_SRC})
+        set_source_files_properties(${DKR_EMBED_SRC} PROPERTIES
+            COMPILE_DEFINITIONS "DKR_ASSETS_LUT_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.lut.bin\";DKR_ASSETS_BIN_FILE=\"${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.bin\""
+            OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.lut.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.bin")
+        target_compile_definitions(dkr_platform PRIVATE DKR_EMBED_ASSETS)
+        message(STATUS "Game data embedded in the executable")
+    else()
+        message(STATUS "Game data NOT embedded: the executable loads assets/ beside it")
+    endif()
+endif()
+
+# --- Platform metadata (desktop) ----------------------------------------------------
+if(WIN32)
+    # Icon and version information for dkracing.exe (windows/dkracing.rc.in).
+    enable_language(RC)
+    file(TO_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/windows/dkracing.ico" DKR_WINDOWS_ICON)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/windows/dkracing.rc.in ${CMAKE_CURRENT_BINARY_DIR}/dkracing.rc @ONLY)
+    target_sources(dkracing PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/dkracing.rc)
+elseif(APPLE AND NOT IOS)
+    # The app bundle's Info.plist, which `make macos-package` wraps around the executable.
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/macos/Info.plist.in ${CMAKE_CURRENT_BINARY_DIR}/Info.plist @ONLY)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # AppStream metadata for the AppImage (`make linux-package`).
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/linux/packaging/com.bluesentinelsec.dkracing.metainfo.xml.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/com.bluesentinelsec.dkracing.metainfo.xml @ONLY)
+endif()
+
 # --- Browser build (Emscripten) ------------------------------------------------
 # Configure with `emcmake cmake ...` (see docker/web.Dockerfile and `make web`).
 # The game loop blocks in pc_retrace_wait, so ASYNCIFY turns those waits into
@@ -365,6 +416,10 @@ if(EMSCRIPTEN)
         -lidbfs.js
         --shell-file ${DKR_WEB_SHELL})
     set_property(TARGET dkracing APPEND PROPERTY LINK_DEPENDS ${DKR_WEB_SHELL})
+    # The page's icon and web-app manifest, served beside it.
+    foreach(f favicon.png icon-192.png icon-512.png manifest.webmanifest)
+        configure_file(${CMAKE_CURRENT_SOURCE_DIR}/linux/web/${f} ${CMAKE_CURRENT_BINARY_DIR}/${f} COPYONLY)
+    endforeach()
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.bin)
         target_link_options(dkracing PRIVATE --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets@/assets)
         set_property(TARGET dkracing APPEND PROPERTY LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.bin)

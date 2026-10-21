@@ -1,0 +1,14 @@
+{
+  "name": "Diddy Kong Racing",
+  "short_name": "DKR",
+  "description": "PC port of the Nintendo 64 racing game",
+  "start_url": "./dkracing.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#c8102e",
+  "theme_color": "#c8102e",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

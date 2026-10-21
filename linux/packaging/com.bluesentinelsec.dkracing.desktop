@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Diddy Kong Racing
+Comment=PC port of the Nintendo 64 racing game
+Exec=dkracing
+Icon=com.bluesentinelsec.dkracing
+Categories=Game;ArcadeGame;
+Terminal=false

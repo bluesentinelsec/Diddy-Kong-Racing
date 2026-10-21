@@ -81,7 +81,40 @@ static FILE *pc_open_asset(const char *path) {
 }
 #endif
 
+#ifdef DKR_EMBED_ASSETS
+// The two files, embedded by linux/assets_embed.S. Copied out because the LUT
+// is byte-swapped in place and the executable's data is read-only.
+extern const u8 dkr_embedded_assets_lut[], dkr_embedded_assets_lut_end[];
+extern const u8 dkr_embedded_assets_bin[], dkr_embedded_assets_bin_end[];
+
+static u8 *pc_embedded_file(const char *path, u32 *sizeOut) {
+    const u8 *start, *end;
+    u8 *buf;
+
+    if (strcmp(path, "assets/assets.lut.bin") == 0) {
+        start = dkr_embedded_assets_lut;
+        end = dkr_embedded_assets_lut_end;
+    } else if (strcmp(path, "assets/assets.bin") == 0) {
+        start = dkr_embedded_assets_bin;
+        end = dkr_embedded_assets_bin_end;
+    } else {
+        return NULL;
+    }
+    *sizeOut = (u32) (end - start);
+    buf = malloc(*sizeOut);
+    memcpy(buf, start, *sizeOut);
+    return buf;
+}
+#endif
+
 static u8 *pc_load_file(const char *path, u32 *sizeOut) {
+#ifdef DKR_EMBED_ASSETS
+    u8 *embedded = pc_embedded_file(path, sizeOut);
+
+    if (embedded != NULL) {
+        return embedded;
+    }
+#endif
 #ifdef __ANDROID__
     // Assets live inside the APK, which is not a real directory, so fopen cannot
     // reach them. SDL's IO maps a relative path onto the Android asset manager.
@@ -104,7 +137,7 @@ static u8 *pc_load_file(const char *path, u32 *sizeOut) {
     if (f == NULL) {
         fprintf(stderr,
                 "ASSETS: cannot open %s. Put the assets/ folder next to the executable (or run from the "
-                "directory that holds it); it is produced by the decomp's `make build_assets` from your ROM.\n",
+                "directory that holds it); `make assets` produces it from your ROM.\n",
                 path);
         exit(1);
     }

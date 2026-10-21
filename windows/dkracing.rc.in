@@ -1,0 +1,35 @@
+// Windows resources: the executable's icon and its version information
+// (what Explorer shows under Properties > Details). Configured by CMake from
+// VERSION and the git build number.
+#include <winver.h>
+
+1 ICON "@DKR_WINDOWS_ICON@"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION    @DKR_VERSION_MAJOR@,@DKR_VERSION_MINOR@,@DKR_VERSION_PATCH@,@DKR_PORT_BUILD@
+PRODUCTVERSION @DKR_VERSION_MAJOR@,@DKR_VERSION_MINOR@,@DKR_VERSION_PATCH@,@DKR_PORT_BUILD@
+FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+FILEFLAGS      0
+FILEOS         VOS_NT_WINDOWS32
+FILETYPE       VFT_APP
+FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "bluesentinelsec"
+            VALUE "FileDescription",  "Diddy Kong Racing"
+            VALUE "FileVersion",      "@DKR_PORT_VERSION@ (@DKR_PORT_COMMIT@)"
+            VALUE "InternalName",     "dkracing"
+            VALUE "LegalCopyright",   "@DKR_PORT_COPYRIGHT@"
+            VALUE "OriginalFilename", "dkracing.exe"
+            VALUE "ProductName",      "Diddy Kong Racing"
+            VALUE "ProductVersion",   "@DKR_PORT_VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

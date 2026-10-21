@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.bluesentinelsec.dkracing</id>
+  <name>Diddy Kong Racing</name>
+  <summary>PC port of the Nintendo 64 racing game</summary>
+  <developer id="io.github.bluesentinelsec"><name>bluesentinelsec</name></developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>CC0-1.0</project_license>
+  <description>
+    <p>A native port of Diddy Kong Racing with an uncapped, interpolated frame rate, widescreen, and the console's own audio synthesizer.</p>
+  </description>
+  <launchable type="desktop-id">com.bluesentinelsec.dkracing.desktop</launchable>
+  <categories><category>Game</category><category>ArcadeGame</category></categories>
+  <releases>
+    <release version="@DKR_PORT_VERSION@" date="@DKR_PORT_DATE@"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>
