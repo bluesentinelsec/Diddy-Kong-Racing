@@ -11,24 +11,6 @@
 
 /************ .rodata ************/
 
-const char D_800E8840[] = "\n\nUnknown trigger type in initParticleTrigger %d, Max %d.\n\n";
-const char D_800E887C[] = "\n\nUnknown particle type in initParticleTrigger %d, Max %d.\n\n";
-const char D_800E88BC[] = "\n\nUnknown trigger type in initParticleTrigger %d, Max %d.\n\n";
-const char D_800E88F8[] = "Sprite Particle buffer is full.\n";
-const char D_800E891C[] = "Triangle Particle buffer is full.\n";
-const char D_800E8940[] = "Rectangle Particle buffer is full.\n";
-const char D_800E8964[] = "Line Particle buffer is full.\n";
-const char D_800E8980[] = "Point Particle buffer is full.\n";
-const char D_800E89A4[] = "\n\nCan't allocate space for unknown particle type.";
-const char D_800E89D8[] = "\n\nParticle has been freed twice, this is Super Safe, Honest!\n";
-const char D_800E8A18[] = "\n\nSprite Particle Buffer is empty.\n\n";
-const char D_800E8A40[] = "\n\nTriangle Particle Buffer is empty.\n\n";
-const char D_800E8A68[] = "\n\nRectangle Particle Buffer is empty.\n\n";
-const char D_800E8A90[] = "\n\nLine Particle buffer is empty.\n\n";
-const char D_800E8AB4[] = "\n\nPoint Particle buffer is empty.\n\n";
-const char D_800E8AD8[] = "\n\nCan't deallocate space for unknown particle type.\n\n";
-const char D_800E8B10[] = "\nError :: trigger %x has no reference to point %x";
-const char D_800E8B44[] = "\nError :: particle %x is not indexed correctly in trigger list %x (%d >> %p)";
 
 /*********************************/
 
@@ -50,7 +32,7 @@ s32 gNumPointParticles = 0;
 s32 gPointParticleBufferFull = FALSE;
 PointParticle *gPointParticleBuffer = NULL;
 
-UNUSED s32 D_800E2CDC = 0; // Only ever and checked for being less than 512.
+UNUSED s32 sParticleSpawnCounter = 0; // Only ever and checked for being less than 512.
 Vertex *gParticleVertexBuffer = NULL;
 Triangle *gParticleTriangleBuffer = NULL;
 s32 gParticlesAssetTableCount = 0;
@@ -138,7 +120,7 @@ ColourRGBA gVehicleTrackMarkColors[16] = {
     { { { 0, 0, 0, 0 } } },        // SURFACE_UNK0F
 };
 
-ColourRGBA D_800E2EC4[10] = {
+ColourRGBA sParticleColourRamp[10] = {
     { { { 64, 64, 64, 255 } } },  { { { 64, 64, 64, 255 } } },  { { { 0, 45, 0, 255 } } },
     { { { 0, 45, 0, 255 } } },    { { { 64, 60, 10, 255 } } },  { { { 64, 60, 10, 255 } } },
     { { { 64, 64, 255, 255 } } }, { { { 64, 64, 255, 255 } } }, { { { 64, 64, 64, 255 } } },
@@ -152,7 +134,6 @@ s32 gCurrentHovercraftParticleOpacity = 256;
 /************ .bss ************/
 
 s32 gParticleUpdateRate;
-UNUSED s32 D_80127C84;
 s16 gHovercraftParticleOpacities[8];
 // printf.c
 // thread0_epc
@@ -439,7 +420,7 @@ void init_particle_buffers(s32 maxTriangleParticles, s32 maxRectangleParticles, 
         (fake_0 + maxTriangleParticles + (maxRectangleParticles * 2) + (unused_arg * 0)) * sizeof(Triangle),
         COLOUR_TAG_SEMITRANS_GREY);
 
-    D_800E2CDC = 0;
+    sParticleSpawnCounter = 0;
     free_particle_buffers();
 
     if (gMaxTriangleParticles > 0) {
@@ -916,7 +897,7 @@ void update_vehicle_particles(Object *racerObj, s32 updateRate) {
                         opacity -= 24;
                         if (opacity > 0) {
                             descriptor = gParticlesAssetTable[racerObj->particleEmitter[i].descriptorID];
-                            alphaPtr = &D_800E2EC4[i].a;
+                            alphaPtr = &sParticleColourRamp[i].a;
                             var_t1 = 4;
                             if (opacity > 32) {
                                 opacity = 32;
@@ -924,13 +905,13 @@ void update_vehicle_particles(Object *racerObj, s32 updateRate) {
                             var_t1 = opacity << var_t1;
                             temp_v1 = var_t1 - ((opacity * opacity) >> 2);
                             gParticleOverrideColor[0].word =
-                                ((((D_800E2EC4[i].r - descriptor->colour.r) * temp_v1) >> 8) + descriptor->colour.r)
+                                ((((sParticleColourRamp[i].r - descriptor->colour.r) * temp_v1) >> 8) + descriptor->colour.r)
                                 << 24;
                             gParticleOverrideColor[0].word |=
-                                (descriptor->colour.g + ((((D_800E2EC4[i].g - descriptor->colour.g) * temp_v1)) >> 8))
+                                (descriptor->colour.g + ((((sParticleColourRamp[i].g - descriptor->colour.g) * temp_v1)) >> 8))
                                 << 16;
                             gParticleOverrideColor[0].word |=
-                                (descriptor->colour.b + ((((D_800E2EC4[i].b - descriptor->colour.b) * temp_v1)) >> 8))
+                                (descriptor->colour.b + ((((sParticleColourRamp[i].b - descriptor->colour.b) * temp_v1)) >> 8))
                                 << 8;
                             if (opacity > 16) {
                                 var_t1 = 256;
@@ -2490,7 +2471,7 @@ void render_particle(Particle *particle, Gfx **dList, Mtx **mtx, Vertex **vtx, s
     renderFlags = (RENDER_FOG_ACTIVE | RENDER_Z_COMPARE);
 
     // Never true
-    if ((particle->descFlags & flags) && D_800E2CDC < 512) {
+    if ((particle->descFlags & flags) && sParticleSpawnCounter < 512) {
         return;
     }
     alpha = (particle->opacity >> 8) & 0xFF;

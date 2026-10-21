@@ -6,8 +6,6 @@
 /************ .data ************/
 
 u16 *gVideoDepthBuffer = NULL;
-UNUSED s32 D_800DE774 = 0;
-UNUSED s8 D_800DE778 = 2;
 
 VideoModeResolution gVideoModeResolutions[] = {
     { SCREEN_WIDTH, SCREEN_HEIGHT },                   // 320x240
@@ -44,7 +42,6 @@ u16 *gVideoLastFramebuffer; // Official Name: otherScreen
 u16 *gVideoCurrDepthBuffer;
 u16 *gVideoLastDepthBuffer;
 u8 gVideoMaxUpdateRate;
-UNUSED OSMesg D_801262E8[8];
 u8 gVideoDeltaCounter;
 u8 gVideoDeltaTime;
 OSScClient gVideoSched;

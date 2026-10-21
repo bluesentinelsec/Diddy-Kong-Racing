@@ -23,12 +23,6 @@ s16 gNumActiveSounds = 0;
 s16 *gSoundGroupVolume;
 
 /**** Debug strings ****/
-const char D_800E4AB0[] = "Bad soundState: voices =%d, states free =%d, states busy =%d, type %d data %x\n";
-const char D_800E4B00[] = "playing a playing sound\n";
-const char D_800E4B1C[] = "Nonsense sndp event\n";
-const char D_800E4B34[] = "Sound state allocate failed - sndId %d\n";
-const char D_800E4B5C[] = "Don't worry - game should cope OK\n";
-const char D_800E4B80[] = "WARNING: Attempt to stop NULL sound aborted\n";
 
 static void sndp_remove_events(ALEventQueue *, ALSoundState *, u16);
 void func_80065A80(ALSynth *arg0, struct PVoice_s *arg1, s16 arg2);

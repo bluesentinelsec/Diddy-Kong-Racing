@@ -75,8 +75,8 @@ typedef struct VertexPosition {
     /* 0x04 */ s16 z;
 } VertexPosition;
 
-extern Triangle D_800DCAA8[8];
-extern VertexPosition D_800DCB28[6];
+extern Triangle sButterflyTriangles[8];
+extern VertexPosition sButterflyVertices[6];
 
 void obj_init_fireball_octoweapon(Object *obj, LevelObjectEntry_Fireball_Octoweapon *entry);
 void obj_init_lasergun(Object *obj, LevelObjectEntry_Lasergun *entry);

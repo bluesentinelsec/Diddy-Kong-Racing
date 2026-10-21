@@ -347,7 +347,6 @@ uintptr_t *gTextureCache; // id / pointer pairs: pointer-sized on the host
 
 u8 *gCiPalettes;
 s32 gNumberOfLoadedTextures;
-s32 D_80126334;
 s32 gTextureTableSize[2];
 s32 gCiPalettesSize;
 s32 gFirstTexIsLoaded;
@@ -358,13 +357,11 @@ uintptr_t *gSpriteCache;
 SpriteAsset *gCurrentSpriteAsset;
 s32 gSpriteTableSize;
 s32 gSpriteCacheCount;
-s32 D_8012635C; // Set but never used
 Vertex *gSpriteVertices;
 Gfx *gSpriteDLists;
 Triangle *gSpriteTriangles;
 
 TempTexHeader *gTempTextureHeader;
-u8 *D_80126370;
 s32 gCurrentRenderFlags;
 s32 gBlockedRenderFlags;
 TextureHeader *gCurrentTextureHeader;
@@ -1047,7 +1044,6 @@ Sprite *tex_load_sprite(s32 spriteID, s32 arg1) {
     s16 numTextures;
     s32 allocSize;
 
-    D_8012635C = arg1;
     if (spriteID < 0 || spriteID >= gSpriteTableSize) {
         return NULL;
     }

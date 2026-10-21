@@ -26,7 +26,6 @@
 
 /************ .data ************/
 
-UNUSED s32 D_800E1E60 = 0;
 
 // clang-format off
 // Base positions of all onscreen hud elements
@@ -171,7 +170,7 @@ HudAudio gHudAudioData[2] = {
 
 u8 gShowCourseDirections = TRUE;
 
-u8 D_800E2794[4][4] = { { 1, 1, 1, 1 }, { 2, 2, 2, 2 }, { 2, 2, 2, 2 }, { 2, 2, 2, 2 } };
+u8 gHudMapMode[4][4] = { { 1, 1, 1, 1 }, { 2, 2, 2, 2 }, { 2, 2, 2, 2 }, { 2, 2, 2, 2 } };
 
 s8 gHudToggleSettings[4] = { 1, 1, 1, 1 };
 
@@ -226,7 +225,6 @@ char gHudTimeTrialJp_Defective[] = { 0x80, 0xD5, 0x80, 0xE1, 0x80, 0xB7, 0x80, 0
 
 UNUSED f32 sRecordVel = 0.0f; // Set to whatever the highest velocity recorded is, but never actually used.
 
-UNUSED s32 D_800E283C[] = { 0x06FFFFFF, 0x000FFFFF, 0x06000000, 0x0014FFFF };
 
 /*******************************/
 
@@ -263,8 +261,8 @@ Vertex *gHudVtx;
 s32 gHudCurrentViewport;
 s32 gHUDNumPlayers;
 s32 gHudController;
-s32 D_80126D14;
-s32 D_80126D18;
+s32 gMinimapSpriteWidth;
+s32 gMinimapSpriteHeight;
 s32 gMinimapDotOffsetX;
 s32 gMinimapDotOffsetY;
 s32 gHudOffsetX; // Offset value to do the slide in animation.
@@ -280,19 +278,19 @@ AudioPoint *gRaceStartSoundMask;
 SoundHandle gHUDVoiceSoundMask;
 SoundHandle gHudBalloonSoundMask;
 u16 gHudTTSoundID;
-s32 D_80126D4C;
-s32 D_80126D50;
+s32 sHudBoostVoiceTimer;
+s32 sHudRandomVoiceTimer;
 u8 gMinimapRed;
 u8 gMinimapGreen;
 u8 gMinimapBlue;
 s32 gMinimapScreenX;
 s32 gMinimapScreenY;
 LevelHeader *gHudLevelHeader;
-u8 D_80126D64;
-u8 D_80126D65;
-u8 D_80126D66;
+u8 sHudTTVoiceCount;
+u8 sMinimapTexIndexA;
+u8 sMinimapTexIndexB;
 u8 gStopwatchAnimID;
-u8 D_80126D68;
+u8 sHudMapVisible;
 s8 D_80126D69;
 s32 gWrongWayNagTimer;
 u8 gHudAudioReset;
@@ -309,8 +307,7 @@ u8 gAdvRaceStartedByP2;
 u8 gMinimapOpacityTarget;
 s32 gStopwatchErrorX;
 s32 gStopwatchErrorY;
-LevelHeader_70 *D_80127194;
-UNUSED s32 D_80127198[4];
+LevelHeader_70 *gHudPulseLight;
 
 /******************************/
 
@@ -362,22 +359,22 @@ void hud_init(UNUSED s32 viewportCount) {
     gPlayerHud[PLAYER_THREE] = (HudData *) ((u8 *) gPlayerHud[PLAYER_TWO] + sizeof(HudData));
     gPlayerHud[PLAYER_FOUR] = (HudData *) ((u8 *) gPlayerHud[PLAYER_THREE] + sizeof(HudData));
     hud_init_element();
-    D_80126D64 = 0;
+    sHudTTVoiceCount = 0;
     gWrongWayNagTimer = 0;
     gHudTTSoundID = SOUND_NONE;
-    D_80126D66 = 4;
-    D_80126D65 = 0;
+    sMinimapTexIndexB = 4;
+    sMinimapTexIndexA = 0;
     gStopwatchAnimID = 4;
     D_80126D69 = 1;
-    D_80126D68 = 1;
+    sHudMapVisible = 1;
     gHudAudioReset = FALSE;
     gHudVoiceID = 0;
     gHudVoiceTimer = 0;
     gRaceStartSoundMask = NULL;
     gHudBalloonSoundMask = NULL;
     gMinimapXlu = 0;
-    D_80127194 = (LevelHeader_70 *) get_misc_asset(ASSET_MISC_58);
-    pulse_light_reset(D_80127194);
+    gHudPulseLight = (LevelHeader_70 *) get_misc_asset(ASSET_MISC_58);
+    pulse_light_reset(gHudPulseLight);
     sndp_set_group_volume(0, AL_SNDP_GROUP_VOLUME_MAX);
     sndp_set_group_volume(2, AL_SNDP_GROUP_VOLUME_MAX);
     for (i = 0; i < 2; i++) {
@@ -433,8 +430,8 @@ void hud_init_element(void) {
     gShowHUD = FALSE;
     gHudPALScale = FALSE;
     gAdventurePlayerFinish = FALSE;
-    D_80126D4C = -100;
-    D_80126D50 = rand_range(120, 360);
+    sHudBoostVoiceTimer = -100;
+    sHudRandomVoiceTimer = rand_range(120, 360);
     gAdvRaceStartedByP2 = is_race_started_by_player_two();
     gStopwatchErrorX = 55;
     gStopwatchErrorY = 179;
@@ -735,12 +732,12 @@ void hud_render_player(Gfx **dList, Mtx **mtx, Vertex **vertexList, Object *obj,
                         }
                     } else if (input_pressed(gHudController) & D_CBUTTONS && racer->raceFinished == FALSE &&
                                !(gHudLevelHeader->race_type & RACETYPE_CHALLENGE) && gHudRaceStart) {
-                        if (D_800E2794[gHUDNumPlayers][racer->playerIndex] < 3) {
-                            D_800E2794[gHUDNumPlayers][racer->playerIndex]++;
+                        if (gHudMapMode[gHUDNumPlayers][racer->playerIndex] < 3) {
+                            gHudMapMode[gHUDNumPlayers][racer->playerIndex]++;
                         } else {
-                            D_800E2794[gHUDNumPlayers][racer->playerIndex] = 0;
+                            gHudMapMode[gHUDNumPlayers][racer->playerIndex] = 0;
                         }
-                        sound_play((SOUND_TING_HIGHEST - (D_800E2794[gHUDNumPlayers][racer->playerIndex] == 0)), NULL);
+                        sound_play((SOUND_TING_HIGHEST - (gHudMapMode[gHUDNumPlayers][racer->playerIndex] == 0)), NULL);
                     }
                     if (input_pressed(gHudController) & R_CBUTTONS && racer->raceFinished == FALSE && gHudRaceStart &&
                         gMinimapOpacity == 0) {
@@ -1546,7 +1543,7 @@ void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
                 ttSWBodyObject->animFrame += (updateRate * D_80126D69);
                 temp_lo = (modInst->objModel->animations[gStopwatchAnimID].animLength - 1) << 4;
                 if (ttSWBodyObject->animFrame >= temp_lo) {
-                    if (D_80126D68 != 0) {
+                    if (sHudMapVisible != 0) {
                         D_80126D69 = -D_80126D69;
                         ttSWBodyObject->animFrame = temp_lo - 1;
                     } else {
@@ -1610,27 +1607,27 @@ void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
 
         gCurrentHud->entry[HUD_TIME_TRIAL_LAP_NUMBER].pos.y -= i * 0xC;
         gCurrentHud->entry[HUD_TIME_TRIAL_LAP_TEXT].pos.y -= i * 0xC;
-        if ((curRacer->boost_sound & BOOST_SOUND_UNK4) && (D_80126D4C <= 0)) {
+        if ((curRacer->boost_sound & BOOST_SOUND_UNK4) && (sHudBoostVoiceTimer <= 0)) {
             hud_stopwatch_face(7, 3, 0, 4, 0);
-            D_80126D4C = 60;
+            sHudBoostVoiceTimer = 60;
             curRacer->boost_sound &= ~BOOST_SOUND_UNK4;
         }
-        if (D_80126D4C > 0) {
-            D_80126D4C -= updateRate;
-            if (D_80126D4C < 0) {
-                D_80126D4C = 0;
+        if (sHudBoostVoiceTimer > 0) {
+            sHudBoostVoiceTimer -= updateRate;
+            if (sHudBoostVoiceTimer < 0) {
+                sHudBoostVoiceTimer = 0;
             }
         }
-        if ((D_80126D4C == 0) && (!curRacer->raceFinished)) {
-            D_80126D4C = -100;
+        if ((sHudBoostVoiceTimer == 0) && (!curRacer->raceFinished)) {
+            sHudBoostVoiceTimer = -100;
             if (gHUDVoiceSoundMask == 0) {
-                soundID = rand_range(0, D_80126D64 + 2) + SOUND_VOICE_TT_OH_NO;
+                soundID = rand_range(0, sHudTTVoiceCount + 2) + SOUND_VOICE_TT_OH_NO;
                 while (soundID == gHudTTSoundID) {
-                    soundID = rand_range(0, D_80126D64 + 2) + SOUND_VOICE_TT_OH_NO;
+                    soundID = rand_range(0, sHudTTVoiceCount + 2) + SOUND_VOICE_TT_OH_NO;
                 }
                 gHudTTSoundID = soundID;
                 sound_play(soundID, &gHUDVoiceSoundMask);
-                D_80126D64 = 1;
+                sHudTTVoiceCount = 1;
             }
         }
     }
@@ -1659,18 +1656,18 @@ void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
                 posY = ttSWBodyObject->trans.y_position - playerRacerObj->trans.y_position;
                 posZ = ttSWBodyObject->trans.z_position - playerRacerObj->trans.z_position;
                 if ((sqrtf((posX * posX) + (posY * posY) + (posZ * posZ)) < 600.0f) && (gHUDVoiceSoundMask == 0) &&
-                    (D_80126D50 == 0)) {
+                    (sHudRandomVoiceTimer == 0)) {
                     soundID = SOUND_VOICE_TT_GO_FOR_IT + rand_range(0, 2);
                     while (soundID == gHudTTSoundID) {
                         soundID = SOUND_VOICE_TT_GO_FOR_IT + rand_range(0, 2);
                     }
                     gHudTTSoundID = soundID;
                     sound_play(soundID, &gHUDVoiceSoundMask);
-                    D_80126D50 = rand_range(120, 1200);
+                    sHudRandomVoiceTimer = rand_range(120, 1200);
                 }
-                D_80126D50 -= updateRate;
-                if (D_80126D50 < 0) {
-                    D_80126D50 = 0;
+                sHudRandomVoiceTimer -= updateRate;
+                if (sHudRandomVoiceTimer < 0) {
+                    sHudRandomVoiceTimer = 0;
                 }
             }
         }
@@ -1761,14 +1758,14 @@ void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
         draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX + 1, gStopwatchErrorY + 29, SWMessage[0],
                   ALIGN_MIDDLE_CENTER);
         // Draw actual text.
-        set_text_colour(D_80127194->rgba.r, D_80127194->rgba.g, D_80127194->rgba.b, 128, D_80127194->rgba.a);
+        set_text_colour(gHudPulseLight->rgba.r, gHudPulseLight->rgba.g, gHudPulseLight->rgba.b, 128, gHudPulseLight->rgba.a);
         draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX, gStopwatchErrorY, SWMessage[2],
                   ALIGN_MIDDLE_CENTER);
         draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX, gStopwatchErrorY + 14, SWMessage[1],
                   ALIGN_MIDDLE_CENTER);
         draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX, gStopwatchErrorY + 28, SWMessage[0],
                   ALIGN_MIDDLE_CENTER);
-        update_colour_cycle(D_80127194, updateRate);
+        update_colour_cycle(gHudPulseLight, updateRate);
         set_kerning(FALSE);
     }
 
@@ -1788,7 +1785,7 @@ void hud_stopwatch_face(u8 arg0, u8 arg1, u8 animID, u8 arg3, u8 arg4) {
             numberOfBatches = modInst->objModel->numberOfBatches;
 
             for (i = 0; i < numberOfBatches; i++) {
-                if (D_80126D66 == modInst->objModel->batches[i].textureIndex) {
+                if (sMinimapTexIndexB == modInst->objModel->batches[i].textureIndex) {
                     modInst->objModel->batches[i].textureIndex = arg0;
                     if (arg0 == 4) {
                         modInst->objModel->batches[i].flags |= (RENDER_UNK_0800000 | RENDER_TEX_ANIM);
@@ -1798,16 +1795,16 @@ void hud_stopwatch_face(u8 arg0, u8 arg1, u8 animID, u8 arg3, u8 arg4) {
                         modInst->objModel->hasAnimatedTexture = FALSE;
                     }
                     numberOfBatches = modInst->objModel->numberOfBatches;
-                } else if (D_80126D65 == modInst->objModel->batches[i].textureIndex) {
+                } else if (sMinimapTexIndexA == modInst->objModel->batches[i].textureIndex) {
                     modInst->objModel->batches[i].textureIndex = arg1;
                     numberOfBatches = modInst->objModel->numberOfBatches;
                 }
             }
-            D_80126D66 = arg0;
-            D_80126D65 = arg1;
+            sMinimapTexIndexB = arg0;
+            sMinimapTexIndexA = arg1;
             gStopwatchAnimID = animID;
             D_80126D69 = arg3;
-            D_80126D68 = arg4;
+            sHudMapVisible = arg4;
         }
     }
 }
@@ -1976,7 +1973,7 @@ void hud_bananas(Object_Racer *racer, s32 updateRate) {
     s32 temp_lo;
     u8 prevSprite;
     if (racer->playerIndex == PLAYER_COMPUTER ||
-        (((gHUDNumPlayers < TWO_PLAYERS || D_800E2794[gHUDNumPlayers][racer->playerIndex] == 2 ||
+        (((gHUDNumPlayers < TWO_PLAYERS || gHudMapMode[gHUDNumPlayers][racer->playerIndex] == 2 ||
            gHudLevelHeader->race_type == RACETYPE_CHALLENGE_BANANAS ||
            gHudLevelHeader->race_type == RACETYPE_CHALLENGE_BATTLE) &&
           racer->raceFinished == FALSE) &&
@@ -2258,7 +2255,7 @@ void hud_race_position(Object_Racer *racer, s32 updateRate) {
 void hud_lap_count(Object_Racer *racer, s32 updateRate) {
     if (racer->raceFinished == FALSE &&
         (gHUDNumPlayers <= ONE_PLAYER || racer->lap <= 0 || racer->lap_times[racer->lap] >= 180) &&
-        (gHUDNumPlayers <= ONE_PLAYER || D_800E2794[gHUDNumPlayers][racer->playerIndex] == 3)) {
+        (gHUDNumPlayers <= ONE_PLAYER || gHudMapMode[gHUDNumPlayers][racer->playerIndex] == 3)) {
         if (gHudLevelHeader->laps == (0, racer->countLap + 1) && gHUDNumPlayers < THREE_PLAYERS) {
             gCurrentHud->entry[HUD_LAP_COUNT_FLAG].lapCountFlag.visualCounter += updateRate;
             if (gCurrentHud->entry[HUD_LAP_COUNT_FLAG].lapCountFlag.visualCounter > 6) {
@@ -3156,7 +3153,7 @@ void hud_race_time(Object_Racer *racer, s32 updateRate) {
     s32 countingDown;
     s32 timerHideCounter;
 
-    if (!(gHUDNumPlayers != ONE_PLAYER && D_800E2794[gHUDNumPlayers][racer->playerIndex] != 1) ||
+    if (!(gHUDNumPlayers != ONE_PLAYER && gHudMapMode[gHUDNumPlayers][racer->playerIndex] != 1) ||
         (gHUDNumPlayers > ONE_PLAYER && racer->lap > 0 && racer->lap_times[racer->lap] < 180)) {
         if (racer->raceFinished == FALSE) {
             timerHideCounter = gCurrentHud->entry[HUD_RACE_TIME_LABEL].raceTimeLabel.hideTimer + 127;
@@ -3301,7 +3298,7 @@ void minimap_init(LevelModel *model) {
     gMinimapGreen = (model->minimapColor >> 8) & 0xFF;
     gMinimapBlue = model->minimapColor & 0xFF;
     load_sprite_info(model->minimapSpriteIndex, &gMinimapDotOffsetX, &gMinimapDotOffsetY, &sp2C, &sp2C, &sp2C);
-    sprite_get_size(model->minimapSpriteIndex, 0, &D_80126D14, &D_80126D18, &sp2C);
+    sprite_get_size(model->minimapSpriteIndex, 0, &gMinimapSpriteWidth, &gMinimapSpriteHeight, &sp2C);
     model->minimapSpriteIndex = (ptrint_t) tex_load_sprite(model->minimapSpriteIndex, 1);
 }
 

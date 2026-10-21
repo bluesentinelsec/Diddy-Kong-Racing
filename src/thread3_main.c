@@ -55,7 +55,7 @@ UNUSED char *sDebugRomBuildInfo[] = { "1.1634", "17/10/97 11:19", "pmountain" };
 UNUSED char *sDebugRomBuildInfo[] = { "1.1605", "02/10/97 16:03", "pmountain" };
 #endif
 
-const char D_800E7134[] = "BBB\n"; // Functionally unused.
+const char sUnusedDebugString[] = "BBB\n"; // Functionally unused.
 
 /*********************************/
 
@@ -70,32 +70,27 @@ UNUSED char gBuildString[] = "Version 7.7 29/09/97 15.00 L.Schuneman";
 #endif
 
 s8 sAntiPiracyTriggered = FALSE;
-UNUSED s32 D_800DD378 = 1;
 s32 gSaveDataFlags = 0; // Official Name: load_save_flags
 s32 gScreenStatus = OSMESG_SWAP_BUFFER;
 s32 sControllerStatus = 0;
-UNUSED s32 D_800DD388 = 0;
 s8 gSkipGfxTask = FALSE;
 s8 gDrumstickSceneLoadTimer = 0;
 s16 gLevelLoadTimer = 0;
 s8 gPauseLockTimer = 0; // If this is above zero, the player cannot pause the game.
 s8 gFutureFunLandLevelTarget = FALSE;
 s8 gDmemInvalid = FALSE;
-UNUSED s32 D_800DD3A4[] = { 0, 0, 0 };
 s32 gNumF3dCmdsPerPlayer[MAXCONTROLLERS] = { 4500, 7000, 11000, 11000 };
 s32 gNumHudVertsPerPlayer[MAXCONTROLLERS] = { 300, 600, 850, 900 };
 s32 gNumHudMatPerPlayer[MAXCONTROLLERS] = { 300, 400, 550, 600 };
 s32 gNumHudTrisPerPlayer[MAXCONTROLLERS] = { 20, 30, 40, 50 };
 s8 gDrawFrameTimer = 0;
-FadeTransition D_800DD3F4 = FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_OUT, FADE_COLOR_BLACK, 20, 0);
-UNUSED FadeTransition D_800DD3FC = FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_WHITE, 20, FADE_STAY);
+FadeTransition sFadeToBlackTransition = FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_OUT, FADE_COLOR_BLACK, 20, 0);
 s32 sLogicUpdateRate = LOGIC_5FPS;
 FadeTransition gDrumstickSceneTransition =
     FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_WHITE, 30, FADE_STAY);
-UNUSED char *D_800DD410[3] = { "CAR", "HOV", "PLN" };
 FadeTransition gLevelFadeOutTransition =
     FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 30, FADE_STAY);
-FadeTransition D_800DD424 = FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 260, FADE_STAY);
+FadeTransition sLevelChangeTransition = FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 260, FADE_STAY);
 
 /*******************************/
 
@@ -103,14 +98,12 @@ FadeTransition D_800DD424 = FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FAD
 
 Gfx *gDisplayLists[2];
 Gfx *gCurrDisplayList;
-UNUSED s32 D_801211FC;
 Mtx *gMatrixHeap[2];
 Mtx *gGameCurrMatrix;
 Vertex *gVertexHeap[2];
 Vertex *gGameCurrVertexList;
 Triangle *gTriangleHeap[2];
 Triangle *gGameCurrTriList;
-UNUSED s32 D_80121230[8];
 s8 gLevelSettings[16];
 OSSched gMainSched; // 0x288 / 648 bytes
 u64 gSchedStack[STACKSIZE(STACK_SCHED)];
@@ -119,7 +112,7 @@ s32 gGameMode;
 s32 gRenderMenu; // I don't think this is ever not 1
 // Similar to gMapId, but is 0 if not currently playing a level (e.g. start menu).
 s32 gPlayableMapId;
-s32 D_801234F8;
+s32 gLevelSettingsPending;
 s32 D_801234FC;
 s32 gGameNumPlayers;
 s32 gGameCurrentEntrance;
@@ -134,7 +127,6 @@ Vehicle gMenuVehicleID; // Looks to be the current level's vehicle ID.
 s32 sBootDelayTimer;
 s8 gLevelLoadType;
 s8 gNextMap;
-UNUSED s8 D_80123526; // Set to 0 then never used.
 s32 gCurrNumF3dCmdsPerPlayer;
 s32 gCurrNumHudMatPerPlayer;
 s32 gCurrNumHudTrisPerPlayer;
@@ -143,7 +135,6 @@ OSScClient *gNMISched[3];
 OSMesg gNMIOSMesg;
 OSMesgQueue gNMIMesgQueue;
 s32 gNMIMesgBuf;          // Official Name: resetPressed
-UNUSED s32 D_80123568[3]; // BSS Padding
 
 /******************************/
 
@@ -292,7 +283,7 @@ void main_game_loop(void) {
             debugLoopCounter++;
         }
         if (debugLoopCounter > 20000000) { // This shouldn't ever be true?
-            render_printf(D_800E7134 /* "BBB\n" */);
+            render_printf(sUnusedDebugString /* "BBB\n" */);
         }
     }
 
@@ -411,7 +402,7 @@ void unload_level_game(void) {
         gSkipGfxTask = TRUE;
     }
     level_free();
-    transition_begin(&D_800DD3F4);
+    transition_begin(&sFadeToBlackTransition);
     reset_particles();
     hud_free();
     free_game_text_table();
@@ -576,7 +567,7 @@ void mode_game(s32 updateRate) {
     if (gFutureFunLandLevelTarget) {
         if (anim_prev_frame_state() != 0) {
             gPlayableMapId = ASSET_LEVEL_FUTUREFUNLANDHUB;
-            D_801234F8 = TRUE;
+            gLevelSettingsPending = TRUE;
             gGameCurrentEntrance = 0;
             gFutureFunLandLevelTarget = FALSE;
         }
@@ -609,7 +600,7 @@ void mode_game(s32 updateRate) {
                     gFutureFunLandLevelTarget = TRUE;
                     // fall-through
                 case LEVEL_LOAD_FUTURE_FUN_LAND:
-                    D_801234F8 = TRUE;
+                    gLevelSettingsPending = TRUE;
                     gPlayableMapId = gNextMap;
                     gGameCurrentEntrance = 0;
                     gGameCurrentCutscene = 0;
@@ -638,7 +629,7 @@ void mode_game(s32 updateRate) {
                 }
             } else {
                 D_801234FC = 0;
-                D_801234F8 = TRUE;
+                gLevelSettingsPending = TRUE;
                 buttonHeldInputs = 0;
             }
         }
@@ -666,7 +657,7 @@ void mode_game(s32 updateRate) {
                             loadContext = LEVEL_CONTEXT_CREDITS;
                         }
                     } else {
-                        D_801234F8 = TRUE;
+                        gLevelSettingsPending = TRUE;
                     }
                 }
             }
@@ -743,12 +734,12 @@ void mode_game(s32 updateRate) {
         }
         D_801234FC = 0;
     }
-    if (D_801234F8) {
+    if (gLevelSettingsPending) {
         gPostRaceViewPort = FALSE;
         unload_level_game();
         load_level_game(gPlayableMapId, gGameNumPlayers, gGameCurrentEntrance, gLevelDefaultVehicleID);
         safe_mark_write_save_file(get_save_file_index());
-        D_801234F8 = FALSE;
+        gLevelSettingsPending = FALSE;
     }
 }
 
@@ -783,7 +774,7 @@ void level_settings_apply(UNUSED s32 arg0) {
         if (gLevelSettings[temp + 8] >= 0) {
             gGameCurrentCutscene = gLevelSettings[temp + 8];
         }
-        D_801234F8 = TRUE;
+        gLevelSettingsPending = TRUE;
     }
 }
 
@@ -913,7 +904,7 @@ void unload_level_menu(void) {
         gIsLoading = TRUE;
         mempool_free_timer(0);
         level_free();
-        transition_begin(&D_800DD3F4);
+        transition_begin(&sFadeToBlackTransition);
         reset_particles();
         hud_free();
         free_game_text_table();
@@ -1484,17 +1475,16 @@ void level_transition_begin(s32 type) {
     if (gLevelLoadTimer == 0) {
         gLevelLoadTimer = 40;
         gLevelLoadType = LEVEL_LOAD_NORMAL;
-        D_80123526 = 0;
         if (type == 1) { // FADE_BARNDOOR_HORIZONTAL?
             transition_begin(&gLevelFadeOutTransition);
         }
         if (type == 3) { // FADE_CIRCLE?
             gLevelLoadTimer = 282;
-            transition_begin(&D_800DD424);
+            transition_begin(&sLevelChangeTransition);
         }
         if (type == 4) { // FADE_WAVES?
             gLevelLoadTimer = 360;
-            transition_begin(&D_800DD424);
+            transition_begin(&sLevelChangeTransition);
         }
         if (type == 0) { // FADE_FULLSCREEN?
             gLevelLoadTimer = 2;

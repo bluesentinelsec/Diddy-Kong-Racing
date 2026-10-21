@@ -252,8 +252,8 @@ s8 gIsSilverCoinRace;
 Object *gIdObjects[16];
 ObjectHeader *(*gLoadedObjectHeaders)[ASSET_OBJECTS_COUNT];
 u8 (*gObjectHeaderReferences)[ASSET_OBJECTS_COUNT];
-TextureHeader *D_8011AE50;
-TextureHeader *D_8011AE54;
+TextureHeader *gLastObjectTextureA;
+TextureHeader *gLastObjectTextureB;
 Object **gObjPtrList; // Not sure about the number of elements
 s32 gObjectCount;
 s32 gObjectListStart;
@@ -2292,8 +2292,8 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
 
     address = (u8 *) &curObj->modelInstances[curObj->header->numberOfModelIds];
     address += get_object_property_size(curObj, address);
-    D_8011AE50 = NULL;
-    D_8011AE54 = NULL;
+    gLastObjectTextureA = NULL;
+    gLastObjectTextureB = NULL;
 
     if (behaviourFlags & OBJECT_BEHAVIOUR_SHADED) {
         address += init_object_shading(curObj, (ShadeProperties *) address);
@@ -2312,8 +2312,8 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
         sizeOfobj = init_object_water_effect(curObj, (WaterEffect *) address);
         address += sizeOfobj;
         if (sizeOfobj == 0) {
-            if (D_8011AE50 != NULL) {
-                tex_free(D_8011AE50);
+            if (gLastObjectTextureA != NULL) {
+                tex_free(gLastObjectTextureA);
             }
             objFreeAssets(curObj, assetCount, objType);
             try_free_object_header(headerType);
@@ -2351,11 +2351,11 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
     prevObj = curObj;
     curObj = mempool_alloc_pool((MemoryPoolSlot *) gObjectMemoryPool, sizeOfobj);
     if (curObj == NULL) {
-        if (D_8011AE50 != NULL) {
-            tex_free(D_8011AE50);
+        if (gLastObjectTextureA != NULL) {
+            tex_free(gLastObjectTextureA);
         }
-        if (D_8011AE54 != NULL) {
-            tex_free(D_8011AE54);
+        if (gLastObjectTextureB != NULL) {
+            tex_free(gLastObjectTextureB);
         }
         objFreeAssets(prevObj, assetCount, objType);
         try_free_object_header(headerType);
@@ -2426,11 +2426,11 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
         curObj->interactObj->z_position = curObj->trans.z_position;
     }
     if (curObj->header->attachPointCount > 0 && curObj->header->attachPointCount < 10 && obj_init_attachpoint(curObj)) {
-        if (D_8011AE50 != NULL) {
-            tex_free(D_8011AE50);
+        if (gLastObjectTextureA != NULL) {
+            tex_free(gLastObjectTextureA);
         }
-        if (D_8011AE54 != NULL) {
-            tex_free(D_8011AE54);
+        if (gLastObjectTextureB != NULL) {
+            tex_free(gLastObjectTextureB);
         }
         objFreeAssets(curObj, assetCount, objType);
         try_free_object_header(headerType);
@@ -2590,7 +2590,7 @@ s32 init_object_shadow(Object *obj, ShadowData *shadow) {
     }
     shadow->scale = objHeader->shadowScale;
     shadow->meshStart = -1;
-    D_8011AE50 = shadow->texture;
+    gLastObjectTextureA = shadow->texture;
     if (obj->header->shadowGroup && shadow->texture == NULL) {
         return 0;
     }
@@ -2611,7 +2611,7 @@ s32 init_object_water_effect(Object *obj, WaterEffect *waterEffect) {
         waterEffect->texture = load_texture(obj->header->unk38);
     }
     waterEffect->meshStart = -1;
-    D_8011AE54 = waterEffect->texture;
+    gLastObjectTextureB = waterEffect->texture;
     if (obj->header->waterEffectGroup && waterEffect->texture == NULL) {
         return 0;
     }
