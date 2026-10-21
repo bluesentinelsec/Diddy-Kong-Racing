@@ -178,7 +178,14 @@ void level_global_init(void) {
     for (i = 0; gTempAssetTable[i] != (-1); i++) {}
     i--;
     size = gTempAssetTable[i] - gTempAssetTable[0];
+#ifdef TARGET_PC
+    // Pointer-sized entries: the N64's i * 4 overran into the names loaded
+    // right after it on a 64-bit host, leaving some level names as the upper
+    // halves of pointers (garbage that differed from run to run).
+    gLevelNames = mempool_alloc_safe(i * sizeof(char *), COLOUR_TAG_YELLOW);
+#else
     gLevelNames = mempool_alloc_safe(i * sizeof(s32), COLOUR_TAG_YELLOW);
+#endif
     gTempLevelNames = mempool_alloc_safe(size, COLOUR_TAG_YELLOW);
     asset_load(ASSET_LEVEL_NAMES, (uintptr_t) gTempLevelNames, 0, size);
     for (size = 0; size < i; size++) {

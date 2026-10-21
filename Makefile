@@ -78,13 +78,17 @@ test: debug
 
 # Golden-trace check: run the game deterministically and compare per-frame hashes
 # of the renderer input and audio output with the committed trace (tests/golden.sh).
+# The scene traces (tests/golden/scenes/*.txt, one per part of the game) run
+# after the two base traces; tests/golden/scenes.sh reads each script's length.
 golden: debug
 	tests/golden.sh $(DEBUG_DIR)/dkracing $(GOLDEN) $(GOLDEN_FRAMES)
 	tests/golden.sh $(DEBUG_DIR)/dkracing $(GOLDEN_DRIVE) $(GOLDEN_DRIVE_FRAMES) $(GOLDEN_DRIVE_INPUT)
+	tests/golden/scenes.sh $(DEBUG_DIR)/dkracing
 
 golden-update: debug
 	tests/golden.sh --update $(DEBUG_DIR)/dkracing $(GOLDEN) $(GOLDEN_FRAMES)
 	tests/golden.sh --update $(DEBUG_DIR)/dkracing $(GOLDEN_DRIVE) $(GOLDEN_DRIVE_FRAMES) $(GOLDEN_DRIVE_INPUT)
+	tests/golden/scenes.sh --update $(DEBUG_DIR)/dkracing
 
 fmt:
 	clang-format -i $(FORMAT_SOURCES)

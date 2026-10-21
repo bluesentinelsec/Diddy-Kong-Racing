@@ -718,6 +718,7 @@ void gfx_set_texenv_blend(const unsigned char color[4]) {
 
     pc_trace_gfx_u32(0x200);
     pc_trace_gfx(color, 4);
+    pc_trace_event("texenv_blend rgba=%02x%02x%02x%02x", color[0], color[1], color[2], color[3]);
     pc_trace_mark("texenv_blend");
     if (sWindow == NULL) {
         return;
@@ -906,29 +907,35 @@ void gfx_draw_tris(const GfxTriVert *verts, int count) {
     if (sWindow == NULL) {
         return;
     }
-    // DKR_TRACE_DRAW=<frame>:<n>: print the vertices of draw call n (0-based) of
-    // that frame, to compare a diverging draw between hosts.
+    // DKR_TRACE_DRAW=<frame>:<n>[-<m>]: print the vertices of draw calls n to m
+    // (0-based) of that frame, to compare a diverging draw between hosts or runs.
     {
-        static long sWantFrame = -2, sWantDraw;
+        static long sWantFrame = -2, sWantDraw, sWantDrawEnd;
         static unsigned int sDrawFrame = ~0u;
         static long sDrawIndex;
 
         if (sWantFrame == -2) {
             const char *want = getenv("DKR_TRACE_DRAW");
             sWantFrame = -1;
-            if (want != NULL && sscanf(want, "%ld:%ld", &sWantFrame, &sWantDraw) != 2) {
-                sWantFrame = -1;
+            if (want != NULL) {
+                int n = sscanf(want, "%ld:%ld-%ld", &sWantFrame, &sWantDraw, &sWantDrawEnd);
+                if (n == 2) {
+                    sWantDrawEnd = sWantDraw;
+                } else if (n != 3) {
+                    sWantFrame = -1;
+                }
             }
         }
         if (sDrawFrame != sFrameCount) {
             sDrawFrame = sFrameCount;
             sDrawIndex = 0;
         }
-        if (sWantFrame >= 0 && (long) sFrameCount + 1 == sWantFrame && sDrawIndex == sWantDraw) {
+        if (sWantFrame >= 0 && (long) sFrameCount + 1 == sWantFrame && sDrawIndex >= sWantDraw &&
+            sDrawIndex <= sWantDrawEnd) {
             for (i = 0; i < count; i++) {
                 const GfxTriVert *v = &verts[i];
                 fprintf(stderr, "DRAW %ld:%ld v%d %a %a %a %a uv %a %a fog %a rgba %u %u %u %u\n", sWantFrame,
-                        sWantDraw, i, v->x, v->y, v->z, v->w, v->u, v->v, v->fog, v->r, v->g, v->b, v->a);
+                        sDrawIndex, i, v->x, v->y, v->z, v->w, v->u, v->v, v->fog, v->r, v->g, v->b, v->a);
             }
         }
         sDrawIndex++;

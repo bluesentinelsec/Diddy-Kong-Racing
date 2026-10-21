@@ -4,9 +4,9 @@
 #   tests/golden.sh BINARY [GOLDEN] [FRAMES] [INPUT]            compare against the golden trace
 #   tests/golden.sh --update BINARY [GOLDEN] [FRAMES] [INPUT]   regenerate the golden trace
 #
-# Runs the game with --trace for FRAMES frames (erased save, frame-counted
-# clock, and either no input or the scripted controller in INPUT - see
-# DKR_INPUT_SCRIPT in linux/input.c) and diffs the per-frame gfx/audio hashes
+# Runs the game with --trace for FRAMES frames (erased save unless the script
+# says "# save 100", frame-counted clock, and either no input or the scripted
+# controller in INPUT - see DKR_INPUT_SCRIPT in linux/input.c) and diffs the per-frame gfx/audio hashes
 # against GOLDEN. The
 # hashes cover what the renderer and the audio output receive, not GPU pixels,
 # so a 32-bit Raspberry Pi and a 64-bit Mac must produce the same file; the
@@ -25,8 +25,17 @@ frames=${3:-1800}
 input=${4:-}
 if [ -n "$input" ]; then
     export DKR_INPUT_SCRIPT=$input
+    # "# save 100" in the script starts the trace from the 100%-completion save
+    # (DKR_TRACE_SAVE, linux/reimpl.c) instead of an erased one.
+    save=$(sed -n 's/^# save \([0-9a-z]*\).*/\1/p' "$input" | head -n 1)
+    if [ -n "$save" ]; then
+        export DKR_TRACE_SAVE=$save
+    else
+        unset DKR_TRACE_SAVE
+    fi
 else
     unset DKR_INPUT_SCRIPT
+    unset DKR_TRACE_SAVE
 fi
 
 if [ "$update" = 1 ]; then
