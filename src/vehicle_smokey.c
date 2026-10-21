@@ -142,29 +142,29 @@ void update_smokey(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
     }
     switch (obj->animationID) {
         case 0:
-            racer->unk1CD = 0;
+            racer->currentAnimId = 0;
             racer->animationSpeed += 1.0 * updateRateF;
             break;
         case 1:
-            if (racer->unk1CD == 2) {
+            if (racer->currentAnimId == 2) {
                 racer->animationSpeed += animVelocity;
             } else {
                 racer->animationSpeed -= animVelocity;
             }
             break;
         case 2:
-            racer->unk1CD = 2;
+            racer->currentAnimId = 2;
             racer->animationSpeed -= animVelocity;
             break;
         case 3:
-            if (racer->unk1CD == 4) {
+            if (racer->currentAnimId == 4) {
                 racer->animationSpeed -= 2.0 * updateRateF;
             } else {
                 racer->animationSpeed += 2.0 * updateRateF;
             }
             break;
         case 4:
-            racer->unk1CD = 4;
+            racer->currentAnimId = 4;
             racer->animationSpeed += 2.0 * updateRateF;
             break;
         case 5:
@@ -187,16 +187,16 @@ void update_smokey(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
     }
     if (modInst->animationID == -1 || obj->animationID == ANIM_SMOKEY_IDLE) {
         if (obj->animationID == ANIM_SMOKEY_DAMAGE) {
-            obj->animationID = racer->unk1CD;
+            obj->animationID = racer->currentAnimId;
             racer->animationSpeed = 0.0f;
         } else if (obj->animationID == ANIM_SMOKEY_RUN) {
-            if (racer->unk1CD == 0) {
+            if (racer->currentAnimId == 0) {
                 obj->animationID = ANIM_SMOKEY_WALK;
             } else {
                 obj->animationID = ANIM_SMOKEY_IDLE;
             }
         } else if (obj->animationID == ANIM_SMOKEY_LAND) {
-            if (racer->unk1CD == 4) {
+            if (racer->currentAnimId == 4) {
                 obj->animationID = ANIM_SMOKEY_WALK;
             } else {
                 obj->animationID = ANIM_SMOKEY_FLY;

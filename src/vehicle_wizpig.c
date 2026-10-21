@@ -131,7 +131,7 @@ void update_wizpig(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
         }
     }
     nextCheckpoint = FALSE;
-    if (find_next_checkpoint_node(racer->nextCheckpoint, racer->isOnAlternateRoute)->unk36[racer->unk1CA] == 1) {
+    if (find_next_checkpoint_node(racer->nextCheckpoint, racer->isOnAlternateRoute)->unk36[racer->aiLane] == 1) {
         nextCheckpoint = TRUE;
     }
     racer->x_rotation_offset = -obj->trans.rotation.x_rotation;
@@ -148,29 +148,29 @@ void update_wizpig(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
     }
     switch (obj->animationID) {
         case ANIM_WIZPIG_IDLE:
-            racer->unk1CD = 0;
+            racer->currentAnimId = 0;
             racer->animationSpeed += 1.0 * updateRateF;
             break;
         case ANIM_WIZPIG_WALK:
-            if (racer->unk1CD == 2) {
+            if (racer->currentAnimId == 2) {
                 racer->animationSpeed += animVelocity;
             } else {
                 racer->animationSpeed -= animVelocity;
             }
             break;
         case ANIM_WIZPIG_RUN:
-            racer->unk1CD = 2;
+            racer->currentAnimId = 2;
             racer->animationSpeed -= animVelocity;
             break;
         case ANIM_WIZPIG_JUMP:
-            if (racer->unk1CD == 4) {
+            if (racer->currentAnimId == 4) {
                 racer->animationSpeed -= 2.0 * updateRateF;
             } else {
                 racer->animationSpeed += 2.0 * updateRateF;
             }
             break;
         case ANIM_WIZPIG_FLY:
-            racer->unk1CD = 4;
+            racer->currentAnimId = 4;
             racer->animationSpeed += 2.0 * updateRateF;
             break;
         case ANIM_WIZPIG_DAMAGE:
@@ -194,16 +194,16 @@ void update_wizpig(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
     }
     if (modInst->animationID == -1 || obj->animationID == ANIM_WIZPIG_IDLE) {
         if (obj->animationID == ANIM_WIZPIG_DAMAGE) {
-            obj->animationID = racer->unk1CD;
+            obj->animationID = racer->currentAnimId;
             racer->animationSpeed = 0.0f;
         } else if (obj->animationID == ANIM_WIZPIG_WALK) {
-            if (racer->unk1CD == 0) {
+            if (racer->currentAnimId == 0) {
                 obj->animationID = ANIM_WIZPIG_RUN;
             } else {
                 obj->animationID = ANIM_WIZPIG_IDLE;
             }
         } else if (obj->animationID == ANIM_WIZPIG_JUMP) {
-            if (racer->unk1CD == 4) {
+            if (racer->currentAnimId == 4) {
                 obj->animationID = ANIM_WIZPIG_RUN;
             } else {
                 obj->animationID = ANIM_WIZPIG_FLY;

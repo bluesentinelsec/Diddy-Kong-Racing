@@ -3957,7 +3957,7 @@ void set_temp_model_transforms(Object *obj) {
     if (!(obj->trans.flags & OBJ_FLAGS_PARTICLE)) {
         if (obj->header->behaviorId == BHV_RACER) {
             objRacer = obj->racer;
-            objRacer->unk201 = 30;
+            objRacer->aiPhysicsTimer = 30;
             if (objRacer->unk206 > 0) {
                 ret2 = 1.0f - (objRacer->unk206 * 0.05f);
                 if (ret2 < 0.2f) {
@@ -5016,7 +5016,7 @@ void racer_update_local_velocity(Object *obj, Object_Racer *racer) {
             if (!racer->raceFinished) {
                 rumble_set(racer->playerIndex, RUMBLE_TYPE_18);
             }
-            racer->unk1F3 |= 8;
+            racer->driveAnimFlags |= 8;
         }
         if (volume > 55) {
             play_random_character_voice(obj, SOUND_VOICE_CHARACTER_NEGATIVE, 8, 1);
@@ -6392,10 +6392,10 @@ void race_check_finish(s32 updateRate) {
                 } else if (curRacer->courseCheckpoint < curRacer2->courseCheckpoint) {
                     racerPos++;
                 } else if (curRacer->courseCheckpoint == curRacer2->courseCheckpoint) {
-                    if (curRacer2->unk1A8 < curRacer->unk1A8) {
+                    if (curRacer2->checkpointRank < curRacer->checkpointRank) {
                         racerPos++;
                     }
-                    if (curRacer->unk1A8 == curRacer2->unk1A8 && i < j) {
+                    if (curRacer->checkpointRank == curRacer2->checkpointRank && i < j) {
                         racerPos++;
                     }
                 }
@@ -9922,7 +9922,7 @@ void mode_init_taj_race(void) {
 
         for (j = gObjectListStart; j < gObjectCount; j++) {
             if (!(gObjPtrList[j]->trans.flags & OBJ_FLAGS_PARTICLE) && gObjPtrList[j]->behaviorId == BHV_PARK_WARDEN) {
-                racer->unk154 = gObjPtrList[j];
+                racer->aiNodeObj = gObjPtrList[j];
             }
         }
         set_pause_lockout_timer(20);

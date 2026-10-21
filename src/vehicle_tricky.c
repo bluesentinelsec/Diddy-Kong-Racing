@@ -118,7 +118,7 @@ void update_tricky(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
     obj->animationID = animID;
     obj->animFrame = animFrame;
     if (racer->attackType != ATTACK_NONE && obj->animationID != ANIM_TRICKY_DAMAGE) {
-        racer->unk1CD = obj->animationID;
+        racer->currentAnimId = obj->animationID;
         obj->animationID = ANIM_TRICKY_DAMAGE;
         obj->y_velocity += 7.5;
         play_random_boss_sound(BOSS_SOUND_NEGATIVE);
@@ -159,7 +159,7 @@ void update_tricky(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
         modInst->animationID = -1;
     }
     if (modInst->animationID == -1 && obj->animationID == ANIM_TRICKY_DAMAGE) {
-        obj->animationID = racer->unk1CD;
+        obj->animationID = racer->currentAnimId;
     }
     animFrame = obj->animFrame;
     obj->animFrame = racer->animationSpeed;

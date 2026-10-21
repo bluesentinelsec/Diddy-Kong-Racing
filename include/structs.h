@@ -1150,7 +1150,7 @@ typedef struct Object_Racer {
     /* 0x02A */ u16 unk2A;
     /* 0x02C */ f32 velocity;
     /* 0x030 */ f32 lateral_velocity;
-    /* 0x034 */ f32 unk34; // Vehicle pitch.
+    /* 0x034 */ f32 vehiclePitch; // Vehicle pitch.
     /* 0x038 */ f32 ox1;
     /* 0x03C */ f32 oy1;
     /* 0x040 */ f32 oz1;
@@ -1163,15 +1163,15 @@ typedef struct Object_Racer {
     /* 0x05C */ f32 prev_x_position;
     /* 0x060 */ f32 prev_y_position;
     /* 0x064 */ f32 prev_z_position;
-    /* 0x068 */ f32 unk68; // xPos
-    /* 0x06C */ f32 unk6C; // yPos
-    /* 0x070 */ f32 unk70; // zPos
+    /* 0x068 */ f32 checkpointPosX; // xPos
+    /* 0x06C */ f32 checkpointPosY; // yPos
+    /* 0x070 */ f32 checkpointPosZ; // zPos
     /* 0x074 */ f32 unk74;
     /* 0x078 */ f32 carBobX;
     /* 0x07C */ f32 carBobY;
     /* 0x080 */ f32 carBobZ;
-    /* 0x084 */ f32 unk84;
-    /* 0x088 */ f32 unk88;
+    /* 0x084 */ f32 pushVelX;
+    /* 0x088 */ f32 pushVelZ;
     /* 0x08C */ f32 stretch_height;
     /* 0x090 */ f32 stretch_height_cap;
     /* 0x094 */ f32 camera_zoom;
@@ -1199,7 +1199,7 @@ typedef struct Object_Racer {
     /* 0x118 */ struct VehicleSoundData *vehicleSound;
     /* 0x11C */ f32 unk11C;
     /* 0x120 */ f32 unk120;
-    /* 0x124 */ f32 unk124;
+    /* 0x124 */ f32 aiTargetSpeed;
     /* 0x128 */ s32 lap_times[5]; // mode_init_taj_race implies there should be at least 5 lap times.
     /* 0x13C */ s32 unk13C;
     /* 0x140 */ struct Object *magnetTargetObj;
@@ -1207,7 +1207,7 @@ typedef struct Object_Racer {
     /* 0x148 */ struct Object *approachTarget;
     /* 0x14C */ struct Object *zipperObj;
     /* 0x150 */ struct Object *unk150;
-    /* 0x154 */ struct Object *unk154;
+    /* 0x154 */ struct Object *aiNodeObj;
     /* 0x158 */ struct Object *nodeCurrent;
     /* 0x15C */ struct Object *challengeMarker;
     /* 0x160 */ s16 y_rotation_offset;
@@ -1251,7 +1251,7 @@ typedef struct Object_Racer {
     /* 0x1A2 */ s16 y_rotation_vel;
     /* 0x1A4 */ s16 x_rotation_vel;
     /* 0x1A6 */ s16 z_rotation_vel;
-    /* 0x1A8 */ s16 unk1A8;
+    /* 0x1A8 */ s16 checkpointRank;
     /* 0x1AA */ s16 racerOrder; // Current racer index order, but doesn't necessarily mean their exact race place.
     /* 0x1AC */ s16 finishPosition;
     /* 0x1AE */ s16 racePosition; // Current decided race position.
@@ -1268,11 +1268,11 @@ typedef struct Object_Racer {
     /* 0x1C6 */ s16 unk1C6;
     /* 0x1C8 */ u8 isOnAlternateRoute;
     /* 0x1C9 */ u8 unk1C9;
-    /* 0x1CA */ s8 unk1CA;
+    /* 0x1CA */ s8 aiLane;
     /* 0x1CB */ s8 unk1CB;
     /* 0x1CC */ s8 aiSkill;
-    /* 0x1CD */ u8 unk1CD;
-    /* 0x1CE */ u8 unk1CE;
+    /* 0x1CD */ u8 currentAnimId;
+    /* 0x1CE */ u8 aiNodeId;
     /* 0x1CF */ s8 eggHudCounter;
     /* 0x1D0 */ s8 spectateCamID;
     /* 0x1D1 */ s8 unk1D1;
@@ -1295,7 +1295,7 @@ typedef struct Object_Racer {
     /* 0x1E5 */ s8 waterTimer; // Set to a value, then counts down when leaving water.
     /* 0x1E6 */ s8 drift_direction;
     /* 0x1E7 */ s8 miscAnimCounter;
-    /* 0x1E8 */ s8 unk1E8;
+    /* 0x1E8 */ s8 smoothedStickY;
     /* 0x1E9 */ s8 unk1E9;
     /* 0x1EA */ s8 unk1EA;
     /* 0x1EB */ s8 tapTimerR;
@@ -1305,8 +1305,8 @@ typedef struct Object_Racer {
     /* 0x1EF */ u8 boost_sound;
     /* 0x1F0 */ u8 unk1F0;
     /* 0x1F1 */ u8 unk1F1;
-    /* 0x1F2 */ u8 unk1F2;
-    /* 0x1F3 */ u8 unk1F3;
+    /* 0x1F2 */ u8 driveAnimState;
+    /* 0x1F3 */ u8 driveAnimFlags;
     /* 0x1F4 */ u8 startInput;
     /* 0x1F5 */ u8 zipperDirCorrection;
     /* 0x1F6 */ s8 unk1F6;
@@ -1317,10 +1317,10 @@ typedef struct Object_Racer {
     /* 0x1FB */ s8 unk1FB;
     /* 0x1FC */ u8 wrongWayCounter;
     /* 0x1FD */ s8 cameraIndex;
-    /* 0x1FE */ u8 unk1FE;
-    /* 0x1FF */ u8 unk1FF;
+    /* 0x1FE */ u8 effectBoxType;
+    /* 0x1FF */ u8 effectBoxStrength;
     /* 0x200 */ s8 transitionTimer;
-    /* 0x201 */ s8 unk201;
+    /* 0x201 */ s8 aiPhysicsTimer;
     /* 0x202 */ s8 silverCoinCount;
     /* 0x203 */ s8 boostType;
     /* 0x204 */ s16 bubbleTrapTimer;

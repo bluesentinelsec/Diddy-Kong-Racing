@@ -99,7 +99,7 @@ void update_bubbler(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *
     obj->animationID = animID;
     obj->animFrame = animFrame;
     if (racer->attackType != ATTACK_NONE && obj->animationID != ANIM_BUBBLER_DAMAGE) {
-        racer->unk1CD = obj->animationID;
+        racer->currentAnimId = obj->animationID;
         obj->animationID = ANIM_BUBBLER_DAMAGE;
         obj->y_velocity += 7.5;
         play_random_boss_sound(BOSS_SOUND_NEGATIVE);
