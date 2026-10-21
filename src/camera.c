@@ -63,14 +63,14 @@ Vp gViewportStack[20] = {
     { { { 0, 0, G_HALFZ, 0 }, { 0, 0, G_HALFZ, 0 } } }, { { { 0, 0, G_HALFZ, 0 }, { 0, 0, G_HALFZ, 0 } } },
 };
 
-ObjectTransform D_800DD288 = {
+ObjectTransform sCameraResetTransform = {
     { { { 0, 0, 0 } } },
     { 0 },
     1.0f,
     { { { { 0.0f, 0.0f, -281.0f } } } },
 };
 
-ObjectTransform D_800DD2A0 = {
+ObjectTransform sModelResetTransform = {
     { { { 0, 0, 0 } } },
     { 0 },
     1.0f,
@@ -94,7 +94,6 @@ Camera gCameras[8];
 s32 gViewportLayout;
 s32 gActiveCameraID;
 s32 gNumCameras;
-UNUSED s32 D_80120CEC;
 ObjectTransform gCameraTransform;
 s32 gMtxOriginID;
 s32 gSpriteAnimMode;
@@ -104,21 +103,20 @@ s8 gAdjustViewportHeight;
 s32 gNoCamShake;
 s32 gModelMatrixStackPos;
 s32 gCameraMatrixPos;
-UNUSED s32 D_80120D24;
 f32 gCameraRelPosStackX[CAMERA_MODEL_STACK_SIZE + 1];
 f32 gCameraRelPosStackY[CAMERA_MODEL_STACK_SIZE + 1];
 f32 gCameraRelPosStackZ[CAMERA_MODEL_STACK_SIZE];
 u16 perspNorm;
 MtxF *gModelMatrixF[CAMERA_MODEL_STACK_SIZE + 1];
 Mtx *gModelMatrix[CAMERA_MODEL_STACK_SIZE + 1];
-// Backing store for gModelMatrixF[] (each entry is (MtxF*)&D_80120DA0[i<<4]).
+// Backing store for gModelMatrixF[] (each entry is (MtxF*)&gModelMatrixStorage[i<<4]).
 // Under the float matrix ABI it must be >=8-aligned or those MtxF pointers are
 // 4-aligned and the SH4 fmov.d matrix copy faults on them. N64/fixed builds keep
 // the bare array (matching).
 #ifdef GBI_FLOAT_MTX
-f32 D_80120DA0[CAMERA_MODEL_STACK_SIZE * 16] __attribute__((aligned(8)));
+f32 gModelMatrixStorage[CAMERA_MODEL_STACK_SIZE * 16] __attribute__((aligned(8)));
 #else
-f32 D_80120DA0[CAMERA_MODEL_STACK_SIZE * 16];
+f32 gModelMatrixStorage[CAMERA_MODEL_STACK_SIZE * 16];
 #endif
 MtxF gPerspectiveMatrixF;
 MtxF gViewProjMatrixF;
@@ -142,7 +140,7 @@ void cam_init(void) {
     u32 stat;
 
     // clang-format off
-    for (i = 0; i < 5; i++) { gModelMatrixF[i] = (MtxF*)&D_80120DA0[i << 4]; }
+    for (i = 0; i < 5; i++) { gModelMatrixF[i] = (MtxF*)&gModelMatrixStorage[i << 4]; }
     // clang-format on
 
     for (j = 0; j < 8; j++) {
@@ -978,9 +976,9 @@ void mtx_ortho(Gfx **dList, Mtx **mtx) {
  * Official Name: camStandardPersp?
  */
 void mtx_perspective(Gfx **dList, Mtx **mtx) {
-    mtxf_from_inverse_transform(&gCurrentModelMatrixF, &D_800DD288);
+    mtxf_from_inverse_transform(&gCurrentModelMatrixF, &sCameraResetTransform);
     mtxf_mul(&gCurrentModelMatrixF, &gPerspectiveMatrixF, &gViewProjMatrixF);
-    mtxf_from_inverse_transform(gModelMatrixF[0], &D_800DD2A0);
+    mtxf_from_inverse_transform(gModelMatrixF[0], &sModelResetTransform);
     mtxf_mul(gModelMatrixF[0], &gViewProjMatrixF, &gCurrentModelMatrixF);
     mtxf_to_mtx(&gCurrentModelMatrixF, *mtx);
     gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_0);
@@ -1035,7 +1033,6 @@ void viewport_reset(Gfx **dList) {
     gActiveCameraID = 0;
 }
 
-UNUSED const char D_800E6F44[] = "cameraPushSprMtx: model stack overflow!!\n";
 
 /**
  * Sets the matrix position to the world origin (0, 0, 0)

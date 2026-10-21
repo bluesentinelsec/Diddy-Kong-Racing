@@ -35,7 +35,6 @@ s32 gRumbleEnable = TRUE;
 /************ .bss ************/
 
 OSMesgQueue *sControllerMesgQueue;
-UNUSED s32 D_80124014;
 
 OSPfs pfs[MAXCONTROLLERS];
 
@@ -59,9 +58,9 @@ u8 gRumblePresent; // Bits 0, 1, 2, and 3 of the bit pattern correspond to Contr
 u8 gRumbleIdle;    // Bitfield showing which rumble paks are not spinning.
 u8 gRumbleActive;  // Bitfield showing which rumble paks are currently spinning.
 s32 gRumbleDetectionTimer;
-u8 *D_801241EC;
-u32 D_801241F0;
-u32 D_801241F4;
+u8 *sSaveStreamPtr;
+u32 sSaveStreamByte;
+u32 sSaveStreamBit;
 
 /*******************************/
 
@@ -318,16 +317,16 @@ s32 save_read_bits(s32 arg0) {
 
     // Loop backwards through arg0
     while (arg0 != 0) {
-        // After shifting D_801241F4 right 8 times
-        if (D_801241F4 == 0) {
-            D_801241F0 = *D_801241EC++;
-            D_801241F4 = 128; // 1000 0000 in binary.
+        // After shifting sSaveStreamBit right 8 times
+        if (sSaveStreamBit == 0) {
+            sSaveStreamByte = *sSaveStreamPtr++;
+            sSaveStreamBit = 128; // 1000 0000 in binary.
         }
-        if (D_801241F0 & D_801241F4) {
+        if (sSaveStreamByte & sSaveStreamBit) {
             ret |= var_v0;
         }
         var_v0 >>= 1;
-        D_801241F4 >>= 1;
+        sSaveStreamBit >>= 1;
         arg0--;
     }
 
@@ -343,19 +342,19 @@ void save_write_bits(s32 arg0, u32 arg1) {
     if (arg0 > 0) {
         var_v0 = 1 << (arg0 - 1);
         while (arg0 != 0) {
-            if (D_801241F4 == 0) {
-                *D_801241EC++ = D_801241F0;
-                D_801241F0 = 0;
-                D_801241F4 = 128; // Reset the byte counter, so we can shift 8 times before coming back here.
+            if (sSaveStreamBit == 0) {
+                *sSaveStreamPtr++ = sSaveStreamByte;
+                sSaveStreamByte = 0;
+                sSaveStreamBit = 128; // Reset the byte counter, so we can shift 8 times before coming back here.
             }
             if (arg1 & var_v0) {
-                D_801241F0 |= D_801241F4;
+                sSaveStreamByte |= sSaveStreamBit;
             }
             var_v0 >>= 1;
-            D_801241F4 >>= 1;
+            sSaveStreamBit >>= 1;
             arg0--;
         }
-        *D_801241EC = D_801241F0;
+        *sSaveStreamPtr = sSaveStreamByte;
     }
 }
 
@@ -370,8 +369,8 @@ void populate_settings_from_save_data(Settings *settings, u8 *saveData) {
 
     clear_game_progress(settings);
     level_count(&levelCount, &worldCount);
-    D_801241EC = saveData;
-    D_801241F0 = D_801241F4 = 0;
+    sSaveStreamPtr = saveData;
+    sSaveStreamByte = sSaveStreamBit = 0;
     var_a0 = save_read_bits(16) - 5;
     // clang-format off
     // Must be one line
@@ -427,9 +426,9 @@ void save_pack_progress(Settings *settings, u8 *saveData) {
     s32 var_s0;
 
     level_count(&levelCount, &worldCount);
-    D_801241EC = saveData;
-    D_801241F0 = 0;
-    D_801241F4 = 128;
+    sSaveStreamPtr = saveData;
+    sSaveStreamByte = 0;
+    sSaveStreamBit = 128;
     save_write_bits(16, 0);
     for (i = 0, var_s0 = 0; i < levelCount; i++) {
         raceType = leveltable_type(i);
@@ -470,9 +469,9 @@ void save_pack_progress(Settings *settings, u8 *saveData) {
     for (i = 2, var_v0 = 5; i < 40; i++) {
         var_v0 += saveData[i];
     }
-    D_801241EC = saveData;
-    D_801241F0 = 0;
-    D_801241F4 = 128;
+    sSaveStreamPtr = saveData;
+    sSaveStreamByte = 0;
+    sSaveStreamBit = 128;
     save_write_bits(16, var_v0);
 }
 
@@ -489,11 +488,11 @@ void save_unpack_records(Settings *settings, u8 *saveData, u8 arg2) {
     level_count(&levelCount, &worldCount);
 
     if (arg2 & 1) {
-        D_801241EC = saveData;
-        D_801241F0 = 0;
-        D_801241F4 = 0;
+        sSaveStreamPtr = saveData;
+        sSaveStreamByte = 0;
+        sSaveStreamBit = 0;
         for (i = 2, sum = 5; i < 192; i++) {
-            sum += D_801241EC[i];
+            sum += sSaveStreamPtr[i];
         }
         sum -= save_read_bits(16);
         if (sum == 0) {
@@ -520,11 +519,11 @@ void save_unpack_records(Settings *settings, u8 *saveData, u8 arg2) {
         }
     }
     if (arg2 & 2) {
-        D_801241EC = saveData + 192;
-        D_801241F0 = 0;
-        D_801241F4 = 0;
+        sSaveStreamPtr = saveData + 192;
+        sSaveStreamByte = 0;
+        sSaveStreamBit = 0;
         for (i = 2, sum = 5; i < 192; i++) {
-            sum += D_801241EC[i];
+            sum += sSaveStreamPtr[i];
         }
         sum -= save_read_bits(16);
         if (sum == 0) {
@@ -561,9 +560,9 @@ void save_pack_records(Settings *settings, u8 *saveData) {
     s16 sum;
 
     level_count(&levelCount, &worldCount);
-    D_801241EC = saveData;
-    D_801241F0 = 0;
-    D_801241F4 = 128;
+    sSaveStreamPtr = saveData;
+    sSaveStreamByte = 0;
+    sSaveStreamBit = 128;
     save_write_bits(16, 0);
     for (vehicleCount = 0, i = 0; i < levelCount; i++) {
         if (leveltable_type(i) == RACETYPE_DEFAULT) {
@@ -595,16 +594,16 @@ void save_pack_records(Settings *settings, u8 *saveData) {
 
     if (vehicleCount) {} // Fakematch
 
-    D_801241EC = saveData;
-    D_801241F0 = 0;
-    D_801241F4 = 128;
+    sSaveStreamPtr = saveData;
+    sSaveStreamByte = 0;
+    sSaveStreamBit = 128;
     for (i = 2, sum = 5; i < 192; i++) {
-        sum += D_801241EC[i];
+        sum += sSaveStreamPtr[i];
     }
     save_write_bits(16, sum);
-    D_801241EC = saveData + 192;
-    D_801241F0 = 0;
-    D_801241F4 = 128;
+    sSaveStreamPtr = saveData + 192;
+    sSaveStreamByte = 0;
+    sSaveStreamBit = 128;
     save_write_bits(16, 0);
     for (i = 0; i < levelCount; i++) {
         if (leveltable_type(i) == RACETYPE_DEFAULT) {
@@ -626,11 +625,11 @@ void save_pack_records(Settings *settings, u8 *saveData) {
             }
         }
     }
-    D_801241EC = saveData + 192;
-    D_801241F0 = 0;
-    D_801241F4 = 128;
+    sSaveStreamPtr = saveData + 192;
+    sSaveStreamByte = 0;
+    sSaveStreamBit = 128;
     for (i = 2, sum = 5; i < 192; i++) {
-        sum += D_801241EC[i];
+        sum += sSaveStreamPtr[i];
     }
     save_write_bits(16, sum);
 }

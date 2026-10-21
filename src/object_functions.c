@@ -46,14 +46,13 @@ Vertex gCharacterFlagVertices[4] = {
     { -256, -256, 0, 255, 255, 255, 255 },
 };
 
-VertexPosition D_800DC9A8[6] = {
+VertexPosition sFishVertices[6] = {
     { 0, 64, -64 }, { 0, -64, -64 }, { 0, 64, 32 }, { 0, -64, 32 }, { 0, 64, 64 }, { 0, -64, 64 },
 };
 
-UNUSED s32 D_800DC9CC = 0;
 
 // Fish Object Related
-Triangle D_800DC9D0[8] = {
+Triangle sFishTriangles[8] = {
     { { { 0, 0, 3, 1 } }, { { { 4, 0 } } }, { { { 1, 4 } } }, { { { 4, 4 } } } },
     { { { 0, 0, 2, 3 } }, { { { 4, 0 } } }, { { { 1, 0 } } }, { { { 1, 4 } } } },
     { { { 0, 2, 5, 3 } }, { { { 1, 0 } } }, { { { 0, 4 } } }, { { { 1, 4 } } } },
@@ -72,12 +71,12 @@ u8 gSignHoldingFrames[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 u8 gSignHoldingIndices[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-s8 D_800DCA94[8] = { 0x00, 0x00, 0x01, 0x01, 0x02, 0x00, 0x00, 0x00 };
+s8 sTTAmuletModelIndices[8] = { 0x00, 0x00, 0x01, 0x01, 0x02, 0x00, 0x00, 0x00 };
 
-s8 D_800DCA9C[12] = { 0x00, 0x01, 0x01, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+s8 sTTAmuletModelIndicesAlt[12] = { 0x00, 0x01, 0x01, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 // Butterfly Object Related
-Triangle D_800DCAA8[8] = {
+Triangle sButterflyTriangles[8] = {
     { { { 0, 0, 3, 1 } }, { { { 0, 0 } } }, { { { -1, -1 } } }, { { { 0, -1 } } } },
     { { { 0, 0, 2, 3 } }, { { { 0, 0 } } }, { { { -1, 0 } } }, { { { -1, -1 } } } },
     { { { 0, 2, 5, 3 } }, { { { -1, 0 } } }, { { { 0, -1 } } }, { { { -1, -1 } } } },
@@ -88,7 +87,7 @@ Triangle D_800DCAA8[8] = {
     { { { 0, 2, 5, 4 } }, { { { -1, 0 } } }, { { { 0, -1 } } }, { { { 0, 0 } } } },
 };
 
-VertexPosition D_800DCB28[6] = {
+VertexPosition sButterflyVertices[6] = {
     { -64, 0, 32 }, { -64, 0, -32 }, { 0, 0, 32 }, { 0, 0, -32 }, { 64, 0, 32 }, { 64, 0, -32 },
 };
 
@@ -1462,23 +1461,23 @@ void obj_init_fish(Object *fishObj, LevelObjectEntry_Fish *fishEntry, s32 param)
     move_object(fishObj, xPos, 0.0f, zPos);
     if (param == 0) {
         for (i = 0; i < 8; i++) {
-            fish->triangles[i].flags = D_800DC9D0[i].flags;
-            fish->triangles[i].vi0 = D_800DC9D0[i].vi0;
-            fish->triangles[i].vi1 = D_800DC9D0[i].vi1;
-            fish->triangles[i].vi2 = D_800DC9D0[i].vi2;
+            fish->triangles[i].flags = sFishTriangles[i].flags;
+            fish->triangles[i].vi0 = sFishTriangles[i].vi0;
+            fish->triangles[i].vi1 = sFishTriangles[i].vi1;
+            fish->triangles[i].vi2 = sFishTriangles[i].vi2;
         }
         uMask = 0;
         for (i = 0; i < 6; i++) {
-            fish->vertices[uMask].x = D_800DC9A8[uMask].x;
-            fish->vertices[uMask].y = D_800DC9A8[uMask].y;
-            fish->vertices[uMask].z = D_800DC9A8[uMask].z;
+            fish->vertices[uMask].x = sFishVertices[uMask].x;
+            fish->vertices[uMask].y = sFishVertices[uMask].y;
+            fish->vertices[uMask].z = sFishVertices[uMask].z;
             fish->vertices[uMask].r = 255;
             fish->vertices[uMask].g = 255;
             fish->vertices[uMask].b = 255;
             fish->vertices[uMask].a = 255;
-            fish->vertices[uMask + 6].x = D_800DC9A8[uMask].x;
-            fish->vertices[uMask + 6].y = D_800DC9A8[uMask].y;
-            fish->vertices[uMask + 6].z = D_800DC9A8[uMask].z;
+            fish->vertices[uMask + 6].x = sFishVertices[uMask].x;
+            fish->vertices[uMask + 6].y = sFishVertices[uMask].y;
+            fish->vertices[uMask + 6].z = sFishVertices[uMask].z;
             fish->vertices[uMask + 6].r = 255;
             fish->vertices[uMask + 6].g = 255;
             fish->vertices[uMask + 6].b = 255;
@@ -1501,12 +1500,12 @@ void obj_init_fish(Object *fishObj, LevelObjectEntry_Fish *fishEntry, s32 param)
         vMask = 0;
     }
     for (i = 0; i < 8; i++) {
-        fish->triangles[i].uv0.u = D_800DC9D0[i].uv0.u * uMask >> 2;
-        fish->triangles[i].uv0.v = D_800DC9D0[i].uv0.v * vMask >> 2;
-        fish->triangles[i].uv1.u = D_800DC9D0[i].uv1.u * uMask >> 2;
-        fish->triangles[i].uv1.v = D_800DC9D0[i].uv1.v * vMask >> 2;
-        fish->triangles[i].uv2.u = D_800DC9D0[i].uv2.u * uMask >> 2;
-        fish->triangles[i].uv2.v = D_800DC9D0[i].uv2.v * vMask >> 2;
+        fish->triangles[i].uv0.u = sFishTriangles[i].uv0.u * uMask >> 2;
+        fish->triangles[i].uv0.v = sFishTriangles[i].uv0.v * vMask >> 2;
+        fish->triangles[i].uv1.u = sFishTriangles[i].uv1.u * uMask >> 2;
+        fish->triangles[i].uv1.v = sFishTriangles[i].uv1.v * vMask >> 2;
+        fish->triangles[i].uv2.u = sFishTriangles[i].uv2.u * uMask >> 2;
+        fish->triangles[i].uv2.v = sFishTriangles[i].uv2.v * vMask >> 2;
     }
 }
 
@@ -3802,9 +3801,9 @@ void obj_loop_ttdoor(Object *obj, s32 updateRate) {
     ttDoor = obj->door;
     settings = get_settings();
     if (ttDoor->doorType == 0) {
-        obj->modelIndex = D_800DCA94[settings->ttAmulet];
+        obj->modelIndex = sTTAmuletModelIndices[settings->ttAmulet];
     } else {
-        obj->modelIndex = D_800DCA9C[settings->ttAmulet];
+        obj->modelIndex = sTTAmuletModelIndicesAlt[settings->ttAmulet];
     }
     if (obj->interactObj->distance < ttDoor->radius && (settings->ttAmulet < 4 || *settings->balloonsPtr < 47)) {
         racerObj = obj->interactObj->obj;
@@ -5824,23 +5823,23 @@ void obj_init_butterfly(Object *butterflyObj, LevelObjectEntry_Butterfly *butter
         butterfly->unk106 = 0x180;
         butterfly->unk108 = 0.0f;
         for (i = 0; i < 8; i++) {
-            butterfly->triangles[i].flags = D_800DCAA8[i].flags;
-            butterfly->triangles[i].vi0 = D_800DCAA8[i].vi0;
-            butterfly->triangles[i].vi1 = D_800DCAA8[i].vi1;
-            butterfly->triangles[i].vi2 = D_800DCAA8[i].vi2;
+            butterfly->triangles[i].flags = sButterflyTriangles[i].flags;
+            butterfly->triangles[i].vi0 = sButterflyTriangles[i].vi0;
+            butterfly->triangles[i].vi1 = sButterflyTriangles[i].vi1;
+            butterfly->triangles[i].vi2 = sButterflyTriangles[i].vi2;
         }
         uMask = 0;
         for (i = 0; i < 6; i++) {
-            butterfly->vertices[uMask].x = D_800DCB28[uMask].x;
-            butterfly->vertices[uMask].y = D_800DCB28[uMask].y;
-            butterfly->vertices[uMask].z = D_800DCB28[uMask].z;
+            butterfly->vertices[uMask].x = sButterflyVertices[uMask].x;
+            butterfly->vertices[uMask].y = sButterflyVertices[uMask].y;
+            butterfly->vertices[uMask].z = sButterflyVertices[uMask].z;
             butterfly->vertices[uMask].r = 255;
             butterfly->vertices[uMask].g = 255;
             butterfly->vertices[uMask].b = 255;
             butterfly->vertices[uMask].a = 255;
-            butterfly->vertices[uMask + 6].x = D_800DCB28[uMask].x;
-            butterfly->vertices[uMask + 6].y = D_800DCB28[uMask].y;
-            butterfly->vertices[uMask + 6].z = D_800DCB28[uMask].z;
+            butterfly->vertices[uMask + 6].x = sButterflyVertices[uMask].x;
+            butterfly->vertices[uMask + 6].y = sButterflyVertices[uMask].y;
+            butterfly->vertices[uMask + 6].z = sButterflyVertices[uMask].z;
             butterfly->vertices[uMask + 6].r = 255;
             butterfly->vertices[uMask + 6].g = 255;
             butterfly->vertices[uMask + 6].b = 255;
@@ -5863,12 +5862,12 @@ void obj_init_butterfly(Object *butterflyObj, LevelObjectEntry_Butterfly *butter
         vMask = 0;
     }
     for (i = 0; i < 8; i++) {
-        butterfly->triangles[i].uv0.u = D_800DCAA8[i].uv0.u & uMask;
-        butterfly->triangles[i].uv0.v = D_800DCAA8[i].uv0.v & vMask;
-        butterfly->triangles[i].uv1.u = D_800DCAA8[i].uv1.u & uMask;
-        butterfly->triangles[i].uv1.v = D_800DCAA8[i].uv1.v & vMask;
-        butterfly->triangles[i].uv2.u = D_800DCAA8[i].uv2.u & uMask;
-        butterfly->triangles[i].uv2.v = D_800DCAA8[i].uv2.v & vMask;
+        butterfly->triangles[i].uv0.u = sButterflyTriangles[i].uv0.u & uMask;
+        butterfly->triangles[i].uv0.v = sButterflyTriangles[i].uv0.v & vMask;
+        butterfly->triangles[i].uv1.u = sButterflyTriangles[i].uv1.u & uMask;
+        butterfly->triangles[i].uv1.v = sButterflyTriangles[i].uv1.v & vMask;
+        butterfly->triangles[i].uv2.u = sButterflyTriangles[i].uv2.u & uMask;
+        butterfly->triangles[i].uv2.v = sButterflyTriangles[i].uv2.v & vMask;
     }
 }
 

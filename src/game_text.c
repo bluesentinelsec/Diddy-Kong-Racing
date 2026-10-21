@@ -31,13 +31,11 @@ s8 D_8012A787;
 s8 D_8012A788;
 u8 gShowOnscreenMessage;
 u8 D_8012A78A;
-UNUSED s16 D_8012A78C; // Set to -1, never read.
 s16 D_8012A78E;
 s16 gTextTableEntries;
-UNUSED s16 D_8012A792;
 char *gGameTextTableEntries[2]; // 960 x2 bytes
-char *D_8012A7A0;
-s32 D_8012A7A4;
+char *gGameTextBuffer;
+s32 gGameTextTableIndex;
 s16 gDialogueAlpha;
 s16 gTextAlphaVelocity;
 s16 gSubtitleTimer;
@@ -48,11 +46,10 @@ s16 gDialogueYPos2; // The Lower Right Y Coord of the Dialogue Box. Changes for 
 s16 gShowSubtitles;
 s16 gSubtitleLineCount;
 s16 gCurrentTextID;
-UNUSED s16 D_8012A7BC;
 char *gSubtitleProperties[1];
 char *gCurrentMessageText[2];
 char *gCurrentTextProperties;
-s32 D_8012A7D4;
+s32 gGameTextMessageIndex;
 
 /*****************************/
 
@@ -62,7 +59,7 @@ s32 D_8012A7D4;
 void init_dialogue_text(void) {
     gCurrentMessageText[0] = (char *) mempool_alloc_safe(0x780, COLOUR_TAG_GREEN);
     gCurrentMessageText[1] = gCurrentMessageText[0] + 0x3C0;
-    D_8012A7D4 = 0;
+    gGameTextMessageIndex = 0;
     gShowSubtitles = FALSE;
     gDialogueAlpha = 0;
     gTextAlphaVelocity = 32;
@@ -241,11 +238,10 @@ void process_subtitles(s32 updateRate) {
  * Assign the entries to a pointer table, then calculate the number of entries.
  */
 void load_game_text_table(void) {
-    D_8012A78C = -1;
     gGameTextTable[0] = (GameTextTableStruct *) mempool_alloc_safe(0x800, COLOUR_TAG_GREEN);
     gGameTextTableEntries[0] = (char *) &gGameTextTable[0]->entries[32];
     gGameTextTableEntries[1] = &gGameTextTableEntries[0][960];
-    D_8012A7A4 = 0;
+    gGameTextTableIndex = 0;
     init_dialogue_text();
     gTextTableEntries = (asset_table_size(ASSET_GAME_TEXT_TABLE) >> 2) - 2;
     gTextTableExists = TRUE;
@@ -333,21 +329,21 @@ void set_current_text(s32 textID) {
         size = (((s32) entries[(textID & 1) + 1]) & 0xFFFFFF) - (((s32) entries[textID & 1]) & 0xFFFFFF);
 
         if (temp) {
-            asset_load(ASSET_GAME_TEXT, (uintptr_t) gCurrentMessageText[D_8012A7D4], ((s32) entries[textID & 1]) ^ temp,
+            asset_load(ASSET_GAME_TEXT, (uintptr_t) gCurrentMessageText[gGameTextMessageIndex], ((s32) entries[textID & 1]) ^ temp,
                        size);
-            gCurrentTextProperties = gCurrentMessageText[D_8012A7D4];
+            gCurrentTextProperties = gCurrentMessageText[gGameTextMessageIndex];
             find_next_subtitle();
-            D_8012A7D4 = (D_8012A7D4 + 1) & 1;
+            gGameTextMessageIndex = (gGameTextMessageIndex + 1) & 1;
             return;
         }
-        asset_load(ASSET_GAME_TEXT, (uintptr_t) gGameTextTableEntries[D_8012A7A4], ((s32) entries[textID & 1]) ^ temp, size);
-        D_8012A7A0 = gGameTextTableEntries[D_8012A7A4];
-        D_8012A7A4 = (D_8012A7A4 + 1) & 1;
+        asset_load(ASSET_GAME_TEXT, (uintptr_t) gGameTextTableEntries[gGameTextTableIndex], ((s32) entries[textID & 1]) ^ temp, size);
+        gGameTextBuffer = gGameTextTableEntries[gGameTextTableIndex];
+        gGameTextTableIndex = (gGameTextTableIndex + 1) & 1;
         D_8012A788 = 0;
         gTextCloseTimerSeconds = 0;
         gCloseTextMessage = FALSE;
         D_8012A787 = 1;
-        D_8012A7A0[size] = 2;
+        gGameTextBuffer[size] = 2;
         if (gShowOnscreenMessage == FALSE) {
             D_8012A78E = 0;
             D_8012A78A = 1;
@@ -431,15 +427,15 @@ s32 dialogue_challenge_loop(void) {
     set_current_text_colour(1, textBox.textColRed, textBox.textColGreen, textBox.textColBlue, textBox.textColAlpha,
                             255);
 
-    for (index = 0, numberOfOnes = 0; D_8012A78E != numberOfOnes && D_8012A7A0[index] != 2; index++) {
-        if (D_8012A7A0[index] >= 3 && D_8012A7A0[index] < 13) {
+    for (index = 0, numberOfOnes = 0; D_8012A78E != numberOfOnes && gGameTextBuffer[index] != 2; index++) {
+        if (gGameTextBuffer[index] >= 3 && gGameTextBuffer[index] < 13) {
             index = game_text_parse_controls(index, &textBox);
         }
-        if (D_8012A7A0[index] == 1) {
+        if (gGameTextBuffer[index] == 1) {
             numberOfOnes++;
         }
     }
-    if (D_8012A7A0[index] >= 3 && D_8012A7A0[index] < 13) {
+    if (gGameTextBuffer[index] >= 3 && gGameTextBuffer[index] < 13) {
         index = game_text_parse_controls(index, &textBox);
     }
 
@@ -450,18 +446,18 @@ s32 dialogue_challenge_loop(void) {
         } else {
             xPos = (s32) (textBox.right - textBox.left) >> 1; // Center x position to box.
         }
-        render_dialogue_text(1, xPos, textBox.textY, &D_8012A7A0[index], gTextDisplayNumber, textBox.textFlags);
+        render_dialogue_text(1, xPos, textBox.textY, &gGameTextBuffer[index], gTextDisplayNumber, textBox.textFlags);
         textBox.textY += textBox.lineHeight;
-        while (D_8012A7A0[index] > 0) {
+        while (gGameTextBuffer[index] > 0) {
             index += 1;
         }
-        while (D_8012A7A0[index] == 0) {
+        while (gGameTextBuffer[index] == 0) {
             index += 1;
         }
-        if (D_8012A7A0[index] < 3) {
+        if (gGameTextBuffer[index] < 3) {
             keepLooping = FALSE;
         }
-        if (D_8012A7A0[index] >= 3 && D_8012A7A0[index] < 13) {
+        if (gGameTextBuffer[index] >= 3 && gGameTextBuffer[index] < 13) {
             index = game_text_parse_controls(index, &textBox);
         }
     } while (keepLooping);
@@ -471,7 +467,7 @@ s32 dialogue_challenge_loop(void) {
     }
     if (D_8012A78A == 0) {
         if (playerButtons & A_BUTTON || gCloseTextMessage) {
-            if (D_8012A7A0[index] == 1) {
+            if (gGameTextBuffer[index] == 1) {
                 D_8012A78E += 1;
             } else {
                 gShowOnscreenMessage = FALSE;
@@ -489,18 +485,18 @@ s32 game_text_parse_controls(s32 arg0, TextBox *textbox) {
     s32 temp;
     char *var_s0;
 
-    var_s0 = &D_8012A7A0[arg0];
+    var_s0 = &gGameTextBuffer[arg0];
     while (var_s0[0] >= 3 && var_s0[0] < 13) {
         switch (var_s0[0] - 3) {
             case 0:
                 textbox->font = var_s0[1];
                 arg0 += 2;
                 set_dialogue_font(1, textbox->font);
-                var_s0 = &D_8012A7A0[arg0];
+                var_s0 = &gGameTextBuffer[arg0];
                 break;
             case 1:
                 textbox->left = var_s0[1] & 0xFF;
-                textbox->top = D_8012A7A0[arg0 + 2] & 0xFF;
+                textbox->top = gGameTextBuffer[arg0 + 2] & 0xFF;
                 if (osTvType == OS_TV_TYPE_PAL) {
                     temp = textbox->top;
                     textbox->top = (textbox->top * 264) / 240;
@@ -508,21 +504,21 @@ s32 game_text_parse_controls(s32 arg0, TextBox *textbox) {
                 } else {
                     temp = 0;
                 }
-                textbox->right = (D_8012A7A0[arg0 + 3] & 0xFF) + 65;
-                textbox->bottom = (D_8012A7A0[arg0 + 4] & 0xFF) + temp;
+                textbox->right = (gGameTextBuffer[arg0 + 3] & 0xFF) + 65;
+                textbox->bottom = (gGameTextBuffer[arg0 + 4] & 0xFF) + temp;
                 arg0 += 5;
                 set_current_dialogue_box_coords(1, textbox->left, textbox->top, textbox->right, textbox->bottom);
-                var_s0 = &D_8012A7A0[arg0];
+                var_s0 = &gGameTextBuffer[arg0];
                 break;
             case 2:
                 textbox->textColRed = var_s0[1];
-                textbox->textColGreen = D_8012A7A0[arg0 + 2];
-                textbox->textColBlue = D_8012A7A0[arg0 + 3];
-                textbox->textColAlpha = D_8012A7A0[arg0 + 4];
+                textbox->textColGreen = gGameTextBuffer[arg0 + 2];
+                textbox->textColBlue = gGameTextBuffer[arg0 + 3];
+                textbox->textColAlpha = gGameTextBuffer[arg0 + 4];
                 arg0 += 5;
                 set_current_text_colour(1, textbox->textColRed, textbox->textColGreen, textbox->textColBlue,
                                         textbox->textColAlpha, 255);
-                var_s0 = &D_8012A7A0[arg0];
+                var_s0 = &gGameTextBuffer[arg0];
                 break;
             case 3:
                 if (var_s0[1] == 0) {
@@ -531,28 +527,28 @@ s32 game_text_parse_controls(s32 arg0, TextBox *textbox) {
                     textbox->textFlags = 0;
                 }
                 arg0 += 2;
-                var_s0 = &D_8012A7A0[arg0];
+                var_s0 = &gGameTextBuffer[arg0];
                 break;
             case 4:
                 arg0 += 2;
                 textbox->textX = var_s0[1];
-                var_s0 = &D_8012A7A0[arg0];
+                var_s0 = &gGameTextBuffer[arg0];
                 break;
             case 5:
                 arg0 += 2;
                 textbox->textY += var_s0[1];
-                var_s0 = &D_8012A7A0[arg0];
+                var_s0 = &gGameTextBuffer[arg0];
                 break;
             case 6:
                 arg0 += 2;
                 textbox->lineHeight = var_s0[1];
-                var_s0 = &D_8012A7A0[arg0];
+                var_s0 = &gGameTextBuffer[arg0];
                 break;
             case 7:
                 if (gTextCloseTimerSeconds == 0) {
                     gTextCloseTimerSeconds = var_s0[1] & 0xFF;
                     gTextCloseTimerFrames = normalise_time(60);
-                    var_s0 = &D_8012A7A0[arg0];
+                    var_s0 = &gGameTextBuffer[arg0];
                 }
                 arg0 += 2;
                 var_s0 += 2;

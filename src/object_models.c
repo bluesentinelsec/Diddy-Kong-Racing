@@ -25,10 +25,10 @@ s32 gRenderSceneFuncLength = 1980;
 
 s32 *gObjectModelTable;
 uintptr_t *gModelCache; // id / pointer pairs: pointer-sized on the host
-s32 *D_8011D628;
+s32 *gModelCacheFreeSlots;
 s32 gModelCacheCount;
 s32 gNumModelIDs;
-s32 D_8011D634;
+s32 gModelCacheFreeCount;
 s16 *gAnimationTable;
 s32 *gObjectAnimationTable;
 s32 gModelAnimOffsetID;
@@ -44,9 +44,9 @@ void allocate_object_model_pools(void) {
     s32 checksum;
 
     gModelCache = mempool_alloc_safe(MODEL_LOADED_MAX * ((sizeof(uintptr_t)) * 2), COLOUR_TAG_GREEN);
-    D_8011D628 = mempool_alloc_safe(100 * sizeof(uintptr_t), COLOUR_TAG_GREEN);
+    gModelCacheFreeSlots = mempool_alloc_safe(100 * sizeof(uintptr_t), COLOUR_TAG_GREEN);
     gModelCacheCount = 0;
-    D_8011D634 = 0;
+    gModelCacheFreeCount = 0;
     gObjectModelTable = (s32 *) asset_table_load(ASSET_OBJECT_MODELS_TABLE);
     {
         // Big-endian asset offset tables (helpers in linux/reimpl.c).
@@ -227,12 +227,12 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
     var_a2 = FALSE;
     cacheChanged = FALSE;
 #endif
-    if (D_8011D634 > 0) {
-        D_8011D634--;
+    if (gModelCacheFreeCount > 0) {
+        gModelCacheFreeCount--;
 #if VERSION >= VERSION_79
         var_a2 = TRUE;
 #endif
-        cacheIndex = D_8011D628[D_8011D634];
+        cacheIndex = gModelCacheFreeSlots[gModelCacheFreeCount];
     } else {
         cacheIndex = gModelCacheCount;
 #if VERSION >= VERSION_79
@@ -251,7 +251,7 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
         sPcModelDisk = NULL;
 #if VERSION >= VERSION_79
         if (var_a2) {
-            D_8011D634++;
+            gModelCacheFreeCount++;
         }
         if (cacheChanged) {
             gModelCacheCount--;
@@ -310,7 +310,7 @@ block_30:
         gModelCacheCount--;
     }
     if (var_a2) {
-        D_8011D634++;
+        gModelCacheFreeCount++;
     }
 #endif
     free_model_data(objMdl);
@@ -442,8 +442,8 @@ void free_3d_model(ModelInstance *modInst) {
 
     if (modelIndex != -1) {
         free_model_data(model);
-        D_8011D628[D_8011D634] = modelIndex;
-        D_8011D634++;
+        gModelCacheFreeSlots[gModelCacheFreeCount] = modelIndex;
+        gModelCacheFreeCount++;
         gModelCache[ASSETCACHE_ID(modelIndex)] = -1;
         gModelCache[ASSETCACHE_PTR(modelIndex)] = -1;
         mempool_free(modInst);

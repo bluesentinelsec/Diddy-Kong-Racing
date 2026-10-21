@@ -32,7 +32,6 @@ AudioPoint **gFreeAudioPoints;
 AudioLine gAudioLines[MAX_AUDIO_LINES];
 ReverbLine gReverbLines[MAX_REVERB_LINES]; // Reverb stuff
 u8 gJinglesOff;
-s32 D_8011AC1C;
 
 /*******************************/
 

@@ -83,7 +83,7 @@ s32 gIsInRace = 0;
 s32 gViewportFuncChecksum = ViewportFuncChecksum;
 s32 gViewportFuncLength = 0x154;
 s16 gLevelPropertyStackPos = 0;
-s16 D_800DD32C = 0;
+s16 gLevelPropertiesLock = 0;
 s8 gPostWizpigState = 0;
 
 /*******************************/
@@ -96,7 +96,7 @@ LevelHeader *gCurrentLevelHeader;
 char **gLevelNames;
 s32 gNumberOfLevelHeaders;
 s32 gNumberOfWorlds;
-s8 *D_80121178;
+s8 *gWorldBossLevelIds;
 LevelGlobalData *gGlobalLevelTable;
 s32 gRaceTypeCountTable[16];
 AIBehaviourTable *gAIBehaviourTable;
@@ -148,13 +148,13 @@ void level_global_init(void) {
         gGlobalLevelTable[i].unk4 = gCurrentLevelHeader->unkB0;
     }
     gNumberOfWorlds++;
-    D_80121178 = mempool_alloc_safe(gNumberOfWorlds, COLOUR_TAG_YELLOW);
+    gWorldBossLevelIds = mempool_alloc_safe(gNumberOfWorlds, COLOUR_TAG_YELLOW);
     for (i = 0; i < gNumberOfWorlds; i++) {
-        D_80121178[i] = -1;
+        gWorldBossLevelIds[i] = -1;
     }
     for (i = 0; i < gNumberOfLevelHeaders; i++) {
         if (gGlobalLevelTable[i].raceType == 5) {
-            D_80121178[gGlobalLevelTable[i].world] = i;
+            gWorldBossLevelIds[gGlobalLevelTable[i].world] = i;
         }
     }
     mempool_free(gTempAssetTable);
@@ -437,7 +437,7 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     if (gCurrentLevelHeader->race_type == RACETYPE_DEFAULT) {
         level_properties_reset();
     }
-    if (level_properties_get() == 0 && D_800DD32C == 0) {
+    if (level_properties_get() == 0 && gLevelPropertiesLock == 0) {
         if (gCurrentLevelHeader->race_type == RACETYPE_BOSS) {
             var_s0 = settings->courseFlagsPtr[levelId];
             wizpig = FALSE;
@@ -494,7 +494,7 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
             levelId = ((s8 *) get_misc_asset(ASSET_MISC_68))[4];
         }
     }
-    D_800DD32C = 0;
+    gLevelPropertiesLock = 0;
     if (prevLevelID != levelId) {
         mempool_free(gCurrentLevelHeader);
         offset = gTempAssetTable[levelId];
@@ -857,7 +857,7 @@ void level_properties_pop(s32 *levelId, s32 *entranceId, s32 *vehicleId, s32 *cu
         *vehicleId = tempVehicleID;
     }
 
-    D_800DD32C = 1;
+    gLevelPropertiesLock = 1;
 }
 
 /**

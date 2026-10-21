@@ -15,8 +15,8 @@ typedef struct {
     s16 originY; // something with y AND used as playerIndex
     s16 originZ; // something with z
     u8 unkA; // some sort of x ratio
-    u8 unkB; // some sort of z ratio / index of D_8012A0E8
-    u32 unkC; // indexes D_800E30D4
+    u8 unkB; // some sort of z ratio / index of gWaveVisibilityGrid
+    u32 unkC; // indexes gWaveBlockCells
     s16 unk10;
     s16 unk12;
     LevelModelSubArray unk14[2];
