@@ -4785,19 +4785,19 @@ void update_car(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer 
         spA0 = racerObj->trans.z_position;
         if (racer->drift_direction != 0) {
             if (racer->drift_direction < 0 && gCurrentStickX >= 26) {
-                racer->unk16E += updateRate;
-                if (racer->unk16E < 0) {
-                    racer->unk16E = 0;
+                racer->driftCounterSteerTimer += updateRate;
+                if (racer->driftCounterSteerTimer < 0) {
+                    racer->driftCounterSteerTimer = 0;
                 }
             } else if (racer->drift_direction > 0 && gCurrentStickX <= -26) {
-                racer->unk16E -= updateRate;
-                if (racer->unk16E > 0) {
-                    racer->unk16E = 0;
+                racer->driftCounterSteerTimer -= updateRate;
+                if (racer->driftCounterSteerTimer > 0) {
+                    racer->driftCounterSteerTimer = 0;
                 }
             } else {
-                racer->unk16E = 0;
+                racer->driftCounterSteerTimer = 0;
             }
-            spB8 = racer->unk16E;
+            spB8 = racer->driftCounterSteerTimer;
             if (spB8 < 0.0f) {
                 spB8 = -spB8;
             }
@@ -4818,7 +4818,7 @@ void update_car(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer 
             }
             gCurrentStickX += (racer->drift_direction * 60);
         } else {
-            racer->unk16E = 0;
+            racer->driftCounterSteerTimer = 0;
         }
         handle_base_steering(racer, 0, updateRateF);
         racer_update_basis_vectors(racerObj, racer);

@@ -369,11 +369,9 @@ void init_particle_assets(void) {
  * Load sprites from the dummy sprite ID list.
  */
 void init_particle_buffers(s32 maxTriangleParticles, s32 maxRectangleParticles, s32 maxSpriteParticles,
-                           s32 maxLineParticles, s32 maxPointParticles, s32 unused_arg) {
+                           s32 maxLineParticles, s32 maxPointParticles) {
     s16 *assetBuffer;
     s32 i;
-    s32 temp_var;
-    s32 fake_0;
     Vertex *verticesTemp;
     Triangle *trianglesTemp;
     ParticleModel *particleModelsBuffer;
@@ -408,17 +406,14 @@ void init_particle_buffers(s32 maxTriangleParticles, s32 maxRectangleParticles, 
     gPointParticleBufferFull = FALSE;
     free_particle_vertices_triangles();
 
-    gParticleVertexBuffer =
-        (Vertex *) mempool_alloc_safe(((maxTriangleParticles * 3) + (maxRectangleParticles * 4) + (unused_arg * 0) +
-                                       (maxLineParticles * 6) + (maxPointParticles * 16)) *
-                                          sizeof(Vertex),
-                                      COLOUR_TAG_SEMITRANS_GREY);
-
-    // @fake - 0 is required at start of allocation size calculation for match
-    fake_0 = 0;
-    gParticleTriangleBuffer = (Triangle *) mempool_alloc_safe(
-        (fake_0 + maxTriangleParticles + (maxRectangleParticles * 2) + (unused_arg * 0)) * sizeof(Triangle),
+    // Line and point models share the static triangle tables, so only triangle and
+    // rectangle particles need triangles of their own.
+    gParticleVertexBuffer = (Vertex *) mempool_alloc_safe(
+        ((maxTriangleParticles * 3) + (maxRectangleParticles * 4) + (maxLineParticles * 6) + (maxPointParticles * 16)) *
+            sizeof(Vertex),
         COLOUR_TAG_SEMITRANS_GREY);
+    gParticleTriangleBuffer = (Triangle *) mempool_alloc_safe(
+        (maxTriangleParticles + (maxRectangleParticles * 2)) * sizeof(Triangle), COLOUR_TAG_SEMITRANS_GREY);
 
     sParticleSpawnCounter = 0;
     free_particle_buffers();
@@ -449,10 +444,8 @@ void init_particle_buffers(s32 maxTriangleParticles, s32 maxRectangleParticles, 
             maxPointParticles * (sizeof(PointParticle) + sizeof(ParticleModel)), COLOUR_TAG_SEMITRANS_GREY);
     }
 
-    // @fake - buffer indexes are required to be multiplied by 0 to match
-    fake_0 = 0;
-    verticesTemp = (&gParticleVertexBuffer[gMaxTriangleParticles * fake_0]);
-    trianglesTemp = (&gParticleTriangleBuffer[gMaxTriangleParticles * fake_0]);
+    verticesTemp = gParticleVertexBuffer;
+    trianglesTemp = gParticleTriangleBuffer;
 
     particleModelsBuffer =
         (ParticleModel *) ((u8 *) gTriangleParticleBuffer + (gMaxTriangleParticles * (sizeof(Particle))));
@@ -860,151 +853,171 @@ void obj_disable_emitter(Object *obj, s32 emitterIndex) {
 }
 
 /**
+ * Car dust (emitters 0-9) is tinted towards the surface colour ramp the harder the car
+ * counter-steers in a drift. Below a small threshold the descriptor colour is kept.
+ */
+static void car_dust_override_colour(Object_Racer *racer, ParticleDescriptor *descriptor, s32 emitterIndex) {
+    ColourRGBA *ramp;
+    s32 slide;
+    s32 blend;
+    s32 alphaBlend;
+    s32 alpha;
+
+    slide = racer->driftCounterSteerTimer;
+    if (slide < 0) {
+        slide = -slide;
+    }
+    slide -= 24;
+    if (slide <= 0) {
+        return;
+    }
+    if (slide > 32) {
+        slide = 32;
+    }
+    ramp = &sParticleColourRamp[emitterIndex];
+    alphaBlend = slide << 4;
+    blend = alphaBlend - ((slide * slide) >> 2);
+    gParticleOverrideColor[0].word = ((((ramp->r - descriptor->colour.r) * blend) >> 8) + descriptor->colour.r) << 24;
+    gParticleOverrideColor[0].word |= (descriptor->colour.g + ((((ramp->g - descriptor->colour.g) * blend)) >> 8))
+                                      << 16;
+    gParticleOverrideColor[0].word |= (descriptor->colour.b + ((((ramp->b - descriptor->colour.b) * blend)) >> 8)) << 8;
+    if (slide > 16) {
+        alphaBlend = 256;
+    }
+    alpha = descriptor->colour.a;
+    gParticleOverrideColor[0].word |= alpha + (((ramp->a - alpha) * alphaBlend) >> 8);
+}
+
+/**
+ * Car emitters 10-13 lay tyre marks, each following one wheel's surface colour.
+ * Returns FALSE when that wheel is off the ground and no mark should be laid.
+ */
+static s32 car_tyre_mark_colour(Object_Racer *racer, s32 emitterIndex) {
+    s32 wheel;
+
+    switch (emitterIndex) {
+        case 10:
+            wheel = 2;
+            break;
+        case 11:
+            wheel = 3;
+            break;
+        case 12:
+            wheel = 0;
+            break;
+        case 13:
+            wheel = 1;
+            break;
+        default:
+            return TRUE;
+    }
+    gParticleOverrideColor[0].word = gVehicleTrackMarkColors[racer->wheel_surfaces[wheel] & 0xF].word;
+    return racer->wheel_surfaces[wheel] != SURFACE_NONE;
+}
+
+/**
+ * Hovercraft spray (emitters 2 and 3) fades in over a few frames after the effect starts.
+ */
+static void hovercraft_particle_fade_in(Object_Racer *racer, s32 updateRate) {
+    s32 opacity;
+
+    opacity = gHovercraftParticleOpacities[racer->racerIndex & 7];
+    opacity += updateRate * 4;
+    if (opacity > 256) {
+        opacity = 256;
+    }
+    gHovercraftParticleOpacities[racer->racerIndex & 7] = opacity;
+    gCurrentHovercraftParticleOpacity = opacity;
+}
+
+/**
+ * Keep an active vehicle emitter running. Line and point emitters are fed every frame;
+ * the others spawn on their behaviour's interval.
+ */
+static void vehicle_emitter_tick(Object *racerObj, s32 emitterIndex, s32 updateRate) {
+    ParticleEmitter *emitter;
+
+    emitter = &racerObj->particleEmitter[emitterIndex];
+    if (!(emitter->flags & PARTICLE_EMITTER_ENABLED)) {
+        obj_enable_emitter(racerObj, emitterIndex);
+    }
+    if (emitter->flags & (PARTICLE_LINE | PARTICLE_POINT)) {
+        obj_trigger_emitter(racerObj, emitter);
+    } else {
+        emitter->timeFromLastSpawn += updateRate;
+        if (emitter->timeFromLastSpawn >= emitter->behaviour->spawnInterval) {
+            obj_trigger_emitter(racerObj, emitter);
+        }
+    }
+}
+
+/**
+ * Shut down a vehicle emitter whose effect has stopped. A point emitter stays enabled
+ * until its trail has died out; a line emitter drops its opacity first.
+ */
+static void vehicle_emitter_release(Object *racerObj, s32 emitterIndex) {
+    ParticleEmitter *emitter;
+
+    emitter = &racerObj->particleEmitter[emitterIndex];
+    if (emitter->flags & PARTICLE_LINE) {
+        emitter->lineOpacity = 0;
+        obj_disable_emitter(racerObj, emitterIndex);
+    } else if (emitter->flags & PARTICLE_POINT) {
+        emitter->flags |= PARTICLE_POINT_EMITTER_DISABLED;
+        if (emitter->pointCount == 0) {
+            obj_disable_emitter(racerObj, emitterIndex);
+        }
+    } else {
+        obj_disable_emitter(racerObj, emitterIndex);
+    }
+}
+
+/**
  * Creates particles for vehicle-related effects like dust, tyre marks, and wing trails.
  * The colour of the particles is determined by the surface type the vehicle is moving on, which is why this logic is
  * separated.
  */
 void update_vehicle_particles(Object *racerObj, s32 updateRate) {
     Object_Racer *racer;
-    ParticleDescriptor *descriptor;
-    s32 opacity;
-    s32 temp_v1;
+    ParticleEmitter *emitter;
     s32 i;
-    ParticleEmitter *new_var;
-
-    s32 var_t1;
-    s32 someBool;
+    s32 emitting;
     s8 vehicleId;
     u32 emittersEnabled;
-    u8 *alphaPtr;
 
     racer = racerObj->racer;
     emittersEnabled = racerObj->particleEmittersEnabled;
     vehicleId = racer->vehicleID;
-    i = 0;
     object_do_player_tumble(racerObj);
-    for (; i < racerObj->header->particleCount; i++) {
+    for (i = 0; i < racerObj->header->particleCount; i++) {
+        emitter = &racerObj->particleEmitter[i];
         if (emittersEnabled & OBJ_EMIT_1) {
-            someBool = TRUE;
+            emitting = TRUE;
             switch (vehicleId) {
                 case VEHICLE_CAR:
-                    if (i >= 0 && i < 10) {
-                        // Dust effects for vehicle ?
-                        opacity = racer->unk16E;
-                        if (opacity < 0) {
-                            opacity = -opacity;
-                        }
-                        opacity -= 24;
-                        if (opacity > 0) {
-                            descriptor = gParticlesAssetTable[racerObj->particleEmitter[i].descriptorID];
-                            alphaPtr = &sParticleColourRamp[i].a;
-                            var_t1 = 4;
-                            if (opacity > 32) {
-                                opacity = 32;
-                            }
-                            var_t1 = opacity << var_t1;
-                            temp_v1 = var_t1 - ((opacity * opacity) >> 2);
-                            gParticleOverrideColor[0].word =
-                                ((((sParticleColourRamp[i].r - descriptor->colour.r) * temp_v1) >> 8) + descriptor->colour.r)
-                                << 24;
-                            gParticleOverrideColor[0].word |=
-                                (descriptor->colour.g + ((((sParticleColourRamp[i].g - descriptor->colour.g) * temp_v1)) >> 8))
-                                << 16;
-                            gParticleOverrideColor[0].word |=
-                                (descriptor->colour.b + ((((sParticleColourRamp[i].b - descriptor->colour.b) * temp_v1)) >> 8))
-                                << 8;
-                            if (opacity > 16) {
-                                var_t1 = 256;
-                            }
-                            opacity = descriptor->colour.a;
-                            gParticleOverrideColor[0].word |= opacity + (((*alphaPtr - opacity) * var_t1) >> 8);
-                        }
+                    if (i < 10) {
+                        car_dust_override_colour(racer, gParticlesAssetTable[emitter->descriptorID], i);
                     } else {
-                        // Tire marks
-                        switch (i) {
-                            case 10:
-                                if (racer->wheel_surfaces[2] == SURFACE_NONE) {
-                                    someBool = FALSE;
-                                }
-                                gParticleOverrideColor[0].word =
-                                    gVehicleTrackMarkColors[racer->wheel_surfaces[2] & 0xF].word;
-                                break;
-                            case 11:
-                                if (racer->wheel_surfaces[3] == SURFACE_NONE) {
-                                    someBool = FALSE;
-                                }
-                                gParticleOverrideColor[0].word =
-                                    gVehicleTrackMarkColors[racer->wheel_surfaces[3] & 0xF].word;
-                                break;
-                            case 12:
-                                if (racer->wheel_surfaces[0] == SURFACE_NONE) {
-                                    someBool = FALSE;
-                                }
-                                gParticleOverrideColor[0].word =
-                                    gVehicleTrackMarkColors[racer->wheel_surfaces[0] & 0xF].word;
-                                break;
-                            case 13:
-                                if (racer->wheel_surfaces[1] == SURFACE_NONE) {
-                                    someBool = FALSE;
-                                }
-                                gParticleOverrideColor[0].word =
-                                    gVehicleTrackMarkColors[racer->wheel_surfaces[1] & 0xF].word;
-                                break;
-                        }
+                        emitting = car_tyre_mark_colour(racer, i);
                     }
                     break;
                 case VEHICLE_PLANE:
-                    if (i == 0) {
-                        gParticleOverrideColor[0].word = gVehicleTrackMarkColors[racer->wheel_surfaces[0] & 0xF].word;
-                    } else if (i == 1) {
-                        gParticleOverrideColor[0].word = gVehicleTrackMarkColors[racer->wheel_surfaces[1] & 0xF].word;
+                    // Wing-tip trails take the colour of the surface under each wheel.
+                    if (i == 0 || i == 1) {
+                        gParticleOverrideColor[0].word = gVehicleTrackMarkColors[racer->wheel_surfaces[i] & 0xF].word;
                     }
                     break;
                 case VEHICLE_HOVERCRAFT:
                     if (i == 2 || i == 3) {
-                        opacity = gHovercraftParticleOpacities[racer->racerIndex & 7];
-                        opacity += updateRate * 4;
-                        if (opacity > 256) {
-                            opacity = 256;
-                        }
-                        gHovercraftParticleOpacities[racer->racerIndex & 7] = opacity;
-                        gCurrentHovercraftParticleOpacity = opacity;
+                        hovercraft_particle_fade_in(racer, updateRate);
                     }
                     break;
             }
-
-            if (someBool) {
-                if (!(racerObj->particleEmitter[i].flags & PARTICLE_EMITTER_ENABLED)) {
-                    obj_enable_emitter(racerObj, i);
-                }
-                if (racerObj->particleEmitter[i].flags & PARTICLE_LINE) {
-                    obj_trigger_emitter(racerObj, &racerObj->particleEmitter[i]);
-                } else if (racerObj->particleEmitter[i].flags & PARTICLE_POINT) {
-                    obj_trigger_emitter(racerObj, &racerObj->particleEmitter[i]);
-                } else {
-                    racerObj->particleEmitter[i].timeFromLastSpawn += updateRate;
-                    if (racerObj->particleEmitter[i].timeFromLastSpawn >=
-                        racerObj->particleEmitter[i].behaviour->spawnInterval) {
-                        obj_trigger_emitter(racerObj, &racerObj->particleEmitter[i]);
-                    }
-                }
+            if (emitting) {
+                vehicle_emitter_tick(racerObj, i, updateRate);
             }
-        } else if (racerObj->particleEmitter[i].flags & PARTICLE_EMITTER_ENABLED) {
-            if (racerObj->particleEmitter[i].flags & PARTICLE_LINE) {
-                ParticleEmitter *new_var2 = &racerObj->particleEmitter[i];
-                new_var2->lineOpacity = 0;
-                obj_disable_emitter(racerObj, i);
-            } else {
-                if (racerObj->particleEmitter[i].flags & PARTICLE_POINT) {
-                    new_var = &racerObj->particleEmitter[i];
-                    racerObj->particleEmitter[i].flags |= PARTICLE_POINT_EMITTER_DISABLED;
-                    if (new_var->pointCount == 0) {
-                        obj_disable_emitter(racerObj, i);
-                    }
-                } else {
-                    obj_disable_emitter(racerObj, i);
-                }
-            }
+        } else if (emitter->flags & PARTICLE_EMITTER_ENABLED) {
+            vehicle_emitter_release(racerObj, i);
             if (i == 2 || i == 3) {
                 gHovercraftParticleOpacities[racer->racerIndex & 7] = 0;
             }
@@ -1269,12 +1282,122 @@ void setup_particle_position(Particle *particle, Object *obj, ParticleEmitter *e
 }
 
 /**
+ * Flag the particle for the semi-transparent render pass. PARTICLE_DESC_FLAG_1000 selects
+ * the later of the two translucent passes.
+ */
+static void particle_mark_translucent(Particle *particle) {
+    if (particle->descFlags & PARTICLE_DESC_FLAG_1000) {
+        particle->trans.flags |= OBJ_FLAGS_UNK_0100;
+    } else {
+        particle->trans.flags |= OBJ_FLAGS_UNK_0080;
+    }
+}
+
+/**
+ * Shaded particles take their parent's lighting; everything else renders at full brightness.
+ */
+static void particle_set_brightness(Particle *particle, Object *obj) {
+    if ((particle->descFlags & PARTICLE_SHADED) && obj->shading != NULL) {
+        particle->brightness = obj->shading->unk0 * 255.0f;
+    } else {
+        particle->brightness = 255;
+    }
+}
+
+/**
+ * Rotation comes from the behaviour, either absolute or relative to the parent object.
+ */
+static void particle_set_rotation(Particle *particle, Object *obj, ParticleBehaviour *behaviour) {
+    if (behaviour->flags & PARTICLE_ROTATION_ABSOLUTE) {
+        particle->trans.rotation.y_rotation = behaviour->rotation.y_rotation;
+        particle->trans.rotation.x_rotation = behaviour->rotation.x_rotation;
+        particle->trans.rotation.z_rotation = behaviour->rotation.z_rotation;
+    } else {
+        particle->trans.rotation.y_rotation = obj->trans.rotation.y_rotation + behaviour->rotation.y_rotation;
+        particle->trans.rotation.x_rotation = obj->trans.rotation.x_rotation + behaviour->rotation.x_rotation;
+        particle->trans.rotation.z_rotation = obj->trans.rotation.z_rotation + behaviour->rotation.z_rotation;
+    }
+}
+
+static f32 magnitude3f(f32 x, f32 y, f32 z) {
+    return sqrtf((x * x) + (y * y) + (z * z));
+}
+
+/**
+ * Point and line particles share one texture setup: load the descriptor's texture into the
+ * model, and start a backward-only animation on its last frame.
+ */
+static void particle_load_model_texture(Particle *particle, ParticleDescriptor *descriptor) {
+    ParticleModel *model;
+
+    model = particle->model;
+    if (descriptor->textureID == -1) {
+        model->texture = NULL;
+        return;
+    }
+    model->texture = load_texture(descriptor->textureID);
+    if (model->texture == NULL) {
+        return;
+    }
+    if (model->texture->flags & 4) {
+        particle_mark_translucent(particle);
+    }
+    if ((particle->descFlags & (PARTICLE_TEXTURE_ANIM_FORWARD_ENABLED | PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED)) ==
+        PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED) {
+        particle->textureFrame = model->texture->numOfTextures - 1;
+    }
+}
+
+/**
+ * Count down the particle's life and fade it towards its end opacity; frees the particle
+ * when its timer runs out.
+ */
+static void particle_age(Particle *particle) {
+    particle->destroyTimer -= gParticleUpdateRate;
+    if (particle->destroyTimer <= 0) {
+        free_object((Object *) particle);
+        return;
+    }
+    if (particle->opacityTimer == 0) {
+        particle->opacity += gParticleUpdateRate * particle->opacityVel;
+        if (particle->opacity < 255) {
+            particle_mark_translucent(particle);
+        }
+    } else {
+        particle->opacityTimer -= gParticleUpdateRate;
+        if (particle->opacityTimer < 0) {
+            particle->opacity -= particle->opacityTimer * particle->opacityVel;
+            particle->opacityTimer = 0;
+        }
+    }
+}
+
+static void vertex_set(Vertex *vtx, f32 x, f32 y, f32 z, u8 r, u8 g, u8 b, u8 a) {
+    vtx->x = x;
+    vtx->y = y;
+    vtx->z = z;
+    vtx->r = r;
+    vtx->g = g;
+    vtx->b = b;
+    vtx->a = a;
+}
+
+static void vertex_copy(Vertex *dst, Vertex *src) {
+    dst->x = src->x;
+    dst->y = src->y;
+    dst->z = src->z;
+    dst->r = src->r;
+    dst->g = src->g;
+    dst->b = src->b;
+    dst->a = src->a;
+}
+
+/**
  * Create point particle and initialize it's fields.
  */
 PointParticle *create_point_particle(Object *obj, ParticleEmitter *emitter) {
     ParticleDescriptor *descriptor;
     PointParticle *particle;
-    ParticleModel *model;
     ParticleBehaviour *behaviour;
 
     descriptor = gParticlesAssetTable[emitter->descriptorID];
@@ -1296,18 +1419,12 @@ PointParticle *create_point_particle(Object *obj, ParticleEmitter *emitter) {
     particle->base.trans.scale = descriptor->scale * behaviour->scale;
     particle->base.scaleVelocity = descriptor->scale * behaviour->scaleVelocity;
     particle->base.destroyTimer = descriptor->lifeTime;
-    particle->base.unk34 = 0.0f;
-    particle->base.unk38 = 0;
     particle->base.colour.r = descriptor->colour.r;
     particle->base.colour.g = descriptor->colour.g;
     particle->base.colour.b = descriptor->colour.b;
     particle->base.colour.a = descriptor->colour.a;
 
-    if (particle->base.descFlags & PARTICLE_SHADED && obj->shading != NULL) {
-        particle->base.brightness = obj->shading->unk0 * 255.0f;
-    } else {
-        particle->base.brightness = 255;
-    }
+    particle_set_brightness(&particle->base, obj);
 
     particle->base.opacityTimer = descriptor->opacityTimer;
     if (emitter->flags & PARTICLE_OVERRIDE_OPACITY_FROM_DESCRIPTOR) {
@@ -1316,11 +1433,7 @@ PointParticle *create_point_particle(Object *obj, ParticleEmitter *emitter) {
         particle->base.opacity = descriptor->opacity << 8;
     }
     if (descriptor->opacity < 255) {
-        if (particle->base.descFlags & PARTICLE_DESC_FLAG_1000) {
-            particle->base.trans.flags |= OBJ_FLAGS_UNK_0100;
-        } else {
-            particle->base.trans.flags |= OBJ_FLAGS_UNK_0080;
-        }
+        particle_mark_translucent(&particle->base);
     }
     if (particle->base.opacityTimer < particle->base.destroyTimer) {
         particle->base.opacityVel = ((descriptor->opacityVel << 8) - (particle->base.opacity & 0xFFFF)) /
@@ -1330,17 +1443,7 @@ PointParticle *create_point_particle(Object *obj, ParticleEmitter *emitter) {
     }
 
     setup_particle_position(&particle->base, obj, emitter, behaviour);
-
-    // Setup particle rotation
-    if (behaviour->flags & PARTICLE_ROTATION_ABSOLUTE) {
-        particle->base.trans.rotation.y_rotation = behaviour->rotation.y_rotation;
-        particle->base.trans.rotation.x_rotation = behaviour->rotation.x_rotation;
-        particle->base.trans.rotation.z_rotation = behaviour->rotation.z_rotation;
-    } else {
-        particle->base.trans.rotation.y_rotation = obj->trans.rotation.y_rotation + behaviour->rotation.y_rotation;
-        particle->base.trans.rotation.x_rotation = obj->trans.rotation.x_rotation + behaviour->rotation.x_rotation;
-        particle->base.trans.rotation.z_rotation = obj->trans.rotation.z_rotation + behaviour->rotation.z_rotation;
-    }
+    particle_set_rotation(&particle->base, obj, behaviour);
     particle->base.angularVelocity.y_rotation = behaviour->angularVelocity.y_rotation;
     particle->base.angularVelocity.x_rotation = behaviour->angularVelocity.x_rotation;
     particle->base.angularVelocity.z_rotation = behaviour->angularVelocity.z_rotation;
@@ -1350,9 +1453,8 @@ PointParticle *create_point_particle(Object *obj, ParticleEmitter *emitter) {
     particle->base.gravity = gParticleGravityTable[(particle->base.descFlags >> 4) & 7];
 
     if (particle->base.movementType == PARTICLE_MOVEMENT_FORWARD) {
-        particle->base.forwardVel = sqrtf((particle->base.velocity.x * particle->base.velocity.x) +
-                                          (particle->base.velocity.y * particle->base.velocity.y) +
-                                          (particle->base.velocity.z * particle->base.velocity.z));
+        particle->base.forwardVel =
+            magnitude3f(particle->base.velocity.x, particle->base.velocity.y, particle->base.velocity.z);
     }
 
     if (behaviour->flags & PARTICLE_SOURCE_ROTATION_ENABLED) {
@@ -1366,31 +1468,10 @@ PointParticle *create_point_particle(Object *obj, ParticleEmitter *emitter) {
 
     particle->base.textureFrameStep = descriptor->textureFrameStep;
     particle->base.textureFrame = 0;
-
-    model = particle->base.model;
-    if (descriptor->textureID == -1) {
-        model->texture = NULL;
-    } else {
-        model->texture = load_texture(descriptor->textureID);
-        if (model->texture != NULL) {
-            if (model->texture->flags & 4) {
-                if (particle->base.descFlags & PARTICLE_DESC_FLAG_1000) {
-                    particle->base.trans.flags |= OBJ_FLAGS_UNK_0100;
-                } else {
-                    particle->base.trans.flags |= OBJ_FLAGS_UNK_0080;
-                }
-            }
-            if ((particle->base.descFlags &
-                 (PARTICLE_TEXTURE_ANIM_FORWARD_ENABLED | PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED)) ==
-                PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED) {
-                particle->base.textureFrame = model->texture->numOfTextures - 1;
-            }
-        }
-    }
+    particle_load_model_texture(&particle->base, descriptor);
     particle->modelFrame = 0;
-    particle->unused_76 = descriptor->unused_point_field;
     particle->meshRegenerated = FALSE;
-    if (model->texture == NULL) {
+    if (particle->base.model->texture == NULL) {
         // Only point particles with textures are supported
         particle_deallocate(&particle->base);
         return NULL;
@@ -1428,9 +1509,6 @@ Particle *create_line_particle(Object *obj, ParticleEmitter *emitter) {
     particle->scaleVelocity = descriptor->scale * behaviour->scaleVelocity;
     particle->destroyTimer = descriptor->lifeTime;
 
-    particle->unk34 = 0.0f;
-    particle->unk38 = 0;
-
     if (gParticleOverrideColor->word != 0) {
         particle->colour.word = gParticleOverrideColor->word;
     } else {
@@ -1440,20 +1518,12 @@ Particle *create_line_particle(Object *obj, ParticleEmitter *emitter) {
     }
     particle->colour.a = descriptor->colour.a;
 
-    if (particle->descFlags & PARTICLE_SHADED && obj->shading != NULL) {
-        particle->brightness = obj->shading->unk0 * 255.0f;
-    } else {
-        particle->brightness = 255;
-    }
+    particle_set_brightness(particle, obj);
 
     particle->opacityTimer = descriptor->opacityTimer;
     particle->opacity = descriptor->opacity << 8;
     if (descriptor->opacity < 255) {
-        if (particle->descFlags & PARTICLE_DESC_FLAG_1000) {
-            particle->trans.flags |= OBJ_FLAGS_UNK_0100;
-        } else {
-            particle->trans.flags |= OBJ_FLAGS_UNK_0080;
-        }
+        particle_mark_translucent(particle);
     }
     if (particle->opacityTimer < particle->destroyTimer) {
         particle->opacityVel =
@@ -1471,95 +1541,38 @@ Particle *create_line_particle(Object *obj, ParticleEmitter *emitter) {
     emitter->lineRefPoint.z += obj->trans.z_position;
 
     particle->lineCreationPhase = 0;
-    particle->lineOrientation = 0;
-    particle->line_unused_6B = -1;
-
     particle->textureFrameStep = descriptor->textureFrameStep;
     particle->textureFrame = 0;
+    particle_load_model_texture(particle, descriptor);
 
+    // The first vertex sits at the emitter; update_line_particle grows the chevron from it.
     model = particle->model;
-    if (descriptor->textureID == -1) {
-        model->texture = NULL;
-    } else {
-        model->texture = load_texture(descriptor->textureID);
-        if (model->texture != NULL) {
-            if (model->texture->flags & 4) {
-                if (particle->descFlags & PARTICLE_DESC_FLAG_1000) {
-                    particle->trans.flags |= OBJ_FLAGS_UNK_0100;
-                } else {
-                    particle->trans.flags |= OBJ_FLAGS_UNK_0080;
-                }
-            }
-            if ((particle->descFlags &
-                 (PARTICLE_TEXTURE_ANIM_FORWARD_ENABLED | PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED)) ==
-                PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED) {
-                particle->textureFrame = model->texture->numOfTextures - 1;
-            }
-        }
-    }
-    model->vertices[0].x = emitter->lineRefPoint.x;
-    model->vertices[0].y = emitter->lineRefPoint.y;
-    model->vertices[0].z = emitter->lineRefPoint.z;
-
     if ((u32) colourLoop != -1U) {
         emitter->colourIndex++;
         if (emitter->colourIndex >= colourLoop[0].numEntries) {
             emitter->colourIndex = 0;
         }
-        model->vertices[0].r = colourLoop[emitter->colourIndex + 2].r;
-        model->vertices[0].g = colourLoop[emitter->colourIndex + 2].g;
-        model->vertices[0].b = colourLoop[emitter->colourIndex + 2].b;
-        model->vertices[0].a = emitter->lineOpacity;
+        vertex_set(&model->vertices[0], emitter->lineRefPoint.x, emitter->lineRefPoint.y, emitter->lineRefPoint.z,
+                   colourLoop[emitter->colourIndex + 2].r, colourLoop[emitter->colourIndex + 2].g,
+                   colourLoop[emitter->colourIndex + 2].b, emitter->lineOpacity);
     } else {
-        model->vertices[0].r = particle->colour.r;
-        model->vertices[0].g = particle->colour.g;
-        model->vertices[0].b = particle->colour.b;
-        model->vertices[0].a = emitter->lineOpacity;
+        vertex_set(&model->vertices[0], emitter->lineRefPoint.x, emitter->lineRefPoint.y, emitter->lineRefPoint.z,
+                   particle->colour.r, particle->colour.g, particle->colour.b, emitter->lineOpacity);
     }
     particle->lineOrientation = descriptor->lineOrientation;
-    particle->line_unused_6B = descriptor->line_unused_B;
     particle->trans.x_position = obj->trans.x_position;
     particle->trans.y_position = obj->trans.y_position;
     particle->trans.z_position = obj->trans.z_position;
-    emitter->line_unused = 0;
     return particle;
 }
 
 /**
- * Creates a triangle, rectangle, or sprite particle and initializes its fields.
+ * Scale and scale velocity come from the behaviour, randomised when asked, and are
+ * multiplied by the descriptor scale. The velocity can instead follow the parent's speed.
  */
-Particle *create_general_particle(Object *obj, ParticleEmitter *emitter) {
-    s32 randomizationFlags;
-    ParticleDescriptor *descriptor;
-    Particle *particle;
-    TextureHeader **texture;
-    ParticleBehaviour *behaviour;
-    ColorLoopEntry *colourLoop;
+static void general_particle_init_scale(Particle *particle, Object *obj, ParticleBehaviour *behaviour,
+                                        ParticleDescriptor *descriptor) {
     f32 scale;
-    s8 noTexture;
-
-    descriptor = gParticlesAssetTable[emitter->descriptorID];
-    if (descriptor->kind == PARTICLE_KIND_LINE || descriptor->kind == PARTICLE_KIND_POINT) {
-        return NULL;
-    }
-
-    behaviour = emitter->behaviour;
-    colourLoop = behaviour->colourLoop;
-
-    particle = particle_allocate(descriptor->kind);
-    if (particle == NULL) {
-        return particle;
-    }
-    particle->segmentID = obj->segmentID;
-    particle->trans.flags = OBJ_FLAGS_PARTICLE;
-    particle->movementType = descriptor->movementType;
-    particle->descFlags = descriptor->flags;
-    particle->parentObj = obj;
-    if ((particle->descFlags & PARTICLE_SHADED) && obj->shading != NULL) {
-        particle->brightness = obj->shading->unk0 * 255.0f;
-    } else {
-        particle->brightness = 255;
-    }
 
     scale = behaviour->scale;
     if (behaviour->randomizationFlags & PARTICLE_RANDOM_SCALE) {
@@ -1572,18 +1585,22 @@ Particle *create_general_particle(Object *obj, ParticleEmitter *emitter) {
         scale += (f32) rand_range(-behaviour->scaleVelocityRange, behaviour->scaleVelocityRange) * 0.00001525878906;
     }
     if (behaviour->flags & PARTICLE_SCALE_VELOCITY_INHERITS_PARENT_SPEED) {
-        particle->scaleVelocity = sqrtf((obj->x_velocity * obj->x_velocity) + (obj->y_velocity * obj->y_velocity) +
-                                        (obj->z_velocity * obj->z_velocity)) *
-                                  scale * 0.1f;
+        particle->scaleVelocity = magnitude3f(obj->x_velocity, obj->y_velocity, obj->z_velocity) * scale * 0.1f;
     } else {
         particle->scaleVelocity = descriptor->scale * scale;
     }
+}
 
-    particle->destroyTimer = rand_range(-descriptor->lifeTimeRange, descriptor->lifeTimeRange) + descriptor->lifeTime;
+/**
+ * Colour priority: the vehicle override colour, then the next entry of the behaviour's
+ * colour loop, then the descriptor colour. Channels may then be randomised.
+ */
+static void general_particle_init_colour(Particle *particle, ParticleEmitter *emitter, ParticleBehaviour *behaviour,
+                                         ParticleDescriptor *descriptor) {
+    ColorLoopEntry *colourLoop;
+    s32 randomizationFlags;
 
-    particle->unk38 = 0;
-    particle->unk34 = 0.0f;
-
+    colourLoop = behaviour->colourLoop;
     if (gParticleOverrideColor[0].word != 0) {
         particle->colour.word = gParticleOverrideColor[0].word;
     } else if ((s32) colourLoop != -1) {
@@ -1617,15 +1634,17 @@ Particle *create_general_particle(Object *obj, ParticleEmitter *emitter) {
             particle->colour.a += rand_range(-behaviour->colourRangeA, behaviour->colourRangeA);
         }
     }
+}
 
+/**
+ * Opacity is 8.8 fixed point, scaled by the hovercraft fade-in, and ramps from the descriptor's
+ * start value to its end value once the opacity timer has elapsed.
+ */
+static void general_particle_init_opacity(Particle *particle, ParticleDescriptor *descriptor) {
     particle->opacityTimer = descriptor->opacityTimer;
     particle->opacity = descriptor->opacity * gCurrentHovercraftParticleOpacity;
     if (descriptor->opacity < 255) {
-        if (particle->descFlags & PARTICLE_DESC_FLAG_1000) {
-            particle->trans.flags |= OBJ_FLAGS_UNK_0100;
-        } else {
-            particle->trans.flags |= OBJ_FLAGS_UNK_0080;
-        }
+        particle_mark_translucent(particle);
     }
     if (particle->opacityTimer < particle->destroyTimer) {
         particle->opacityVel = (descriptor->opacityVel - descriptor->opacity) * gCurrentHovercraftParticleOpacity /
@@ -1633,88 +1652,79 @@ Particle *create_general_particle(Object *obj, ParticleEmitter *emitter) {
     } else {
         particle->opacityVel = 0;
     }
+}
 
-    noTexture = FALSE;
+/**
+ * Pick the starting texture frame (8.8 fixed point): random when the behaviour asks for it,
+ * the last frame for a backward-only animation, else the first.
+ */
+static void general_particle_init_texture_frame(Particle *particle, ParticleBehaviour *behaviour, s32 frameCount,
+                                                s32 lastFrame) {
+    s32 backwardOnly;
+
+    backwardOnly =
+        (particle->descFlags & (PARTICLE_TEXTURE_ANIM_FORWARD_ENABLED | PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED)) ==
+        PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED;
+    if (behaviour->flags & PARTICLE_RANDOM_TEXTURE_FRAME) {
+        particle->textureFrame = rand_range(0, frameCount - 1) << 8;
+        if (backwardOnly) {
+            particle->textureFrame |= 0xFF;
+        }
+    } else if (backwardOnly) {
+        particle->textureFrame = lastFrame;
+    } else {
+        particle->textureFrame = 0;
+    }
+}
+
+/**
+ * Load the descriptor's sprite (sprite particles) or texture (triangle and rectangle
+ * particles) and set up the texture coordinates. A missing texture leaves the particle
+ * untextured; the caller drops it.
+ */
+static void general_particle_load_texture(Particle *particle, ParticleBehaviour *behaviour,
+                                          ParticleDescriptor *descriptor) {
+    TextureHeader *texture;
+
     particle->textureFrameStep = descriptor->textureFrameStep;
     if (particle->kind == PARTICLE_KIND_SPRITE) {
         particle->sprite = (Sprite *) tex_load_sprite(descriptor->textureID, 0);
-        if (particle->sprite != NULL) {
-            if (particle->sprite->textures[0]->flags & 4) {
-                if (particle->descFlags & PARTICLE_DESC_FLAG_1000) {
-                    particle->trans.flags |= OBJ_FLAGS_UNK_0100;
-                } else {
-                    particle->trans.flags |= OBJ_FLAGS_UNK_0080;
-                }
-            }
-            if (behaviour->flags & PARTICLE_RANDOM_TEXTURE_FRAME) {
-                particle->textureFrame = rand_range(0, particle->sprite->numberOfFrames - 1) << 8;
-                if ((particle->descFlags &
-                     (PARTICLE_TEXTURE_ANIM_FORWARD_ENABLED | PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED)) ==
-                    PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED) {
-                    particle->textureFrame |= 0xFF;
-                }
-            } else if ((particle->descFlags &
-                        (PARTICLE_TEXTURE_ANIM_FORWARD_ENABLED | PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED)) ==
-                       PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED) {
-                particle->textureFrame = (particle->sprite->numberOfFrames << 8) - 1;
-            } else {
-                particle->textureFrame = 0;
-            }
-        } else {
-            noTexture = TRUE;
+        if (particle->sprite == NULL) {
+            return;
         }
-    } else if (particle->kind == PARTICLE_KIND_RECTANGLE || particle->kind == PARTICLE_KIND_TRIANGLE) {
-        texture = &particle->model->texture;
-        if (texture) {
-            *texture = load_texture(descriptor->textureID);
-            if (*texture != NULL) {
-                if ((*texture)->flags & 4) {
-                    if (particle->descFlags & PARTICLE_DESC_FLAG_1000) {
-                        particle->trans.flags |= OBJ_FLAGS_UNK_0100;
-                    } else {
-                        particle->trans.flags |= OBJ_FLAGS_UNK_0080;
-                    }
-                }
-                if (behaviour->flags & PARTICLE_RANDOM_TEXTURE_FRAME) {
-                    particle->textureFrame = rand_range(0, ((*texture)->numOfTextures >> 8) - 1) << 8;
-                    if ((particle->descFlags &
-                         (PARTICLE_TEXTURE_ANIM_FORWARD_ENABLED | PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED)) ==
-                        PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED) {
-                        particle->textureFrame |= 0xFF;
-                    }
-                } else if ((particle->descFlags &
-                            (PARTICLE_TEXTURE_ANIM_FORWARD_ENABLED | PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED)) ==
-                           PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED) {
-                    particle->textureFrame = (*texture)->numOfTextures - 1;
-                } else {
-                    particle->textureFrame = 0;
-                }
-            } else {
-                noTexture = TRUE;
-            }
+        if (particle->sprite->textures[0]->flags & 4) {
+            particle_mark_translucent(particle);
         }
+        general_particle_init_texture_frame(particle, behaviour, particle->sprite->numberOfFrames,
+                                            (particle->sprite->numberOfFrames << 8) - 1);
+        return;
     }
-    if (!noTexture) {
-        if (particle->kind == PARTICLE_KIND_TRIANGLE) {
-            set_triangle_texture_coords(particle);
-        }
-        if (particle->kind == PARTICLE_KIND_RECTANGLE) {
-            set_rectangle_texture_coords(particle);
-        }
+    if (particle->kind != PARTICLE_KIND_RECTANGLE && particle->kind != PARTICLE_KIND_TRIANGLE) {
+        return;
     }
-
-    setup_particle_position(particle, obj, emitter, behaviour);
-
-    // Setup particle rotation
-    if (behaviour->flags & PARTICLE_ROTATION_ABSOLUTE) {
-        particle->trans.rotation.y_rotation = behaviour->rotation.y_rotation;
-        particle->trans.rotation.x_rotation = behaviour->rotation.x_rotation;
-        particle->trans.rotation.z_rotation = behaviour->rotation.z_rotation;
+    texture = load_texture(descriptor->textureID);
+    particle->model->texture = texture;
+    if (texture == NULL) {
+        return;
+    }
+    if (texture->flags & 4) {
+        particle_mark_translucent(particle);
+    }
+    general_particle_init_texture_frame(particle, behaviour, texture->numOfTextures >> 8, texture->numOfTextures - 1);
+    if (particle->kind == PARTICLE_KIND_TRIANGLE) {
+        set_triangle_texture_coords(particle);
     } else {
-        particle->trans.rotation.y_rotation = obj->trans.rotation.y_rotation + behaviour->rotation.y_rotation;
-        particle->trans.rotation.x_rotation = obj->trans.rotation.x_rotation + behaviour->rotation.x_rotation;
-        particle->trans.rotation.z_rotation = obj->trans.rotation.z_rotation + behaviour->rotation.z_rotation;
+        set_rectangle_texture_coords(particle);
     }
+}
+
+/**
+ * Rotation and angular velocity from the behaviour, each axis randomised when asked.
+ */
+static void general_particle_init_rotation(Particle *particle, Object *obj, ParticleBehaviour *behaviour) {
+    s32 randomizationFlags;
+
+    particle_set_rotation(particle, obj, behaviour);
     randomizationFlags =
         behaviour->randomizationFlags & (PARTICLE_RANDOM_ROLL | PARTICLE_RANDOM_PITCH | PARTICLE_RANDOM_YAW);
     if (randomizationFlags != 0) {
@@ -1737,31 +1747,28 @@ Particle *create_general_particle(Object *obj, ParticleEmitter *emitter) {
     particle->angularVelocity.z_rotation = behaviour->angularVelocity.z_rotation;
     randomizationFlags =
         behaviour->randomizationFlags &
-        (PARTCILE_RANDOM_ROLL_VELOCITY | PARTCILE_RANDOM_PITCH_VELOCITY | PARTCILE_RANDOM_YAW_VELOCITY);
+        (PARTICLE_RANDOM_ROLL_VELOCITY | PARTICLE_RANDOM_PITCH_VELOCITY | PARTICLE_RANDOM_YAW_VELOCITY);
     if (randomizationFlags) {
-        if (randomizationFlags & PARTCILE_RANDOM_YAW_VELOCITY) {
+        if (randomizationFlags & PARTICLE_RANDOM_YAW_VELOCITY) {
             particle->angularVelocity.y_rotation +=
                 rand_range(-behaviour->angularVelocityRange.y_rotation, behaviour->angularVelocityRange.y_rotation);
         }
-        if (randomizationFlags & PARTCILE_RANDOM_PITCH_VELOCITY) {
+        if (randomizationFlags & PARTICLE_RANDOM_PITCH_VELOCITY) {
             particle->angularVelocity.x_rotation +=
                 rand_range(-behaviour->angularVelocityRange.x_rotation, behaviour->angularVelocityRange.x_rotation);
         }
-        if (randomizationFlags & PARTCILE_RANDOM_ROLL_VELOCITY) {
+        if (randomizationFlags & PARTICLE_RANDOM_ROLL_VELOCITY) {
             particle->angularVelocity.z_rotation +=
                 rand_range(-behaviour->angularVelocityRange.z_rotation, behaviour->angularVelocityRange.z_rotation);
         }
     }
+}
 
-    setup_particle_velocity(particle, obj, emitter, behaviour);
-
-    particle->gravity = gParticleGravityTable[(particle->descFlags >> 4) & 7];
-    if (particle->movementType == PARTICLE_MOVEMENT_FORWARD) {
-        particle->forwardVel =
-            sqrtf((particle->velocity.x * particle->velocity.x) + (particle->velocity.y * particle->velocity.y) +
-                  (particle->velocity.z * particle->velocity.z));
-    }
-
+/**
+ * Once enough particles have been spawned from one source position or direction, step the
+ * emitter's source and emission rotations by their angular velocities.
+ */
+static void emitter_advance_rotation(ParticleEmitter *emitter, ParticleBehaviour *behaviour) {
     if (behaviour->flags & PARTICLE_SOURCE_ROTATION_ENABLED) {
         emitter->sourceRotationCounter++;
         if (emitter->sourceRotationCounter >= behaviour->maxParticlesFromSamePos) {
@@ -1780,13 +1787,82 @@ Particle *create_general_particle(Object *obj, ParticleEmitter *emitter) {
             emitter->emissionDirRotationCounter -= behaviour->maxParticlesInSameDir;
         }
     }
+}
+
+/**
+ * Creates a triangle, rectangle, or sprite particle and initializes its fields.
+ * The steps draw random numbers in a fixed order: scale, lifetime, colour, texture frame,
+ * position, rotation, velocity.
+ */
+Particle *create_general_particle(Object *obj, ParticleEmitter *emitter) {
+    ParticleDescriptor *descriptor;
+    Particle *particle;
+    ParticleBehaviour *behaviour;
+
+    descriptor = gParticlesAssetTable[emitter->descriptorID];
+    if (descriptor->kind == PARTICLE_KIND_LINE || descriptor->kind == PARTICLE_KIND_POINT) {
+        return NULL;
+    }
+
+    behaviour = emitter->behaviour;
+    particle = particle_allocate(descriptor->kind);
+    if (particle == NULL) {
+        return particle;
+    }
+    particle->segmentID = obj->segmentID;
+    particle->trans.flags = OBJ_FLAGS_PARTICLE;
+    particle->movementType = descriptor->movementType;
+    particle->descFlags = descriptor->flags;
+    particle->parentObj = obj;
+    particle_set_brightness(particle, obj);
+
+    general_particle_init_scale(particle, obj, behaviour, descriptor);
+    particle->destroyTimer = rand_range(-descriptor->lifeTimeRange, descriptor->lifeTimeRange) + descriptor->lifeTime;
+    general_particle_init_colour(particle, emitter, behaviour, descriptor);
+    general_particle_init_opacity(particle, descriptor);
+    general_particle_load_texture(particle, behaviour, descriptor);
+    setup_particle_position(particle, obj, emitter, behaviour);
+    general_particle_init_rotation(particle, obj, behaviour);
+    setup_particle_velocity(particle, obj, emitter, behaviour);
+
+    particle->gravity = gParticleGravityTable[(particle->descFlags >> 4) & 7];
+    if (particle->movementType == PARTICLE_MOVEMENT_FORWARD) {
+        particle->forwardVel = magnitude3f(particle->velocity.x, particle->velocity.y, particle->velocity.z);
+    }
+
+    emitter_advance_rotation(emitter, behaviour);
 
     if (particle->model == NULL) {
         particle_deallocate(particle);
         return NULL;
-    } else {
-        return particle;
     }
+    return particle;
+}
+
+/**
+ * Hand out the first free slot of one particle buffer, or NULL when the buffer is full.
+ * Slots are `stride` bytes apart and start with a Particle whose kind is PARTICLE_KIND_NONE
+ * while free. The last slot is never used.
+ */
+static Particle *particle_buffer_take(void *buffer, s32 stride, s32 *count, s32 max, s32 *full, s32 kind) {
+    Particle *particle;
+    s32 i;
+
+    if (buffer == NULL) {
+        return NULL;
+    }
+    if (*count >= max - 1) {
+        *full = TRUE;
+        return NULL;
+    }
+    i = 0;
+    while (((Particle *) ((u8 *) buffer + (i * stride)))->kind != PARTICLE_KIND_NONE) {
+        i++;
+    }
+    particle = (Particle *) ((u8 *) buffer + (i * stride));
+    particle->kind = kind;
+    (*count)++;
+    return particle;
 }
 
 /**
@@ -1794,160 +1870,87 @@ Particle *create_general_particle(Object *obj, ParticleEmitter *emitter) {
  * Returns NULL if the buffer is full.
  */
 Particle *particle_allocate(s32 kind) {
-    s32 i;
     Particle *particle;
 
     particle = NULL;
-    i = 0;
-
     switch (kind) {
         case PARTICLE_KIND_SPRITE:
-            if ((gSpriteParticleBuffer != NULL)) {
-                if (gNumSpriteParticles >= gMaxSpriteParticles - 1) {
-                    if (!gSpriteParticleBufferFull) {
-                        gSpriteParticleBufferFull = TRUE;
-                    }
-                } else {
-                    while (gSpriteParticleBuffer[i].kind != PARTICLE_KIND_NONE) {
-                        i++;
-                    }
-                    gSpriteParticleBuffer[i].kind = PARTICLE_KIND_SPRITE;
-                    gNumSpriteParticles++;
-                    particle = &gSpriteParticleBuffer[i];
-                }
-            }
+            particle = particle_buffer_take(gSpriteParticleBuffer, sizeof(Particle), &gNumSpriteParticles,
+                                            gMaxSpriteParticles, &gSpriteParticleBufferFull, kind);
             break;
         case PARTICLE_KIND_TRIANGLE:
-            if (gTriangleParticleBuffer != NULL) {
-                if (gNumTriangleParticles >= gMaxTriangleParticles - 1) {
-                    if (!gTriangleParticleBufferFull) {
-                        gTriangleParticleBufferFull = TRUE;
-                    }
-                } else {
-                    while (gTriangleParticleBuffer[i].kind != PARTICLE_KIND_NONE) {
-                        i++;
-                    }
-                    gTriangleParticleBuffer[i].kind = PARTICLE_KIND_TRIANGLE;
-                    gNumTriangleParticles++;
-                    particle = &gTriangleParticleBuffer[i];
-                }
-            }
+            particle = particle_buffer_take(gTriangleParticleBuffer, sizeof(Particle), &gNumTriangleParticles,
+                                            gMaxTriangleParticles, &gTriangleParticleBufferFull, kind);
             break;
         case PARTICLE_KIND_RECTANGLE:
-            if (gRectangleParticleBuffer != NULL) {
-                if (gNumRectangleParticles >= gMaxRectangleParticles - 1) {
-                    if (!gRectangleParticleBufferFull) {
-                        gRectangleParticleBufferFull = TRUE;
-                    }
-                } else {
-                    while (gRectangleParticleBuffer[i].kind != PARTICLE_KIND_NONE) {
-                        i++;
-                    }
-                    gRectangleParticleBuffer[i].kind = PARTICLE_KIND_RECTANGLE;
-                    gNumRectangleParticles++;
-                    particle = &gRectangleParticleBuffer[i];
-                }
-            }
+            particle = particle_buffer_take(gRectangleParticleBuffer, sizeof(Particle), &gNumRectangleParticles,
+                                            gMaxRectangleParticles, &gRectangleParticleBufferFull, kind);
             break;
         case PARTICLE_KIND_LINE:
-            if (gLineParticleBuffer != NULL) {
-                if (gNumLineParticles >= gMaxLineParticles - 1) {
-                    if (!gLineParticleBufferFull) {
-                        gLineParticleBufferFull = TRUE;
-                    }
-                } else {
-                    while (gLineParticleBuffer[i].kind != PARTICLE_KIND_NONE) {
-                        i++;
-                    }
-                    gLineParticleBuffer[i].kind = PARTICLE_KIND_LINE;
-                    gNumLineParticles++;
-                    particle = &gLineParticleBuffer[i];
-                }
-            }
+            particle = particle_buffer_take(gLineParticleBuffer, sizeof(Particle), &gNumLineParticles,
+                                            gMaxLineParticles, &gLineParticleBufferFull, kind);
             break;
         case PARTICLE_KIND_POINT:
-            if (gPointParticleBuffer != NULL) {
-                if (gNumPointParticles >= gMaxPointParticles - 1) {
-                    if (!gPointParticleBufferFull) {
-                        gPointParticleBufferFull = TRUE;
-                    }
-                } else {
-                    while (gPointParticleBuffer[i].base.kind != PARTICLE_KIND_NONE) {
-                        i++;
-                    }
-                    gPointParticleBuffer[i].base.kind = PARTICLE_KIND_POINT;
-                    gNumPointParticles++;
-                    particle = &gPointParticleBuffer[i].base;
-                }
-            }
+            particle = particle_buffer_take(gPointParticleBuffer, sizeof(PointParticle), &gNumPointParticles,
+                                            gMaxPointParticles, &gPointParticleBufferFull, kind);
             break;
     }
-    if (particle != NULL) {
-        particle->unk_48 = -1;
-    }
     return particle;
+}
+
+static void particle_free_texture(Particle *particle) {
+    if (particle->model->texture != NULL) {
+        tex_free(particle->model->texture);
+    }
 }
 
 /**
  * Deallocates the specified particle and frees its associated resources.
  */
 void particle_deallocate(Particle *particle) {
-    TextureHeader *tex;
-
     switch (particle->kind) {
-        case PARTICLE_KIND_NONE:
-            break;
         case PARTICLE_KIND_SPRITE:
-            if (gNumSpriteParticles > 0) {
-                if (particle->model) {
-                    sprite_free((Sprite *) particle->sprite);
-                }
-                gNumSpriteParticles--;
-                particle->kind = PARTICLE_KIND_NONE;
+            if (gNumSpriteParticles <= 0) {
+                return;
             }
+            if (particle->sprite != NULL) {
+                sprite_free(particle->sprite);
+            }
+            gNumSpriteParticles--;
             break;
         case PARTICLE_KIND_TRIANGLE:
-            if (gNumTriangleParticles > 0) {
-                tex = particle->model->texture;
-                if (tex != NULL) {
-                    tex_free(tex);
-                }
-                gNumTriangleParticles--;
-                particle->kind = PARTICLE_KIND_NONE;
+            if (gNumTriangleParticles <= 0) {
+                return;
             }
+            particle_free_texture(particle);
+            gNumTriangleParticles--;
             break;
         case PARTICLE_KIND_RECTANGLE:
-            if (gNumRectangleParticles > 0) {
-                tex = particle->model->texture;
-                if (tex != NULL) {
-                    tex_free(tex);
-                }
-                gNumRectangleParticles--;
-                particle->kind = PARTICLE_KIND_NONE;
+            if (gNumRectangleParticles <= 0) {
+                return;
             }
+            particle_free_texture(particle);
+            gNumRectangleParticles--;
             break;
         case PARTICLE_KIND_LINE:
-            if (gNumLineParticles > 0) {
-                tex = particle->model->texture;
-                if (tex != NULL) {
-                    tex_free(tex);
-                }
-                gNumLineParticles--;
-                particle->kind = PARTICLE_KIND_NONE;
+            if (gNumLineParticles <= 0) {
+                return;
             }
+            particle_free_texture(particle);
+            gNumLineParticles--;
             break;
         case PARTICLE_KIND_POINT:
-            if (gNumPointParticles > 0) {
-                delete_point_particle_from_sequence((PointParticle *) particle);
-                tex = particle->model->texture;
-                if (tex != NULL) {
-                    tex_free(tex);
-                }
-                gNumPointParticles--;
-                particle->kind = PARTICLE_KIND_NONE;
+            if (gNumPointParticles <= 0) {
+                return;
             }
+            delete_point_particle_from_sequence((PointParticle *) particle);
+            particle_free_texture(particle);
+            gNumPointParticles--;
             break;
+        default:
+            return;
     }
+    particle->kind = PARTICLE_KIND_NONE;
 }
 
 /**
@@ -1995,7 +1998,8 @@ void particle_update(Particle *particle, s32 updateRate) {
         pointParticle->modelFrame = 1 - pointParticle->modelFrame;
         pointParticle->meshRegenerated = 0;
     }
-    if (pointParticle == NULL || (pointParticle != NULL && pointParticle->pointEmitter != NULL)) {
+    // A point particle whose emitter has been torn down stays where it is.
+    if (pointParticle == NULL || pointParticle->pointEmitter != NULL) {
         if (particle->movementType == PARTICLE_MOVEMENT_ACCELERATION) {
             move_particle_with_acceleration(particle);
         } else if (particle->movementType == PARTICLE_MOVEMENT_ATTACHED_TO_PARENT) {
@@ -2023,217 +2027,166 @@ void particle_update(Particle *particle, s32 updateRate) {
             particle->trans.x_position, particle->trans.y_position, particle->trans.z_position);
     }
 
-    particle->destroyTimer -= gParticleUpdateRate;
-    if (particle->destroyTimer <= 0) {
-        free_object((Object *) particle);
-        return;
-    }
-    if (particle->opacityTimer == 0) {
-        particle->opacity += gParticleUpdateRate * particle->opacityVel;
-        if (particle->opacity < 255) {
-            if (particle->descFlags & PARTICLE_DESC_FLAG_1000) {
-                particle->trans.flags |= OBJ_FLAGS_UNK_0100;
-            } else {
-                particle->trans.flags |= OBJ_FLAGS_UNK_0080;
-            }
-        }
-    } else {
-        particle->opacityTimer -= gParticleUpdateRate;
-        if (particle->opacityTimer < 0) {
-            particle->opacity -= (particle->opacityTimer * particle->opacityVel);
-            particle->opacityTimer = 0;
-        }
-    }
+    particle_age(particle);
 }
 
 /**
  * Removes a point particle from the array managed by its parent emitter.
  */
 void delete_point_particle_from_sequence(PointParticle *particle) {
-    ParticleEmitter *new_var;
-    PointParticle *new_var2;
     ParticleEmitter *emitter;
     s32 i;
 
     emitter = particle->pointEmitter;
-    if (emitter != NULL) {
-        new_var = emitter;
-        if (emitter->pointCount != 0) {
-            if (particle == emitter->refPoints[particle->pointIndex]) {
-                emitter->pointCount--;
-                for (i = particle->pointIndex; i < emitter->pointCount; i++) {
-                    new_var->refPoints[i] = new_var->refPoints[i + 1];
-                    new_var2 = new_var->refPoints[i];
-                    new_var2->pointIndex = i;
-                }
-            }
-        }
+    if (emitter == NULL || emitter->pointCount == 0) {
+        return;
     }
+    if (particle != emitter->refPoints[particle->pointIndex]) {
+        return;
+    }
+    emitter->pointCount--;
+    for (i = particle->pointIndex; i < emitter->pointCount; i++) {
+        emitter->refPoints[i] = emitter->refPoints[i + 1];
+        emitter->refPoints[i]->pointIndex = i;
+    }
+}
+
+/**
+ * Half-width vector of the line's chevron: along one axis of the parent's frame, or
+ * perpendicular to the parent's velocity when PARTICLE_LINE_ALONG_VELOCITY is set.
+ */
+static void line_particle_offset(Particle *particle, Object *obj, ParticleEmitter *emitter, Vec3f *vtxOffset) {
+    f32 tempf;
+    f32 scale;
+
+    if (emitter->behaviour->flags & PARTICLE_SCALE_VELOCITY_INHERITS_PARENT_SPEED) {
+        scale = magnitude3f(obj->x_velocity, obj->y_velocity, obj->z_velocity);
+        scale = scale * particle->trans.scale * 0.1f;
+    } else {
+        scale = particle->trans.scale;
+    }
+    if (!(particle->descFlags & PARTICLE_LINE_ALONG_VELOCITY)) {
+        vtxOffset->x = 0.0f;
+        vtxOffset->y = 0.0f;
+        vtxOffset->z = 0.0f;
+        switch (particle->lineOrientation) {
+            default:
+                vtxOffset->x = scale;
+                break;
+            case 2:
+                vtxOffset->z = scale;
+                break;
+            case 1:
+                vtxOffset->y = scale;
+                break;
+        }
+        vec3f_rotate(&obj->trans.rotation, vtxOffset);
+        return;
+    }
+    vtxOffset->x = obj->x_velocity;
+    vtxOffset->y = obj->y_velocity;
+    vtxOffset->z = obj->z_velocity;
+    tempf = ((vtxOffset->x * vtxOffset->x) + (vtxOffset->y * vtxOffset->y)) + (vtxOffset->z * vtxOffset->z);
+    if (tempf < 0.01f) {
+        tempf = 1.0f;
+    } else {
+        tempf = scale / sqrtf(tempf);
+    }
+    vtxOffset->x *= tempf;
+    vtxOffset->y *= tempf;
+    vtxOffset->z *= tempf;
+    switch (particle->lineOrientation) {
+        case 0:
+            tempf = vtxOffset->x;
+            vtxOffset->x = -vtxOffset->z;
+            vtxOffset->z = tempf;
+            break;
+        case 1:
+            tempf = vtxOffset->y;
+            vtxOffset->y = -vtxOffset->z;
+            vtxOffset->z = tempf;
+            break;
+    }
+}
+
+/**
+ * Second step of the line mesh: vertices 1 and 3 either side of the emitter's current
+ * position and vertex 2 at it. The sides keep vertex 0's colour; the centre takes the
+ * next colour-loop entry.
+ */
+static void line_particle_begin_mesh(Particle *particle, ParticleEmitter *emitter, Vec3f *vtxOffset) {
+    Vertex *verts;
+    Vec3f *ref;
+    ColorLoopEntry *colourLoop;
+
+    verts = particle->model->vertices;
+    ref = &emitter->lineRefPoint;
+    colourLoop = emitter->behaviour->colourLoop;
+    vertex_set(&verts[1], vtxOffset->x + ref->x, vtxOffset->y + ref->y, vtxOffset->z + ref->z, verts[0].r, verts[0].g,
+               verts[0].b, emitter->lineOpacity);
+    if ((s32) colourLoop != -1) {
+        vertex_set(&verts[2], ref->x, ref->y, ref->z, colourLoop[emitter->colourIndex + 2].r,
+                   colourLoop[emitter->colourIndex + 2].g, colourLoop[emitter->colourIndex + 2].b,
+                   emitter->lineOpacity);
+    } else {
+        vertex_set(&verts[2], ref->x, ref->y, ref->z, particle->colour.r, particle->colour.g, particle->colour.b,
+                   emitter->lineOpacity);
+    }
+    vertex_set(&verts[3], ref->x - vtxOffset->x, ref->y - vtxOffset->y, ref->z - vtxOffset->z, verts[0].r, verts[0].g,
+               verts[0].b, emitter->lineOpacity);
+    particle->lineCreationPhase = 1;
+}
+
+/**
+ * Third step of the line mesh: vertices 4 and 5 either side of the emitter's new position,
+ * coloured like the centre vertex. The chevron is complete after this.
+ */
+static void line_particle_finish_mesh(Particle *particle, ParticleEmitter *emitter, Vec3f *vtxOffset) {
+    Vertex *verts;
+    Vec3f *ref;
+
+    verts = particle->model->vertices;
+    ref = &emitter->lineRefPoint;
+    vertex_set(&verts[4], vtxOffset->x + ref->x, vtxOffset->y + ref->y, vtxOffset->z + ref->z, verts[2].r, verts[2].g,
+               verts[2].b, emitter->lineOpacity);
+    vertex_set(&verts[5], ref->x - vtxOffset->x, ref->y - vtxOffset->y, ref->z - vtxOffset->z, verts[2].r, verts[2].g,
+               verts[2].b, emitter->lineOpacity);
+    particle->lineCreationPhase = 2;
 }
 
 /**
  * Line particles have their own update function because they behave differently from other particle types.
  * Instead of moving, they generate their mesh in three steps and remain stationary until their lifetime ends.
+ *
+ * In the first step, only vertex 0 exists and nothing is rendered. In the second step the
+ * vehicle (and so the emitter) has moved, and three more vertices are added: one at the
+ * emitter and two to its sides. In the third step the emitter has moved again and two more
+ * side vertices complete a chevron, so consecutive particles from one emitter merge into a
+ * continuous line.
  */
 void update_line_particle(Particle *particle) {
     Vec3f vtxOffset;
-    f32 tempf;
-    f32 scale;
     ParticleModel *model;
     Object *obj;
     ParticleEmitter *emitter;
-    ColorLoopEntry *colourLoop;
-    ColorLoopEntry **colourLoopPtr;
 
     obj = particle->parentObj;
     model = NULL;
-    colourLoopPtr = &colourLoop;
-
+    emitter = NULL;
     if (obj != NULL) {
         emitter = particle->lineEmitter;
-        colourLoop = emitter->behaviour->colourLoop;
         model = particle->model;
     }
 
-    /*
-        This is a description of how it works.
-
-        In the first step, only vertex 0 exists and nothing is rendered.
-
-        In the second step, the vehicle (and therefore the emitter) moves some distance,
-        and three more vertices are added: one at the current emitter position, and two others
-        to the sides of it (depending on orientation).
-
-        In the third step, the emitter moves further and two more side vertices are added.
-
-        Eventually, all vertices form a chevron shape, so when multiple particles from the same
-        emitter are spawned, they merge into one continuous line.
-    */
-
     if (particle->lineCreationPhase < 2 && obj != NULL) {
-
-        if (emitter->behaviour->flags & PARTICLE_SCALE_VELOCITY_INHERITS_PARENT_SPEED) {
-            scale = sqrtf((obj->x_velocity * obj->x_velocity) + (obj->y_velocity * obj->y_velocity) +
-                          (obj->z_velocity * obj->z_velocity));
-            scale = scale * particle->trans.scale * 0.1f;
-        } else {
-            scale = particle->trans.scale;
-        }
-        if (!(particle->descFlags & PARTICLE_LINE_ALONG_VELOCITY)) {
-            vtxOffset.x = 0.0f;
-            vtxOffset.y = 0.0f;
-            vtxOffset.z = 0.0f;
-            switch (particle->lineOrientation) {
-                default:
-                    vtxOffset.x = scale;
-                    break;
-                case 2:
-                    vtxOffset.z = scale;
-                    break;
-                case 1:
-                    vtxOffset.y = scale;
-                    break;
-            }
-            vec3f_rotate(&obj->trans.rotation, &vtxOffset);
-        } else {
-            vtxOffset.x = obj->x_velocity;
-            vtxOffset.y = obj->y_velocity;
-            vtxOffset.z = obj->z_velocity;
-            tempf = ((vtxOffset.x * vtxOffset.x) + (vtxOffset.y * vtxOffset.y)) + (vtxOffset.z * vtxOffset.f[2]);
-            if (tempf < 0.01f) {
-                tempf = 1.0f;
-            } else {
-                tempf = scale / sqrtf(tempf);
-            }
-            vtxOffset.x *= tempf;
-            vtxOffset.y *= tempf;
-            vtxOffset.z *= tempf;
-            switch (particle->lineOrientation) {
-                case 0:
-                    tempf = vtxOffset.x;
-                    vtxOffset.x = -vtxOffset.z;
-                    vtxOffset.z = tempf;
-                    break;
-                case 1:
-                    tempf = vtxOffset.y;
-                    vtxOffset.y = -vtxOffset.z;
-                    vtxOffset.z = tempf;
-                    break;
-            }
-        }
+        line_particle_offset(particle, obj, emitter, &vtxOffset);
         if (model != NULL && particle->lineCreationPhase == 0) {
-            // Phase 2: add three more vertices
-
-            model->vertices[1].x = vtxOffset.f[0] + emitter->lineRefPoint.x;
-            model->vertices[1].y = vtxOffset.f[1] + emitter->lineRefPoint.y;
-            model->vertices[1].z = vtxOffset.f[2] + emitter->lineRefPoint.z;
-            model->vertices[1].r = model->vertices->r;
-            model->vertices[1].g = model->vertices->g;
-            model->vertices[1].b = model->vertices->b;
-            model->vertices[1].a = emitter->lineOpacity;
-
-            model->vertices[2].x = emitter->lineRefPoint.x;
-            model->vertices[2].y = emitter->lineRefPoint.y;
-            model->vertices[2].z = emitter->lineRefPoint.z;
-            if ((s32) *colourLoopPtr != -1) {
-                model->vertices[2].r = (*colourLoopPtr)[emitter->colourIndex + 2].r;
-                model->vertices[2].g = (*colourLoopPtr)[emitter->colourIndex + 2].g;
-                model->vertices[2].b = (*colourLoopPtr)[emitter->colourIndex + 2].b;
-                model->vertices[2].a = emitter->lineOpacity;
-            } else {
-                model->vertices[2].r = particle->colour.r;
-                model->vertices[2].g = particle->colour.g;
-                model->vertices[2].b = particle->colour.b;
-                model->vertices[2].a = emitter->lineOpacity;
-            }
-            model->vertices[3].x = emitter->lineRefPoint.x - vtxOffset.f[0];
-            model->vertices[3].y = emitter->lineRefPoint.y - vtxOffset.f[1];
-            model->vertices[3].z = emitter->lineRefPoint.z - vtxOffset.f[2];
-            model->vertices[3].r = model->vertices->r;
-            model->vertices[3].g = model->vertices->g;
-            model->vertices[3].b = model->vertices->b;
-            model->vertices[3].a = emitter->lineOpacity;
-            particle->lineCreationPhase = 1;
+            line_particle_begin_mesh(particle, emitter, &vtxOffset);
         } else if (model != NULL) {
-            // Phase 3: add two more vertices
-
-            model->vertices[4].x = vtxOffset.f[0] + emitter->lineRefPoint.x;
-            model->vertices[4].y = vtxOffset.f[1] + emitter->lineRefPoint.y;
-            model->vertices[4].z = vtxOffset.f[2] + emitter->lineRefPoint.z;
-            model->vertices[4].r = model->vertices[2].r;
-            model->vertices[4].g = model->vertices[2].g;
-            model->vertices[4].b = model->vertices[2].b;
-            model->vertices[4].a = emitter->lineOpacity;
-
-            model->vertices[5].x = emitter->lineRefPoint.x - vtxOffset.f[0];
-            model->vertices[5].y = emitter->lineRefPoint.y - vtxOffset.f[1];
-            model->vertices[5].z = emitter->lineRefPoint.z - vtxOffset.f[2];
-            model->vertices[5].r = model->vertices[2].r;
-            model->vertices[5].g = model->vertices[2].g;
-            model->vertices[5].b = model->vertices[2].b;
-            model->vertices[5].a = emitter->lineOpacity;
-            particle->lineCreationPhase = 2;
+            line_particle_finish_mesh(particle, emitter, &vtxOffset);
         }
     } else {
-        particle->destroyTimer -= gParticleUpdateRate;
-        if (particle->destroyTimer <= 0) {
-            free_object((Object *) particle);
-        } else if (particle->opacityTimer == 0) {
-            particle->opacity += gParticleUpdateRate * particle->opacityVel;
-            if (particle->opacity < 255) {
-                if (particle->descFlags & PARTICLE_DESC_FLAG_1000) {
-                    particle->trans.flags |= OBJ_FLAGS_UNK_0100;
-                } else {
-                    particle->trans.flags |= OBJ_FLAGS_UNK_0080;
-                }
-            }
-        } else {
-            particle->opacityTimer -= gParticleUpdateRate;
-            if (particle->opacityTimer < 0) {
-                particle->opacity -= particle->opacityTimer * particle->opacityVel;
-                particle->opacityTimer = 0;
-            }
-        }
+        particle_age(particle);
     }
     if (model != NULL && model->texture != NULL &&
         (particle->descFlags & (PARTICLE_TEXTURE_ANIM_FORWARD_ENABLED | PARTICLE_TEXTURE_ANIM_BACKWARD_ENABLED)) &&
@@ -2442,8 +2395,6 @@ void move_particle_forward(Particle *particle) {
  * Only particles with the PARTICLE_UNK_FLAG_8000 flag set will be rendered.
  */
 UNUSED void render_active_particles(Gfx **dList, Mtx **mtx, Vertex **vtx) {
-    UNUSED s32 pad;
-    UNUSED s32 pad2;
     Particle **objects;
     s32 minObjIndex;
     s32 maxObjIndex;
@@ -2553,142 +2504,75 @@ void render_particle(Particle *particle, Gfx **dList, Mtx **mtx, Vertex **vtx, s
 }
 
 /**
- * Sets the position and colours of all vertices for all particles spawned by a single emitter.
- * Together, they form the shape of a continuous pipe-like structure.
+ * Write one point's ring of four vertices: right, up, left, down around its position,
+ * in its own rotation, with its colour and opacity.
  */
-void regenerate_point_particles_mesh(PointParticle *obj) {
-    UNUSED s32 pad;
-    s32 index;
+static void point_particle_write_ring(PointParticle *particle, Vertex *verts) {
     Vec3f vec_up;
     Vec3f vec_right;
+    ObjectTransform *trans;
+    ColourRGBA *colour;
+    u8 alpha;
+
+    trans = &particle->base.trans;
+    colour = &particle->base.colour;
+    alpha = particle->base.opacity >> 8;
+
+    vec_right.x = trans->scale;
+    vec_right.y = 0.0f;
+    vec_right.z = 0.0f;
+    vec3f_rotate(&trans->rotation, &vec_right);
+    vec_up.x = 0.0f;
+    vec_up.y = trans->scale;
+    vec_up.z = 0.0f;
+    vec3f_rotate(&trans->rotation, &vec_up);
+
+    vertex_set(&verts[0], trans->x_position + vec_right.f[0], trans->y_position + vec_right.f[1],
+               trans->z_position + vec_right.f[2], colour->r, colour->g, colour->b, alpha);
+    vertex_set(&verts[1], trans->x_position + vec_up.f[0], trans->y_position + vec_up.f[1],
+               trans->z_position + vec_up.f[2], colour->r, colour->g, colour->b, alpha);
+    vertex_set(&verts[2], trans->x_position - vec_right.f[0], trans->y_position - vec_right.f[1],
+               trans->z_position - vec_right.f[2], colour->r, colour->g, colour->b, alpha);
+    vertex_set(&verts[3], trans->x_position - vec_up.f[0], trans->y_position - vec_up.f[1],
+               trans->z_position - vec_up.f[2], colour->r, colour->g, colour->b, alpha);
+}
+
+/**
+ * Sets the position and colours of all vertices for all particles spawned by a single emitter.
+ * Together, they form the shape of a continuous pipe-like structure.
+ *
+ * Each point owns eight vertices per model frame: its own ring in the second four, and a
+ * copy of the newer neighbour's ring in the first four so consecutive points share a seam.
+ * The newest point joins to itself.
+ */
+void regenerate_point_particles_mesh(PointParticle *obj) {
+    s32 index;
+    s32 i;
     PointParticle *particle;
-    PointParticle *prev_particle;
     ParticleEmitter *emitter;
-    ParticleModel *model;
-    Vertex *otherVerts;
+    Vertex *prevRing;
     Vertex *verts;
-    ParticleModel *prev_model;
 
     emitter = obj->pointEmitter;
-    prev_particle = NULL;
-    prev_model = NULL;
-    if (emitter != NULL) {
-        if (emitter->refPoints != NULL) {
-            for (index = emitter->pointCount - 1; index >= 0; index--) {
-                particle = emitter->refPoints[index];
-                if (particle->base.destroyTimer == 0) {
-                    break;
-                }
-
-                model = particle->base.model;
-                vec_right.x = particle->base.trans.scale;
-                vec_right.y = 0.0f;
-                vec_right.z = 0.0f;
-                vec3f_rotate(&particle->base.trans.rotation, &vec_right);
-                vec_up.x = 0.0f;
-                vec_up.y = particle->base.trans.scale;
-                vec_up.z = 0.0f;
-                vec3f_rotate(&particle->base.trans.rotation, &vec_up);
-
-                verts = &model->vertices[(particle->modelFrame << 3)];
-                if (1) {}
-                if (1) {}
-                if (1) {}
-                if (1) {} // Fake
-
-                verts += 4;
-
-                verts->x = particle->base.trans.x_position + vec_right.f[0];
-                verts->y = particle->base.trans.y_position + vec_right.f[1];
-                verts->z = particle->base.trans.z_position + vec_right.f[2];
-                verts->r = particle->base.colour.r;
-                verts->g = particle->base.colour.g;
-                verts->b = particle->base.colour.b;
-                verts->a = particle->base.opacity >> 8;
-                verts++;
-
-                verts->x = particle->base.trans.x_position + vec_up.f[0];
-                verts->y = particle->base.trans.y_position + vec_up.f[1];
-                verts->z = particle->base.trans.z_position + vec_up.f[2];
-                verts->r = particle->base.colour.r;
-                verts->g = particle->base.colour.g;
-                verts->b = particle->base.colour.b;
-                verts->a = particle->base.opacity >> 8;
-                verts++;
-
-                verts->x = particle->base.trans.x_position - vec_right.f[0];
-                verts->y = particle->base.trans.y_position - vec_right.f[1];
-                verts->z = particle->base.trans.z_position - vec_right.f[2];
-                verts->r = particle->base.colour.r;
-                verts->g = particle->base.colour.g;
-                verts->b = particle->base.colour.b;
-                verts->a = particle->base.opacity >> 8;
-                verts++;
-
-                verts->x = particle->base.trans.x_position - vec_up.f[0];
-                verts->y = particle->base.trans.y_position - vec_up.f[1];
-                verts->z = particle->base.trans.z_position - vec_up.f[2];
-                verts->r = particle->base.colour.r;
-                verts->g = particle->base.colour.g;
-                verts->b = particle->base.colour.b;
-                verts->a = particle->base.opacity >> 8;
-                verts++;
-
-                verts = &model->vertices[particle->modelFrame << 3];
-                if (prev_model != NULL) {
-                    otherVerts = &prev_model->vertices[prev_particle->modelFrame << 3];
-                    otherVerts += 4;
-                } else {
-                    otherVerts = &model->vertices[particle->modelFrame << 3];
-                    otherVerts += 4;
-                }
-
-                verts->x = otherVerts->x;
-                verts->y = otherVerts->y;
-                verts->z = otherVerts->z;
-                verts->r = otherVerts->r;
-                verts->g = otherVerts->g;
-                verts->b = otherVerts->b;
-                verts->a = otherVerts->a;
-                verts++;
-                otherVerts++;
-
-                verts->x = otherVerts->x;
-                verts->y = otherVerts->y;
-                verts->z = otherVerts->z;
-                verts->r = otherVerts->r;
-                verts->g = otherVerts->g;
-                verts->b = otherVerts->b;
-                verts->a = otherVerts->a;
-                verts++;
-                otherVerts++;
-
-                verts->x = otherVerts->x;
-                verts->y = otherVerts->y;
-                verts->z = otherVerts->z;
-                verts->r = otherVerts->r;
-                verts->g = otherVerts->g;
-                verts->b = otherVerts->b;
-                verts->a = otherVerts->a;
-                verts++;
-                otherVerts++;
-
-                verts->x = otherVerts->x;
-                verts->y = otherVerts->y;
-                verts->z = otherVerts->z;
-                verts->r = otherVerts->r;
-                verts->g = otherVerts->g;
-                verts->b = otherVerts->b;
-                verts->a = otherVerts->a;
-                verts++;
-                otherVerts++;
-
-                prev_particle = particle;
-                prev_model = model;
-
-                particle->meshRegenerated = -1;
-            }
+    if (emitter == NULL || emitter->refPoints == NULL) {
+        return;
+    }
+    prevRing = NULL;
+    for (index = emitter->pointCount - 1; index >= 0; index--) {
+        particle = emitter->refPoints[index];
+        if (particle->base.destroyTimer == 0) {
+            break;
         }
+        verts = &particle->base.model->vertices[particle->modelFrame << 3];
+        point_particle_write_ring(particle, &verts[4]);
+        if (prevRing == NULL) {
+            prevRing = &verts[4];
+        }
+        for (i = 0; i < 4; i++) {
+            vertex_copy(&verts[i], &prevRing[i]);
+        }
+        prevRing = &verts[4];
+        particle->meshRegenerated = -1;
     }
 }
 
