@@ -157,7 +157,7 @@ void material_load_simple(Gfx **dList, s32 flags);
 
 // There might be a file boundary here.
 void tex_animate_texture(TextureHeader *texture, u32 *triangleBatchInfoFlags, s32 *arg2, s32 updateRate);
-void func_8007F1E8(LevelHeader_70 *arg0);
+void pulse_light_reset(LevelHeader_70 *arg0);
 void init_pulsating_light_data(PulsatingLightData *data);
 void update_pulsating_light_data(PulsatingLightData *data, s32 timeDelta);
 TextureHeader *set_animated_texture_header(TextureHeader *texHead, s32 offset);
@@ -167,7 +167,7 @@ s32 tex_cache_asset_id(s32 cacheID);
 s32 load_sprite_info(s32 spriteIndex, s32 *anchorXOut, s32 *anchorYOut, s32 *numFramesOut, s32 *formatOut,
                      s32 *sizeOut);
 void gfx_init_basic_xlu(Gfx **dList, u32 index, u32 primitiveColor, u32 environmentColor);
-void func_8007CA68(s32 arg0, s32 arg1, s32 *arg2, s32 *arg3, s32 *arg4);
+void sprite_get_size(s32 arg0, s32 arg1, s32 *arg2, s32 *arg3, s32 *arg4);
 Sprite *tex_load_sprite(s32 spriteID, s32 arg1);
 void tex_init_textures(void);
 void material_set_blinking_lights(Gfx **dList, TextureHeader *texture_list, u32 flags,

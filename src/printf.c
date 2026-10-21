@@ -1253,5 +1253,3 @@ void debug_text_newline(void) {
     gDebugTextY += 11;
 }
 
-UNUSED void func_800B6F30(UNUSED int arg0, UNUSED int arg1, UNUSED int arg2) {
-}

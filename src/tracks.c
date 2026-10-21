@@ -382,7 +382,7 @@ void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 upd
         } else {
             mtx_perspective(&gTrackDL, &gTrackMtxPtr);
             trackbg_render_gradient();
-            func_80067D3C(&gTrackDL, &gTrackMtxPtr);
+            cam_set_projection_matrix(&gTrackDL, &gTrackMtxPtr);
             mtx_world_origin(&gTrackDL, &gTrackMtxPtr);
         }
         gDPPipeSync(gTrackDL++);
@@ -413,7 +413,7 @@ void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 upd
             compute_frustum_planes();
             mtx_perspective(&gTrackDL, &gTrackMtxPtr);
             trackbg_render_gradient();
-            func_80067D3C(&gTrackDL, &gTrackMtxPtr);
+            cam_set_projection_matrix(&gTrackDL, &gTrackMtxPtr);
             mtx_world_origin(&gTrackDL, &gTrackMtxPtr);
             gDPPipeSync(gTrackDL++);
             initialise_player_viewport_vars(updateRate);
@@ -2642,7 +2642,7 @@ s32 get_level_segment_waves(s32 levelSegmentIndex, f32 xIn, f32 zIn, WaterProper
         gWaterSurfaceHits[yOutCount].type = SURFACE_WATER_WAVY;
         if (currentSegment->hasWaves && gWaveBlockCount != 0) {
             wave = yOutCount + gWaterSurfaceHits; // fake?
-            gWaterSurfaceHits[yOutCount].waveHeight = func_800BB2F4(levelSegmentIndex, xIn, zIn, &wave->rot);
+            gWaterSurfaceHits[yOutCount].waveHeight = wave_height_at(levelSegmentIndex, xIn, zIn, &wave->rot);
         } else {
             gWaterSurfaceHits[yOutCount].waveHeight = currentSegment->unk38;
             gWaterSurfaceHits[yOutCount].rot.x = 0.0f;
@@ -2697,7 +2697,7 @@ s32 get_object_water_height(Object *obj, f32 *arg1, Vec3f *arg2, s32 arg3) {
     }
     seg = &gCurrentLevelModel->segments[obj->segmentID];
     if ((seg->hasWaves != 0) && (gWaveBlockCount != 0) && (arg3 == 1)) {
-        *arg1 = func_800BB2F4(obj->segmentID, obj->trans.x_position, obj->trans.z_position, arg2);
+        *arg1 = wave_height_at(obj->segmentID, obj->trans.x_position, obj->trans.z_position, arg2);
         return TRUE;
     } else {
         *arg1 = seg->unk38;
@@ -3937,7 +3937,7 @@ void shadow_add_wave_triangles(s32 arg0) {
     sp88[3].x = gNewShadowObj->trans.x_position + gNewShadowWidth;
     sp88[3].y = gNewShadowObj->trans.z_position - gNewShadowLength;
     // clang-format off
-    temp_v0 = func_800BDC80(
+    temp_v0 = wave_cells_in_rect(
         arg0, gShadowWaveCells, &gShadowWavePlanes[gShadowWavePlaneCount],
         sp88[2].x, sp88[2].y,
         sp88[0].x, sp88[0].y

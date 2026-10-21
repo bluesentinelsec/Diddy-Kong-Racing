@@ -130,7 +130,7 @@ s32 calculate_eeprom_settings_checksum(u64 eepromSettings);
 s32 read_eeprom_settings(u64 *eepromSettings);
 s32 write_eeprom_settings(u64 *eepromSettings);
 s16 calculate_ghost_header_checksum(GhostHeader *ghostHeader);
-void func_80074AA8(GhostHeader *ghostHeader, s16 characterID, s16 time, s16 nodeCount, u8 *dest);
+void ghost_header_fill(GhostHeader *ghostHeader, s16 characterID, s16 time, s16 nodeCount, u8 *dest);
 s32 get_ghost_data_file_size(void);
 SIDeviceStatus get_si_device_status(s32 controllerIndex);
 s32 start_reading_controller_data(s32 controllerIndex);
@@ -153,23 +153,23 @@ void rumble_set(s16 controllerIndex, u8 type);
 void rumble_set_fade(s16 controllerIndex, u8 type, f32 strength);
 void rumble_update(s32 updateRate);
 void init_controller_paks(void);
-void func_80072E28(s32 arg0, u32 arg1);
-s32 func_80072C54(s32 arg0);
+void save_write_bits(s32 arg0, u32 arg1);
+s32 save_read_bits(s32 arg0);
 void populate_settings_from_save_data(Settings *settings, u8 *saveData);
 s32 read_save_file(s32 saveFileNum, Settings *settings);
 void erase_save_file(s32 saveFileNum, Settings *settings);
-SIDeviceStatus func_800756D4(s32 controllerIndex, u8 *levelIDs, u8 *vehicleIDs, u8 *characterIDs, u16 *checksumIDs);
+SIDeviceStatus ghost_list(s32 controllerIndex, u8 *levelIDs, u8 *vehicleIDs, u8 *characterIDs, u16 *checksumIDs);
 SIDeviceStatus get_file_extension(s32 controllerIndex, s32 fileType, char *fileExt);
-void func_80073588(Settings *settings, u8 *saveData, u8 arg2);
-void func_800732E8(Settings *settings, u8 *saveData);
-void func_800738A4(Settings *settings, u8 *saveData);
-s32 func_80074B34(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharacterId, s16 *ghostTime, s16 *ghostNodeCount, unk80075000 *ghostData);
+void save_unpack_records(Settings *settings, u8 *saveData, u8 arg2);
+void save_pack_progress(Settings *settings, u8 *saveData);
+void save_pack_records(Settings *settings, u8 *saveData);
+s32 ghost_load(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharacterId, s16 *ghostTime, s16 *ghostNodeCount, unk80075000 *ghostData);
 char *string_to_font_codes(char *inString, char *outString, s32 stringLength);
-SIDeviceStatus func_80074EB8(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
+SIDeviceStatus ghost_file_create(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
                              s16 ghostNodeCount, u8 *dest);
-SIDeviceStatus func_80075000(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
+SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
                              s16 ghostNodeCount, unk80075000_body *ghostData);
-s32 func_800753D8(s32 controllerIndex, s32 worldId);
+s32 ghost_delete_for_world(s32 controllerIndex, s32 worldId);
 void rumble_enable(s32 enable);
 
 #endif

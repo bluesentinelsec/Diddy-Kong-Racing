@@ -101,10 +101,10 @@ s32 gWaveTileCountX;    // used in mempool_alloc_safe size calculation
 s32 gWaveTileCountZ;    // used in mempool_alloc_safe size calculation
 s32 gNumberOfLevelSegments;
 s32 D_8012A0E8[64];
-s16 gWaveBlockIDs[512]; // used to index gWaveModel and as arg0 for func_800B92F4 and func_800B97A8
+s16 gWaveBlockIDs[512]; // used to index gWaveModel and as arg0 for wave_block_build_vertices and wave_block_build_vertices_depth_shaded
 // One table: retail's fixed .bss layout placed D_8012A600 immediately after
 // D_8012A5E8, and the visibility builder/walkers index straight through both
-// (the k walk in func_800B92F4/func_800B97A8 only stops at a -1 sentinel).
+// (the k walk in wave_block_build_vertices/wave_block_build_vertices_depth_shaded only stops at a -1 sentinel).
 // Split declarations only worked by layout luck; merged so adjacency is
 // guaranteed on every compiler.
 unk8012A5E8 D_8012A5E8[26];
@@ -254,7 +254,7 @@ void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
     gWavePlayerCount = playerCount;
     waves_init_header(header);
     waves_alloc();
-    func_800BBDDC(model, header);
+    waves_init_level(model, header);
     gWaveBoundingBoxW = gWaveBoundingBoxDiffX;
     gWaveBoundingBoxH = gWaveBoundingBoxDiffZ;
     gWaveVtxStepX = gWaveBoundingBoxW / gWaveController.subdivisions;
@@ -359,9 +359,9 @@ void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
             var_s5 += 2;
         }
     }
-    stubbed_printf("post triangle loop, pre func_800BC6C8\n");
-    func_800BC6C8();
-    stubbed_printf("post func_800BC6C8\n");
+    stubbed_printf("post triangle loop, pre waves_build_sine_table\n");
+    waves_build_sine_table();
+    stubbed_printf("post waves_build_sine_table\n");
 
     var_s5 = (gWaveController.subdivisions + 1) * gWaveController.subdivisions;
     for (i = 0; i < ARRAY_COUNT(D_8012A028); i++) {
@@ -398,7 +398,7 @@ void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
         D_8012A028[i][3].a = gWaveVertices[i][var_s5 + gWaveController.subdivisions].a;
     }
 
-    func_800BCC70(model);
+    waves_init_collision(model);
     if (gWaveController.waveViewDist == 3) {
         D_800E30E0 = D_800E30E8;
         D_800E30E4 = D_800E30FC;
@@ -564,7 +564,7 @@ void waves_visibility(s32 xPosition, s32 yPosition, s32 zPosition, s32 currentVi
         }
     }
 
-    func_800BA288(currentViewport, updateRate);
+    wave_blocks_decay_ripples(currentViewport, updateRate);
 }
 
 /**
@@ -583,7 +583,7 @@ s32 waves_block_hq(LevelModelSegment *block) {
     return result;
 }
 
-void func_800B92F4(s32 blockID, s32 viewportID) {
+void wave_block_build_vertices(s32 blockID, s32 viewportID) {
     s32 i;
     s32 var_s2;
     s32 j;
@@ -679,7 +679,7 @@ void func_800B92F4(s32 blockID, s32 viewportID) {
     }
 }
 
-void func_800B97A8(s32 blockID, s32 arg1) {
+void wave_block_build_vertices_depth_shaded(s32 blockID, s32 arg1) {
     s32 var_v0;
     f32 temp_f26;
     s32 vertexIdx;
@@ -876,7 +876,7 @@ void waves_update(s32 updateRate) {
             .v;
 
     if (gWaveGenCount > 0) {
-        func_800BFE98(updateRate);
+        wave_gens_update(updateRate);
     }
 
     if (gWavePowerDivisor <= 0) {
@@ -892,7 +892,7 @@ void waves_update(s32 updateRate) {
     }
 }
 
-void func_800BA288(s32 arg0, s32 arg1) {
+void wave_blocks_decay_ripples(s32 arg0, s32 arg1) {
     s32 i;
     s32 j;
 
@@ -1050,9 +1050,9 @@ void waves_render(Gfx **dList, Mtx **mtx, s32 viewportID) {
         // High Quality water
         for (; i < gVisibleWaveTiles; i++) {
             if (gWaveController.xlu) {
-                func_800B92F4(gWaveBlockIDs[i], viewportID);
+                wave_block_build_vertices(gWaveBlockIDs[i], viewportID);
             } else {
-                func_800B97A8(gWaveBlockIDs[i], viewportID);
+                wave_block_build_vertices_depth_shaded(gWaveBlockIDs[i], viewportID);
             }
             spE0 = &gWaveModel[gWaveBlockIDs[i]];
             transform.x_position = spE0->originX;
@@ -1120,7 +1120,8 @@ void waves_render(Gfx **dList, Mtx **mtx, s32 viewportID) {
     gVisibleWaveTiles = 0;
 }
 
-f32 func_800BB2F4(s32 arg0, f32 arg1, f32 arg2, Vec3f *arg3) {
+/** The wave surface height and normal at a point of a segment. */
+f32 wave_height_at(s32 arg0, f32 arg1, f32 arg2, Vec3f *arg3) {
     f32 spA4;
     f32 spA0;
     f32 var_f12;
@@ -1331,13 +1332,14 @@ f32 func_800BB2F4(s32 arg0, f32 arg1, f32 arg2, Vec3f *arg3) {
     return sp78;
 }
 
-void func_800BBDDC(LevelModel *level, LevelHeader *header) {
-    func_800BBE08(level, header);
-    func_800BBF78(level);
+/** Sets up the water surfaces of a level: the water texture, the wave segments and their collision. */
+void waves_init_level(LevelModel *level, LevelHeader *header) {
+    waves_find_water_texture(level, header);
+    waves_init_segments(level);
 }
 
 // determines current bounding box, batch and texture
-void func_800BBE08(LevelModel *level, LevelHeader *header) {
+void waves_find_water_texture(LevelModel *level, LevelHeader *header) {
     s16 numSegments;
     s32 j;
     TriangleBatchInfo *curBatch;
@@ -1380,7 +1382,7 @@ void func_800BBE08(LevelModel *level, LevelHeader *header) {
     }
 }
 
-void func_800BBF78(LevelModel *model) {
+void waves_init_segments(LevelModel *model) {
     LevelModelSegmentBoundingBox *levelSegmentBoundingBoxes;
     s32 j;
     s32 temp_t1;
@@ -1527,7 +1529,7 @@ void func_800BBF78(LevelModel *model) {
     }
 }
 
-void func_800BC6C8(void) {
+void waves_build_sine_table(void) {
     s32 i;
     s32 j;
     s32 k;
@@ -1615,7 +1617,7 @@ void func_800BC6C8(void) {
     }
 }
 
-void func_800BCC70(LevelModel *model) {
+void waves_init_collision(LevelModel *model) {
     s32 i;
     u32 pad_sp188;
     s32 sp184;
@@ -1641,7 +1643,7 @@ void func_800BCC70(LevelModel *model) {
     Vec2i *spA4;
     u8 *spA0;
 
-    stubbed_printf("func_800BCC70 enter\n");
+    stubbed_printf("waves_init_collision enter\n");
     subdivisions = gWaveController.subdivisions;
     if (gWaveController.doubleDensity) {
         subdivisions *= 2;
@@ -1877,10 +1879,10 @@ void func_800BCC70(LevelModel *model) {
     mempool_free(spA8);
     mempool_free(spA4);
     mempool_free(spA0);
-    stubbed_printf("func_800BCC70 end\n");
+    stubbed_printf("waves_init_collision end\n");
 }
 
-s32 func_800BDC80(s32 arg0, unk8011C3B8 *arg1, unk8011C8B8 *arg2, f32 shadowXNegPosition, f32 shadowZNegPosition,
+s32 wave_cells_in_rect(s32 arg0, unk8011C3B8 *arg1, unk8011C8B8 *arg2, f32 shadowXNegPosition, f32 shadowZNegPosition,
                   f32 shadowXPosition, f32 shadowZPosition) {
     s32 colCount;
     s32 startCol;
@@ -2517,82 +2519,6 @@ WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 arg
     return result;
 }
 
-UNUSED void func_800BF9F8(WaveGen *gen, f32 arg1, f32 arg2) {
-    UNUSED s32 pad[4];
-    s32 sp1C;
-    f32 var_f0;
-    s32 var_a1;
-    s32 i;
-    s32 var_a2;
-    s32 j;
-    s32 iteration;
-    s32 index;
-    u8 *var_a2_2;
-
-    if (gen == NULL) {
-        return;
-    }
-
-    var_f0 = gWaveVtxStepX;
-    iteration = 0;
-    if (gWaveController.doubleDensity) {
-        var_f0 /= 2.0f;
-    }
-    index = gen->index;
-    while (iteration != 2) {
-        var_a1 = TRUE;
-        var_a2 = ((gen->x_position - gen->radius) - gWaveBlockPosX) / var_f0;
-        if (var_a2 >= gWaveTileGridCount) {
-            var_a1 = FALSE;
-        } else if (var_a2 < 0) {
-            var_a2 = 0;
-        }
-
-        if (var_a1) {
-            sp1C = ((gen->x_position + gen->radius) - gWaveBlockPosX) / var_f0;
-            if (sp1C < 0) {
-                var_a1 = FALSE;
-            } else if (sp1C >= gWaveTileGridCount) {
-                sp1C = gWaveTileGridCount - 1;
-            }
-        }
-
-        if (var_a1) {
-            for (i = var_a2; i <= sp1C; i++) {
-                var_a2_2 = &D_800E3184[i].unk0[0];
-                j = 0;
-                if (iteration != 0) {
-                    if (var_a2_2[7] == 0xFF) {
-                        while (var_a2_2[0] != 0xFF) {
-                            var_a2_2++;
-                        }
-                        var_a2_2[0] = index;
-                    }
-                } else {
-                    while (j < 8) {
-                        if (index == var_a2_2[j]) {
-                            while (j < 7) {
-                                var_a2_2[j] = var_a2_2[j + 1];
-                                j++;
-                            }
-                            var_a2_2[j] = 0xFF;
-                            j++;
-                        }
-                        j++;
-                    }
-                }
-            }
-        }
-
-        if (iteration == 0) {
-            gen->x_position += arg1;
-            gen->z_position += arg2;
-            gen->minZ += arg2;
-            gen->maxZ += arg2;
-        }
-        iteration++;
-    }
-}
 
 UNUSED void wavegen_scale(WaveGen *gen, f32 radiusAdd, f32 arg2, f32 arg3, f32 arg4) {
     if (gen == NULL) {
@@ -2622,7 +2548,7 @@ UNUSED void wavegen_scale(WaveGen *gen, f32 radiusAdd, f32 arg2, f32 arg3, f32 a
     gen->unk24 += arg4;
 }
 
-void func_800BFE98(s32 updateRate) {
+void wave_gens_update(s32 updateRate) {
     s32 i;
 
     for (i = 0; i < 32; i++) {

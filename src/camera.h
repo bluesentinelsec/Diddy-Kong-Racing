@@ -135,7 +135,7 @@ MtxF *get_camera_matrix(void);
 f32 get_distance_to_camera(f32 x, f32 y, f32 z);
 void set_camera_shake_by_distance(f32 x, f32 y, f32 z, f32 dist, f32 magnitude);
 void set_camera_shake(f32 magnitude);
-void func_80067D3C(Gfx **dList, Mtx **mats);
+void cam_set_projection_matrix(Gfx **dList, Mtx **mats);
 void render_ortho_triangle_image(Gfx **dList, Mtx **mtx, Vertex **vtx, ObjectSegment *segment, Sprite *sprite, s32 flags);
 s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, Sprite *sprite, s32 flags);
 s32 mtx_cam_push(Gfx **dList, Mtx **mtx, ObjectTransform *trans, f32 scaleY, f32 offsetY);

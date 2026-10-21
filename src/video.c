@@ -43,7 +43,7 @@ u16 *gVideoCurrFramebuffer; // Official Name: currentScreen
 u16 *gVideoLastFramebuffer; // Official Name: otherScreen
 u16 *gVideoCurrDepthBuffer;
 u16 *gVideoLastDepthBuffer;
-u8 D_801262E4;
+u8 gVideoMaxUpdateRate;
 UNUSED OSMesg D_801262E8[8];
 u8 gVideoDeltaCounter;
 u8 gVideoDeltaTime;
@@ -92,7 +92,7 @@ void video_init(s32 videoModeIndex, OSSched *sc) {
     sBlackScreenTimer = 12;
     osViBlack(TRUE);
     gVideoDeltaCounter = 0;
-    D_801262E4 = 3;
+    gVideoMaxUpdateRate = 3;
 }
 
 /**
@@ -315,7 +315,7 @@ s32 fb_update(s32 mesg) {
         }
     } else {
         gVideoDeltaCounter = 0;
-        if ((gVideoDeltaTime < tempUpdateRate) && (D_801262E4 >= tempUpdateRate)) {
+        if ((gVideoDeltaTime < tempUpdateRate) && (gVideoMaxUpdateRate >= tempUpdateRate)) {
             gVideoDeltaTime = tempUpdateRate;
         }
     }
@@ -329,8 +329,9 @@ s32 fb_update(s32 mesg) {
     return tempUpdateRate;
 }
 
-void func_8007AB24(u8 arg0) {
-    D_801262E4 = arg0;
+/** Caps how many logic steps one frame may cover when the game runs slowly (3 by default). */
+void vi_set_max_update_rate(u8 arg0) {
+    gVideoMaxUpdateRate = arg0;
 }
 
 /**

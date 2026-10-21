@@ -104,7 +104,7 @@ s32 fb_size(void);
 void fb_init_vi(void);
 void fb_alloc(s32 index);
 void video_delta_reset(void);
-void func_8007AB24(u8 arg0);
+void vi_set_max_update_rate(u8 arg0);
 s32 vi_refresh_rate(void);
 void fb_swap(void);
 void fb_memcpy(u8 *src, u8 *dest, s32 len);
