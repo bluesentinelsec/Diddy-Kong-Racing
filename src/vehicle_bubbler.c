@@ -71,7 +71,7 @@ void update_bubbler(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *
     animFrame = obj->animFrame;
     tempHeadAngle = racer->headAngle;
     if (racer->raceFinished == TRUE) {
-        func_80021400(130);
+        anim_actor_trigger(130);
         racer->raceFinished++;
     }
     timer = *startTimer;
@@ -133,7 +133,7 @@ void update_bubbler(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *
     }
     obj->animFrame = racer->animationSpeed;
     if (racer->playerIndex == PLAYER_COMPUTER) {
-        temp2 = func_80023568();
+        temp2 = boss_race_number();
         if (temp2 != 0) {
             objectID = ASSET_OBJECT_ID_OCTOBUBBLE;
             if (temp2 == 6) {

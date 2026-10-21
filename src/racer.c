@@ -275,7 +275,7 @@ void racer_ai_tactics(Object *obj, Object_Racer *racer, s32 updateRate) {
         return;
     }
 
-    temp_v0 = func_80023568();
+    temp_v0 = boss_race_number();
     if (gRaceStartTimer == 0 && racer->vehicleID != VEHICLE_LOOPDELOOP) {
         index = racerID - 1;
         if (racer->unk20B < racerID && index >= 0 && index < numRacers) {
@@ -320,7 +320,7 @@ void racer_ai_tactics(Object *obj, Object_Racer *racer, s32 updateRate) {
         sp3F = sp5C->characterId;
     }
 
-    if (var_t0 < 7 && get_trophy_race_world_id() == 0 && func_80023568() == 0 && !is_taj_challenge()) {
+    if (var_t0 < 7 && get_trophy_race_world_id() == 0 && boss_race_number() == 0 && !is_taj_challenge()) {
         if (gRaceStartTimer == 100) {
             racer->aiSkill = rand_range(AI_MASTER, AI_HARD);
         }
@@ -940,7 +940,7 @@ void racer_ai_challenge(Object *aiRacerObj, Object_Racer *aiRacer, s32 updateRat
                 if (aiRacer->nodeCurrent == NULL) {
                     switch (aiRacer->unk1CD) {
                         case 3:
-                            temp = func_8001CD28(sp6C->animation.x_rotation, 1, aiRacer->unk1CE, aiRacer->racerIndex);
+                            temp = ainode_pick_next(sp6C->animation.x_rotation, 1, aiRacer->unk1CE, aiRacer->racerIndex);
                             break;
                         case 4:
                             tempRacerObj = get_racer_object(aiRacer->eggHudCounter);
@@ -948,21 +948,21 @@ void racer_ai_challenge(Object *aiRacerObj, Object_Racer *aiRacer, s32 updateRat
                             if (tempRacer->playerIndex == -1) {
                                 tempRacerObj = tempRacer->unk154;
                                 newvar = tempRacerObj->level_entry;
-                                temp = func_8001CD28(sp6C->animation.x_rotation, newvar->animation.x_rotation | 0x100,
+                                temp = ainode_pick_next(sp6C->animation.x_rotation, newvar->animation.x_rotation | 0x100,
                                                      aiRacer->unk1CE, aiRacer->racerIndex);
                             } else {
                                 temp =
                                     ainode_find_nearest(tempRacerObj->trans.x_position, tempRacerObj->trans.y_position,
                                                         tempRacerObj->trans.z_position, 0);
-                                temp = func_8001CD28(sp6C->animation.x_rotation, temp | 0x100, aiRacer->unk1CE,
+                                temp = ainode_pick_next(sp6C->animation.x_rotation, temp | 0x100, aiRacer->unk1CE,
                                                      aiRacer->racerIndex);
                             }
                             break;
                         case 5:
-                            temp = func_8001CD28(sp6C->animation.x_rotation, 1, aiRacer->unk1CE, aiRacer->racerIndex);
+                            temp = ainode_pick_next(sp6C->animation.x_rotation, 1, aiRacer->unk1CE, aiRacer->racerIndex);
                             break;
                         case 7:
-                            temp = func_8001CD28(sp6C->animation.x_rotation, aiRacer->racerIndex + 4, aiRacer->unk1CE,
+                            temp = ainode_pick_next(sp6C->animation.x_rotation, aiRacer->racerIndex + 4, aiRacer->unk1CE,
                                                  aiRacer->racerIndex);
                             break;
                         default:
@@ -1623,7 +1623,7 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
     s8 playerObjectHasMoved;
     f32 var_f6;
 
-    if (func_8000E138()) {
+    if (is_nondefault_vehicle()) {
         updateRateF *= 1.15;
     }
     playerObjectHasMoved = FALSE;
@@ -2153,7 +2153,7 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
     }
 
     iTemp = racer->unk1D2; // saves unk1D2
-    if (gCurrentPlayerIndex == PLAYER_COMPUTER && !func_80023568()) {
+    if (gCurrentPlayerIndex == PLAYER_COMPUTER && !boss_race_number()) {
         onscreen_ai_racer_physics(obj, racer, updateRate);
     } else {
         update_racer_collision(obj, racer, updateRate);
@@ -2294,7 +2294,7 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
     }
     second_racer_camera_update(obj, racer, CAMERA_HOVERCRAFT, updateRateF);
     if (playerObjectHasMoved) {
-        func_800230D0(obj, racer);
+        racer_find_start_node(obj, racer);
     }
 }
 
@@ -2598,7 +2598,7 @@ void update_plane(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
     Object_Boost *boostObj;
     s32 pad4;
 
-    if (func_8000E138()) {
+    if (is_nondefault_vehicle()) {
         updateRateF *= 1.09;
     }
     playerObjectMoved = FALSE;
@@ -3395,7 +3395,7 @@ void update_plane(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
     }
     second_racer_camera_update(obj, racer, 1, updateRateF);
     if (playerObjectMoved != FALSE) {
-        func_800230D0(obj, racer);
+        racer_find_start_node(obj, racer);
     }
 }
 
@@ -3929,7 +3929,7 @@ void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Obje
     }
     if (objectMoved) {
         racer->vehicleID = racer->vehicleIDPrev;
-        func_800230D0(racerObj, racer);
+        racer_find_start_node(racerObj, racer);
     }
 }
 
@@ -4571,7 +4571,7 @@ void update_player_racer(Object *obj, s32 updateRate) {
                 mode_end_taj_race(CHALLENGE_END_OOB);
             }
         }
-        func_80018CE0(obj, xTemp, yTemp, zTemp, updateRate);
+        update_midi_fade_points(obj, xTemp, yTemp, zTemp, updateRate);
         racer_update_checkpoint_progress(obj, tempRacer, updateRate);
         if (tempRacer->raceFinished == TRUE) {
             if (tempRacer->unk1D9 < 60) {
@@ -5020,7 +5020,7 @@ void update_car(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer 
             set_anti_aliasing(TRUE);
         }
         if (playerObjectHasMoved) {
-            func_800230D0(racerObj, racer);
+            racer_find_start_node(racerObj, racer);
         }
     }
 }
@@ -5631,7 +5631,7 @@ void handle_racer_head_turning(Object *obj, Object_Racer *racer, UNUSED s32 upda
     s32 intendedAngle;
 
     foundObj = FALSE;
-    if (func_80023568()) {
+    if (boss_race_number()) {
         tempObj = get_racer_object(1);
         foundObj = turn_head_towards_object(obj, racer, tempObj, 400.0f * 400.0f);
     }
@@ -6456,7 +6456,7 @@ void update_onscreen_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, 
     } else {
         racer_approach_object(obj, racer, updateRateF);
     }
-    if (gCurrentPlayerIndex == PLAYER_COMPUTER && !func_80023568()) {
+    if (gCurrentPlayerIndex == PLAYER_COMPUTER && !boss_race_number()) {
         onscreen_ai_racer_physics(obj, racer, updateRate);
     } else {
         update_racer_collision(obj, racer, updateRate);
@@ -7890,7 +7890,7 @@ void update_camera_car(f32 updateRate, Object *obj, Object_Racer *racer) {
         baseDistance = 100.0f;
         yVel = 40.0f;
     }
-    numViewports = func_80023568();
+    numViewports = boss_race_number();
     if (numViewports == 1 || numViewports == 4) {
         baseDistance = 144.0f;
         yVel = 110.0f;
@@ -8778,7 +8778,7 @@ void update_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, f32 updat
 
     racer->miscAnimCounter++; //!@Delta
 
-    if (is_taj_challenge() || func_80023568() || racer->vehicleID == VEHICLE_LOOPDELOOP || gAiStartDelay > 120.0f ||
+    if (is_taj_challenge() || boss_race_number() || racer->vehicleID == VEHICLE_LOOPDELOOP || gAiStartDelay > 120.0f ||
         gRaceStartTimer != 0 || levelHeader->race_type & RACETYPE_CHALLENGE_BATTLE) {
         racer->unk201 = 30;
     }
@@ -8950,7 +8950,7 @@ void update_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, f32 updat
             racer->magnetSoundMask = NULL;
         }
     }
-    func_80018CE0(obj, xPos, yPos, zPos, updateRate);
+    update_midi_fade_points(obj, xPos, yPos, zPos, updateRate);
     if (racer->unk188 > 0) {
         drop_bananas(obj, racer, racer->unk188);
     }

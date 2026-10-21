@@ -90,7 +90,7 @@ void update_tricky(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
     animFrame = obj->animFrame;
     tempHeadAngle = racer->headAngle;
     if (racer->raceFinished == TRUE) {
-        func_80021400(130);
+        anim_actor_trigger(130);
         racer->raceFinished++;
     }
     tempStartTimer = *startTimer;

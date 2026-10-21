@@ -1369,7 +1369,7 @@ void obj_loop_stopwatchman(Object *obj, s32 updateRate) {
                     tt->nodeBack1 = tt->nodeCurrent;
                 }
             } else {
-                diffZ = func_8001C6C4(tt, obj, updateRateF, 1.0f, 0);
+                diffZ = npc_follow_ai_nodes(tt, obj, updateRateF, 1.0f, 0);
                 tt->animFrameF += diffZ * 1.5;
             }
             break;
@@ -1792,12 +1792,12 @@ void obj_init_animation(Object *obj, LevelObjectEntry_Animation *entry, s32 arg2
     obj->trans.rotation.x_rotation = entry->x_rotation << 8;
     obj->trans.rotation.z_rotation = entry->z_rotation << 8;
     if (entry->actorIndex == -2) {
-        entry->actorIndex = func_8001F3B8();
+        entry->actorIndex = anim_group_get();
     } else {
         if (entry->actorIndex < 0 && entry->actorIndex >= -2) {
             entry->actorIndex = 0;
         }
-        func_8001F3C8(entry->actorIndex);
+        anim_group_set(entry->actorIndex);
     }
     if (entry->channel == -1) {
         entry->channel = cutscene_id();
@@ -1805,7 +1805,7 @@ void obj_init_animation(Object *obj, LevelObjectEntry_Animation *entry, s32 arg2
     if (entry->channel == 20) {
         entry->actorIndex |= 0x80;
     }
-    tempOrderIndex = func_8001F3EC(entry->actorIndex);
+    tempOrderIndex = anim_count_actors(entry->actorIndex);
     if (entry->order == -2) {
         entry->order = tempOrderIndex;
         if (entry->order < 0) {
@@ -1827,7 +1827,7 @@ void obj_init_animation(Object *obj, LevelObjectEntry_Animation *entry, s32 arg2
     }
     if (((cutscene_id() == entry->channel) || (entry->channel == 20)) && (obj->animTarget == NULL) &&
         (entry->order == 0) && (entry->objectIdToSpawn != -1)) {
-        func_8001F23C(obj, entry);
+        anim_object_spawn_target(obj, entry);
     }
     animTarget = obj->animTarget;
     if (obj->animTarget != NULL) {
@@ -1837,13 +1837,13 @@ void obj_init_animation(Object *obj, LevelObjectEntry_Animation *entry, s32 arg2
             obj->animTarget = NULL;
         }
     }
-    if (func_80021600(obj->properties.animation.behaviourID)) {
-        func_8001EE74();
+    if (anim_actor_is_active(obj->properties.animation.behaviourID)) {
+        anim_objects_spawn_targets();
     }
 }
 
 void obj_loop_animobject(Object *obj, s32 updateRate) {
-    func_8001F460(obj, updateRate, obj);
+    anim_object_follow_path(obj, updateRate, obj);
 }
 
 /**
@@ -1855,7 +1855,7 @@ void obj_loop_dooropener(Object *obj, s32 updateRate) {
     Object_AnimatedObject *doorOpener;
 
     doorOpener = obj->animatedObject;
-    openDoors = 1 - func_8001F460(obj, updateRate, obj);
+    openDoors = 1 - anim_object_follow_path(obj, updateRate, obj);
     if (doorOpener->startDelay > 0) {
         openDoors = FALSE;
     }
@@ -1892,7 +1892,7 @@ void obj_loop_wizpigship(Object *wizShipObj, s32 updateRate) {
     LevelObjectEntryCommon newObject;
     ObjectTransform trans;
 
-    func_8001F460(wizShipObj, updateRate, wizShipObj);
+    anim_object_follow_path(wizShipObj, updateRate, wizShipObj);
     if (wizShipObj->modelInstances[0] != NULL) {
         wizShipModel = wizShipObj->modelInstances[0]->objModel;
         if (wizShipObj->properties.wizpigship.timer > 0) {
@@ -1954,7 +1954,7 @@ void obj_loop_vehicleanim(Object *obj, s32 updateRate) {
     AttachPoint *attachPoint;
     Object *attachObj;
 
-    func_8001F460(obj, updateRate, obj);
+    anim_object_follow_path(obj, updateRate, obj);
     attachPoint = obj->attachPoints;
     if (attachPoint == NULL || attachPoint->count <= 0) {
         return;
@@ -1981,7 +1981,7 @@ void obj_init_hittester(Object *obj, UNUSED LevelObjectEntry_HitTester *entry) {
 }
 
 void obj_loop_hittester(Object *obj, s32 updateRate) {
-    func_8001F460(obj, updateRate, obj);
+    anim_object_follow_path(obj, updateRate, obj);
 }
 
 /**
@@ -2034,7 +2034,7 @@ void obj_loop_snowball(Object *obj, s32 updateRate) {
                                        obj->trans.z_position);
         }
     }
-    func_8001F460(obj, updateRate, obj);
+    anim_object_follow_path(obj, updateRate, obj);
 }
 
 /**
@@ -2063,7 +2063,7 @@ void obj_loop_char_select(Object *charSelectObj, s32 updateRate) {
     u8 *actorIDs;
 
     playerIndex = 0;
-    func_8001F460(charSelectObj, updateRate, NULL);
+    anim_object_follow_path(charSelectObj, updateRate, NULL);
     charSelect = charSelectObj->animatedObject;
     charSelectObj->particleEmittersEnabled = OBJ_EMIT_NONE;
     if (charSelect != NULL) {
@@ -2156,12 +2156,12 @@ void obj_loop_animcamera(Object *obj, s32 updateRate) {
     s32 updateCam;
     Object_AnimatedObject *camera;
 
-    temp_v0 = func_8001F460(obj, updateRate, obj);
+    temp_v0 = anim_object_follow_path(obj, updateRate, obj);
     obj->trans.flags |= OBJ_FLAGS_INVISIBLE;
     camera = obj->animatedObject;
     if (temp_v0 == 0) {
         if (cam_get_viewport_layout() == VIEWPORT_LAYOUT_1_PLAYER) {
-            updateCam = func_800210CC(camera->unk44);
+            updateCam = anim_stage_reached(camera->unk44);
         } else {
             updateCam = TRUE;
         }
@@ -2192,7 +2192,7 @@ void obj_loop_animcar(Object *obj, s32 updateRate) {
     if (racerID != 0) {
         racerObj = get_racer_object(racerID - 1);
     }
-    obj->properties.animatedObj.unk4 = func_8001F460(obj, updateRate, obj);
+    obj->properties.animatedObj.unk4 = anim_object_follow_path(obj, updateRate, obj);
     obj->trans.flags |= OBJ_FLAGS_INVISIBLE;
     if (obj->properties.animatedObj.unk4 == 0 && racerObj != NULL) {
         Object_Racer *racer = racerObj->racer;
@@ -2519,7 +2519,7 @@ void obj_loop_dino_whale(Object *obj, s32 updateRate) {
         obj->properties.dinoWhale.unk0 = 0;
     }
     animFrame = obj->animFrame;
-    func_8001F460(obj, updateRate, obj);
+    anim_object_follow_path(obj, updateRate, obj);
     play_footstep_sounds(obj, 0, animFrame, SOUND_STOMP2, SOUND_STOMP3);
     if (obj->interactObj->distance < 255) {
         if (obj->properties.dinoWhale.unk0 == 0) {
@@ -3042,7 +3042,7 @@ void obj_loop_parkwarden(Object *obj, s32 updateRate) {
                     taj->unk1C = 0;
                 }
                 if (taj->unk1C < 120) {
-                    taj->animFrameF += func_8001C6C4(taj, obj, updateRateF, 1.0f, 0);
+                    taj->animFrameF += npc_follow_ai_nodes(taj, obj, updateRateF, 1.0f, 0);
                 } else {
                     var_a2 = taj->unk1E - (obj->trans.rotation.y_rotation & 0xFFFF);
                     if (var_a2 > 0x8000) {
@@ -3374,9 +3374,9 @@ void obj_init_goldenballoon(Object *obj, LevelObjectEntry_GoldenBalloon *entry) 
     f32 scalef;
 
     if (entry->balloonID == -1) {
-        entry->balloonID = func_8000CC20(obj);
+        entry->balloonID = object_id_alloc(obj);
     } else {
-        func_8000CBF0(obj, entry->balloonID);
+        object_id_assign(obj, entry->balloonID);
     }
     if (entry->balloonID == -1) {
         rmonPrintf("Illegal door no!!!\n"); // Did the devs just copy-paste the door init function?
@@ -3492,7 +3492,7 @@ void obj_loop_goldenballoon(Object *obj, s32 updateRate) {
                     npc->nodeBack1 = npc->nodeCurrent;
                 }
             } else {
-                func_8001C6C4(npc, obj, updateRateF, speedf, 0);
+                npc_follow_ai_nodes(npc, obj, updateRateF, speedf, 0);
             }
         }
     }
@@ -3508,9 +3508,9 @@ void obj_init_door(Object *obj, LevelObjectEntry_Door *entry) {
 
     door = obj->door;
     if (entry->doorID == -1) {
-        entry->doorID = func_8000CC20(obj);
+        entry->doorID = object_id_alloc(obj);
     } else {
-        func_8000CBF0(obj, entry->doorID);
+        object_id_assign(obj, entry->doorID);
     }
     door->doorID = entry->doorID;
     door->doorType = entry->doorType;
@@ -3876,9 +3876,9 @@ void obj_init_trigger(Object *obj, LevelObjectEntry_Trigger *entry) {
     Object_Trigger *trigger;
 
     if (entry->index == -1) {
-        entry->index = func_8000CC20(obj);
+        entry->index = object_id_alloc(obj);
     } else {
-        func_8000CBF0(obj, entry->index);
+        object_id_assign(obj, entry->index);
     }
     if (entry->index == -1) {
         rmonPrintf("Illegal door no!!!\n");
@@ -3951,7 +3951,7 @@ void obj_loop_trigger(Object *obj, UNUSED s32 updateRate) {
                                     set_current_text(triggerEntry->unkB);
                                 }
                                 if (triggerEntry->unkC != 0xFF) {
-                                    func_80021400(triggerEntry->unkC + 0x80);
+                                    anim_actor_trigger(triggerEntry->unkC + 0x80);
                                 }
                             }
                         }
@@ -6606,7 +6606,7 @@ void obj_loop_pigrocketeer(Object *obj, s32 updateRate) {
     Object *boostObj;
     Object_Boost *boost;
 
-    func_8001F460(obj, updateRate, obj);
+    anim_object_follow_path(obj, updateRate, obj);
     boostObj = racerfx_get_boost(BOOST_DEFAULT);
 
     if (boostObj != NULL) {
@@ -6616,7 +6616,7 @@ void obj_loop_pigrocketeer(Object *obj, s32 updateRate) {
             boost->unk72 += updateRate;
             boost->unk70 = 2;
             boost->unk74 = 1.0f;
-            func_8000B750(obj, -1, 2, 1, 1);
+            racer_set_boost_effect(obj, -1, 2, 1, 1);
         }
     }
 }
@@ -6700,6 +6700,6 @@ void obj_loop_levelname(Object *obj, s32 updateRate) {
 }
 
 void obj_loop_wizghosts(Object *obj, s32 updateRate) {
-    func_8001F460(obj, updateRate, obj);
+    anim_object_follow_path(obj, updateRate, obj);
     obj->animFrame = (obj->animFrame + (updateRate * 8)) & 0xFF;
 }

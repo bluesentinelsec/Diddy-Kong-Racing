@@ -3493,7 +3493,7 @@ s32 menu_title_screen_loop(s32 updateRate) {
     } else {
         gTitleDemoTimer = 0;
     }
-    if (gMenuDelay == 0 && (func_800214C4() || sp28)) {
+    if (gMenuDelay == 0 && (anim_prev_frame_state() || sp28)) {
         if (gTitleDemoTimer) {} // Fakematch
         gTitleDemoIndex += DEMO_INDEX_SIZE;
         demo = &sTitleScreenDemoIds[gTitleDemoIndex];
@@ -12961,7 +12961,7 @@ s32 menu_cinematic_loop(UNUSED s32 updateRate) {
             buttonsPressed |= input_pressed(i);
         }
     }
-    if (func_800214C4() != 0) {
+    if (anim_prev_frame_state() != 0) {
         gCinematicParams += 3;
         if (gCinematicParams[CINEMATIC_LEVELID] > -1) {
             load_level_for_menu(gCinematicParams[CINEMATIC_LEVELID], gCinematicParams[CINEMATIC_PLAYERS],
@@ -14067,7 +14067,7 @@ s32 npc_dialogue_loop(u32 dialogueOption) {
     dialogue_clear(1);
     open_dialogue_box(1);
     set_current_dialogue_background_colour(1, 0, 0, 0, 128);
-    func_8001F450();
+    cutscene_skip_request();
     switch (dialogueOption) {
         case DIALOGUE_TAJ:
             result = taj_menu_loop(); // Taj menu

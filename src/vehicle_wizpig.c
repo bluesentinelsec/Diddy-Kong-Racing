@@ -74,8 +74,8 @@ void update_wizpig(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
     if (racer->velocity < 0.3 && -0.3 < racer->velocity) {
         *buttonsPressed = 0;
     }
-    if (racer->raceFinished == TRUE && func_80023568()) {
-        func_80021400(130);
+    if (racer->raceFinished == TRUE && boss_race_number()) {
+        anim_actor_trigger(130);
         racer->raceFinished++;
     }
     tempStartTimer = *startTimer;
@@ -235,7 +235,7 @@ void update_wizpig(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
         play_footstep_sounds(obj, 2, animFrame, SOUND_STOMP2, SOUND_STOMP3);
     }
     if (racer->playerIndex == PLAYER_COMPUTER) {
-        if (func_80023568() != 0) {
+        if (boss_race_number() != 0) {
             spawn_boss_hazard(obj, racer, 100.0f, ASSET_OBJECT_ID_FIREBALL, SOUND_VOICE_TRICKY_HM);
         }
     }
