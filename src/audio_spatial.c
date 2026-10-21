@@ -551,14 +551,14 @@ void audspat_point_create(u16 soundBite, f32 x, f32 y, f32 z, u8 flags, u8 minVo
     AudioPoint *audioPoint;
 
     if (handlePtr != NULL) {
-        func_800245B4(soundBite | 0xE000);
+        readout_log_push(soundBite | 0xE000);
     }
     if (gNumAudioPoints == MAX_AUDIO_POINTS) {
         stubbed_printf("OUT OF AUDIO POINTS\n");
         if (handlePtr != NULL) {
             *handlePtr = NULL;
         }
-        func_800245B4(0xAA55);
+        readout_log_push(0xAA55);
         return;
     }
     audioPoint = gFreeAudioPoints[gLastFreePointIndex--];
@@ -887,7 +887,7 @@ void audspat_point_stop_by_index(s32 index) {
         }
         if (gAudioPoints[index]->userHandlePtr != NULL) {
             *gAudioPoints[index]->userHandlePtr = NULL;
-            func_800245B4(gAudioPoints[index]->soundBite | 0x5000);
+            readout_log_push(gAudioPoints[index]->soundBite | 0x5000);
         }
 
         // put it to the free list

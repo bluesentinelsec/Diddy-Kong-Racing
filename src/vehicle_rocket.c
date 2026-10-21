@@ -66,8 +66,8 @@ void update_rocket(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
     if (racer->velocity < 0.3 && -0.3 < racer->velocity) {
         *buttonsPressed = 0;
     }
-    if (racer->raceFinished == TRUE && func_80023568()) {
-        func_80021400(130);
+    if (racer->raceFinished == TRUE && boss_race_number()) {
+        anim_actor_trigger(130);
         racer->raceFinished++;
     }
     tempStartTimer = *startTimer;
@@ -149,7 +149,7 @@ void update_rocket(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
                 boost->unk72 += updateRate;
                 boost->unk70 = 2;
                 boost->unk74 = 1.0f;
-                func_8000B750(obj, -1, 2, 1, 1);
+                racer_set_boost_effect(obj, -1, 2, 1, 1);
             }
         }
     }

@@ -530,7 +530,7 @@ void mode_game(s32 updateRate) {
             case PAUSE_RESET:
                 sound_clear_delayed();
                 reset_delayed_text();
-                if (func_80023568() != 0 && is_in_two_player_adventure()) {
+                if (boss_race_number() != 0 && is_in_two_player_adventure()) {
                     swap_lead_player();
                 }
                 buttonHeldInputs |= (L_TRIG | Z_TRIG);
@@ -538,7 +538,7 @@ void mode_game(s32 updateRate) {
             case PAUSE_QUIT_LOBBY:
                 sound_clear_delayed();
                 reset_delayed_text();
-                if (func_80023568() != 0 && is_in_two_player_adventure()) {
+                if (boss_race_number() != 0 && is_in_two_player_adventure()) {
                     swap_lead_player();
                 }
                 buttonHeldInputs |= L_TRIG;
@@ -574,7 +574,7 @@ void mode_game(s32 updateRate) {
     hud_render_general(&gCurrDisplayList, &gGameCurrMatrix, &gGameCurrVertexList, updateRate);
     divider_clear_coverage(&gCurrDisplayList);
     if (gFutureFunLandLevelTarget) {
-        if (func_800214C4() != 0) {
+        if (anim_prev_frame_state() != 0) {
             gPlayableMapId = ASSET_LEVEL_FUTUREFUNLANDHUB;
             D_801234F8 = TRUE;
             gGameCurrentEntrance = 0;
@@ -646,7 +646,7 @@ void mode_game(s32 updateRate) {
         sp3C = func_8006C300();
         if (level_properties_get()) {
             if (gLevelLoadTimer == 0) {
-                i = func_800214C4();
+                i = anim_prev_frame_state();
                 if ((i != 0) || ((buttonPressedInputs & A_BUTTON) && (sp3C != 0))) {
                     if (sp3C != 0) {
                         music_change_on();

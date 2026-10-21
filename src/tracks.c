@@ -1750,7 +1750,7 @@ void render_level_geometry_and_objects(void) {
     s32 visible;
     Object *obj;
 
-    func_80012C30();
+    deferred_dl_reset();
 
     if (get_settings()->courseId == ASSET_LEVEL_OPENINGSEQUENCE) {
         gAntiAliasing = TRUE;
@@ -1849,7 +1849,7 @@ void render_level_geometry_and_objects(void) {
 
     rendermode_reset(&gTrackDL);
     material_set_no_tex_offset(&gTrackDL, NULL, RENDER_FOG_ACTIVE | RENDER_Z_COMPARE);
-    func_80012C3C(&gTrackDL);
+    deferred_dl_flush(&gTrackDL);
 
     // Particles and FX
     for (i = objCount - 1; i >= sp160; i--) {

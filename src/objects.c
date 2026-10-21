@@ -65,12 +65,8 @@
 FadeTransition gTajChallengeTransition = FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_OUT, FADE_COLOR_BLACK, 30, 15);
 FadeTransition gBalloonCutsceneTransition = FADE_TRANSITION(FADE_CIRCLE, FADE_FLAG_NONE, FADE_COLOR_BLACK, 30, 15);
 
-s32 D_800DC700 = 0;
-s32 D_800DC704 = 0; // Currently unknown, might be a different type.
-s16 D_800DC708 = 0;
-s32 D_800DC70C = 0; // Currently unknown, might be a different type.
-s16 D_800DC710 = 1;
-s32 D_800DC714 = 0; // Currently unknown, might be a different type.
+s32 gReadoutLogIndex = 0;
+s16 gSpawnAngleOffset = 0;
 Object *gGhostObjStaff = NULL;
 s8 gRollingDemo = FALSE;
 s32 gObjectTexAnim = FALSE;
@@ -90,7 +86,7 @@ Object *gShieldEffectObject = NULL;
 s32 gBoostObjOverrideID = 9;
 Object *gMagnetEffectObject = NULL;
 
-f32 D_800DC768[16] = { 0.0f, 1.0f,  0.70711f,  0.70711f,  1.0f,  0.0f, 0.70711f,  -0.70711f,
+f32 gBoostFanDirections[16] = { 0.0f, 1.0f,  0.70711f,  0.70711f,  1.0f,  0.0f, 0.70711f,  -0.70711f,
                        0.0f, -1.0f, -0.70711f, -0.70711f, -1.0f, 0.0f, -0.70711f, 0.70711f };
 
 u16 gRacerObjectTable[] = {
@@ -176,9 +172,8 @@ BossRaceVehicles gBossVehicles[] = {
     { VEHICLE_PLANE, VEHICLE_ROCKET },       // Wizpig 2
 };
 
-s8 D_800DC834[10] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
 
-s8 D_800DC840[8] = { 9, 1, 2, 3, 4, 5, 7, 0 };
+s8 gDefaultCharacterOrder[8] = { 9, 1, 2, 3, 4, 5, 7, 0 };
 
 s8 gNoBoundsCheck = FALSE;
 u32 gMagnetColours[3] = {
@@ -201,20 +196,19 @@ UNUSED const char sObjectScopeErrorString[] = "objGetScope: Unknown scope for ob
 
 /************ .bss ************/
 
-s16 D_8011AC20[128];
-s8 D_8011AD20;
-s8 D_8011AD21;
-s8 D_8011AD22[2];
-s8 D_8011AD24[2];
+s16 gReadoutLog[128];
+s8 gNonDefaultVehicle;
+s8 gAnimFrameParity;
+s8 gAnimFrameState[2];
+s8 gBossRaceIds[2];
 s8 D_8011AD26;
 f32 gObjectModelScaleY;
-s32 D_8011AD2C;
 f32 gCurrentLightIntensity;
 Object *gGhostObjPlayer;
 s32 gTimeTrialContPak; // gTimeTrialContPak is ultimately set by func_80074B34, and is almost definitely SIDeviceStatus
-s8 D_8011AD3C;
-s8 D_8011AD3D;
-s8 D_8011AD3E;
+s8 gBossRaceMode;
+s8 gAnimStage;
+s8 gAnimCameraCount;
 Object *gTransformObject; // Set but never read.
 s8 gTransformTimer;
 s8 gOverworldVehicle;
@@ -226,40 +220,36 @@ s16 gRaceEndTimer;
 s8 gRaceEndStage;
 s8 gNumRacersSaved;
 UNUSED s8 unused_D_8011AD52;
-s8 D_8011AD53;
-s32 D_8011AD54;
+s8 gCutsceneSkipRequested;
 s32 *gSpawnObjectHeap;
-s32 D_8011AD5C;
-s32 D_8011AD60;
 s32 *gAssetsObjectHeadersTable;
 s32 gAssetsObjectHeadersTableLength;
 s32 *gAssetsMiscSection; // Official Name: Ftables
 static Object_Boost sPcBoostTable[NUMBER_OF_CHARACTERS]; // ASSET_MISC_20 unpacked for the host
 s32 *gAssetsMiscTable;   // Official Name: Findex
-UNUSED s32 D_8011AD74;
-Gfx *D_8011AD78[10];
+Gfx *gDeferredDls[10];
 s32 gAssetsMiscTableLength; // Official Name: Fmax
-s16 D_8011ADA4;
+s16 gDeferredDlCount;
 f32 gObjectUpdateRateF;
 s32 gPathUpdateOff;
 s32 gEventCountdown;
 s32 gRaceFinishTriggered;
 s32 gEventStartTimer;
-s32 D_8011ADBC;
+s32 gObjectsElapsedTime;
 s32 gNumFinishedRacers;
 s8 gFirstTimeFinish;
-s8 D_8011ADC5;
+s8 gSetupPointVehicle;
 u32 gBalloonCutsceneTimer;
 s8 (*gDrawbridgeTimers)[8];
 f32 gObjectOffsetY;
-s8 D_8011ADD4;
+s8 gAnimGroup;
 s8 gOverrideDoors;
-Object *D_8011ADD8[10]; // Array of OverRidePos objects
-s8 D_8011AE00;          // Number of OverRidePos objects in D_8011ADD8
-s8 D_8011AE01;          // A boolean? I've seen it either as 0 or 1
+Object *gOverridePosObjects[10]; // Array of OverRidePos objects
+s8 gOverridePosCount;          // Number of OverRidePos objects in gOverridePosObjects
+s8 gZoneJustLoaded;          // A boolean? I've seen it either as 0 or 1
 s8 gIsNonCarRacers;
 s8 gIsSilverCoinRace;
-Object *D_8011AE08[16];
+Object *gIdObjects[16];
 ObjectHeader *(*gLoadedObjectHeaders)[ASSET_OBJECTS_COUNT];
 u8 (*gObjectHeaderReferences)[ASSET_OBJECTS_COUNT];
 TextureHeader *D_8011AE50;
@@ -271,15 +261,14 @@ s32 gParticleCount;
 Object *gObjectMemoryPool;
 Object **gCollisionObjects;
 s32 gCollisionObjectCount;
-Object **D_8011AE74; // Pointer to an array of Animation objects
-s16 D_8011AE78;      // Number of Animation objects in D_8011AE74
+Object **gAnimObjects; // Pointer to an array of Animation objects
+s16 gAnimObjectCount;      // Number of Animation objects in gAnimObjects
 s16 gCutsceneID;
 s16 gFirstActiveObjectId;
-s8 D_8011AE7E;
+s8 gCutsceneChanged;
 s16 gTTGhostTimeToBeat;
 s16 gPrevTimeTrialVehicle; // Current Vehicle being used in track?
 s16 gMapDefaultVehicle;    // Vehicle enum
-s32 D_8011AE88;
 Gfx *gObjectCurrDisplayList;
 Mtx *gObjectCurrMatrix;
 Vertex *gObjectCurrVertexList;
@@ -314,19 +303,15 @@ s8 D_8011AF00;
 Object *(*gAINodes)[AINODE_COUNT];
 s32 gAINodeTail[2];
 s32 gInitAINodes;
-s32 D_8011AF14;
 f32 gElevationHeights[5];
-s32 D_8011AF2C;
 // Effectively unused. Retail declared 4 bytes (a pointer) but
 // set_world_shading fills it as a whole ShadeProperties, overrunning into the
 // neighbouring globals — harmless only under retail's layout. Real storage now.
 ShadeProperties gWorldShading;
-s32 D_8011AF34;
-s32 D_8011AF38[10];
-Object_MidiFade *D_8011AF60;
-TexCoords D_8011AF68[32];
+Object_MidiFade *gCurrentMidiFade;
+TexCoords gTexCoordScratch[32];
 Vec3s gEnvmapPos[2];
-unk800179D0 *D_8011AFF4;
+unk800179D0 *gCollisionPairs;
 s32 gBoostVertCount;
 s32 gNumOfBoostVerts;
 s32 gBoostTriCount;
@@ -334,9 +319,9 @@ s32 gNumOfBoostTris;
 s32 gBoostVertFlip; // indexes gBoostVerts and gBoostTris
 u8 gShieldSineTime[16];
 Object *gBoostEffectObjects[NUMBER_OF_CHARACTERS];
-u8 D_8011B048[16]; // Vehicle IDs for the boost objects, used to determine which racer is using which boost object.
-u8 D_8011B058[16];
-u8 D_8011B068[16];
+u8 gBoostVehicleIds[16]; // Vehicle IDs for the boost objects, used to determine which racer is using which boost object.
+u8 gBoostTypes[16];
+u8 gBoostEffectFree[16];
 RacerFXData gRacerFXData[NUMBER_OF_CHARACTERS];
 
 extern s16 gGhostMapID;
@@ -385,7 +370,7 @@ void racerfx_alloc(s32 numberOfVertices, s32 numberOfTriangles) {
             // This is for shields, not boosts.
             gShieldSineTime[i] = rand_range(0, 255);
         }
-        D_8011B068[i] = TRUE;
+        gBoostEffectFree[i] = TRUE;
     }
     gBoostObjOverrideID = 9;
     objEntry.common.objectID = ASSET_OBJECT_ID_SHIELD;
@@ -449,7 +434,8 @@ void racerfx_free(void) {
     gParticlePtrList_flush();
 }
 
-void func_8000B38C(Vertex *vertices, Triangle *triangles, ObjectTransform *trans, f32 arg3, f32 arg4, s16 arg5,
+/** Builds the fan of vertices and triangles for one boost flame, facing the racer's rotation. */
+void boost_build_fan_mesh(Vertex *vertices, Triangle *triangles, ObjectTransform *trans, f32 arg3, f32 arg4, s16 arg5,
                    TextureHeader *tex) {
     s32 sp80[8];
     s32 i;
@@ -473,7 +459,7 @@ void func_8000B38C(Vertex *vertices, Triangle *triangles, ObjectTransform *trans
     *v++ = -1;
     *v++ = -1;
 
-    ptr = D_800DC768;
+    ptr = gBoostFanDirections;
     for (i = 0; i < 8; i++) {
         sp64.x = *ptr++ * arg3;
         sp64.y = *ptr++ * arg3;
@@ -506,7 +492,8 @@ void func_8000B38C(Vertex *vertices, Triangle *triangles, ObjectTransform *trans
     }
 }
 
-void func_8000B750(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev, s32 boostType, s32 arg4) {
+/** Starts or restyles a racer's boost effect object for its vehicle and boost type. */
+void racer_set_boost_effect(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev, s32 boostType, s32 arg4) {
     Vec3f sp74;
     f32 temp_f0;
     f32 var_f2;
@@ -546,8 +533,8 @@ void func_8000B750(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev, s32 boos
                     break;
             }
             if (boostData != NULL) {
-                D_8011B048[racerIndex] = vehicleIDPrev;
-                D_8011B058[racerIndex] = boostType;
+                gBoostVehicleIds[racerIndex] = vehicleIDPrev;
+                gBoostTypes[racerIndex] = boostType;
                 if (objBoostRacer->unk70 == 2) {
                     temp_f0 = coss_f(objBoostRacer->unk72 << 12);
                     var_f2 = (boostData->unk14 + (temp_f0 * boostData->unk18)) * objBoostRacer->unk74;
@@ -567,7 +554,7 @@ void func_8000B750(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev, s32 boos
                     objTrans.rotation.y_rotation = -0x8000;
                     objTrans.rotation.x_rotation = 0;
                     objTrans.rotation.z_rotation = 0;
-                    func_8000B38C(&gBoostVerts[gBoostVertFlip][gNumOfBoostVerts],
+                    boost_build_fan_mesh(&gBoostVerts[gBoostVertFlip][gNumOfBoostVerts],
                                   &gBoostTris[gBoostVertFlip][gNumOfBoostTris], &objTrans, var_f2, temp_f0,
                                   objBoostRacer->unk72 << 12, objBoostType->tex);
                     gBoostEffectObjects[racerIndex]->properties.boost.indexes =
@@ -588,7 +575,7 @@ void func_8000B750(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev, s32 boos
                             racerObj->trans.y_position + sp74.f[1], racerObj->trans.z_position + sp74.f[2]);
             }
             if (arg4 != FALSE) {
-                D_8011B068[racerIndex] = FALSE;
+                gBoostEffectFree[racerIndex] = FALSE;
             }
         }
     }
@@ -612,10 +599,10 @@ void racerfx_update(s32 updateRate) {
     asset20 = (Object_Boost *) get_misc_asset(ASSET_MISC_20);
     gBoostObjOverrideID = 9;
     for (i = 0; i < NUMBER_OF_CHARACTERS; i++) {
-        if (D_8011B068[i] && gBoostEffectObjects[i] != NULL) {
+        if (gBoostEffectFree[i] && gBoostEffectObjects[i] != NULL) {
             gBoostEffectObjects[i]->properties.common.unk0 = 0;
         }
-        D_8011B068[i] = TRUE;
+        gBoostEffectFree[i] = TRUE;
     }
     for (i = 0; i < gNumRacers; i++) {
         updateRateF = (f32) updateRate;
@@ -676,7 +663,7 @@ void racerfx_update(s32 updateRate) {
             }
         }
         if ((boostObj->unk70 > 0) || (boostObj->unk74 > 0.0f)) {
-            func_8000B750((*gRacers)[i], racer->racerIndex, racer->vehicleIDPrev, racer->boostType, 0);
+            racer_set_boost_effect((*gRacers)[i], racer->racerIndex, racer->vehicleIDPrev, racer->boostType, 0);
         }
         temp = racer->racerIndex;
         gRacerFXData[temp].unk1 += updateRate;
@@ -725,7 +712,7 @@ void allocate_object_pools(void) {
     gObjectMemoryPool = (Object *) mempool_new_sub(OBJECT_POOL_SIZE, OBJECT_SLOT_COUNT);
     gParticlePtrList = mempool_alloc_safe(sizeof(uintptr_t) * 200, COLOUR_TAG_BLUE);
     gCollisionObjects = mempool_alloc_safe(sizeof(uintptr_t) * OBJECT_COLLISION_COUNT, COLOUR_TAG_BLUE);
-    D_8011AE74 = mempool_alloc_safe(sizeof(uintptr_t) * 128, COLOUR_TAG_BLUE);
+    gAnimObjects = mempool_alloc_safe(sizeof(uintptr_t) * 128, COLOUR_TAG_BLUE);
     gTrackCheckpoints = mempool_alloc_safe(sizeof(CheckpointNode) * MAX_CHECKPOINTS, COLOUR_TAG_BLUE);
     gCameraObjList = mempool_alloc_safe(sizeof(uintptr_t *) * CAMCONTROL_COUNT, COLOUR_TAG_BLUE);
     gRacers = mempool_alloc_safe(sizeof(uintptr_t) * 10, COLOUR_TAG_BLUE);
@@ -733,7 +720,7 @@ void allocate_object_pools(void) {
     gRacersByPosition = mempool_alloc_safe(sizeof(uintptr_t) * 10, COLOUR_TAG_BLUE);
     gAINodes = mempool_alloc_safe(sizeof(uintptr_t) * AINODE_COUNT, COLOUR_TAG_BLUE);
     gDrawbridgeTimers = mempool_alloc_safe(8, COLOUR_TAG_BLUE);
-    D_8011AFF4 = mempool_alloc_safe(sizeof(unk800179D0) * 16, COLOUR_TAG_BLUE);
+    gCollisionPairs = mempool_alloc_safe(sizeof(unk800179D0) * 16, COLOUR_TAG_BLUE);
     gAssetsLvlObjTranslationTable = (s16 *) asset_table_load(ASSET_LEVEL_OBJECT_TRANSLATION_TABLE);
     {
         // Big-endian asset offset tables (helpers in linux/reimpl.c).
@@ -908,17 +895,15 @@ void clear_object_pointers(void) {
     s32 i;
 
     D_8011AD26 = TRUE;
-    D_8011AD5C = 0;
-    D_8011AD60 = 0;
     gFreeListCount = 0;
     gCollisionObjectCount = 0;
     gNumberOfMainCheckpoints = 0;
     gNumberOfTotalCheckpoints = 0;
     gNumRacers = 0;
-    D_8011AE78 = 0;
-    D_8011AD21 = 0;
-    D_8011AD22[0] = 0;
-    D_8011AD22[1] = 0;
+    gAnimObjectCount = 0;
+    gAnimFrameParity = 0;
+    gAnimFrameState[0] = 0;
+    gAnimFrameState[1] = 0;
 
     for (i = 0; i < AINODE_COUNT; i++) {
         (*gAINodes)[i] = NULL;
@@ -927,7 +912,7 @@ void clear_object_pointers(void) {
         (*gDrawbridgeTimers)[i] = 0;
     }
     for (i = 0; i < 16; i++) {
-        D_8011AFF4[i].unk0 = 0;
+        gCollisionPairs[i].unk0 = 0;
     }
 
     gAINodeTail[0] = 0xFF;
@@ -935,18 +920,17 @@ void clear_object_pointers(void) {
     gObjectCount = 0;
     gObjectListStart = 0;
     gParticleCount = 0;
-    D_8011AE88 = 0;
-    D_8011ADD4 = 0;
+    gAnimGroup = 0;
     gCutsceneID = 0;
-    D_8011AE7E = TRUE;
+    gCutsceneChanged = TRUE;
     gFirstActiveObjectId = 0;
     gTransformTimer = 0;
     gIsTajChallenge = FALSE;
     gTajRaceInit = 0;
-    D_8011AF60 = NULL;
-    D_8011AE00 = 0;
-    D_8011AE01 = TRUE;
-    D_8011AD53 = 0;
+    gCurrentMidiFade = NULL;
+    gOverridePosCount = 0;
+    gZoneJustLoaded = TRUE;
+    gCutsceneSkipRequested = 0;
     gOverrideDoors = FALSE;
 }
 
@@ -1211,7 +1195,7 @@ void track_spawn_objects(s32 mapID, s32 index) {
         gIsSilverCoinRace = FALSE;
     }
 
-    D_8011AD3E = 0;
+    gAnimCameraCount = 0;
     mem = mempool_alloc_safe(OBJECT_MAP_SIZE, COLOUR_TAG_BLUE);
     gObjectMap[index] = mem;
     gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + 4);
@@ -1272,43 +1256,43 @@ void track_spawn_objects(s32 mapID, s32 index) {
             gParticlePtrList_flush();
             checkpoint_update_all();
             spectate_update();
-            func_8001E93C();
+            anim_objects_update();
         }
         gPathUpdateOff = TRUE;
     }
 }
 
-// Reset all values of D_8011AE08 to NULL
-void func_8000CBC0(void) {
+/** The small table of objects addressed by id (balloons, doors): clear it. */
+void object_ids_clear(void) {
     s32 i; // Required to be one line to match
     // clang-format off
-    for (i = 0; i < ARRAY_COUNT(D_8011AE08); i++) { D_8011AE08[i] = NULL; }
+    for (i = 0; i < ARRAY_COUNT(gIdObjects); i++) { gIdObjects[i] = NULL; }
     // clang-format on
 }
 
-// Set the object value for the given index if it's not already set
-void func_8000CBF0(Object *obj, s32 index) {
-    if (D_8011AE08[index] == NULL) {
-        D_8011AE08[index] = obj;
+/** Registers an object under a given id if that id is free. */
+void object_id_assign(Object *obj, s32 index) {
+    if (gIdObjects[index] == NULL) {
+        gIdObjects[index] = obj;
     } else {
-        if (D_8011AE08[index]) {}
+        if (gIdObjects[index]) {}
     }
 }
 
-// Set the next available value in D_8011AE08, and return it's index value. -1 if it's not set.
-s32 func_8000CC20(Object *obj) {
+/** Registers an object under the first free id and returns it, or -1 if the table is full. */
+s32 object_id_alloc(Object *obj) {
     s32 i;
     s32 NextFreeIndex;
 
     NextFreeIndex = -1;
-    for (i = 0; i < ARRAY_COUNT(D_8011AE08); i++) {
-        if (D_8011AE08[i] == NULL) {
+    for (i = 0; i < ARRAY_COUNT(gIdObjects); i++) {
+        if (gIdObjects[i] == NULL) {
             NextFreeIndex = i;
-            i = ARRAY_COUNT(D_8011AE08); // Why not just break?
+            i = ARRAY_COUNT(gIdObjects); // Why not just break?
         }
     }
     if (NextFreeIndex != -1) {
-        D_8011AE08[NextFreeIndex] = obj;
+        gIdObjects[NextFreeIndex] = obj;
     }
     return NextFreeIndex;
 }
@@ -1347,7 +1331,7 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     LevelHeader *levelHeader;
     Camera *cutsceneCameraSegment;
 
-    D_8011AD20 = FALSE;
+    gNonDefaultVehicle = FALSE;
     gEventCountdown = 0;
     gFirstTimeFinish = FALSE;
     gNumRacers = 0;
@@ -1371,7 +1355,7 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     gameMode = get_game_mode();
     settings = get_settings();
     miscAsset16 = (s8 *) get_misc_asset(ASSET_MISC_3);
-    gPrevTimeTrialVehicle = D_8011ADC5;
+    gPrevTimeTrialVehicle = gSetupPointVehicle;
     if (!(settings->courseFlagsPtr[settings->courseId] &
           RACE_VISITED)) { // Check if the player has not visited the course yet.
         settings->courseFlagsPtr[settings->courseId] |= RACE_VISITED;
@@ -1405,8 +1389,8 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
             }
         }
     }
-    D_8011ADC5 = vehicle; // UB if all setup points don't have an assigned vehicle ID.
-    gPrevTimeTrialVehicle = D_8011ADC5;
+    gSetupPointVehicle = vehicle; // UB if all setup points don't have an assigned vehicle ID.
+    gPrevTimeTrialVehicle = gSetupPointVehicle;
     numPlayers = playerCount + 1;
     gNumRacers = 8;
     gTwoActivePlayersInAdventure = FALSE;
@@ -1425,9 +1409,9 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     }
     if (raceType == RACETYPE_HUBWORLD || numPlayers >= 3) {
         gNumRacers = numPlayers;
-        if (level_properties_get() == 0 && D_800DC708 != 0) {
-            spawnAngle[0] += D_800DC708;
-            D_800DC708 = 0;
+        if (level_properties_get() == 0 && gSpawnAngleOffset != 0) {
+            spawnAngle[0] += gSpawnAngleOffset;
+            gSpawnAngleOffset = 0;
         }
     } else if (numPlayers == 2) {
         gNumRacers = get_multiplayer_racer_count();
@@ -1436,17 +1420,17 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     if (raceType & RACETYPE_CHALLENGE) {
         gNumRacers = 4;
     }
-    D_8011AD3C = 0;
+    gBossRaceMode = 0;
     if (raceType == RACETYPE_BOSS) {
         gNumRacers = 2;
         numPlayers = 1;
-        D_8011AD3C = 1;
+        gBossRaceMode = 1;
     }
     gRollingDemo = FALSE;
     if (gameMode == GAMEMODE_MENU && raceType == RACETYPE_DEFAULT) {
         gNumRacers = 6;
         gRollingDemo = TRUE;
-        D_8011AD3C = 2;
+        gBossRaceMode = 2;
     }
 
     for (i = 0; i < gNumRacers; i++) {
@@ -1495,10 +1479,10 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     } else {
         gIsNonCarRacers = TRUE;
     }
-    D_8011AD24[1] = levelHeader->bossRaceID;
+    gBossRaceIds[1] = levelHeader->bossRaceID;
     sp127 = -1;
     for (i = 0; i < gNumRacers; i++) {
-        if (raceType != RACETYPE_HUBWORLD && !(raceType & RACETYPE_CHALLENGE) && D_8011AD3C == 0) {
+        if (raceType != RACETYPE_HUBWORLD && !(raceType & RACETYPE_CHALLENGE) && gBossRaceMode == 0) {
             j = 0;
             var_s4 = j;
             do {
@@ -1513,13 +1497,13 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
         }
         racerEntry->playerIndex = var_s4 < numPlayers ? var_s4 : 4;
         if (raceType != RACETYPE_HUBWORLD || racerEntry->playerIndex != 4) {
-            if (D_8011AD3C == 1) {
+            if (gBossRaceMode == 1) {
                 if (i == 0) {
-                    vehicle = gBossVehicles[D_8011AD24[1]].playerVehicle;
+                    vehicle = gBossVehicles[gBossRaceIds[1]].playerVehicle;
                 } else {
-                    vehicle = gBossVehicles[D_8011AD24[1]].bossVehicle;
+                    vehicle = gBossVehicles[gBossRaceIds[1]].bossVehicle;
                 }
-            } else if (D_8011AD3C == 2) {
+            } else if (gBossRaceMode == 2) {
                 vehicle = levelHeader->vehicle;
             } else {
                 if (racerEntry->playerIndex == 4 || race_is_adventure_2P()) {
@@ -1530,8 +1514,8 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
             }
 
             // Are these assignments correct? Seems weird.
-            if (D_8011AD3C == 2) {
-                objectID = gRacerObjectTable[D_800DC840[i] + (vehicle * NUM_CHARACTERS)];
+            if (gBossRaceMode == 2) {
+                objectID = gRacerObjectTable[gDefaultCharacterOrder[i] + (vehicle * NUM_CHARACTERS)];
             } else if (vehicle < 5) {
                 objectID = gRacerObjectTable[(settings->racers[var_s4].character) + (vehicle * NUM_CHARACTERS)];
             } else {
@@ -1578,7 +1562,7 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
             curRacer->vehicleID = vehicle;
             curRacer->vehicleIDPrev = vehicle;
             if (sp127 != -1 && sp127 != (s32) vehicle) {
-                D_8011AD20 = TRUE;
+                gNonDefaultVehicle = TRUE;
             }
             sp127 = vehicle;
             if (curRacer->vehicleID == VEHICLE_PLANE || curRacer->vehicleID == VEHICLE_SMOKEY ||
@@ -1591,8 +1575,8 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
             }
             curRacer->racerIndex = var_s4;
             curRacer->characterId = settings->racers[var_s4].character;
-            if (D_8011AD3C == 2) {
-                curRacer->characterId = D_800DC840[i];
+            if (gBossRaceMode == 2) {
+                curRacer->characterId = gDefaultCharacterOrder[i];
             } else {
                 curRacer->characterId = settings->racers[var_s4].character;
             }
@@ -1606,7 +1590,7 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
                     curRacer->bananas = 10;
                 }
             }
-            if ((gameMode != GAMEMODE_MENU || D_8011AD3C == 2) && vehicle < VEHICLE_BOSSES) {
+            if ((gameMode != GAMEMODE_MENU || gBossRaceMode == 2) && vehicle < VEHICLE_BOSSES) {
                 curRacer->vehicleSound = racer_sound_init(curRacer->characterId, curRacer->vehicleID);
             } else {
                 curRacer->vehicleSound = NULL;
@@ -1631,10 +1615,10 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     }
     var_s4 = 0;
     if (raceType != RACETYPE_BOSS) {
-        D_8011AD3C = 0;
+        gBossRaceMode = 0;
     }
-    if (D_8011AD3C != 0) {
-        D_8011AD20 = FALSE;
+    if (gBossRaceMode != 0) {
+        gNonDefaultVehicle = FALSE;
     }
     // Remove unwanted objects depending on race type.
     if (get_game_mode() == GAMEMODE_INGAME) {
@@ -1733,7 +1717,7 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
         curRacer->stretch_height_cap = 1.0f;
         curRacer->stretch_height = 1.0f;
     }
-    if (raceType == RACETYPE_DEFAULT || raceType & RACETYPE_CHALLENGE || gIsTimeTrial || D_8011AD3C != 0) {
+    if (raceType == RACETYPE_DEFAULT || raceType & RACETYPE_CHALLENGE || gIsTimeTrial || gBossRaceMode != 0) {
         gEventCountdown = 80;
     } else {
         gEventCountdown = 0;
@@ -1782,7 +1766,7 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
             }
         }
     }
-    D_8011AD24[0] = TRUE;
+    gBossRaceIds[0] = TRUE;
     if (cutsceneID >= 0) {
         cutsceneCameraSegment->zoom = cutsceneID;
     }
@@ -1825,11 +1809,12 @@ s32 get_contpak_error(void) {
 }
 
 void instShowBearBar(void) {
-    D_800DC708 = 0x8000;
+    gSpawnAngleOffset = 0x8000;
 }
 
-s8 func_8000E138(void) {
-    return D_8011AD20;
+/** Whether the player chose a vehicle other than the level's default (the physics run faster then). */
+s8 is_nondefault_vehicle(void) {
+    return gNonDefaultVehicle;
 }
 
 /**
@@ -1986,48 +1971,10 @@ u8 is_in_time_trial(void) {
     return gIsTimeTrial;
 }
 
-UNUSED void func_8000E4E8(s32 index) {
-    s32 *temp_v0;
-    s32 i;
-    u8 *temp_a1;
 
-    temp_v0 = gObjectMap[index];
-    temp_v0[0] = gObjectMapSize[index];
-    temp_v0[3] = 0;
-    temp_v0[2] = 0;
-    temp_v0[1] = 0;
-    temp_a1 = &gObjectMapSpawnList[index][gObjectMapSize[index]];
 
-    // The backslash here is needed to match. And no, a for loop doesn't match.
-    // clang-format off
-    i = 0; \
-    while (i < 16) {
-        temp_a1[i] = 0;
-        i++;
-    }
-    // clang-format on
-}
-
-UNUSED s32 func_8000E558(Object *arg0) {
-    ptrint_t temp_v0;
-    ptrint_t new_var, new_var2;
-    if (arg0->level_entry == NULL) {
-        return TRUE;
-    }
-    temp_v0 = (ptrint_t) arg0->level_entry;
-    new_var2 = (ptrint_t) gObjectMapSpawnList[0];
-    if ((temp_v0 >= new_var2) && (((gObjectMapSize[0] * 8) + new_var2) >= temp_v0)) {
-        return FALSE;
-    }
-    new_var = (ptrint_t) gObjectMapSpawnList[1];
-    // Why even bother with this check?
-    if (temp_v0 >= new_var && temp_v0 <= ((gObjectMapSize[1] * 8) + new_var)) {
-        return TRUE;
-    }
-    return TRUE;
-}
-
-void func_8000E5EC(LevelObjectEntryCommon *arg0) {
+/** Removes an entry from the level's object spawn list, shifting what follows and fixing object pointers into it. */
+void level_entry_remove(LevelObjectEntryCommon *arg0) {
     u8 *src;
     u8 *dst;
     ptrint_t end;
@@ -2075,7 +2022,8 @@ void func_8000E5EC(LevelObjectEntryCommon *arg0) {
     }
 }
 
-void func_8000E79C(u8 *arg0, u8 *arg1) {
+/** Replaces one spawn-list entry with another of a possibly different size. */
+void level_entry_replace(u8 *arg0, u8 *arg1) {
     s32 arg0Value;
     s32 arg0Value2;
     s32 arg1Value;
@@ -2124,24 +2072,6 @@ void func_8000E79C(u8 *arg0, u8 *arg1) {
     gObjectMapSize[i] += arg1Value - arg0Value;
 }
 
-UNUSED u8 *func_8000E898(u8 *arg0, s32 arg1) {
-    s32 temp_t6;
-    s32 i;
-    u8 *temp_v1;
-    u8 *new_var;
-    u8 *new_var2;
-
-    temp_t6 = arg0[1] & 0x3F;
-    new_var = arg0;
-    new_var = &gObjectMapSpawnList[arg1][gObjectMapSize[arg1]];
-    new_var2 = arg0;
-    temp_v1 = new_var;
-    gObjectMapSize[arg1] += temp_t6;
-    for (i = 0; i < temp_t6; i++) {
-        temp_v1[i] = new_var2[i];
-    }
-    return temp_v1;
-}
 
 /**
  * Returns the object at the current offset by ID.
@@ -2180,7 +2110,7 @@ UNUSED s32 particle_count(void) {
 
 void add_particle_to_entity_list(Object *obj) {
     obj->trans.flags |= OBJ_FLAGS_PARTICLE;
-    func_800245B4(obj->headerType | (OBJ_FLAGS_PARTICLE | OBJ_FLAGS_INVISIBLE));
+    readout_log_push(obj->headerType | (OBJ_FLAGS_PARTICLE | OBJ_FLAGS_INVISIBLE));
     gObjPtrList[gObjectCount++] = obj;
     if (1) {} // Fakematch
     gParticleCount++;
@@ -2242,7 +2172,7 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
     curObj->headerType = headerType;
     curObj->level_entry = (LevelObjectEntry *) entry;
     curObj->objectID = objType;
-    func_800245B4(objType);
+    readout_log_push(objType);
     curObj->trans.scale = curObj->header->scale;
     curObj->unk34 = curObj->header->unk50 * curObj->trans.scale;
     curObj->opacity = 255;
@@ -2703,7 +2633,7 @@ s32 init_object_interaction_data(Object *obj, ObjectInteraction *interactObj) {
  */
 s32 obj_init_collision(Object *obj, ObjectCollision *colData) {
     obj->collisionData = colData;
-    func_80016BC4(obj);
+    object_init_collision(obj);
     return sizeof(ObjectCollision);
 }
 
@@ -2789,7 +2719,7 @@ Object *obj_spawn_attachment(s32 objID) {
  * Official Name: objFreeObject
  */
 void free_object(Object *object) {
-    func_800245B4(object->objectID | OBJ_FLAGS_PARTICLE);
+    readout_log_push(object->objectID | OBJ_FLAGS_PARTICLE);
     gParticlePtrList[gFreeListCount] = object;
     gFreeListCount++;
 }
@@ -2815,7 +2745,6 @@ void gParticlePtrList_flush(void) {
     s32 j, i, search_indx;
     Object *searchObj;
 
-    D_8011AE88 = 0;
     for (i = 0; i < gFreeListCount; i++) {
         search_indx = -1;
         searchObj = gParticlePtrList[i];
@@ -2956,11 +2885,11 @@ void obj_destroy(Object *obj, s32 arg1) {
             i = BHV_RACER;
             break;
         case BHV_OVERRIDE_POS:
-            for (j = 0; j < D_8011AE00 && obj != D_8011ADD8[j]; j++) {}
-            if (j < D_8011AE00) {
-                D_8011AE00--;
-                for (; j < D_8011AE00; j++) {
-                    D_8011ADD8[j] = D_8011ADD8[j + 1];
+            for (j = 0; j < gOverridePosCount && obj != gOverridePosObjects[j]; j++) {}
+            if (j < gOverridePosCount) {
+                gOverridePosCount--;
+                for (; j < gOverridePosCount; j++) {
+                    gOverridePosObjects[j] = gOverridePosObjects[j + 1];
                 }
             }
 
@@ -3102,20 +3031,20 @@ void obj_update(s32 updateRate) {
     s32 sp54;
     Object *obj;
 
-    func_800245B4(-1);
+    readout_log_push(-1);
     gEventStartTimer = gEventCountdown;
     if (gEventCountdown > 0 && race_starting() != FALSE) {
         gEventCountdown -= updateRate;
-        D_8011ADBC = 0;
+        gObjectsElapsedTime = 0;
     } else {
-        D_8011ADBC += updateRate;
+        gObjectsElapsedTime += updateRate;
     }
     if (gEventCountdown <= 0) {
         gEventCountdown = 0;
     }
-    D_8011AD3D = 0;
-    D_8011AD21 = 1 - D_8011AD21;
-    D_8011AD22[D_8011AD21] = 0;
+    gAnimStage = 0;
+    gAnimFrameParity = 1 - gAnimFrameParity;
+    gAnimFrameState[gAnimFrameParity] = 0;
     for (j = 0; j < gNumRacers; j++) {
         racer = (*gRacers)[j]->racer;
         racer->prev_x_position = (*gRacers)[j]->trans.x_position;
@@ -3124,12 +3053,12 @@ void obj_update(s32 updateRate) {
     }
     obj_tick_anims();
     process_object_interactions();
-    func_8001E89C();
+    override_pos_update();
     // Update collidable objects first.
     for (i = 0; i < gCollisionObjectCount; i++) {
         run_object_loop_func(gCollisionObjects[i], updateRate);
     }
-    func_8001E6EC(TRUE);
+    override_pos_apply(TRUE);
     for (i = 0; i < gCollisionObjectCount; i++) {
         obj_collision_transform(gCollisionObjects[i]);
     }
@@ -3155,7 +3084,7 @@ void obj_update(s32 updateRate) {
                         }
                     }
                     if (obj->header->unk72 != 0xFF) {
-                        func_80014090(obj, updateRate);
+                        object_scroll_texture(obj, updateRate);
                     }
                 }
             }
@@ -3202,7 +3131,7 @@ void obj_update(s32 updateRate) {
             }
         }
     }
-    func_8001E6EC(FALSE);
+    override_pos_apply(FALSE);
     if (gTajRaceInit) {
         mode_init_taj_race();
     }
@@ -3210,7 +3139,7 @@ void obj_update(s32 updateRate) {
         gParticlePtrList_flush();
         checkpoint_update_all();
         spectate_update();
-        func_8001E93C();
+        anim_objects_update();
     }
     if (gNumRacers != 0) {
         if (gRaceEndTimer == 0) {
@@ -3222,11 +3151,11 @@ void obj_update(s32 updateRate) {
     audspat_update_all(gRacersByPort, gNumRacers, updateRate);
     gPathUpdateOff = TRUE;
     gObjectUpdateRateF = (f32) updateRate;
-    D_8011AD24[0] = FALSE;
-    D_8011AD53 = 0;
+    gBossRaceIds[0] = FALSE;
+    gCutsceneSkipRequested = 0;
     transform_player_vehicle();
     dialogue_try_close();
-    func_800179D0();
+    collision_pairs_tick();
 
     // @fake
     do {
@@ -3239,7 +3168,7 @@ void obj_update(s32 updateRate) {
             }
 
             if (sp54 & A_BUTTON) {
-                func_8001E45C(CUTSCENE_ID_UNK_64);
+                cutscene_set(CUTSCENE_ID_UNK_64);
             } else if ((sp54 & B_BUTTON) && (get_trophy_race_world_id() == 0) && (is_in_tracks_mode() == 0)) {
                 level_transition_begin(1); // FADE_BARNDOOR_HORIZONTAL?
             }
@@ -3359,10 +3288,6 @@ s32 get_race_start_timer(void) {
     return gEventStartTimer;
 }
 
-// Unused function, purpose currently unknown.
-UNUSED s32 func_800113BC(void) {
-    return D_8011ADBC;
-}
 
 /**
  * When the object reaches a certain anim frame, play a sound and shake the camera to emphasise the effect of their
@@ -3562,7 +3487,7 @@ void render_3d_misc(Object *obj) {
             break;
         case BHV_BOOST:
             if (obj->properties.common.unk0 && (obj->boost->unk70 > 0 || obj->boost->unk74 > 0.0f)) {
-                func_800135B8(obj);
+                render_boost_effect(obj);
             }
             break;
     }
@@ -3851,7 +3776,7 @@ void render_3d_model(Object *obj) {
                                 isCargo = FALSE;
                             }
                             if (isCargo) {
-                                func_80012C98(&gObjectCurrDisplayList);
+                                deferred_dl_begin(&gObjectCurrDisplayList);
                                 gDPSetEnvColor(gObjectCurrDisplayList++, 255, 255, 255, 0);
                                 gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, intensity, intensity, intensity,
                                                 opacity);
@@ -3861,7 +3786,7 @@ void render_3d_model(Object *obj) {
                                                         &gObjectCurrVertexList, loopObj, something, flags);
                             if (isCargo) {
                                 gSPSelectMatrixDKR(gObjectCurrDisplayList++, G_MTX_DKR_INDEX_0);
-                                func_80012CE8(&gObjectCurrDisplayList);
+                                deferred_dl_end(&gObjectCurrDisplayList);
                             }
                         }
                         loopObj->trans.x_position -= vtxX;
@@ -3913,29 +3838,30 @@ void render_3d_model(Object *obj) {
     }
 }
 
-void func_80012C30(void) {
-    D_8011ADA4 = 0;
+/** Deferred display lists: sections of an object's list cut out to be drawn after the track. */
+void deferred_dl_reset(void) {
+    gDeferredDlCount = 0;
 }
 
-void func_80012C3C(Gfx **dList) {
+void deferred_dl_flush(Gfx **dList) {
     s32 i;
-    for (i = 0; i < D_8011ADA4; i++) {
-        gSPDisplayList((*dList)++, D_8011AD78[i]);
+    for (i = 0; i < gDeferredDlCount; i++) {
+        gSPDisplayList((*dList)++, gDeferredDls[i]);
     }
 }
 
-void func_80012C98(Gfx **dList) {
-    if (D_8011ADA4 < 9) {
+void deferred_dl_begin(Gfx **dList) {
+    if (gDeferredDlCount < 9) {
         gSPNoOp((*dList)++); // Placeholder instruction?
-        D_8011AD78[D_8011ADA4] = *dList;
+        gDeferredDls[gDeferredDlCount] = *dList;
     }
 }
 
-void func_80012CE8(Gfx **dList) {
-    if (D_8011ADA4 < 9) {
+void deferred_dl_end(Gfx **dList) {
+    if (gDeferredDlCount < 9) {
         gSPEndDisplayList((*dList)++);
-        gSPBranchList(D_8011AD78[D_8011ADA4] - 1, *dList);
-        D_8011ADA4++;
+        gSPBranchList(gDeferredDls[gDeferredDlCount] - 1, *dList);
+        gDeferredDlCount++;
     }
 }
 
@@ -4190,8 +4116,8 @@ void unset_temp_model_transforms(Object *obj) {
     }
 }
 
-// Renders the boost graphics.
-void func_800135B8(Object *boostObj) {
+/** Draws a racer's boost flames from the boost asset for its vehicle. */
+void render_boost_effect(Object *boostObj) {
     Vertex *vtx;
     Triangle *tri;
     ObjectTransform_800135B8 objTransform;
@@ -4203,7 +4129,7 @@ void func_800135B8(Object *boostObj) {
 
     racerIndex = (boostObj->properties.boost.racerIndex) & 0xF;
     boost = boostObj->boost;
-    switch (D_8011B048[racerIndex]) {
+    switch (gBoostVehicleIds[racerIndex]) {
         case VEHICLE_CAR:
             boostData = &boost->carBoostData;
             break;
@@ -4215,7 +4141,7 @@ void func_800135B8(Object *boostObj) {
             break;
     }
     asset = (Object_Boost *) get_misc_asset(ASSET_MISC_20);
-    asset = &asset[D_8011B058[racerIndex]];
+    asset = &asset[gBoostTypes[racerIndex]];
     object_do_player_tumble(boostObj->properties.boost.obj);
     mtx_cam_push(&gObjectCurrDisplayList, &gObjectCurrMatrix, &boostObj->properties.boost.obj->trans, 1.0f, 0.0f);
     object_undo_player_tumble(boostObj->properties.boost.obj);
@@ -4226,7 +4152,7 @@ void func_800135B8(Object *boostObj) {
     if (boost->unk70 < 2) {
         objTransform.trans.scale *= boost->unk74;
     }
-    if (D_8011B058[racerIndex] != 0) {
+    if (gBoostTypes[racerIndex] != 0) {
         objTransform.trans.scale *= 1.15f;
     }
     objTransform.trans.rotation.z_rotation = 0;
@@ -4421,7 +4347,8 @@ void render_racer_magnet(Gfx **dList, Mtx **mtx, Vertex **vtxList, Object *obj) 
     }
 }
 
-void func_80014090(Object *obj, s32 arg1) {
+/** Offsets the texture coordinates of an object's model by the header's scroll rates times arg1. */
+void object_scroll_texture(Object *obj, s32 arg1) {
     ObjectHeader *objHeader;
     s16 width;
     s16 height;
@@ -4654,139 +4581,7 @@ s32 get_first_active_object(s32 *retObjCount) {
     return i;
 }
 
-UNUSED void func_800149C0(unk800149C0 *arg0, UNUSED s32 arg1, s32 arg2, s32 arg3, s32 *arg4, s32 *arg5, s32 arg6) {
-    UNUSED s32 pad;
-    s32 endVal;
-    s32 startVal;
-    f32 temp_f0;
-    s32 i;
 
-    temp_f0 = arg0->unk6;
-    endVal = func_80014B50(arg2, arg3, temp_f0, arg0->unk4);
-    startVal = func_80014B50(arg2, endVal - 1, temp_f0, arg0->unk4 + 8);
-
-    for (i = startVal; i < endVal; i++) {
-        gObjPtrList[i]->unk38 += arg6;
-    }
-
-    *arg4 = startVal;
-    *arg5 = endVal - 1;
-}
-
-// Only used in the unused function func_800149C0
-s32 func_80014B50(s32 arg0, s32 arg1, f32 arg2, u32 arg3) {
-    Object *swapTemp;
-    s32 var_a0;
-    s32 var_a1;
-
-    var_a0 = arg0;
-    var_a1 = arg1;
-    switch (arg3) {
-        case 0:
-            while (arg1 >= arg0) {
-                while ((var_a1 >= arg0) && ((gObjPtrList[arg0]->trans.x_position - gObjPtrList[arg0]->unk34) < arg2)) {
-                    arg0++;
-                }
-                while ((arg1 >= var_a0) && (arg2 <= (gObjPtrList[arg1]->trans.x_position - gObjPtrList[arg1]->unk34))) {
-                    arg1--;
-                }
-                if (arg0 < arg1) {
-                    swapTemp = gObjPtrList[arg0];
-                    gObjPtrList[arg0] = gObjPtrList[arg1];
-                    gObjPtrList[arg1] = swapTemp;
-                    arg0++;
-                    arg1--;
-                }
-            }
-            break;
-        case 1:
-            while (arg1 >= arg0) {
-                while ((var_a1 >= arg0) && ((gObjPtrList[arg0]->trans.y_position - gObjPtrList[arg0]->unk34) < arg2)) {
-                    arg0++;
-                }
-                while ((arg1 >= var_a0) && (arg2 <= (gObjPtrList[arg1]->trans.y_position - gObjPtrList[arg1]->unk34))) {
-                    arg1--;
-                }
-                if (arg0 < arg1) {
-                    swapTemp = gObjPtrList[arg0];
-                    gObjPtrList[arg0] = gObjPtrList[arg1];
-                    gObjPtrList[arg1] = swapTemp;
-                    arg0++;
-                    arg1--;
-                }
-            }
-            break;
-        case 2:
-            while (arg1 >= arg0) {
-                while ((var_a1 >= arg0) && ((gObjPtrList[arg0]->trans.z_position - gObjPtrList[arg0]->unk34) < arg2)) {
-                    arg0++;
-                }
-                while ((arg1 >= var_a0) && (arg2 <= (gObjPtrList[arg1]->trans.z_position - gObjPtrList[arg1]->unk34))) {
-                    arg1--;
-                }
-                if (arg0 < arg1) {
-                    swapTemp = gObjPtrList[arg0];
-                    gObjPtrList[arg0] = gObjPtrList[arg1];
-                    gObjPtrList[arg1] = swapTemp;
-                    arg0++;
-                    arg1--;
-                }
-            }
-            break;
-        case 8:
-            while (arg1 >= arg0) {
-                while ((var_a1 >= arg0) && ((gObjPtrList[arg0]->trans.x_position + gObjPtrList[arg0]->unk34) < arg2)) {
-                    arg0++;
-                }
-                while ((arg1 >= var_a0) && (arg2 <= (gObjPtrList[arg1]->trans.x_position + gObjPtrList[arg1]->unk34))) {
-                    arg1--;
-                }
-                if (arg0 < arg1) {
-                    swapTemp = gObjPtrList[arg0];
-                    gObjPtrList[arg0] = gObjPtrList[arg1];
-                    gObjPtrList[arg1] = swapTemp;
-                    arg0++;
-                    arg1--;
-                }
-            }
-            break;
-        case 9:
-            while (arg1 >= arg0) {
-                while ((var_a1 >= arg0) && ((gObjPtrList[arg0]->trans.y_position + gObjPtrList[arg0]->unk34) < arg2)) {
-                    arg0++;
-                }
-                while ((arg1 >= var_a0) && (arg2 <= (gObjPtrList[arg1]->trans.y_position + gObjPtrList[arg1]->unk34))) {
-                    arg1--;
-                }
-                if (arg0 < arg1) {
-                    swapTemp = gObjPtrList[arg0];
-                    gObjPtrList[arg0] = gObjPtrList[arg1];
-                    gObjPtrList[arg1] = swapTemp;
-                    arg0++;
-                    arg1--;
-                }
-            }
-            break;
-        case 10:
-            while (arg1 >= arg0) {
-                while ((var_a1 >= arg0) && ((gObjPtrList[arg0]->trans.z_position + gObjPtrList[arg0]->unk34) < arg2)) {
-                    arg0++;
-                }
-                while ((arg1 >= var_a0) && (arg2 <= (gObjPtrList[arg1]->trans.z_position + gObjPtrList[arg1]->unk34))) {
-                    arg1--;
-                }
-                if (arg0 < arg1) {
-                    swapTemp = gObjPtrList[arg0];
-                    gObjPtrList[arg0] = gObjPtrList[arg1];
-                    gObjPtrList[arg1] = swapTemp;
-                    arg0++;
-                    arg1--;
-                }
-            }
-            break;
-    }
-    return arg0;
-}
 
 /**
  * Takes every object and sorts the main object list by distance to the camera.
@@ -4884,7 +4679,7 @@ void process_object_interactions(void) {
                     objInteract2 = obj2->interactObj;
                     if (objInteract2->flags & (INTERACT_FLAGS_SOLID | INTERACT_FLAGS_TANGIBLE)) {
                         if (objInteract2->unk11 == 3) {
-                            func_80016748(obj, obj2);
+                            object_collide_with_object(obj, obj2);
                         } else if (objInteract2->unk11 != 2) {
                             xDiff = obj->trans.x_position - obj2->trans.x_position;
                             zDiff = obj->trans.z_position - obj2->trans.z_position;
@@ -4894,7 +4689,7 @@ void process_object_interactions(void) {
                                 radius = 0x40000; // 262144.0f;
                             }
                             if (((xDiff * xDiff) + (zDiff * zDiff)) < radius) {
-                                func_800159C8(obj, obj2);
+                                object_apply_interaction(obj, obj2);
                             }
                         }
                     }
@@ -4907,7 +4702,7 @@ void process_object_interactions(void) {
                     obj2 = objList[j];
                     objInteract2 = obj2->interactObj;
                     if (objInteract2->unk11 == 3) {
-                        func_80016748(obj, obj2);
+                        object_collide_with_object(obj, obj2);
                     }
                 }
             }
@@ -4923,7 +4718,8 @@ void process_object_interactions(void) {
     }
 }
 
-void func_800159C8(Object *arg0, Object *arg1) {
+/** Pushes two interacting objects apart according to their interaction shapes. */
+void object_apply_interaction(Object *arg0, Object *arg1) {
     f32 sp9C;
     f32 sp98;
     f32 f14;
@@ -5125,7 +4921,7 @@ void func_800159C8(Object *arg0, Object *arg1) {
                 }
             }
             if (var_v0 && sp50->playerIndex != -1) {
-                func_80016500(arg0, sp50);
+                racer_update_local_velocity(arg0, sp50);
             }
             return;
         }
@@ -5172,17 +4968,18 @@ void func_800159C8(Object *arg0, Object *arg1) {
                     f0 = 2.0 - sp90;
                     arg0->x_velocity -= sp68 * f0;
                     arg0->z_velocity -= sp60 * f0;
-                    func_80016500(arg0, sp50);
+                    racer_update_local_velocity(arg0, sp50);
                 }
                 arg1->x_velocity += sp68 * sp90;
                 arg1->z_velocity += sp60 * sp90;
-                func_80016500(arg1, sp4C);
+                racer_update_local_velocity(arg1, sp4C);
             }
         }
     }
 }
 
-void func_80016500(Object *obj, Object_Racer *racer) {
+/** Splits the racer's world velocity into forward and lateral components in its own frame. */
+void racer_update_local_velocity(Object *obj, Object_Racer *racer) {
     s32 shakeMagnitude;
     s32 volume;
     s32 angle;
@@ -5237,7 +5034,8 @@ void func_80016500(Object *obj, Object_Racer *racer) {
     }
 }
 
-void func_80016748(Object *obj0, Object *obj1) {
+/** Resolves a collision between an object and another object's collision model. */
+void object_collide_with_object(Object *obj0, Object *obj1) {
     ObjectModel *objModel;
     s32 i;
     f32 temp;
@@ -5321,7 +5119,8 @@ void func_80016748(Object *obj0, Object *obj1) {
     }
 }
 
-void func_80016BC4(Object *obj) {
+/** Prepares an object's collision transform and its models' collision data. */
+void object_init_collision(Object *obj) {
     s32 i;
 
     obj->collisionData->mtxFlip = 0;
@@ -5558,7 +5357,7 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
         spDC = (MtxF *) &collision->_matrices[((sp158->collisionData->mtxFlip + 1) & 1) << 1];
 #endif
 
-        sp14C = func_8001790C(obj, sp158);
+        sp14C = collision_pair_take(obj, sp158);
         if (sp14C != NULL) {
             for (i = 0, j = 0; j < arg1; j++, i += 3) {
                 sp13C[j] = sp14C->unk0C[i + 0];
@@ -5577,7 +5376,7 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
         }
 
         arg2[0] = 0;
-        tempv0 = func_80017A18(sp154, arg1, arg2, sp13C, sp12C, sp11C, sp100, spF0, spE0, arg5, surface,
+        tempv0 = model_resolve_collisions(sp154, arg1, arg2, sp13C, sp12C, sp11C, sp100, spF0, spE0, arg5, surface,
                                1.0 / sp158->trans.scale);
         if (tempv0 != 0) {
 
@@ -5587,8 +5386,8 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
             sp158->collisionData->collidedObj = obj;
         }
 
-        if (D_8011AD24[0] == 0) {
-            sp14C = func_80017978(obj, sp158);
+        if (gBossRaceIds[0] == 0) {
+            sp14C = collision_pair_add(obj, sp158);
         }
 
 #ifdef AVOID_UB
@@ -5626,12 +5425,13 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
     return sp168;
 }
 
-unk800179D0 *func_8001790C(Object *arg0, Object *arg1) {
+/** Recent collision pairs, each with a two-tick cooldown so a contact is handled once. */
+unk800179D0 *collision_pair_take(Object *arg0, Object *arg1) {
     unk800179D0 *entry;
     s16 i;
 
     for (i = 0; i < 16; i++) {
-        entry = &D_8011AFF4[i];
+        entry = &gCollisionPairs[i];
         if (entry->unk0 != 0 && entry->unk04 == arg0 && entry->unk08 == arg1) {
             entry->unk0 = 0;
             return entry;
@@ -5640,12 +5440,12 @@ unk800179D0 *func_8001790C(Object *arg0, Object *arg1) {
     return NULL;
 }
 
-unk800179D0 *func_80017978(Object *obj1, Object *obj2) {
+unk800179D0 *collision_pair_add(Object *obj1, Object *obj2) {
     unk800179D0 *entry;
     s16 i;
 
     for (i = 0; i < 16; i++) {
-        entry = &D_8011AFF4[i];
+        entry = &gCollisionPairs[i];
         if (entry->unk0 == 0) {
             entry->unk04 = obj1;
             entry->unk08 = obj2;
@@ -5656,10 +5456,10 @@ unk800179D0 *func_80017978(Object *obj1, Object *obj2) {
     return NULL;
 }
 
-u32 func_800179D0(void) {
+u32 collision_pairs_tick(void) {
     s16 i = 0;
     while (i < 16) {
-        unk800179D0 *temp = &D_8011AFF4[i];
+        unk800179D0 *temp = &gCollisionPairs[i];
         if (temp->unk0 != 0) {
             temp->unk0--;
         }
@@ -5670,7 +5470,8 @@ u32 func_800179D0(void) {
 #endif
 }
 
-s32 func_80017A18(ObjectModel *arg0, s32 arg1, s32 *numCollisions, f32 *originPointsX, f32 *originPointsY,
+/** Resolves a set of moving points against an object model's collision facets. */
+s32 model_resolve_collisions(ObjectModel *arg0, s32 arg1, s32 *numCollisions, f32 *originPointsX, f32 *originPointsY,
                   f32 *originPointsZ, f32 *targetPointsX, f32 *targetPointsY, f32 *targetPointsZ, f32 *collisionRadii,
                   s8 *surfaces, f32 scale) {
     f32 *planes;
@@ -6135,8 +5936,8 @@ Object *find_taj_object(void) {
     return NULL;
 }
 
-// Handles MidiFadePoint, MidiFade, and MidiSetChannel objects?
-void func_80018CE0(Object *racerObj, f32 xPos, f32 yPos, f32 zPos, s32 updateRate) {
+/** Fades music channels by the racer's position relative to the level's midi fade points. */
+void update_midi_fade_points(Object *racerObj, f32 xPos, f32 yPos, f32 zPos, s32 updateRate) {
     f32 temp_f0;
     s32 pad_spF8;
     s32 spF4;
@@ -6247,7 +6048,7 @@ void func_80018CE0(Object *racerObj, f32 xPos, f32 yPos, f32 zPos, s32 updateRat
                                 midiFade->unk0 = var_v1;
                                 midiFade->unk1 = 0;
                                 midiFade->unk4 = 0;
-                                D_8011AF60 = midiFade;
+                                gCurrentMidiFade = midiFade;
                             }
                         }
                     }
@@ -6269,25 +6070,25 @@ void func_80018CE0(Object *racerObj, f32 xPos, f32 yPos, f32 zPos, s32 updateRat
         }
     }
 
-    if (D_8011AF60 == 0) {
+    if (gCurrentMidiFade == 0) {
         return;
     }
 
-    if (D_8011AF60->unk40 == music_current_sequence()) {
-        D_8011AF60->unk4 += updateRate;
-        temp_t4 = D_8011AF60->unk2 * gVideoRefreshRate;
-        if (temp_t4 < D_8011AF60->unk4) {
-            D_8011AF60->unk4 = temp_t4;
+    if (gCurrentMidiFade->unk40 == music_current_sequence()) {
+        gCurrentMidiFade->unk4 += updateRate;
+        temp_t4 = gCurrentMidiFade->unk2 * gVideoRefreshRate;
+        if (temp_t4 < gCurrentMidiFade->unk4) {
+            gCurrentMidiFade->unk4 = temp_t4;
         }
-        temp_f10 = (D_8011AF60->unk4 * 254.0f) / temp_t4;
+        temp_f10 = (gCurrentMidiFade->unk4 * 254.0f) / temp_t4;
         if (temp_f10 < 0xFE) {
-            D_8011AF60->unk1 = temp_f10;
+            gCurrentMidiFade->unk1 = temp_f10;
         } else {
-            D_8011AF60->unk1 = 0xFE;
+            gCurrentMidiFade->unk1 = 0xFE;
         }
         for (i = 0; i < 16; i++) {
-            var_v0_2 = D_8011AF60->unk2F[i];
-            if (D_8011AF60->unk0 == -1) {
+            var_v0_2 = gCurrentMidiFade->unk2F[i];
+            if (gCurrentMidiFade->unk0 == -1) {
                 var_v0_2 >>= 2;
             }
             var_v0_2 &= 3;
@@ -6300,8 +6101,8 @@ void func_80018CE0(Object *racerObj, f32 xPos, f32 yPos, f32 zPos, s32 updateRat
                     music_channel_off(i);
                     break;
                 case 3:
-                    if (D_8011AF60->unk1 >= 0x80) {
-                        temp_t3_2 = (D_8011AF60->unk1 - 0x7F) & 0xFF;
+                    if (gCurrentMidiFade->unk1 >= 0x80) {
+                        temp_t3_2 = (gCurrentMidiFade->unk1 - 0x7F) & 0xFF;
                         music_channel_on(i);
                         if (music_channel_fade(i) < temp_t3_2) {
                             music_channel_fade_set(i, temp_t3_2);
@@ -6309,8 +6110,8 @@ void func_80018CE0(Object *racerObj, f32 xPos, f32 yPos, f32 zPos, s32 updateRat
                     }
                     break;
                 case 2:
-                    if (D_8011AF60->unk1 < 0x7F) {
-                        temp_t3_2 = (0x7F - D_8011AF60->unk1) & 0xFF;
+                    if (gCurrentMidiFade->unk1 < 0x7F) {
+                        temp_t3_2 = (0x7F - gCurrentMidiFade->unk1) & 0xFF;
                         if (temp_t3_2 < music_channel_fade(i)) {
                             music_channel_fade_set(i, temp_t3_2);
                         }
@@ -6323,8 +6124,8 @@ void func_80018CE0(Object *racerObj, f32 xPos, f32 yPos, f32 zPos, s32 updateRat
             }
         }
     }
-    if ((D_8011AF60->unk1 == 0xFE) && (D_8011AF60->unk40 == music_current_sequence())) {
-        D_8011AF60 = 0;
+    if ((gCurrentMidiFade->unk1 == 0xFE) && (gCurrentMidiFade->unk40 == music_current_sequence())) {
+        gCurrentMidiFade = 0;
     }
 }
 
@@ -6706,7 +6507,7 @@ void race_check_finish(s32 updateRate) {
 
     if (gIsTajChallenge && numHumanRacersFinished != 0) {
         mode_end_taj_race(CHALLENGE_END_FINISH);
-    } else if (D_8011AD3C != 0 && numFinishedRacers != 0) {
+    } else if (gBossRaceMode != 0 && numFinishedRacers != 0) {
         curRacer = (*gRacers)[0]->racer;
         if (!curRacer->raceFinished) {
             curRacer->raceFinished = TRUE;
@@ -6940,12 +6741,12 @@ void race_transition_adventure(s32 updateRate) {
     if (gRaceEndStage == 2) {
         prevPort0Racer = (*gRacers)[0];
         racer = prevPort0Racer->racer;
-        func_800230D0(prevPort0Racer, racer);
+        racer_find_start_node(prevPort0Racer, racer);
         racer->raceFinished = FALSE;
         gRaceEndStage = 3;
-        func_8001E45C(CUTSCENE_ID_UNK_A);
+        cutscene_set(CUTSCENE_ID_UNK_A);
         gBalloonCutsceneTimer = 0;
-        func_8001E93C();
+        anim_objects_update();
     }
     if (gRaceEndStage == 3) {
         transition_begin(&gRaceEndTransition);
@@ -6973,7 +6774,7 @@ void race_transition_adventure(s32 updateRate) {
         if (!(settings->cutsceneFlags & 0x40000)) {
             i = 0;
         }
-        if (func_800214C4() != 0 || (i != 0 && check_fadeout_transition() == 0)) {
+        if (anim_prev_frame_state() != 0 || (i != 0 && check_fadeout_transition() == 0)) {
             if (i != 0) {
                 transition_begin(&gBalloonCutsceneTransition);
             }
@@ -7788,8 +7589,8 @@ s32 ainode_find_nearest(f32 diffX, f32 diffY, f32 diffZ, s32 useElevation) {
     return result;
 }
 
-// Updated Object_NPC
-f32 func_8001C6C4(Object_NPC *npc, Object *npcParentObj, f32 updateRateF, f32 speedF, s32 direction) {
+/** Moves an NPC along the AI node path and returns its progress. */
+f32 npc_follow_ai_nodes(Object_NPC *npc, Object *npcParentObj, f32 updateRateF, f32 speedF, s32 direction) {
     f32 xPositions[5];
     f32 yPositions[5];
     f32 zPositions[5];
@@ -7953,7 +7754,8 @@ s32 ainode_find_next(s32 nodeId, s32 nextNodeId, s32 direction) {
     }
 }
 
-s16 func_8001CD28(s32 arg0, s32 arg1, s32 arg2, s32 arg3) {
+/** Chooses the next AI node for a racer from the node graph. */
+s16 ainode_pick_next(s32 arg0, s32 arg1, s32 arg2, s32 arg3) {
     s16 result;
     s32 sp370;
     s16 var_t1;
@@ -8112,8 +7914,6 @@ Object *ainode_get(s32 nodeID) {
     return NULL;
 }
 
-UNUSED void func_8001D248(UNUSED s32 arg0, UNUSED s32 arg1, UNUSED s32 arg2) {
-}
 
 /**
  * Applies shading properties to a global variable.
@@ -8425,17 +8225,17 @@ void calc_env_mapping_for_object(ObjectModel *model, s16 zRot, s16 xRot, s16 yRo
                 }
                 var_v0 = (var_v0 << 2) + 0x8000;
                 var_v1 = (var_v1 << 2) + 0x8000;
-                D_8011AF68[k].u = (var_v0 >> shiftS) & maskS;
-                D_8011AF68[k].v = (var_v1 >> shiftT) & maskT;
+                gTexCoordScratch[k].u = (var_v0 >> shiftS) & maskS;
+                gTexCoordScratch[k].v = (var_v1 >> shiftT) & maskT;
             }
 
             for (j = model->batches[i].facesOffset; j < model->batches[i + 1].facesOffset; j++) {
-                triangles[j].uv0.u = D_8011AF68[triangles[j].vi0].u;
-                triangles[j].uv0.v = D_8011AF68[triangles[j].vi0].v;
-                triangles[j].uv1.u = D_8011AF68[triangles[j].vi1].u;
-                triangles[j].uv1.v = D_8011AF68[triangles[j].vi1].v;
-                triangles[j].uv2.u = D_8011AF68[triangles[j].vi2].u;
-                triangles[j].uv2.v = D_8011AF68[triangles[j].vi2].v;
+                triangles[j].uv0.u = gTexCoordScratch[triangles[j].vi0].u;
+                triangles[j].uv0.v = gTexCoordScratch[triangles[j].vi0].v;
+                triangles[j].uv1.u = gTexCoordScratch[triangles[j].vi1].u;
+                triangles[j].uv1.v = gTexCoordScratch[triangles[j].vi1].v;
+                triangles[j].uv2.u = gTexCoordScratch[triangles[j].vi2].u;
+                triangles[j].uv2.v = gTexCoordScratch[triangles[j].vi2].v;
             }
         } else if (model->batches[i].miscData < BATCH_VTX_COL) {
             count += model->batches[i + 1].verticesOffset - model->batches[i].verticesOffset;
@@ -8579,11 +8379,12 @@ void cutscene_id_set(s32 cutsceneID) {
     gCutsceneID = cutsceneID;
 }
 
-void func_8001E45C(s32 cutsceneID) {
+/** Switches to a cutscene by id, flagging the change for the animation system. */
+void cutscene_set(s32 cutsceneID) {
     if (cutsceneID != gCutsceneID) {
         gCutsceneID = cutsceneID;
         gPathUpdateOff = FALSE;
-        D_8011AE7E = TRUE;
+        gCutsceneChanged = TRUE;
         if (get_game_mode() == GAMEMODE_MENU) {
             set_frame_blackout_timer();
         }
@@ -8598,7 +8399,8 @@ UNUSED s32 get_object_list_index(void) {
     return gObjectListStart;
 }
 
-void func_8001E4C4(void) {
+/** Cutscene animations: links animation entries to the objects they drive. */
+void anim_objects_prepare(void) {
     Object *obj;
     s32 lastObjCount;
     s32 curObjCount;
@@ -8650,7 +8452,8 @@ void func_8001E4C4(void) {
     gFirstActiveObjectId = 0;
 }
 
-void func_8001E6EC(s8 arg0) {
+/** Applies the cutscene's override positions to the objects they target. */
+void override_pos_apply(s8 arg0) {
     LevelObjectEntry_OverridePos *overridePosEntry;
     Object *overridePosObj;
     Object_OverridePos *overridePos;
@@ -8659,18 +8462,18 @@ void func_8001E6EC(s8 arg0) {
     s32 someBool;
     Object *animTarget;
 
-    for (i = 0; i < D_8011AE00; i++) {
-        overridePosObj = D_8011ADD8[i];
+    for (i = 0; i < gOverridePosCount; i++) {
+        overridePosObj = gOverridePosObjects[i];
         overridePosEntry = &overridePosObj->level_entry->overridePos;
         overridePos = overridePosObj->override_pos;
         if ((overridePosEntry->cutsceneId == gCutsceneID) || ((overridePosEntry->cutsceneId == 20))) {
             for (j = 0;
-                 (j < D_8011AE78) && (overridePosEntry->behaviorId != D_8011AE74[j]->properties.animation.behaviourID);
+                 (j < gAnimObjectCount) && (overridePosEntry->behaviorId != gAnimObjects[j]->properties.animation.behaviourID);
                  j++) {}
-            if (j != D_8011AE78 && D_8011AE74[j]->animTarget != NULL) {
-                someBool = (D_8011AE74[j]->animTarget->collisionData != NULL) ? FALSE : TRUE;
+            if (j != gAnimObjectCount && gAnimObjects[j]->animTarget != NULL) {
+                someBool = (gAnimObjects[j]->animTarget->collisionData != NULL) ? FALSE : TRUE;
                 if (arg0 != someBool) {
-                    animTarget = D_8011AE74[j]->animTarget;
+                    animTarget = gAnimObjects[j]->animTarget;
                     overridePos->x = animTarget->trans.x_position;
                     overridePos->y = animTarget->trans.y_position;
                     overridePos->z = animTarget->trans.z_position;
@@ -8684,23 +8487,23 @@ void func_8001E6EC(s8 arg0) {
             }
         }
     }
-    D_8011AE01 = FALSE;
+    gZoneJustLoaded = FALSE;
 }
 
-void func_8001E89C(void) {
+void override_pos_update(void) {
     s32 i;
     Object *obj;
     Object_OverridePos *obj64;
 
     // some flag, flips to 1 when loading a new zone
-    if (D_8011AE01 != FALSE) {
-        D_8011AE01 = FALSE;
+    if (gZoneJustLoaded != FALSE) {
+        gZoneJustLoaded = FALSE;
         return;
     }
 
     // loading (boss) cutscene
-    for (i = 0; i < D_8011AE00; i++) {
-        obj = D_8011ADD8[i];
+    for (i = 0; i < gOverridePosCount; i++) {
+        obj = gOverridePosObjects[i];
         obj64 = obj->override_pos;
 
         if (obj64->anim != NULL) {
@@ -8711,7 +8514,8 @@ void func_8001E89C(void) {
     }
 }
 
-void func_8001E93C(void) {
+/** Per-frame update of the cutscene animation objects and their actors. */
+void anim_objects_update(void) {
     s32 pad[3];
     LevelObjectEntry_OverridePos *overridePos;
     Object *obj;
@@ -8727,9 +8531,9 @@ void func_8001E93C(void) {
     LevelObjectEntry_Animation *animation1;
     LevelObjectEntry_Animation *animation2;
 
-    if (D_8011AE7E) {
-        for (numOfObjs = 0; numOfObjs < D_8011AE78; numOfObjs++) {
-            obj = D_8011AE74[numOfObjs];
+    if (gCutsceneChanged) {
+        for (numOfObjs = 0; numOfObjs < gAnimObjectCount; numOfObjs++) {
+            obj = gAnimObjects[numOfObjs];
             animation1 = &obj->level_entry->animation;
             if (obj->animTarget != NULL && animation1->channel != 20) {
                 animObj1 = obj->animTarget;
@@ -8738,10 +8542,10 @@ void func_8001E93C(void) {
             }
         }
     }
-    if (D_8011AD3E > 20) {
-        D_8011AD3E = 0;
+    if (gAnimCameraCount > 20) {
+        gAnimCameraCount = 0;
     }
-    func_8001E4C4();
+    anim_objects_prepare();
     numOfObjs = 0;
     for (i = 0; i < gObjectCount; i++) {
         if (gObjPtrList[i] != NULL) {
@@ -8750,23 +8554,23 @@ void func_8001E93C(void) {
                     overridePos = &gObjPtrList[i]->level_entry->overridePos;
                     if (overridePos->cutsceneId == gCutsceneID ||
                         overridePos->cutsceneId == (CUTSCENE_SHERBET_ISLAND_BOSS | CUTSCENE_ADVENTURE_TWO)) {
-                        D_8011ADD8[numOfObjs] = gObjPtrList[i];
+                        gOverridePosObjects[numOfObjs] = gObjPtrList[i];
                         numOfObjs++;
                     }
                 }
             }
         }
     }
-    D_8011AE00 = numOfObjs;
-    D_8011AE01 = TRUE;
+    gOverridePosCount = numOfObjs;
+    gZoneJustLoaded = TRUE;
 
-    D_8011AE78 = 0;
+    gAnimObjectCount = 0;
     numOfObjs = 0;
     for (i = gObjectListStart; i < gObjectCount; i++) {
         if (gObjPtrList[i] != NULL) {
             if (!(gObjPtrList[i]->trans.flags & OBJ_FLAGS_PARTICLE)) {
                 if (gObjPtrList[i]->behaviorId == BHV_ANIMATION) {
-                    D_8011AE74[numOfObjs] = gObjPtrList[i];
+                    gAnimObjects[numOfObjs] = gObjPtrList[i];
                     numOfObjs++;
                 }
             }
@@ -8776,8 +8580,8 @@ void func_8001E93C(void) {
     do {
         stopLooping = TRUE;
         for (i = 0; i < numOfObjs - 1; i++) {
-            animation1 = &D_8011AE74[i]->level_entry->animation;
-            animation2 = &D_8011AE74[i + 1]->level_entry->animation;
+            animation1 = &gAnimObjects[i]->level_entry->animation;
+            animation2 = &gAnimObjects[i + 1]->level_entry->animation;
             animActorIndex1 = animation1->actorIndex;
             animActorIndex2 = animation2->actorIndex;
 
@@ -8789,22 +8593,22 @@ void func_8001E93C(void) {
             }
 
             if (animActorIndex2 < animActorIndex1) {
-                animObj1 = D_8011AE74[i];
-                D_8011AE74[i] = D_8011AE74[i + 1];
-                D_8011AE74[i + 1] = animObj1;
+                animObj1 = gAnimObjects[i];
+                gAnimObjects[i] = gAnimObjects[i + 1];
+                gAnimObjects[i + 1] = animObj1;
                 stopLooping = FALSE;
             } else if (animActorIndex1 == animActorIndex2) {
                 if (animation2->order < animation1->order) {
-                    animObj1 = D_8011AE74[i];
-                    D_8011AE74[i] = D_8011AE74[i + 1];
-                    D_8011AE74[i + 1] = animObj1;
+                    animObj1 = gAnimObjects[i];
+                    gAnimObjects[i] = gAnimObjects[i + 1];
+                    gAnimObjects[i + 1] = animObj1;
                     stopLooping = FALSE;
                 } else if (animation1->order == animation2->order &&
-                           (D_8011AE74[i + 1]->properties.animation.action == 1 ||
-                            D_8011AE74[i]->properties.animation.action == 2)) {
-                    animObj1 = D_8011AE74[i];
-                    D_8011AE74[i] = D_8011AE74[i + 1];
-                    D_8011AE74[i + 1] = animObj1;
+                           (gAnimObjects[i + 1]->properties.animation.action == 1 ||
+                            gAnimObjects[i]->properties.animation.action == 2)) {
+                    animObj1 = gAnimObjects[i];
+                    gAnimObjects[i] = gAnimObjects[i + 1];
+                    gAnimObjects[i + 1] = animObj1;
                     stopLooping = FALSE;
                 }
             }
@@ -8813,32 +8617,32 @@ void func_8001E93C(void) {
 
     var_a0 = -101;
     for (i = 0; i < numOfObjs; i += 1) {
-        animation1 = &D_8011AE74[i]->level_entry->animation;
+        animation1 = &gAnimObjects[i]->level_entry->animation;
         if (animation1->actorIndex != var_a0) {
             var_a0 = animation1->actorIndex;
             sp28 = 0;
         }
         animation1->order = sp28++; // It is possible that sp28 could not be initalized?
-        D_8011AE74[i]->properties.animation.action = 0;
+        gAnimObjects[i]->properties.animation.action = 0;
     }
 
-    D_8011AE78 = numOfObjs;
-    if (D_8011AE7E) {
-        func_8001EE74();
+    gAnimObjectCount = numOfObjs;
+    if (gCutsceneChanged) {
+        anim_objects_spawn_targets();
     }
-    D_8011AE7E = FALSE;
+    gCutsceneChanged = FALSE;
 }
 
-void func_8001EE74(void) {
+void anim_objects_spawn_targets(void) {
     LevelObjectEntry_Animation *animation;
     Object *obj;
     s32 i;
 
-    for (i = 0; i < D_8011AE78; i++) {
-        obj = D_8011AE74[i];
+    for (i = 0; i < gAnimObjectCount; i++) {
+        obj = gAnimObjects[i];
         animation = &obj->level_entry->animation;
         if (obj->animTarget == NULL && animation->order == 0 && animation->objectIdToSpawn != -1) {
-            func_8001F23C(obj, animation);
+            anim_object_spawn_target(obj, animation);
         }
         if (D_8011AD26 || animation->channel != 20) {
             if (obj->animTarget != NULL) {
@@ -8918,7 +8722,8 @@ void obj_init_animobject(Object *animationObj, Object *animatedObj) {
     anim->unk45 = 0;
 }
 
-void func_8001F23C(Object *obj, LevelObjectEntry_Animation *animEntry) {
+/** Spawns the object an animation entry animates and binds it. */
+void anim_object_spawn_target(Object *obj, LevelObjectEntry_Animation *animEntry) {
     s32 i;
     LevelObjectEntryCommon newObjEntry;
     Object *newObj;
@@ -8941,7 +8746,7 @@ void func_8001F23C(Object *obj, LevelObjectEntry_Animation *animEntry) {
         obj_init_animobject(obj, newObj);
         if (newObj->header->behaviorId == BHV_CAMERA_ANIMATION) {
             camera = newObj->animatedObject;
-            camera->unk44 = D_8011AD3E;
+            camera->unk44 = gAnimCameraCount;
             viewportCount = cam_get_viewport_layout();
             if (race_is_adventure_2P()) {
                 viewportCount = VIEWPORT_LAYOUT_2_PLAYERS;
@@ -8954,35 +8759,35 @@ void func_8001F23C(Object *obj, LevelObjectEntry_Animation *animEntry) {
                     camera = newObj->animatedObject;
                     i++;
                     camera->cameraID = i;
-                    camera->unk44 = D_8011AD3E;
+                    camera->unk44 = gAnimCameraCount;
                 }
             }
-            D_8011AD3E++;
+            gAnimCameraCount++;
         }
     }
 }
 
-s8 func_8001F3B8(void) {
-    return D_8011ADD4;
+s8 anim_group_get(void) {
+    return gAnimGroup;
 }
 
-void func_8001F3C8(s32 arg0) {
-    if (arg0 != D_8011ADD4) {
-        D_8011AE78 = 0;
+void anim_group_set(s32 arg0) {
+    if (arg0 != gAnimGroup) {
+        gAnimObjectCount = 0;
     }
-    D_8011ADD4 = arg0;
+    gAnimGroup = arg0;
 }
 
-s32 func_8001F3EC(s32 arg0) {
+s32 anim_count_actors(s32 arg0) {
     s32 i;
     s32 count;
-    if (D_8011AE78 == 0) {
+    if (gAnimObjectCount == 0) {
         return -1;
     }
 
     count = 0;
-    for (i = 0; i < D_8011AE78; i++) {
-        if (D_8011AE74[i]->properties.animation.behaviourID == arg0) {
+    for (i = 0; i < gAnimObjectCount; i++) {
+        if (gAnimObjects[i]->properties.animation.behaviourID == arg0) {
             count++;
         }
     }
@@ -8990,11 +8795,13 @@ s32 func_8001F3EC(s32 arg0) {
     return count;
 }
 
-void func_8001F450(void) {
-    D_8011AD53 = 1;
+/** Asks the running cutscene to end (from the pause menu). */
+void cutscene_skip_request(void) {
+    gCutsceneSkipRequested = 1;
 }
 
-s32 func_8001F460(Object *arg0, s32 arg1, Object *arg2) {
+/** Moves an animated object along its spline path. */
+s32 anim_object_follow_path(Object *arg0, s32 arg1, Object *arg2) {
     f32 var_f2;
     f32 var_f0;
     f32 var_f20;
@@ -9071,9 +8878,9 @@ s32 func_8001F460(Object *arg0, s32 arg1, Object *arg2) {
         if (obj64->startDelay <= 0) {
             obj64->unk45 = 1;
             temp_s1 = &obj64->unk1C->level_entry->animation;
-            func_80021104(arg0, obj64, temp_s1);
+            anim_actor_init(arg0, obj64, temp_s1);
             obj64->startDelay = 0;
-            func_8002125C(arg0, temp_s1, obj64, -1);
+            anim_actor_apply_entry(arg0, temp_s1, obj64, -1);
         }
     }
     if (obj64->startDelay != 0) {
@@ -9248,27 +9055,27 @@ s32 func_8001F460(Object *arg0, s32 arg1, Object *arg2) {
     }
 
     if (obj64->unk8 <= 0.0) {
-        return func_800214E4(arg0, arg1);
+        return anim_actor_update(arg0, arg1);
     }
 
     temp_a1_2 = obj64->actorIndex;
-    for (var_s4 = 0; var_s4 < D_8011AE78 && temp_a1_2 != D_8011AE74[var_s4]->properties.animation.behaviourID;
+    for (var_s4 = 0; var_s4 < gAnimObjectCount && temp_a1_2 != gAnimObjects[var_s4]->properties.animation.behaviourID;
          var_s4++) {}
-    if (var_s4 >= D_8011AE78) {
-        return func_800214E4(arg0, arg1);
+    if (var_s4 >= gAnimObjectCount) {
+        return anim_actor_update(arg0, arg1);
     }
 
     for (var_s5 = 1;
-         (var_s4 + var_s5) < D_8011AE78 && temp_a1_2 == D_8011AE74[var_s4 + var_s5]->properties.animation.behaviourID;
+         (var_s4 + var_s5) < gAnimObjectCount && temp_a1_2 == gAnimObjects[var_s4 + var_s5]->properties.animation.behaviourID;
          var_s5++) {}
     if (var_s5 < 2) {
-        return func_800214E4(arg0, arg1);
+        return anim_actor_update(arg0, arg1);
     }
 
     sp168 = -1;
-    spB4 = 1.0 / D_8011AE74[0]->header->scale;
+    spB4 = 1.0 / gAnimObjects[0]->header->scale;
 
-    temp_s1 = &D_8011AE74[var_s4 + var_s5 - 1]->level_entry->animation;
+    temp_s1 = &gAnimObjects[var_s4 + var_s5 - 1]->level_entry->animation;
     if (var_s5 > 2) {
         if (temp_s1->goToNode >= 0 && temp_s1->goToNode < var_s5 - 1) {
             sp168 = temp_s1->goToNode;
@@ -9276,11 +9083,11 @@ s32 func_8001F460(Object *arg0, s32 arg1, Object *arg2) {
     }
 
     if (sp168 == -1 && obj64->unk26 >= var_s5 - 1) {
-        return func_800214E4(arg0, arg1);
+        return anim_actor_update(arg0, arg1);
     }
 
     if (obj64->pauseCounter >= 0) {
-        if (D_8011AD53 == 0) {
+        if (gCutsceneSkipRequested == 0) {
             obj64->pauseCounter -= arg1;
         }
         return 0;
@@ -9291,77 +9098,77 @@ s32 func_8001F460(Object *arg0, s32 arg1, Object *arg2) {
     for (var_t0 = 0; var_t0 != 5; var_s2++, var_t0++, var_s0++) {
         if (var_s0 == -1) {
             if (sp168 != 0) {
-                sp154[var_s2] = D_8011AE74[var_s4]->trans.x_position +
-                                (D_8011AE74[var_s4]->trans.x_position - D_8011AE74[var_s4 + 1]->trans.x_position);
-                sp140[var_s2] = D_8011AE74[var_s4]->trans.y_position +
-                                (D_8011AE74[var_s4]->trans.y_position - D_8011AE74[var_s4 + 1]->trans.y_position);
-                sp12C[var_s2] = D_8011AE74[var_s4]->trans.z_position +
-                                (D_8011AE74[var_s4]->trans.z_position - D_8011AE74[var_s4 + 1]->trans.z_position);
-                spE0[var_t0] = D_8011AE74[var_s4]->trans.rotation.y_rotation;
-                spCC[var_t0] = D_8011AE74[var_s4]->trans.rotation.x_rotation;
-                spB8[var_t0] = D_8011AE74[var_s4]->trans.rotation.z_rotation;
-                spF4[var_t0] = D_8011AE74[var_s4]->trans.scale;
+                sp154[var_s2] = gAnimObjects[var_s4]->trans.x_position +
+                                (gAnimObjects[var_s4]->trans.x_position - gAnimObjects[var_s4 + 1]->trans.x_position);
+                sp140[var_s2] = gAnimObjects[var_s4]->trans.y_position +
+                                (gAnimObjects[var_s4]->trans.y_position - gAnimObjects[var_s4 + 1]->trans.y_position);
+                sp12C[var_s2] = gAnimObjects[var_s4]->trans.z_position +
+                                (gAnimObjects[var_s4]->trans.z_position - gAnimObjects[var_s4 + 1]->trans.z_position);
+                spE0[var_t0] = gAnimObjects[var_s4]->trans.rotation.y_rotation;
+                spCC[var_t0] = gAnimObjects[var_s4]->trans.rotation.x_rotation;
+                spB8[var_t0] = gAnimObjects[var_s4]->trans.rotation.z_rotation;
+                spF4[var_t0] = gAnimObjects[var_s4]->trans.scale;
             } else {
                 q = var_s4 + var_s5 - 1;
-                sp154[var_s2] = D_8011AE74[q]->trans.x_position;
-                sp140[var_s2] = D_8011AE74[q]->trans.y_position;
-                sp12C[var_s2] = D_8011AE74[q]->trans.z_position;
-                spE0[var_t0] = D_8011AE74[q]->trans.rotation.y_rotation;
-                spCC[var_t0] = D_8011AE74[q]->trans.rotation.x_rotation;
-                spB8[var_t0] = D_8011AE74[q]->trans.rotation.z_rotation;
-                spF4[var_t0] = D_8011AE74[q]->trans.scale;
+                sp154[var_s2] = gAnimObjects[q]->trans.x_position;
+                sp140[var_s2] = gAnimObjects[q]->trans.y_position;
+                sp12C[var_s2] = gAnimObjects[q]->trans.z_position;
+                spE0[var_t0] = gAnimObjects[q]->trans.rotation.y_rotation;
+                spCC[var_t0] = gAnimObjects[q]->trans.rotation.x_rotation;
+                spB8[var_t0] = gAnimObjects[q]->trans.rotation.z_rotation;
+                spF4[var_t0] = gAnimObjects[q]->trans.scale;
             }
         } else if (var_s0 >= var_s5) {
             if (sp168 == -1) {
                 var_s0 = var_s5 - 1;
                 q = var_s5 + var_s4 - 1;
-                temp_s1 = &D_8011AE74[q]->level_entry->animation;
+                temp_s1 = &gAnimObjects[q]->level_entry->animation;
                 if (temp_s1->unk22 == 1) {
                     set_active_camera(obj64->cameraID);
                     trans = &cam_get_active_camera_no_cutscenes()->trans;
                 } else {
-                    trans = &D_8011AE74[q]->trans;
+                    trans = &gAnimObjects[q]->trans;
                 }
-                sp154[var_s2] = trans->x_position + (trans->x_position - D_8011AE74[q - 1]->trans.x_position);
-                sp140[var_s2] = trans->y_position + (trans->y_position - D_8011AE74[q - 1]->trans.y_position);
-                sp12C[var_s2] = trans->z_position + (trans->z_position - D_8011AE74[q - 1]->trans.z_position);
+                sp154[var_s2] = trans->x_position + (trans->x_position - gAnimObjects[q - 1]->trans.x_position);
+                sp140[var_s2] = trans->y_position + (trans->y_position - gAnimObjects[q - 1]->trans.y_position);
+                sp12C[var_s2] = trans->z_position + (trans->z_position - gAnimObjects[q - 1]->trans.z_position);
                 spCC[var_t0] = trans->rotation.x_rotation;
                 spB8[var_t0] = trans->rotation.z_rotation;
-                trans = &D_8011AE74[q]->trans;
+                trans = &gAnimObjects[q]->trans;
                 spE0[var_t0] = trans->rotation.y_rotation;
-                spF4[var_t0] = D_8011AE74[q]->trans.scale;
+                spF4[var_t0] = gAnimObjects[q]->trans.scale;
             } else {
                 q = var_s4 + sp168 + var_s0 - var_s5;
-                sp154[var_s2] = D_8011AE74[q]->trans.x_position;
-                sp140[var_s2] = D_8011AE74[q]->trans.y_position;
-                sp12C[var_s2] = D_8011AE74[q]->trans.z_position;
-                spE0[var_t0] = D_8011AE74[q]->trans.rotation.y_rotation;
-                spCC[var_t0] = D_8011AE74[q]->trans.rotation.x_rotation;
-                spB8[var_t0] = D_8011AE74[q]->trans.rotation.z_rotation;
-                spF4[var_t0] = D_8011AE74[q]->trans.scale;
+                sp154[var_s2] = gAnimObjects[q]->trans.x_position;
+                sp140[var_s2] = gAnimObjects[q]->trans.y_position;
+                sp12C[var_s2] = gAnimObjects[q]->trans.z_position;
+                spE0[var_t0] = gAnimObjects[q]->trans.rotation.y_rotation;
+                spCC[var_t0] = gAnimObjects[q]->trans.rotation.x_rotation;
+                spB8[var_t0] = gAnimObjects[q]->trans.rotation.z_rotation;
+                spF4[var_t0] = gAnimObjects[q]->trans.scale;
             }
         } else {
             q = var_s0 + var_s4;
             if (obj64->z) {} // @fake
-            temp_s1 = &D_8011AE74[q]->level_entry->animation;
+            temp_s1 = &gAnimObjects[q]->level_entry->animation;
 
             if (temp_s1->unk22 == 1) {
                 set_active_camera(obj64->cameraID);
                 trans = &cam_get_active_camera_no_cutscenes()->trans;
             } else {
-                trans = &D_8011AE74[q]->trans;
+                trans = &gAnimObjects[q]->trans;
             }
             sp154[var_s2] = trans->x_position;
             sp140[var_s2] = trans->y_position;
             sp12C[var_s2] = trans->z_position;
             spCC[var_t0] = trans->rotation.x_rotation;
             spB8[var_t0] = trans->rotation.z_rotation;
-            trans = &D_8011AE74[q]->trans;
+            trans = &gAnimObjects[q]->trans;
             spE0[var_t0] = trans->rotation.y_rotation;
             if (temp_s1->unk22 == 1) {
                 spCC[var_t0] = -spCC[var_t0];
             }
-            spF4[var_t0] = D_8011AE74[q]->trans.scale;
+            spF4[var_t0] = gAnimObjects[q]->trans.scale;
         }
     }
 
@@ -9496,7 +9303,7 @@ s32 func_8001F460(Object *arg0, s32 arg1, Object *arg2) {
         var_t0 = (var_t0 - var_s5) + sp168;
     }
 
-    temp_s1 = &D_8011AE74[var_s4 + var_t0]->level_entry->animation;
+    temp_s1 = &gAnimObjects[var_s4 + var_t0]->level_entry->animation;
     sp124 = (f32) temp_s1->nodeSpeed * 0.1;
     if (sp124 < 0) {
         sp124 = obj64->x;
@@ -9510,7 +9317,7 @@ s32 func_8001F460(Object *arg0, s32 arg1, Object *arg2) {
                 var_s0 = var_s0 - var_s5 + sp168;
             }
             if (var_s0 < var_s5) {
-                temp_s1 = &D_8011AE74[var_s4 + var_s0]->level_entry->animation;
+                temp_s1 = &gAnimObjects[var_s4 + var_s0]->level_entry->animation;
                 if (temp_s1->nodeSpeed >= 0) {
                     if (0) {} // @fake
                     sp11C = (f32) temp_s1->nodeSpeed * 0.1;
@@ -9528,8 +9335,8 @@ s32 func_8001F460(Object *arg0, s32 arg1, Object *arg2) {
             if (obj64->unk26 >= var_s5) {
                 obj64->unk26 = var_s5 - 1;
             } else {
-                temp_s1 = &D_8011AE74[var_s4 + obj64->unk26]->level_entry->animation;
-                func_8002125C(arg0, temp_s1, obj64, var_s4);
+                temp_s1 = &gAnimObjects[var_s4 + obj64->unk26]->level_entry->animation;
+                anim_actor_apply_entry(arg0, temp_s1, obj64, var_s4);
             }
         } else {
             if (var_s5 < obj64->unk26) {
@@ -9540,15 +9347,15 @@ s32 func_8001F460(Object *arg0, s32 arg1, Object *arg2) {
                 var_s2 = (obj64->unk26 - var_s5) + sp168;
             }
             var_s2 += var_s4;
-            temp_s1 = &D_8011AE74[var_s2]->level_entry->animation;
-            func_8002125C(arg0, temp_s1, obj64, var_s4);
+            temp_s1 = &gAnimObjects[var_s2]->level_entry->animation;
+            anim_actor_apply_entry(arg0, temp_s1, obj64, var_s4);
         }
     }
     if (obj64->unk2E == 3) {
-        for (var_t0 = 0; var_t0 < D_8011AE78 && obj64->unk3E != D_8011AE74[var_t0]->properties.animation.behaviourID;
+        for (var_t0 = 0; var_t0 < gAnimObjectCount && obj64->unk3E != gAnimObjects[var_t0]->properties.animation.behaviourID;
              var_t0++) {}
-        if (var_t0 != D_8011AE78) {
-            trans = &D_8011AE74[var_t0]->animTarget->trans;
+        if (var_t0 != gAnimObjectCount) {
+            trans = &gAnimObjects[var_t0]->animTarget->trans;
             if (trans != NULL) {
                 sp124 = trans->x_position - arg0->trans.x_position;
                 sp120 = trans->y_position - arg0->trans.y_position;
@@ -9566,22 +9373,22 @@ s32 func_8001F460(Object *arg0, s32 arg1, Object *arg2) {
     return 0;
 }
 
-s32 func_800210CC(s8 arg0) {
-    if (arg0 >= D_8011AD3D) {
-        D_8011AD3D = arg0;
+s32 anim_stage_reached(s8 arg0) {
+    if (arg0 >= gAnimStage) {
+        gAnimStage = arg0;
         return TRUE;
     }
     return FALSE;
 }
 
-void func_80021104(Object *obj, Object_AnimatedObject *animObj, LevelObjectEntry_Animation *entry) {
+void anim_actor_init(Object *obj, Object_AnimatedObject *animObj, LevelObjectEntry_Animation *entry) {
     Camera *camera;
     ObjectTransform *animObjTrans;
 
     animObjTrans = &animObj->unk1C->trans;
     if (obj->behaviorId == BHV_CAMERA_ANIMATION) {
-        animObj->unk44 = D_8011AD3E;
-        D_8011AD3E++;
+        animObj->unk44 = gAnimCameraCount;
+        gAnimCameraCount++;
     }
     if (entry->unk22 == 18) {
         set_active_camera(animObj->cameraID);
@@ -9606,7 +9413,7 @@ void func_80021104(Object *obj, Object_AnimatedObject *animObj, LevelObjectEntry
     }
 }
 
-void func_8002125C(Object *obj, LevelObjectEntry_Animation *entry, Object_AnimatedObject *animObj, UNUSED s32 index) {
+void anim_actor_apply_entry(Object *obj, LevelObjectEntry_Animation *entry, Object_AnimatedObject *animObj, UNUSED s32 index) {
     s32 initialAnimFrame;
 
     initialAnimFrame = entry->objAnimIndex;
@@ -9635,37 +9442,37 @@ void func_8002125C(Object *obj, LevelObjectEntry_Animation *entry, Object_Animat
         set_current_text(entry->messageId);
     }
     if (entry->unk2A >= 0) {
-        func_8001E45C(entry->unk2A);
+        cutscene_set(entry->unk2A);
         return;
     }
     if (entry->unk15 >= 0) {
-        func_80021400(entry->unk15);
+        anim_actor_trigger(entry->unk15);
     }
     if (entry->unk28 >= 0) {
-        D_8011AD22[D_8011AD21]++;
+        gAnimFrameState[gAnimFrameParity]++;
     }
 }
 
-void func_80021400(s32 arg0) {
+void anim_actor_trigger(s32 arg0) {
     s32 i;
     arg0 &= 0xFF; //?
 
-    for (i = 0; i < D_8011AE78 && (arg0 != (D_8011AE74[i]->properties.animation.behaviourID & 0xFF)); i++) {}
+    for (i = 0; i < gAnimObjectCount && (arg0 != (gAnimObjects[i]->properties.animation.behaviourID & 0xFF)); i++) {}
 
-    if (i < D_8011AE78) {
-        if (D_8011AE74[i]->animTarget != NULL) {
-            if (D_8011AE74[i]->animTarget->animatedObject->startDelay < 0) {
-                D_8011AE74[i]->animTarget->animatedObject->startDelay = 1;
+    if (i < gAnimObjectCount) {
+        if (gAnimObjects[i]->animTarget != NULL) {
+            if (gAnimObjects[i]->animTarget->animatedObject->startDelay < 0) {
+                gAnimObjects[i]->animTarget->animatedObject->startDelay = 1;
             }
         }
     }
 }
 
-s8 func_800214C4(void) {
-    return D_8011AD22[1 - D_8011AD21];
+s8 anim_prev_frame_state(void) {
+    return gAnimFrameState[1 - gAnimFrameParity];
 }
 
-s8 func_800214E4(Object *obj, s32 updateRate) {
+s8 anim_actor_update(Object *obj, s32 updateRate) {
     s32 i;
     Object_AnimatedObject *animObj;
 
@@ -9684,16 +9491,16 @@ s8 func_800214E4(Object *obj, s32 updateRate) {
     }
     if (animObj->pauseCounter <= 0) {
         obj->trans.flags |= OBJ_FLAGS_INVISIBLE;
-        for (i = 0; (i < D_8011AE78 && animObj->actorIndex != D_8011AE74[i]->properties.animation.behaviourID); i++) {
+        for (i = 0; (i < gAnimObjectCount && animObj->actorIndex != gAnimObjects[i]->properties.animation.behaviourID); i++) {
             if (FALSE) {} // FAKEMATCH
         }
-        obj_init_animobject(D_8011AE74[i], obj);
+        obj_init_animobject(gAnimObjects[i], obj);
         return 1;
     }
     return 0;
 }
 
-s32 func_80021600(s32 arg0) {
+s32 anim_actor_is_active(s32 arg0) {
     Object_AnimatedObject *objAnim;
     s32 i;
     Object *sp154;
@@ -9723,27 +9530,27 @@ s32 func_80021600(s32 arg0) {
         return TRUE;
     }
 
-    for (i = 0; i < D_8011AE78 && arg0 != D_8011AE74[i]->properties.animation.behaviourID; i++) {}
-    if (i >= D_8011AE78) {
+    for (i = 0; i < gAnimObjectCount && arg0 != gAnimObjects[i]->properties.animation.behaviourID; i++) {}
+    if (i >= gAnimObjectCount) {
         return TRUE;
     }
 
-    for (count = 1; i + count < D_8011AE78 && arg0 == D_8011AE74[i + count]->properties.animation.behaviourID;
+    for (count = 1; i + count < gAnimObjectCount && arg0 == gAnimObjects[i + count]->properties.animation.behaviourID;
          count++) {}
     if (count < 2) {
         return TRUE;
     }
 
-    sp154 = D_8011AE74[i]->animTarget;
+    sp154 = gAnimObjects[i]->animTarget;
     if (sp154 == NULL) {
         return TRUE;
     }
 
     objAnim = sp154->animatedObject;
     sp138 = -1;
-    sp90 = 1.0 / D_8011AE74[i]->header->scale;
+    sp90 = 1.0 / gAnimObjects[i]->header->scale;
 
-    levelObjAnim = &D_8011AE74[i + count - 1]->level_entry->animation;
+    levelObjAnim = &gAnimObjects[i + count - 1]->level_entry->animation;
     if (count > 2) {
         if (levelObjAnim->goToNode >= 0 && levelObjAnim->goToNode < count - 1) {
             sp138 = levelObjAnim->goToNode;
@@ -9754,80 +9561,80 @@ s32 func_80021600(s32 arg0) {
     for (j = 0; j < 5; j++, s0++) {
         if (s0 == -1) {
             if (sp138 != 0) {
-                xPositions[j] = D_8011AE74[i]->trans.x_position +
-                                (D_8011AE74[i]->trans.x_position - D_8011AE74[i + 1]->trans.x_position);
-                yPositions[j] = D_8011AE74[i]->trans.y_position +
-                                (D_8011AE74[i]->trans.y_position - D_8011AE74[i + 1]->trans.y_position);
-                zPositions[j] = D_8011AE74[i]->trans.z_position +
-                                (D_8011AE74[i]->trans.z_position - D_8011AE74[i + 1]->trans.z_position);
-                yRotations[j] = D_8011AE74[i]->trans.rotation.y_rotation;
-                xRotations[j] = D_8011AE74[i]->trans.rotation.x_rotation;
-                zRotations[j] = D_8011AE74[i]->trans.rotation.z_rotation;
-                scales[j] = D_8011AE74[i]->trans.scale;
+                xPositions[j] = gAnimObjects[i]->trans.x_position +
+                                (gAnimObjects[i]->trans.x_position - gAnimObjects[i + 1]->trans.x_position);
+                yPositions[j] = gAnimObjects[i]->trans.y_position +
+                                (gAnimObjects[i]->trans.y_position - gAnimObjects[i + 1]->trans.y_position);
+                zPositions[j] = gAnimObjects[i]->trans.z_position +
+                                (gAnimObjects[i]->trans.z_position - gAnimObjects[i + 1]->trans.z_position);
+                yRotations[j] = gAnimObjects[i]->trans.rotation.y_rotation;
+                xRotations[j] = gAnimObjects[i]->trans.rotation.x_rotation;
+                zRotations[j] = gAnimObjects[i]->trans.rotation.z_rotation;
+                scales[j] = gAnimObjects[i]->trans.scale;
             } else {
                 q = i + count - 1;
-                xPositions[j] = D_8011AE74[q]->trans.x_position;
-                yPositions[j] = D_8011AE74[q]->trans.y_position;
-                zPositions[j] = D_8011AE74[q]->trans.z_position;
-                yRotations[j] = D_8011AE74[q]->trans.rotation.y_rotation;
-                xRotations[j] = D_8011AE74[q]->trans.rotation.x_rotation;
-                zRotations[j] = D_8011AE74[q]->trans.rotation.z_rotation;
-                scales[j] = D_8011AE74[q]->trans.scale;
+                xPositions[j] = gAnimObjects[q]->trans.x_position;
+                yPositions[j] = gAnimObjects[q]->trans.y_position;
+                zPositions[j] = gAnimObjects[q]->trans.z_position;
+                yRotations[j] = gAnimObjects[q]->trans.rotation.y_rotation;
+                xRotations[j] = gAnimObjects[q]->trans.rotation.x_rotation;
+                zRotations[j] = gAnimObjects[q]->trans.rotation.z_rotation;
+                scales[j] = gAnimObjects[q]->trans.scale;
             }
         } else if (s0 >= count) {
             if (sp138 == -1) {
                 s0 = count - 1;
                 q = s0 + i;
-                levelObjAnim = &D_8011AE74[q]->level_entry->animation;
+                levelObjAnim = &gAnimObjects[q]->level_entry->animation;
                 if (levelObjAnim->unk22 == 1) {
                     set_active_camera(objAnim->cameraID);
                     objTransform = &cam_get_active_camera_no_cutscenes()->trans;
                 } else {
-                    objTransform = &D_8011AE74[q]->trans;
+                    objTransform = &gAnimObjects[q]->trans;
                 }
 
                 xPositions[j] =
-                    (objTransform->x_position - D_8011AE74[q - 1]->trans.x_position) + objTransform->x_position;
+                    (objTransform->x_position - gAnimObjects[q - 1]->trans.x_position) + objTransform->x_position;
                 yPositions[j] =
-                    (objTransform->y_position - D_8011AE74[q - 1]->trans.y_position) + objTransform->y_position;
+                    (objTransform->y_position - gAnimObjects[q - 1]->trans.y_position) + objTransform->y_position;
                 zPositions[j] =
-                    (objTransform->z_position - D_8011AE74[q - 1]->trans.z_position) + objTransform->z_position;
+                    (objTransform->z_position - gAnimObjects[q - 1]->trans.z_position) + objTransform->z_position;
                 xRotations[j] = objTransform->rotation.x_rotation;
                 zRotations[j] = objTransform->rotation.z_rotation;
-                objTransform = &D_8011AE74[q]->trans;
+                objTransform = &gAnimObjects[q]->trans;
                 yRotations[j] = objTransform->rotation.y_rotation;
-                scales[j] = D_8011AE74[q]->trans.scale;
+                scales[j] = gAnimObjects[q]->trans.scale;
             } else {
                 q = i + sp138 + s0 - count;
-                xPositions[j] = D_8011AE74[q]->trans.x_position;
-                yPositions[j] = D_8011AE74[q]->trans.y_position;
-                zPositions[j] = D_8011AE74[q]->trans.z_position;
-                yRotations[j] = D_8011AE74[q]->trans.rotation.y_rotation;
-                xRotations[j] = D_8011AE74[q]->trans.rotation.x_rotation;
-                zRotations[j] = D_8011AE74[q]->trans.rotation.z_rotation;
-                scales[j] = D_8011AE74[q]->trans.scale;
+                xPositions[j] = gAnimObjects[q]->trans.x_position;
+                yPositions[j] = gAnimObjects[q]->trans.y_position;
+                zPositions[j] = gAnimObjects[q]->trans.z_position;
+                yRotations[j] = gAnimObjects[q]->trans.rotation.y_rotation;
+                xRotations[j] = gAnimObjects[q]->trans.rotation.x_rotation;
+                zRotations[j] = gAnimObjects[q]->trans.rotation.z_rotation;
+                scales[j] = gAnimObjects[q]->trans.scale;
             }
         } else {
             q = s0 + i;
             if (1) {} // Fake
-            levelObjAnim = &D_8011AE74[q]->level_entry->animation;
+            levelObjAnim = &gAnimObjects[q]->level_entry->animation;
             if (levelObjAnim->unk22 == 1) {
                 set_active_camera(objAnim->cameraID);
                 objTransform = &cam_get_active_camera_no_cutscenes()->trans;
             } else {
-                objTransform = &D_8011AE74[q]->trans;
+                objTransform = &gAnimObjects[q]->trans;
             }
             xPositions[j] = objTransform->x_position;
             yPositions[j] = objTransform->y_position;
             zPositions[j] = objTransform->z_position;
             xRotations[j] = objTransform->rotation.x_rotation;
             zRotations[j] = objTransform->rotation.z_rotation;
-            objTransform = &D_8011AE74[q]->trans;
+            objTransform = &gAnimObjects[q]->trans;
             yRotations[j] = objTransform->rotation.y_rotation;
             if (levelObjAnim->unk22 == 1) {
                 xRotations[j] = -xRotations[j];
             }
-            scales[j] = D_8011AE74[q]->trans.scale;
+            scales[j] = gAnimObjects[q]->trans.scale;
         }
     }
 
@@ -9878,10 +9685,10 @@ s32 func_80021600(s32 arg0) {
             sp154->trans.rotation.x_rotation = arctan2_f(spF4, 100.0f);
             break;
         case 3:
-            for (j = 0; j < D_8011AE78 && objAnim->unk3E != D_8011AE74[j]->properties.animation.behaviourID; j++) {}
+            for (j = 0; j < gAnimObjectCount && objAnim->unk3E != gAnimObjects[j]->properties.animation.behaviourID; j++) {}
 
-            if (j != D_8011AE78) {
-                objTransform = &D_8011AE74[j]->animTarget->trans;
+            if (j != gAnimObjectCount) {
+                objTransform = &gAnimObjects[j]->animTarget->trans;
                 if (objTransform != NULL) {
                     spF8 = objTransform->x_position - sp154->trans.x_position;
                     spF4 = objTransform->y_position - sp154->trans.y_position;
@@ -9934,7 +9741,7 @@ s32 func_80021600(s32 arg0) {
             }
 
             if (objAnim->unk3F == 0) {
-                // Same wrap-dependent store as in func_8001F460: go through s32 so the
+                // Same wrap-dependent store as in anim_object_follow_path: go through s32 so the
                 // out-of-range angles from the unwrap wrap mod 65536 on x86 too.
                 sp154->trans.rotation.y_rotation = (s16) (s32) catmull_rom_interpolation(yRotations, 0, spEC);
                 sp154->trans.rotation.x_rotation = (s16) (s32) catmull_rom_interpolation(xRotations, 0, spEC);
@@ -10015,8 +9822,6 @@ f32 lerp_and_get_derivative(f32 *data, u32 index, f32 t, f32 *derivative) {
     return lerp;
 }
 
-UNUSED void func_800228DC(UNUSED s32 arg0, UNUSED s32 arg1, UNUSED s32 arg2) {
-}
 
 /**
  * Prepares the player racer for a Taj Challenge race.
@@ -10062,7 +9867,7 @@ void mode_init_taj_race(void) {
         racerObj = get_racer_object(PLAYER_ONE);
         racer = racerObj->racer;
         gIsTajChallenge = racer->vehicleID + 1;
-        checkpointNode = func_800230D0(racerObj, racer);
+        checkpointNode = racer_find_start_node(racerObj, racer);
         racer->cameraYaw = 0x8000 - racer->steerVisualRotation;
         racer->wrongWayCounter = 0;
         racer->startInput = 0;
@@ -10228,7 +10033,8 @@ void mode_end_taj_race(s32 reason) {
     gIsTajChallenge = FALSE;
 }
 
-CheckpointNode *func_800230D0(Object *obj, Object_Racer *racer) {
+/** The checkpoint or setup point a racer starts from. */
+CheckpointNode *racer_find_start_node(Object *obj, Object_Racer *racer) {
     CheckpointNode *lastCheckpointNode;
     Camera *activeCameraSegment;
     s32 yOutCount;
@@ -10347,11 +10153,12 @@ Object *find_furthest_telepoint(f32 x, f32 z) {
     return bestObj;
 }
 
-s32 func_80023568(void) {
-    if (D_8011AD3C != 0) {
-        return D_8011AD24[1] + 1;
+/** The boss race in progress, 1-based, or 0 outside boss races. */
+s32 boss_race_number(void) {
+    if (gBossRaceMode != 0) {
+        return gBossRaceIds[1] + 1;
     } else if (level_type() == RACETYPE_BOSS) {
-        return D_8011AD24[1] + 1;
+        return gBossRaceIds[1] + 1;
     }
     return 0;
 }
@@ -11170,19 +10977,18 @@ void run_object_loop_func(Object *obj, s32 updateRate) {
     update_object_stack_trace(OBJECT_UPDATE, OBJECT_CLEAR);
 }
 
-UNUSED void func_8002458C(UNUSED s32 arg0) {
+
+/** A ring of the last 128 readout values, kept for the crash screen and audio diagnostics. */
+s16 *readout_log_get(s32 *currentCount, s32 *maxCount) {
+    *currentCount = gReadoutLogIndex;
+    *maxCount = ARRAY_COUNT(gReadoutLog);
+    return gReadoutLog;
 }
 
-s16 *func_80024594(s32 *currentCount, s32 *maxCount) {
-    *currentCount = D_800DC700;
-    *maxCount = ARRAY_COUNT(D_8011AC20);
-    return D_8011AC20;
-}
-
-void func_800245B4(s16 arg0) {
-    D_8011AC20[D_800DC700++] = arg0;
-    if (D_800DC700 >= ARRAY_COUNT(D_8011AC20)) {
-        D_800DC700 = 0;
+void readout_log_push(s16 arg0) {
+    gReadoutLog[gReadoutLogIndex++] = arg0;
+    if (gReadoutLogIndex >= ARRAY_COUNT(gReadoutLog)) {
+        gReadoutLogIndex = 0;
     }
 }
 

@@ -67,8 +67,8 @@ void update_bluey(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
     animID = obj->animationID;
     animFrame = obj->animFrame;
     tempHeadAngle = racer->headAngle;
-    if (racer->raceFinished == TRUE && func_80023568()) {
-        func_80021400(130);
+    if (racer->raceFinished == TRUE && boss_race_number()) {
+        anim_actor_trigger(130);
         racer->raceFinished++;
     }
     tempStartTimer = *startTimer;

@@ -140,7 +140,7 @@ void write_epc_data_to_cpak(void) {
         bcopy(thread, sp44, sizeof(OSThread));
         bcopy((void *) (u32) thread->context.sp, sp244, sizeof(sp244));
         zero = 0; // Why is this needed to match?
-        v0 = func_80024594(&currentCount, &maxCount);
+        v0 = readout_log_get(&currentCount, &maxCount);
         for (i = zero; i < maxCount; i++) {
             sp444[i] = v0[currentCount];
             currentCount--;
@@ -179,7 +179,7 @@ void dump_memory_to_cpak(s32 epc, s32 size, u32 colourTag) {
         epcinfo.context.fp2.f.f_odd = gObjectStackTrace[2];
         bcopy(&epcinfo, &sp40, sizeof(OSThread));
         bzero(&sp240, sizeof(sp240));
-        v0 = func_80024594(&currentCount, &size);
+        v0 = readout_log_get(&currentCount, &size);
         for (i = 0; i < size; i++) {
             sp440[i] = v0[currentCount];
             currentCount--;

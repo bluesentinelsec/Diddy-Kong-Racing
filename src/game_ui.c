@@ -1914,7 +1914,7 @@ void hud_race_start(s32 countdown, s32 updateRate) {
                 }
             }
             // Make engine revving sounds of random pitches while the race is waiting to begin.
-            if (gRaceStartSoundMask == NULL && func_80023568() == 0) {
+            if (gRaceStartSoundMask == NULL && boss_race_number() == 0) {
                 f32 frequency;
                 UNUSED s32 pad;
                 Object **racerGroup;
