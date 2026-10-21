@@ -151,14 +151,14 @@ void set_racer_tail_lights(Object_Racer *racer);
 s32 should_taj_teleport(void);
 void set_taj_status(TajInteraction status);
 void slowly_reset_head_angle(Object_Racer *racer);
-void func_80052988(Object *obj, Object_Racer *racer, s32 action, s32 arg3, s32 duration, s32 arg5, s32 flags, s32 arg7);
+void racer_set_animation(Object *obj, Object_Racer *racer, s32 action, s32 arg3, s32 duration, s32 arg5, s32 flags, s32 arg7);
 void handle_car_steering(Object_Racer *racer);
-void func_800535C4(Object *obj, Object_Racer *racer);
+void racer_update_tilt_vector(Object *obj, Object_Racer *racer);
 void handle_car_velocity_control(Object_Racer *racer);
 void play_char_horn_sound(Object *obj, Object_Racer *racer);
 void racer_play_sound(Object *obj, s32 soundID);
 void racer_play_sound_after_delay(Object *obj, s32 soundID, s32 delay);
-void func_800575EC(Object *obj, Object_Racer *racer);
+void racer_update_basis_vectors(Object *obj, Object_Racer *racer);
 void handle_base_steering(Object_Racer *racer, s32 updateRate, f32 updateRateF);
 void second_racer_camera_update(Object *obj, Object_Racer *racer, s32 mode, f32 updateRateF);
 void get_timestamp_from_frames(s32 frameCount, s32 *minutes, s32 *seconds, s32 *hundredths);
@@ -201,33 +201,33 @@ void racer_spinout_car(Object* obj, Object_Racer* racer, s32 updateRate, f32 upd
 void racer_attack_handler_car(Object* obj, Object_Racer* racer, s32 updateRate);
 void racer_attack_handler_hovercraft(Object* obj, Object_Racer* racer);
 void racer_enter_door(Object_Racer *racer, s32 updateRate);
-void func_8005250C(Object* obj, Object_Racer* racer, s32 updateRate);
+void update_car_drive_animation(Object* obj, Object_Racer* racer, s32 updateRate);
 void update_car_velocity_ground(Object* obj, Object_Racer* racer, s32 updateRate, f32 updateRateF);
 f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 arg3, s32 updateRate, s32 arg5, f32 arg6);
 void update_AI_racer(Object* obj, Object_Racer* racer, s32 updateRate, f32 updateRateF);
-void func_80042D20(Object *obj, Object_Racer *racer, s32 updateRate);
+void racer_ai_tactics(Object *obj, Object_Racer *racer, s32 updateRate);
 void handle_racer_items(Object *obj, Object_Racer *racer, s32 updateRate);
 void drop_bananas(Object *obj, Object_Racer *racer, s32 number);
 void update_player_racer(Object *obj, s32 updateRate);
 void racer_update_eggs(Object **racerObjs);
 void timetrial_ghost_write(Object *obj, s32 updateRate);
-void func_80046524(s32 updateRate, f32 updateRateF, Object* obj, Object_Racer* racer);
-void func_80053750(Object *objRacer, Object_Racer *racer, f32 updateRateF);
+void update_hovercraft(s32 updateRate, f32 updateRateF, Object* obj, Object_Racer* racer);
+void update_car_wheels(Object *objRacer, Object_Racer *racer, f32 updateRateF);
 void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRate);
 void update_car(s32 updateRate, f32 updateRateF, Object* racerObj, Object_Racer* racer);  /* extern */
 
 //Non Matching
 s32 timetrial_ghost_read(Object *obj);
 void update_car_velocity_offground(Object *obj, Object_Racer *racer, s32, f32);
-void func_80059208(Object* obj, Object_Racer* racer, s32 updateRate);       /* extern */
-void func_80049794(s32 updateRate, f32 updateRateF, Object* obj, Object_Racer* racer);  /* extern */
-void func_8004CC20(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer *racer); /* extern */
+void racer_update_checkpoint_progress(Object* obj, Object_Racer* racer, s32 updateRate);       /* extern */
+void update_plane(s32 updateRate, f32 updateRateF, Object* obj, Object_Racer* racer);  /* extern */
+void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer *racer); /* extern */
 void racer_ai_challenge(Object *aiRacerObj, Object_Racer *aiRacer, s32 updateRate);
 void racer_ai_eggs(Object *obj, Object_Racer *racer, s32 updateRate);
-void func_80045C48(Object *obj, Object_Racer *racer, s32 updateRate);
+void racer_ai_drive(Object *obj, Object_Racer *racer, s32 updateRate);
 void racer_activate_magnet(Object *obj, Object_Racer *racer, s32 updateRate);
-Object *func_8005698C(Object *racerObj, Object_Racer *racer, f32 *outDistance);
-void func_8005B818(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF);
+Object *racer_find_weapon_target(Object *racerObj, Object_Racer *racer, f32 *outDistance);
+void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF);
 void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF);
 
 #endif
