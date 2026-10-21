@@ -4439,7 +4439,7 @@ void obj_loop_banana(Object *obj, s32 updateRate) {
                 properties->status = BANANA_IDLE;
             }
             radius = -10000.0f;
-            if (func_8002B9BC(obj, &radius, NULL, 1) != 0 && obj->trans.y_position < radius) {
+            if (get_object_water_height(obj, &radius, NULL, 1) != 0 && obj->trans.y_position < radius) {
                 properties->status = BANANA_IDLE;
                 obj->trans.y_position = radius;
             }
@@ -5239,7 +5239,7 @@ void weapon_trap(Object *weaponObj, s32 updateRate) {
             }
         }
         radius = -10000.0f;
-        if (func_8002B9BC(weaponObj, &radius, NULL, 1) && (weaponObj->trans.y_position < radius)) {
+        if (get_object_water_height(weaponObj, &radius, NULL, 1) && (weaponObj->trans.y_position < radius)) {
             weaponProperties->status = WEAPON_ARMED;
             weaponProperties->submerged = 1;
             weaponProperties->scale = 0;
