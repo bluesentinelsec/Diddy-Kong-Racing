@@ -320,9 +320,7 @@ void osContGetReadData(PCContPad *pads) {
 #define PC_EEPROM_BLOCKS 64
 #define PC_EEPROM_BYTES (PC_EEPROM_BLOCKS * 8)
 
-#ifdef EEPROM_PRESET_100
-#include "eeprom_preset.h"
-#endif
+#include "eeprom_preset.h" // the 100%-completion image: EEPROM_PRESET_100 builds start from it, and so does a trace when asked
 
 static u8 gEeprom[PC_EEPROM_BYTES];
 static s32 gEepromReady = 0;
@@ -388,7 +386,18 @@ static void eeprom_init(void) {
 #endif
 
     if (pc_trace_active()) {
-        return; // a trace starts from an erased save and keeps nothing
+        // A trace keeps nothing and starts from an erased save, or from the
+        // 100%-completion image with DKR_TRACE_SAVE=100 so a scene script can
+        // reach the tracks and vehicles a fresh file has not unlocked.
+        const char *want = getenv("DKR_TRACE_SAVE");
+
+        if (want != NULL && strcmp(want, "100") == 0) {
+            memcpy(gEeprom, gEepromPreset, PC_EEPROM_BYTES);
+            printf("SAVE: trace starts from the 100%% save\n");
+        } else {
+            memset(gEeprom, 0xFF, PC_EEPROM_BYTES);
+        }
+        return;
     }
 #ifdef __EMSCRIPTEN__
     web_save_mount();

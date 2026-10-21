@@ -175,11 +175,25 @@ always there to compare against. The check that keeps the port honest:
   controller in `tests/golden/drive.txt` for 7000 frames: through the player
   select, the caution screen and the adventure intro, then driving around the
   overworld, so it covers racer physics and the engine and skid sounds.
-  `make golden-update` regenerates both; `tests/golden.sh` takes any binary and
-  an optional input script. `DKR_TRACE_DETAIL=1` adds a line per renderer and
-  audio event to locate a divergence within a frame, `DKR_TRACE_DRAW=<frame>:<n>`
-  prints the vertices of one draw call, and `DKR_DUMP_FRAME` can capture the
-  frame itself. Traces run headless too, so the check works over ssh.
+  Then the **scene traces** in `tests/golden/scenes/`, one scripted path into
+  each part of the game so that a change to its logic has a trace that
+  exercises it: a car race, a hovercraft race and a plane race on Ancient Lake
+  with the AI, a time trial against the ghost, and a race paused and resumed
+  from the pause menu. Each script's header gives its length (`# frames N`)
+  and, where the fresh save would not unlock what it needs, `# save 100` to
+  start from the 100%-completion save image. `tests/golden/scenes.sh` runs
+  them all; adding a scene is adding a script and recording it.
+  `make golden-update` regenerates everything; `tests/golden.sh` takes any
+  binary and an optional input script. `DKR_TRACE_DETAIL=1` adds a line per
+  renderer and audio event (blend colours included) to locate a divergence
+  within a frame, `DKR_TRACE_DRAW=<frame>:<n>[-<m>]` prints the vertices of a
+  range of draw calls, and `DKR_DUMP_FRAME` can capture the frame itself.
+  Traces run headless too, so the check works over ssh.
+
+  The traces are the safety net for rewriting the game code into readable C:
+  a rewrite is correct when every trace is identical. They already caught one
+  real bug while being written (a pointer table allocated at the console's
+  4 bytes per entry, which on a 64-bit host overran into the level names).
 
 ## Running
 
@@ -315,6 +329,7 @@ Environment variables:
 | `DKR_INPUT_SCRIPT=<file>` | replay a controller script instead of reading the keyboard and gamepad; each line is `<frame> <buttons> <stickX> <stickY>` (buttons: comma-separated `A B Z START L R DU DD DL DR CU CD CL CR`, or `-`), held until the next line. Works with `--trace`; see `tests/golden/drive.txt` |
 | `DKR_FPS_LOG=1`       | print logic frames, logic steps consumed, frames presented and camera cuts detected, once a second |
 | `DKR_TRACE=<file>`, `DKR_TRACE_FRAMES=<n>` | same as `--trace` / `--trace-frames`      |
+| `DKR_TRACE_SAVE=100`  | a trace starts from the 100%-completion save instead of an erased one (scene scripts say `# save 100`) |
 | `DKR_NO_CRASH_HANDLER=1` | do not catch fatal signals (`make run-debugger` sets this so the debugger sees the fault) |
 
 On a crash (segmentation fault, bus error, abort) the game prints the current frame
