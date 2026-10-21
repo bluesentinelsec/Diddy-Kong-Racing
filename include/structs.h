@@ -1218,7 +1218,7 @@ typedef struct Object_Racer {
     /* 0x168 */ s16 unk168;
     /* 0x16A */ s16 headAngle;
     /* 0x166 */ s16 headAngleTarget;
-    /* 0x16E */ s16 unk16E;
+    /* 0x16E */ s16 driftCounterSteerTimer; // frames the stick has been held against the drift; a spin-out past 80
     /* 0x170 */ s16 unk170;
     /* 0x172 */ s8 balloon_type;
     /* 0x173 */ s8 balloon_quantity;

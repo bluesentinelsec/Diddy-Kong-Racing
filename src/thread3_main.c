@@ -381,7 +381,7 @@ void load_level_game(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle v
     load_game_text_table();
     level_load(levelId, numberOfPlayers, entranceId, vehicleId, gGameCurrentCutscene);
     hud_init(cam_get_viewport_layout());
-    init_particle_buffers(8, 16, 150, 100, 50, 0);
+    init_particle_buffers(8, 16, 150, 100, 50);
     ainode_update();
     osSetTime(0);
     mempool_free_timer(2);
@@ -889,7 +889,7 @@ void load_level_menu(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle v
     level_load(levelId, numberOfPlayers, entranceId, vehicleId, cutsceneId);
     stubbed_printf("level_load exit id=%d\n", levelId);
     hud_init(cam_get_viewport_layout());
-    init_particle_buffers(4, 4, 110, 48, 32, 0);
+    init_particle_buffers(4, 4, 110, 48, 32);
     ainode_update();
     osSetTime(0);
     mempool_free_timer(2);

@@ -52,9 +52,9 @@ enum ParticleRandomizationFlags {
     PARTICLE_RANDOM_YAW = (1 << 11),
     PARTICLE_RANDOM_PITCH = (1 << 12),
     PARTICLE_RANDOM_ROLL = (1 << 13),
-    PARTCILE_RANDOM_YAW_VELOCITY = (1 << 14),
-    PARTCILE_RANDOM_PITCH_VELOCITY = (1 << 15),
-    PARTCILE_RANDOM_ROLL_VELOCITY = (1 << 16),
+    PARTICLE_RANDOM_YAW_VELOCITY = (1 << 14),
+    PARTICLE_RANDOM_PITCH_VELOCITY = (1 << 15),
+    PARTICLE_RANDOM_ROLL_VELOCITY = (1 << 16),
     PARTICLE_RANDOM_SCALE = (1 << 17),
     PARTICLE_RANDOM_SCALE_VELOCITY = (1 << 18),
     PARTICLE_RANDOM_MOVEMENT_PARAM = (1 << 19),
@@ -231,9 +231,9 @@ typedef struct Particle {
     /* 0x28 */ f32 scaleVelocity;
     /* 0x2C */ s16 kind;
     /* 0x2E */ s16 segmentID;
-    /* 0x30 */ f32 unk30;
-    /* 0x34 */ f32 unk34; // set to zero but never used
-    /* 0x38 */ u8 unk38; // set to zero but never used
+    /* 0x30 */ f32 unused30; // never written or read
+    /* 0x34 */ f32 unused34; // never read
+    /* 0x38 */ u8 unused38;  // never read
     /* 0x39 */ u8 movementType;
     /* 0x3A */ s16 destroyTimer;
     /* 0x3C */ Object *parentObj;
@@ -242,7 +242,7 @@ typedef struct Particle {
     /* 0x44 */ ParticleModel *model;
     /* 0x44 */ Sprite *sprite;
     };
-    /* 0x48 */ s16 unk_48;
+    /* 0x48 */ s16 unused48; // never read
     /* 0x4A */ s16 brightness;
     /* 0x4C */ Vec3f localPos;
     union {
@@ -317,7 +317,7 @@ void update_vehicle_particles(Object *racerObj, s32 updateRate);
 Particle* create_line_particle(Object* obj, ParticleEmitter* emitter);
 void scroll_particle_textures(s32 updateRate); // Non Matching
 void init_particle_buffers(s32 maxTriangleParticles, s32 maxRectangleParticles, s32 maxSpriteParticles,
-                           s32 maxLineParticles, s32 maxPointParticles, s32 unused_arg); // Non Matching
+                           s32 maxLineParticles, s32 maxPointParticles);
 void move_particle_basic_parent(Particle *);
 void move_particle_attached_to_parent(Particle *);
 void move_particle_with_acceleration(Particle *);
