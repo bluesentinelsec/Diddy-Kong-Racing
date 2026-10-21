@@ -100,7 +100,7 @@ void update_bluey(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
     obj->animFrame = animFrame;
     if (racer->attackType != ATTACK_NONE) {
         if (obj->animationID != ANIM_BLUEY_DAMAGE) {
-            racer->unk1CD = obj->animationID;
+            racer->currentAnimId = obj->animationID;
             obj->animationID = ANIM_BLUEY_DAMAGE;
             racer->animationSpeed = 0.0f;
             play_random_boss_sound(BOSS_SOUND_NEGATIVE);
@@ -117,13 +117,13 @@ void update_bluey(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
         racer->velocity = -sqrtf((diffX * diffX) + (diffZ * diffZ));
     }
     sp3C = FALSE;
-    if ((find_next_checkpoint_node(racer->nextCheckpoint, racer->isOnAlternateRoute))->unk36[racer->unk1CA] == 1) {
+    if ((find_next_checkpoint_node(racer->nextCheckpoint, racer->isOnAlternateRoute))->unk36[racer->aiLane] == 1) {
         sp3C = TRUE;
     }
     if (obj->animationID != ANIM_BLUEY_DAMAGE) {
         if (racer->velocity < -2.0) {
             if (sp3C) {
-                if (racer->unk1CD != 3) {
+                if (racer->currentAnimId != 3) {
                     racer->animationSpeed = 40.0f;
                 }
                 obj->animationID = ANIM_BLUEY_TURN;
@@ -135,19 +135,19 @@ void update_bluey(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
                 if (steerVel > 73) {
                     steerVel = 73;
                 }
-                racer->unk1CD = 3;
+                racer->currentAnimId = 3;
                 racer->animationSpeed += (steerVel - racer->animationSpeed) * 0.25;
             } else {
-                racer->unk1CD = 0;
+                racer->currentAnimId = 0;
                 obj->animationID = ANIM_BLUEY_RUN;
                 racer->animationSpeed -= (racer->velocity * updateRateF) * 0.5;
             }
         } else if (racer->velocity < -0.1 || 0.1 < racer->velocity) {
-            racer->unk1CD = 1;
+            racer->currentAnimId = 1;
             obj->animationID = ANIM_BLUEY_WALK;
             racer->animationSpeed -= racer->velocity * updateRateF * 2;
         } else {
-            racer->unk1CD = 2;
+            racer->currentAnimId = 2;
             obj->animationID = ANIM_BLUEY_IDLE;
             racer->animationSpeed += updateRateF * 1.0;
         }
@@ -166,7 +166,7 @@ void update_bluey(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
         modInst->animationID = -1;
     }
     if (modInst->animationID == -1 && obj->animationID == ANIM_BLUEY_DAMAGE) {
-        obj->animationID = racer->unk1CD;
+        obj->animationID = racer->currentAnimId;
     }
     animFrame = obj->animFrame;
     obj->animFrame = racer->animationSpeed;

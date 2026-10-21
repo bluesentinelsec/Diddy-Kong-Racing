@@ -554,12 +554,12 @@ void obj_loop_effectbox(Object *obj, UNUSED s32 updateRate) {
                 if (-zExtents < zDiff && zDiff < zExtents) {
                     yExtentsHalf = yExtents / 2;
                     curRacer = curRacerObj->racer;
-                    curRacer->unk1FE = effectBoxEntry->unkC;
-                    curRacer->unk1FF = effectBoxEntry->unkD;
-                    if (yExtentsHalf < yDiff && curRacer->unk1FE == 1) {
+                    curRacer->effectBoxType = effectBoxEntry->unkC;
+                    curRacer->effectBoxStrength = effectBoxEntry->unkD;
+                    if (yExtentsHalf < yDiff && curRacer->effectBoxType == 1) {
                         xDiff = (yDiff - yExtentsHalf) / yExtentsHalf;
                         yDiff = (1.0 - xDiff);
-                        curRacer->unk1FF *= yDiff;
+                        curRacer->effectBoxStrength *= yDiff;
                     }
                 }
             }
