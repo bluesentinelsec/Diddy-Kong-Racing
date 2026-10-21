@@ -39,9 +39,9 @@ s16 *gAnimationTable;
 s32 *gObjectAnimationTable;
 s32 gModelAnimOffsetID;
 #ifdef TARGET_PC
-s16 *D_8011D644;
+s16 *gAnimFracDeltas;
 #else
-s32 D_8011D644;
+s32 gAnimFracDeltas;
 #endif
 
 /******************************/
@@ -79,9 +79,9 @@ void allocate_object_model_pools(void) {
         pc_swap16_buf(gAnimationTable, asset_table_size(ASSET_ANIMATION_IDS));
         pc_swap32_buf(gObjectAnimationTable, asset_table_size(ASSET_OBJECT_ANIMATIONS_TABLE));
     }
-    D_8011D644 = (s16 *) mempool_alloc_safe(0xC00, COLOUR_TAG_GREEN);
+    gAnimFracDeltas = (s16 *) mempool_alloc_safe(0xC00, COLOUR_TAG_GREEN);
 #else
-    D_8011D644 = (s32) mempool_alloc_safe(0xC00, COLOUR_TAG_GREEN);
+    gAnimFracDeltas = (s32) mempool_alloc_safe(0xC00, COLOUR_TAG_GREEN);
 #endif
     gModelAnimOffsetID = 0;
 
