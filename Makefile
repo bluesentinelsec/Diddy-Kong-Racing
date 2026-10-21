@@ -109,6 +109,7 @@ endif
 # repository is bind-mounted into it and the output lands in build/web like any
 # other configuration. Needs the assets (make assets) for a playable page.
 WEB_DIR   := build/web
+DIST_DIR  := build/dist
 WEB_IMAGE ?= dkracing-web
 WEB_PORT  ?= 8000
 DOCKER    ?= docker
@@ -117,6 +118,7 @@ web-image:
 	$(DOCKER) build -t $(WEB_IMAGE) -f docker/web.Dockerfile docker
 
 web: web-image
+	@mkdir -p $(WEB_DIR) $(DIST_DIR) # created here as the user: on Linux, files the container makes are root's
 	$(DOCKER) run --rm -v "$(CURDIR)":/src -w /src $(WEB_IMAGE) sh -c \
 	  'emcmake cmake -S . -B $(WEB_DIR) -G Ninja -DCMAKE_BUILD_TYPE=Release $(CMAKE_ARGS) && cmake --build $(WEB_DIR) -j $(JOBS)'
 	@ls -la $(WEB_DIR)/dkracing.*
@@ -161,7 +163,6 @@ run-ios: $(IOS_DIR)/CMakeCache.txt
 # playable (that is what CI produces). See docs/packaging.md.
 PORT_VERSION := $(shell cat VERSION)
 HOST_ARCH    := $(shell uname -m | sed 's/aarch64/arm64/;s/amd64/x86_64/')
-DIST_DIR     := build/dist
 PKG          := DiddyKongRacing-$(PORT_VERSION)
 
 package:
