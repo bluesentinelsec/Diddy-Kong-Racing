@@ -341,7 +341,7 @@ void racer_sound_car(Object *obj, u32 buttonsPressed, u32 buttonsHeld, s32 ticks
     }
 
     // Start or stop the brake sound based on conditions
-    if ((gSoundRacerObj->unk10 != NULL || gSoundRacerObj->unk14 != NULL || !(buttonsHeld & B_BUTTON) ||
+    if ((gSoundRacerObj->slideSoundHandle != NULL || gSoundRacerObj->unusedSoundHandle14 != NULL || !(buttonsHeld & B_BUTTON) ||
          gSoundRacerObj->velocity > -0.1 || gSoundRacerObj->vehicleID == VEHICLE_LOOPDELOOP) &&
         gRacerSound->brakeSound != NULL) {
         sndp_stop(gRacerSound->brakeSound);

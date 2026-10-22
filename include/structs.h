@@ -1140,11 +1140,11 @@ typedef struct Object_Racer {
     /* 0x004 */ s32 unk4;
     /* 0x008 */ f32 forwardVel;
     /* 0x00C */ f32 animationSpeed;
-    /* 0x010 */ SoundHandle unk10;
-    /* 0x014 */ SoundHandle unk14;
-    /* 0x018 */ SoundHandle unk18;
-    /* 0x01C */ SoundHandle unk1C;
-    /* 0x020 */ SoundHandle unk20;
+    /* 0x010 */ SoundHandle slideSoundHandle;    // SOUND_CAR_SLIDE while drifting
+    /* 0x014 */ SoundHandle unusedSoundHandle14; // only ever stopped
+    /* 0x018 */ SoundHandle surfaceSoundHandle;  // looping surface noise under the wheels
+    /* 0x01C */ SoundHandle unusedSoundHandle1C; // only ever stopped
+    /* 0x020 */ SoundHandle splatSoundHandle;    // SOUND_SPLAT on a hit
     /* 0x024 */ struct AudioPoint *soundMask;
     /* 0x028 */ u16 lastSoundID;
     /* 0x02A */ u16 unk2A;
