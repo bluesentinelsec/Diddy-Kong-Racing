@@ -4298,10 +4298,10 @@ void update_player_racer(Object *obj, s32 updateRate) {
         xTemp = obj->trans.x_position;
         yTemp = obj->trans.y_position;
         zTemp = obj->trans.z_position;
-        if (tempRacer->unk1B2 > 0) {
-            tempRacer->unk1B2 -= updateRate;
-            if (tempRacer->unk1B2 < 0) {
-                tempRacer->unk1B2 = 0;
+        if (tempRacer->positionChangeTimer > 0) {
+            tempRacer->positionChangeTimer -= updateRate;
+            if (tempRacer->positionChangeTimer < 0) {
+                tempRacer->positionChangeTimer = 0;
             }
         }
         set_active_camera(tempRacer->playerIndex);
@@ -8769,10 +8769,10 @@ void update_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, f32 updat
     yPos = obj->trans.y_position;
     zPos = obj->trans.z_position;
 
-    if (racer->unk1B2 > 0) {
-        racer->unk1B2 -= updateRate;
-        if (racer->unk1B2 < 0) {
-            racer->unk1B2 = 0;
+    if (racer->positionChangeTimer > 0) {
+        racer->positionChangeTimer -= updateRate;
+        if (racer->positionChangeTimer < 0) {
+            racer->positionChangeTimer = 0;
         }
     }
 

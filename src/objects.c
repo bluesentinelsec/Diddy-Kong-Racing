@@ -1302,6 +1302,337 @@ s32 object_id_alloc(Object *obj) {
     return NextFreeIndex;
 }
 
+typedef struct RacerSpawnPoint {
+    s32 x;
+    s32 y;
+    s32 z;
+    s32 angle;
+} RacerSpawnPoint;
+
+/**
+ * Read the level's setup points for this entrance into the eight spawn slots. A setup point
+ * may also dictate the vehicle for the whole grid.
+ */
+static void racers_collect_setup_points(u32 entranceID, RacerSpawnPoint *spawns, Vehicle *vehicle) {
+    Object *obj;
+    LevelObjectEntry *objEntry;
+    s32 slot;
+    s32 j;
+
+    for (j = 0; j < 8; j++) {
+        spawns[j].x = 0;
+        spawns[j].y = 0;
+        spawns[j].z = 0;
+        spawns[j].angle = 0;
+    }
+    for (j = 0; j < gObjectCount; j++) {
+        obj = gObjPtrList[j];
+        if ((obj->trans.flags & OBJ_FLAGS_PARTICLE) || obj->behaviorId != BHV_SETUP_POINT) {
+            continue;
+        }
+        if (entranceID != obj->properties.setupPoint.entranceID) {
+            continue;
+        }
+        slot = obj->properties.setupPoint.racerIndex;
+        if (slot < 8) {
+            spawns[slot].x = obj->trans.x_position;
+            spawns[slot].y = obj->trans.y_position;
+            spawns[slot].z = obj->trans.z_position;
+            spawns[slot].angle = obj->trans.rotation.y_rotation;
+        }
+        objEntry = obj->level_entry;
+        if (objEntry->setupPoint.vehicle != -1) {
+            *vehicle = objEntry->setupPoint.vehicle;
+        }
+    }
+}
+
+/**
+ * Give every racer a distinct starting slot. Slots already claimed in the save are kept;
+ * racers without a valid slot take the free ones in order.
+ */
+static void racers_assign_starting_positions(Settings *settings) {
+    s8 slotTaken[8];
+    s8 unplaced[8];
+    u8 unplacedCount;
+    s32 i;
+    s32 j;
+
+    for (i = 0; i < gNumRacers; i++) {
+        slotTaken[i] = FALSE;
+    }
+    unplacedCount = 0;
+    for (i = 0; i < gNumRacers; i++) {
+        if (settings->racers[i].starting_position < gNumRacers) {
+            if (slotTaken[settings->racers[i].starting_position] == FALSE) {
+                slotTaken[settings->racers[i].starting_position] = TRUE;
+                continue;
+            }
+        }
+        unplaced[unplacedCount++] = i;
+    }
+    for (i = 0; i < unplacedCount; i++) {
+        for (j = 0; j < gNumRacers; j++) {
+            if (slotTaken[j] == FALSE) {
+                slotTaken[j] = TRUE;
+                settings->racers[unplaced[i]].starting_position = j;
+                break;
+            }
+        }
+    }
+}
+
+/**
+ * The port (index into the settings' racers) that occupies starting slot `slot`. Hub
+ * worlds, challenges and boss races seat racers in port order.
+ */
+static s32 racer_port_for_slot(Settings *settings, s32 slot, u8 raceType) {
+    s32 j;
+
+    if (raceType == RACETYPE_HUBWORLD || (raceType & RACETYPE_CHALLENGE) || gBossRaceMode != 0) {
+        return slot;
+    }
+    for (j = 0; j < gNumRacers; j++) {
+        if (slot == settings->racers[j].starting_position) {
+            return j;
+        }
+    }
+    return 0;
+}
+
+/**
+ * The vehicle for one grid slot. Boss races and the rolling demo dictate it; otherwise AI
+ * racers and both players of a shared adventure drive what player one picked.
+ */
+static Vehicle racer_spawn_vehicle(Vehicle vehicle, s32 slot, s32 playerIndex, s32 numPlayers,
+                                   LevelHeader *levelHeader) {
+    if (gBossRaceMode == 1) {
+        if (slot == 0) {
+            return gBossVehicles[gBossRaceIds[1]].playerVehicle;
+        }
+        return gBossVehicles[gBossRaceIds[1]].bossVehicle;
+    }
+    if (gBossRaceMode == 2) {
+        return levelHeader->vehicle;
+    }
+    if (playerIndex == 4 || race_is_adventure_2P()) {
+        return get_player_selected_vehicle(PLAYER_ONE);
+    }
+    if (numPlayers >= 2) {
+        return get_player_selected_vehicle(playerIndex);
+    }
+    return vehicle;
+}
+
+static s16 racer_object_id(Settings *settings, s32 slot, s32 port, Vehicle vehicle) {
+    if (gBossRaceMode == 2) {
+        return gRacerObjectTable[gDefaultCharacterOrder[slot] + (vehicle * NUM_CHARACTERS)];
+    }
+    if (vehicle < 5) {
+        return gRacerObjectTable[(settings->racers[port].character) + (vehicle * NUM_CHARACTERS)];
+    }
+    return gRacerObjectTable[vehicle + 45];
+}
+
+/**
+ * Spawn flags for a racer: AI racers get water effects and, with several players, animation,
+ * and their models start on a shifted animation frame; a lone human gets interaction. Boss
+ * vehicles get neither.
+ */
+static s32 racer_spawn_flags(s32 playerIndex, s32 numPlayers, Vehicle vehicle) {
+    s32 flags;
+
+    flags = OBJECT_BEHAVIOUR_SHADED;
+    if (playerIndex == 4) {
+        model_anim_offset(1);
+        flags = OBJECT_BEHAVIOUR_SHADED | OBJECT_BEHAVIOUR_WATER_EFFECT;
+        if (numPlayers >= 2) {
+            flags |= OBJECT_BEHAVIOUR_ANIMATION;
+        }
+    } else if (numPlayers == 1) {
+        flags |= OBJECT_BEHAVIOUR_INTERACTIVE;
+    }
+    if (vehicle >= VEHICLE_BOSSES) {
+        flags = OBJECT_BEHAVIOUR_SHADED;
+        model_anim_offset(0);
+    }
+    return flags;
+}
+
+/**
+ * Fill in a freshly spawned racer: vehicle, character, bananas, engine sound and push force.
+ */
+static void racer_init_fields(Object *racerObj, Settings *settings, s32 slot, s32 port, Vehicle vehicle, u8 raceType,
+                              enum GameMode gameMode, s8 *pushForces) {
+    Object_Racer *racer;
+
+    racer = racerObj->racer;
+    racerObj->level_entry = NULL;
+    racer->vehicleID = vehicle;
+    racer->vehicleIDPrev = vehicle;
+    if (racer->vehicleID == VEHICLE_PLANE || racer->vehicleID == VEHICLE_SMOKEY ||
+        racer->vehicleID == VEHICLE_PTERODACTYL) {
+        gIsNonCarRacers = TRUE;
+    }
+    racer->unk1CB = vehicle;
+    if (racer->unk1CB < VEHICLE_CAR || racer->unk1CB > VEHICLE_PLANE) {
+        racer->unk1CB = 0;
+    }
+    racer->racerIndex = port;
+    if (gBossRaceMode == 2) {
+        racer->characterId = gDefaultCharacterOrder[slot];
+    } else {
+        racer->characterId = settings->racers[port].character;
+    }
+    if (raceType == RACETYPE_CHALLENGE_BATTLE) {
+        racer->bananas = 8;
+    } else {
+        racer->bananas = 0;
+    }
+    if (get_filtered_cheats() & CHEAT_START_WITH_10_BANANAS && !(raceType & RACETYPE_CHALLENGE)) {
+        if (racer->playerIndex != PLAYER_COMPUTER) {
+            racer->bananas = 10;
+        }
+    }
+    if ((gameMode != GAMEMODE_MENU || gBossRaceMode == 2) && vehicle < VEHICLE_BOSSES) {
+        racer->vehicleSound = racer_sound_init(racer->characterId, racer->vehicleID);
+    } else {
+        racer->vehicleSound = NULL;
+    }
+
+    racerObj->interactObj->pushForce = pushForces[racer->characterId] + 1;
+    switch (racer->vehicleID) {
+        case VEHICLE_TRICKY:
+        case VEHICLE_BLUEY:
+        case VEHICLE_SMOKEY:
+        case VEHICLE_PTERODACTYL:
+        case VEHICLE_SNOWBALL:
+        case VEHICLE_BUBBLER:
+        case VEHICLE_WIZPIG:
+        case VEHICLE_ROCKET:
+            racer_special_init(racerObj, racer);
+            break;
+        default:
+            break;
+    }
+}
+
+/**
+ * Spawn a time-trial ghost on the first grid slot: a translucent racer with no shadow or
+ * interaction.
+ */
+static Object *racers_spawn_ghost(LevelObjectEntry_Racer *racerEntry, s16 objectID, RacerSpawnPoint *spawn) {
+    Object *obj;
+
+    racerEntry->common.size = ((objectID & 0x100) >> 1) | 0x10;
+    racerEntry->common.objectID = objectID;
+    racerEntry->common.x = spawn->x;
+    racerEntry->common.y = spawn->y;
+    racerEntry->common.z = spawn->z;
+    racerEntry->angleY = spawn->angle;
+    obj = spawn_object((LevelObjectEntryCommon *) racerEntry, 1);
+    obj->level_entry = NULL;
+    obj->behaviorId = BHV_TIMETRIAL_GHOST;
+    obj->shadow->scale = 0.01f;
+    obj->interactObj->flags = INTERACT_FLAGS_NONE;
+    obj->racer->transparency = 96;
+    return obj;
+}
+
+/**
+ * Run each racer for ten ticks so it rests on the ground, stagger the AI animation
+ * timers, and apply the size cheats.
+ */
+static void racers_settle(void) {
+    Object *racerObj;
+    Object_Racer *racer;
+    s32 aiAnimParity;
+    s32 j;
+    s32 k;
+
+    aiAnimParity = 0;
+    for (j = 0; j < gNumRacers; j++) {
+        racerObj = (*gRacers)[j];
+        racer = racerObj->racer;
+        for (k = 0; k < 10; k++) {
+            update_player_racer(racerObj, LOGIC_30FPS);
+        }
+        if (racer->playerIndex == PLAYER_COMPUTER) {
+            aiAnimParity++;
+            aiAnimParity &= 1;
+        }
+        for (k = 0; k < racerObj->header->numberOfModelIds; k++) {
+            if (racerObj->modelInstances[k] != NULL && racerObj->modelInstances[k]->animUpdateTimer != 0) {
+                if (racer->playerIndex == PLAYER_COMPUTER) {
+                    racerObj->modelInstances[k]->animUpdateTimer = (aiAnimParity * 2);
+                } else {
+                    racerObj->modelInstances[k]->animUpdateTimer = 0;
+                }
+            }
+        }
+        if (get_filtered_cheats() & CHEAT_BIG_CHARACTERS) {
+            racerObj->trans.scale *= 1.4f;
+        }
+        if (get_filtered_cheats() & CHEAT_SMALL_CHARACTERS) {
+            racerObj->trans.scale *= 0.714f;
+        }
+        racer->stretch_height_cap = 1.0f;
+        racer->stretch_height = 1.0f;
+    }
+}
+
+/**
+ * The three on-screen position arrows of a single-player race.
+ */
+static void racers_spawn_position_arrows(LevelObjectEntry_Racer *racerEntry) {
+    Object *obj;
+    s32 j;
+
+    for (j = 0; j < 3; j++) {
+        racerEntry->common.objectID = ASSET_OBJECT_ID_POSARROW;
+        racerEntry->common.size = sizeof(LevelObjectEntryCommon);
+        racerEntry->common.x = 0;
+        racerEntry->common.y = 0;
+        racerEntry->common.z = 0;
+        obj = spawn_object((LevelObjectEntryCommon *) racerEntry, OBJECT_SPAWN_UNK01);
+        obj->properties.common.unk0 = j;
+        obj->level_entry = NULL;
+    }
+}
+
+/**
+ * In the central area, once the player holds enough balloons for a Taj challenge that is
+ * not yet unlocked, Taj teleports to the player to offer it.
+ */
+static void taj_challenge_check(Settings *settings) {
+    s8 *balloonThresholds;
+    s32 challenge;
+
+    if (settings->worldId != WORLD_CENTRAL_AREA || is_in_tracks_mode() != FALSE) {
+        return;
+    }
+    balloonThresholds = (s8 *) get_misc_asset(ASSET_MISC_16);
+    challenge = 0;
+    // settings->balloonsPtr[0] is the total balloon count.
+    if (!(settings->tajFlags & TAJ_FLAGS_CAR_CHAL_UNLOCKED) && (settings->balloonsPtr[0] >= balloonThresholds[0])) {
+        challenge = 1;
+    } else if (!(settings->tajFlags & TAJ_FLAGS_HOVER_CHAL_UNLOCKED) &&
+               (settings->balloonsPtr[0] >= balloonThresholds[1])) {
+        challenge = 2;
+    } else if (!(settings->tajFlags & TAJ_FLAGS_PLANE_CHAL_UNLOCKED) &&
+               (settings->balloonsPtr[0] >= balloonThresholds[2])) {
+        challenge = 3;
+    }
+    if (challenge) {
+        set_taj_voice_line(SOUND_VOICE_TAJ_CHALLENGE_RACE);
+        // MIPS masks shift counts mod 32; without &31 this is UB on the PC targets.
+        settings->tajFlags |= 1 << ((challenge + 31) & 31);
+        set_taj_status(TAJ_TELEPORT);
+        set_next_taj_challenge_menu(challenge);
+        safe_mark_write_save_file(get_save_file_index());
+    }
+}
+
 /**
  * Takes the level header and decides which race type to activate.
  * Sets up the racer spawning. Initialising vehicle types, racer count, then
@@ -1309,29 +1640,18 @@ s32 object_id_alloc(Object *obj) {
  */
 void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     LevelObjectEntry_Racer *racerEntry;
-    Object *curObj;
-    s32 numPlayers;
     Object *racerObj;
-    LevelObjectEntry *objEntry;
     enum GameMode gameMode;
-    Object_Racer *curRacer;
+    s32 numPlayers;
     s32 cutsceneID;
-    s32 spawnObjFlags;
-    s8 *miscAsset16;
-    s8 sp127;
-    u8 spawnedObjCount;
+    s8 *pushForces;
+    s32 prevVehicle;
     s16 objectID;
-    s8 racerActive[8];
-    s8 racerIDs[8];
-    s32 spawnX[8];
-    s32 spawnY[8];
-    s32 spawnZ[8];
-    s32 spawnAngle[8];
+    RacerSpawnPoint spawns[8];
     Settings *settings;
-    s32 j;
-    s32 var_s4;
+    s32 port;
     s32 i;
-    s32 k;
+    s32 j;
     u8 raceType;
     LevelHeader *levelHeader;
     Camera *cutsceneCameraSegment;
@@ -1359,43 +1679,20 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     }
     gameMode = get_game_mode();
     settings = get_settings();
-    miscAsset16 = (s8 *) get_misc_asset(ASSET_MISC_3);
+    pushForces = (s8 *) get_misc_asset(ASSET_MISC_3);
     gPrevTimeTrialVehicle = gSetupPointVehicle;
-    if (!(settings->courseFlagsPtr[settings->courseId] &
-          RACE_VISITED)) { // Check if the player has not visited the course yet.
+    if (!(settings->courseFlagsPtr[settings->courseId] & RACE_VISITED)) {
         settings->courseFlagsPtr[settings->courseId] |= RACE_VISITED;
         gCountdownSkipState = COUNTDOWN_SKIP_NEVER;
     }
     if (raceType != RACETYPE_DEFAULT) {
         gCountdownSkipState = COUNTDOWN_SKIP_NEVER;
     }
-    for (j = 0; j < ARRAY_COUNT(spawnZ); j++) {
-        spawnX[j] = 0;
-        spawnY[j] = 0;
-        spawnZ[j] = 0;
-    }
-    for (j = 0; j < gObjectCount; j++) {
-        racerObj = gObjPtrList[j];
-        if (!(racerObj->trans.flags & OBJ_FLAGS_PARTICLE)) {
-            if (racerObj->behaviorId == BHV_SETUP_POINT) {
-                if (entranceID == racerObj->properties.setupPoint.entranceID) {
-                    if (racerObj->properties.setupPoint.racerIndex < 8) {
-                        spawnX[racerObj->properties.setupPoint.racerIndex] = racerObj->trans.x_position;
-                        spawnY[racerObj->properties.setupPoint.racerIndex] = racerObj->trans.y_position;
-                        spawnZ[racerObj->properties.setupPoint.racerIndex] = racerObj->trans.z_position;
-                        spawnAngle[racerObj->properties.setupPoint.racerIndex] = racerObj->trans.rotation.y_rotation;
-                    }
-
-                    objEntry = racerObj->level_entry;
-                    if (objEntry->setupPoint.vehicle != -1) {
-                        vehicle = objEntry->setupPoint.vehicle;
-                    }
-                }
-            }
-        }
-    }
+    racers_collect_setup_points(entranceID, spawns, &vehicle);
     gSetupPointVehicle = vehicle; // UB if all setup points don't have an assigned vehicle ID.
     gPrevTimeTrialVehicle = gSetupPointVehicle;
+
+    // How many racers, and how many of them are human.
     numPlayers = playerCount + 1;
     gNumRacers = 8;
     gTwoActivePlayersInAdventure = FALSE;
@@ -1407,21 +1704,19 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     if (raceType == RACETYPE_HUBWORLD) {
         gTimeTrialEnabled = 0;
     }
-
     gIsTimeTrial = gTimeTrialEnabled;
     if (gIsTimeTrial) {
-        raceType = RACETYPE_HUBWORLD; // ???
+        raceType = RACETYPE_HUBWORLD; // Time trials seat racers like a hub world: humans only.
     }
     if (raceType == RACETYPE_HUBWORLD || numPlayers >= 3) {
         gNumRacers = numPlayers;
         if (level_properties_get() == 0 && gSpawnAngleOffset != 0) {
-            spawnAngle[0] += gSpawnAngleOffset;
+            spawns[0].angle += gSpawnAngleOffset;
             gSpawnAngleOffset = 0;
         }
     } else if (numPlayers == 2) {
         gNumRacers = get_multiplayer_racer_count();
     }
-
     if (raceType & RACETYPE_CHALLENGE) {
         gNumRacers = 4;
     }
@@ -1437,188 +1732,41 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
         gRollingDemo = TRUE;
         gBossRaceMode = 2;
     }
+    racers_assign_starting_positions(settings);
 
-    for (i = 0; i < gNumRacers; i++) {
-        racerActive[i] = FALSE;
-    }
-
-    spawnedObjCount = 0;
-    // Mark active for human players.
-    for (i = 0; i < numPlayers; i++) {
-        if (settings->racers[i].starting_position < gNumRacers) {
-            if (racerActive[settings->racers[i].starting_position] == FALSE) {
-                racerActive[settings->racers[i].starting_position] = TRUE;
-                continue;
-            }
-        }
-        racerIDs[spawnedObjCount++] = i;
-    }
-
-    // Mark active for computer players.
-    for (i = numPlayers; i < gNumRacers; i++) {
-        if (settings->racers[i].starting_position < gNumRacers) {
-            if (racerActive[settings->racers[i].starting_position] == FALSE) {
-                racerActive[settings->racers[i].starting_position] = TRUE;
-                continue;
-            }
-        }
-        racerIDs[spawnedObjCount++] = i;
-    }
-
-    // Assign spawn locations for active racers.
-    for (i = 0; i < spawnedObjCount; i++) {
-        for (j = 0; j < gNumRacers; j++) {
-            if (racerActive[j] == FALSE) {
-                racerActive[j] = TRUE;
-                settings->racers[racerIDs[i]].starting_position = j;
-                j = gNumRacers; // Break
-            }
-        }
-    }
     racerEntry = mempool_alloc_safe(sizeof(LevelObjectEntry_Racer), COLOUR_TAG_YELLOW);
     racerEntry->angleY = 0;
     racerEntry->angleX = 0;
     racerEntry->angleZ = 0;
-    if (levelHeader->vehicle == VEHICLE_CAR) {
-        gIsNonCarRacers = FALSE;
-    } else {
-        gIsNonCarRacers = TRUE;
-    }
+    gIsNonCarRacers = levelHeader->vehicle != VEHICLE_CAR;
     gBossRaceIds[1] = levelHeader->bossRaceID;
-    sp127 = -1;
+    prevVehicle = -1;
     for (i = 0; i < gNumRacers; i++) {
-        if (raceType != RACETYPE_HUBWORLD && !(raceType & RACETYPE_CHALLENGE) && gBossRaceMode == 0) {
-            j = 0;
-            var_s4 = j;
-            do {
-                if (i == settings->racers[j].starting_position) {
-                    var_s4 = j;
-                    j = gNumRacers;
-                }
-                j++;
-            } while (j < gNumRacers);
-        } else {
-            var_s4 = i;
+        port = racer_port_for_slot(settings, i, raceType);
+        racerEntry->playerIndex = port < numPlayers ? port : 4;
+        if (raceType == RACETYPE_HUBWORLD && racerEntry->playerIndex == 4) {
+            continue; // No AI in hub worlds.
         }
-        racerEntry->playerIndex = var_s4 < numPlayers ? var_s4 : 4;
-        if (raceType != RACETYPE_HUBWORLD || racerEntry->playerIndex != 4) {
-            if (gBossRaceMode == 1) {
-                if (i == 0) {
-                    vehicle = gBossVehicles[gBossRaceIds[1]].playerVehicle;
-                } else {
-                    vehicle = gBossVehicles[gBossRaceIds[1]].bossVehicle;
-                }
-            } else if (gBossRaceMode == 2) {
-                vehicle = levelHeader->vehicle;
-            } else {
-                if (racerEntry->playerIndex == 4 || race_is_adventure_2P()) {
-                    vehicle = get_player_selected_vehicle(PLAYER_ONE);
-                } else if (numPlayers >= 2) {
-                    vehicle = get_player_selected_vehicle(racerEntry->playerIndex);
-                }
-            }
-
-            // Are these assignments correct? Seems weird.
-            if (gBossRaceMode == 2) {
-                objectID = gRacerObjectTable[gDefaultCharacterOrder[i] + (vehicle * NUM_CHARACTERS)];
-            } else if (vehicle < 5) {
-                objectID = gRacerObjectTable[(settings->racers[var_s4].character) + (vehicle * NUM_CHARACTERS)];
-            } else {
-                objectID = gRacerObjectTable[vehicle + 45];
-            }
-
-            racerEntry->common.objectID = objectID;
-            racerEntry->common.size = ((objectID & 0x100) >> 1) | 0x10;
-            racerEntry->common.x = spawnX[i];
-            racerEntry->common.y = spawnY[i];
-            racerEntry->common.z = spawnZ[i];
-            racerEntry->angleY = spawnAngle[i];
-            if (racerEntry->playerIndex == 4) {
-                model_anim_offset(1);
-            }
-
-            spawnObjFlags = OBJECT_BEHAVIOUR_SHADED;
-            if (racerEntry->playerIndex == 4) {
-                spawnObjFlags = OBJECT_BEHAVIOUR_SHADED | OBJECT_BEHAVIOUR_WATER_EFFECT;
-                // @fake but required for the | OBJECT_BEHAVIOUR_ANIMATION below to work
-                if (1) {
-                    spawnObjFlags |= 0;
-                }
-                if (numPlayers >= 2) {
-                    spawnObjFlags |= OBJECT_BEHAVIOUR_ANIMATION;
-                }
-            }
-            if (racerEntry->playerIndex != 4) {
-                if (numPlayers == 1) {
-                    spawnObjFlags |= OBJECT_BEHAVIOUR_INTERACTIVE;
-                }
-            }
-            if (vehicle >= VEHICLE_BOSSES) {
-                spawnObjFlags = OBJECT_BEHAVIOUR_SHADED;
-                model_anim_offset(0);
-            }
-            racerObj = spawn_object((LevelObjectEntryCommon *) racerEntry, spawnObjFlags);
-            racerObj->trans.rotation.y_rotation = spawnAngle[i];
-            (*gRacers)[i] = racerObj;
-            gRacersByPosition[i] = racerObj;
-            gRacersByPort[var_s4] = racerObj;
-            curRacer = racerObj->racer;
-            racerObj->level_entry = NULL;
-            curRacer->vehicleID = vehicle;
-            curRacer->vehicleIDPrev = vehicle;
-            if (sp127 != -1 && sp127 != (s32) vehicle) {
-                gNonDefaultVehicle = TRUE;
-            }
-            sp127 = vehicle;
-            if (curRacer->vehicleID == VEHICLE_PLANE || curRacer->vehicleID == VEHICLE_SMOKEY ||
-                curRacer->vehicleID == VEHICLE_PTERODACTYL) {
-                gIsNonCarRacers = TRUE;
-            }
-            curRacer->unk1CB = vehicle;
-            if (curRacer->unk1CB < VEHICLE_CAR || curRacer->unk1CB > VEHICLE_PLANE) {
-                curRacer->unk1CB = 0;
-            }
-            curRacer->racerIndex = var_s4;
-            curRacer->characterId = settings->racers[var_s4].character;
-            if (gBossRaceMode == 2) {
-                curRacer->characterId = gDefaultCharacterOrder[i];
-            } else {
-                curRacer->characterId = settings->racers[var_s4].character;
-            }
-            if (raceType == RACETYPE_CHALLENGE_BATTLE) {
-                curRacer->bananas = 8;
-            } else {
-                curRacer->bananas = 0;
-            }
-            if (get_filtered_cheats() & CHEAT_START_WITH_10_BANANAS && !(raceType & RACETYPE_CHALLENGE)) {
-                if (curRacer->playerIndex != PLAYER_COMPUTER) {
-                    curRacer->bananas = 10;
-                }
-            }
-            if ((gameMode != GAMEMODE_MENU || gBossRaceMode == 2) && vehicle < VEHICLE_BOSSES) {
-                curRacer->vehicleSound = racer_sound_init(curRacer->characterId, curRacer->vehicleID);
-            } else {
-                curRacer->vehicleSound = NULL;
-            }
-
-            racerObj->interactObj->pushForce = miscAsset16[curRacer->characterId] + 1;
-            switch (curRacer->vehicleID) {
-                case VEHICLE_TRICKY:
-                case VEHICLE_BLUEY:
-                case VEHICLE_SMOKEY:
-                case VEHICLE_PTERODACTYL:
-                case VEHICLE_SNOWBALL:
-                case VEHICLE_BUBBLER:
-                case VEHICLE_WIZPIG:
-                case VEHICLE_ROCKET:
-                    racer_special_init(racerObj, curRacer);
-                    break;
-                default:
-                    break;
-            }
+        vehicle = racer_spawn_vehicle(vehicle, i, racerEntry->playerIndex, numPlayers, levelHeader);
+        objectID = racer_object_id(settings, i, port, vehicle);
+        racerEntry->common.objectID = objectID;
+        racerEntry->common.size = ((objectID & 0x100) >> 1) | 0x10;
+        racerEntry->common.x = spawns[i].x;
+        racerEntry->common.y = spawns[i].y;
+        racerEntry->common.z = spawns[i].z;
+        racerEntry->angleY = spawns[i].angle;
+        racerObj = spawn_object((LevelObjectEntryCommon *) racerEntry,
+                                racer_spawn_flags(racerEntry->playerIndex, numPlayers, vehicle));
+        racerObj->trans.rotation.y_rotation = spawns[i].angle;
+        (*gRacers)[i] = racerObj;
+        gRacersByPosition[i] = racerObj;
+        gRacersByPort[port] = racerObj;
+        if (prevVehicle != -1 && prevVehicle != (s32) vehicle) {
+            gNonDefaultVehicle = TRUE;
         }
+        prevVehicle = vehicle;
+        racer_init_fields(racerObj, settings, i, port, vehicle, raceType, gameMode, pushForces);
     }
-    var_s4 = 0;
     if (raceType != RACETYPE_BOSS) {
         gBossRaceMode = 0;
     }
@@ -1647,130 +1795,31 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
         if (gTimeTrialVehicle >= VEHICLE_BOSSES) {
             gTimeTrialVehicle = VEHICLE_CAR;
         }
-        // Spawn player ghost.
         if (timetrial_valid_player_ghost()) {
             objectID = gRacerObjectTable[gTimeTrialCharacter + (gTimeTrialVehicle * NUM_CHARACTERS)];
-            racerEntry->common.size = ((objectID & 0x100) >> 1) | 0x10;
-            racerEntry->common.objectID = objectID;
-            racerEntry->common.x = spawnX[0];
-            racerEntry->common.y = spawnY[0];
-            racerEntry->common.z = spawnZ[0];
-            racerEntry->angleY = spawnAngle[0];
-            curObj = spawn_object((LevelObjectEntryCommon *) racerEntry, 1);
-            curObj->level_entry = NULL;
-            curObj->behaviorId = BHV_TIMETRIAL_GHOST;
-            curObj->shadow->scale = 0.01f;
-            curObj->interactObj->flags = INTERACT_FLAGS_NONE;
-            gGhostObjPlayer = curObj;
-            curRacer = gGhostObjPlayer->racer;
-            curRacer->transparency = 96;
+            gGhostObjPlayer = racers_spawn_ghost(racerEntry, objectID, &spawns[0]);
         }
-        // Spawn staff ghost
         if (timetrial_init_staff_ghost(level_id())) {
             objectID = gRacerObjectTable[(gMapDefaultVehicle * NUM_CHARACTERS) + 8];
-
-            racerEntry->common.size = ((objectID & 0x100) >> 1) | 0x10;
-            racerEntry->common.objectID = objectID;
-            racerEntry->common.x = spawnX[0];
-            racerEntry->common.y = spawnY[0];
-            racerEntry->common.z = spawnZ[0];
-            racerEntry->angleY = spawnAngle[0];
-            curObj = spawn_object((LevelObjectEntryCommon *) racerEntry, 1);
-            curObj->level_entry = NULL;
-            curObj->behaviorId = BHV_TIMETRIAL_GHOST;
-            curObj->shadow->scale = 0.01f;
-            curObj->interactObj->flags = INTERACT_FLAGS_NONE;
-            gGhostObjStaff = curObj;
-            curRacer = gGhostObjStaff->racer;
-            curRacer->transparency = 96;
+            gGhostObjStaff = racers_spawn_ghost(racerEntry, objectID, &spawns[0]);
         }
     }
 
-    for (j = 0, gEventCountdown = 100; j < gNumRacers; j++) {
-        racerObj = (*gRacers)[j];
-        curRacer = racerObj->racer;
-        for (k = 0; k < 10; k++) {
-            update_player_racer(racerObj, LOGIC_30FPS); // Settle racers.
-        }
-        if (curRacer->playerIndex == PLAYER_COMPUTER) {
-            var_s4++;
-            var_s4 &= 1;
-            for (k = 0; k < racerObj->header->numberOfModelIds; k++) {
-                if (racerObj->modelInstances[k] != NULL) {
-                    if (racerObj->modelInstances[k]->animUpdateTimer != 0) {
-                        racerObj->modelInstances[k]->animUpdateTimer = (var_s4 * 2);
-                    }
-                }
-            }
-        } else {
-            // curRacer is a human racer.
-            for (k = 0; k < racerObj->header->numberOfModelIds; k++) {
-                if (racerObj->modelInstances[k] != NULL) {
-                    if (racerObj->modelInstances[k]->animUpdateTimer != 0) {
-                        racerObj->modelInstances[k]->animUpdateTimer = 0;
-                    }
-                }
-            }
-        }
-        // Apply size cheats to racers.
-        if (get_filtered_cheats() & CHEAT_BIG_CHARACTERS) {
-            racerObj->trans.scale *= 1.4f;
-        }
-        if (get_filtered_cheats() & CHEAT_SMALL_CHARACTERS) {
-            racerObj->trans.scale *= 0.714f;
-        }
-        curRacer->stretch_height_cap = 1.0f;
-        curRacer->stretch_height = 1.0f;
-    }
+    gEventCountdown = 100; // Racers settle as if the countdown were running.
+    racers_settle();
     if (raceType == RACETYPE_DEFAULT || raceType & RACETYPE_CHALLENGE || gIsTimeTrial || gBossRaceMode != 0) {
         gEventCountdown = 80;
     } else {
         gEventCountdown = 0;
     }
-    if (raceType == RACETYPE_DEFAULT && (playerCount + 1) == 1 && is_in_adventure_two() == FALSE) {
-        if (!race_is_adventure_2P()) {
-            for (j = 0; j < 3; j++) {
-                racerEntry->common.objectID = ASSET_OBJECT_ID_POSARROW;
-                racerEntry->common.size = sizeof(LevelObjectEntryCommon);
-                racerEntry->common.x = 0;
-                racerEntry->common.y = 0;
-                racerEntry->common.z = 0;
-                curObj = spawn_object((LevelObjectEntryCommon *) racerEntry, OBJECT_SPAWN_UNK01);
-                curObj->properties.common.unk0 = j;
-                curObj->level_entry = NULL;
-            }
-        }
+    if (raceType == RACETYPE_DEFAULT && (playerCount + 1) == 1 && is_in_adventure_two() == FALSE &&
+        !race_is_adventure_2P()) {
+        racers_spawn_position_arrows(racerEntry);
     }
     gRaceEndTimer = 0;
     gRaceFinishTriggered = FALSE;
     set_next_taj_challenge_menu(0);
-    if (settings->worldId == WORLD_CENTRAL_AREA) {
-        if (is_in_tracks_mode() == FALSE) {
-            miscAsset16 = (s8 *) get_misc_asset(ASSET_MISC_16);
-            j = 0;
-
-            // settings->balloonsPtr[0] is the total balloon count.
-            if (!(settings->tajFlags & TAJ_FLAGS_CAR_CHAL_UNLOCKED) && (settings->balloonsPtr[0] >= miscAsset16[0])) {
-                j = 1;
-            } else if (!(settings->tajFlags & TAJ_FLAGS_HOVER_CHAL_UNLOCKED) &&
-                       (settings->balloonsPtr[0] >= miscAsset16[1])) {
-                j = 2;
-            } else if (!(settings->tajFlags & TAJ_FLAGS_PLANE_CHAL_UNLOCKED) &&
-                       (settings->balloonsPtr[0] >= miscAsset16[2])) {
-                j = 3;
-            }
-
-            // Taj will teleport straight to the player to initiate a challenge.
-            if (j) {
-                set_taj_voice_line(SOUND_VOICE_TAJ_CHALLENGE_RACE);
-                // MIPS masks shift counts mod 32; without &31 this is UB on the PC targets.
-                settings->tajFlags |= 1 << ((j + 31) & 31);
-                set_taj_status(TAJ_TELEPORT);
-                set_next_taj_challenge_menu(j);
-                safe_mark_write_save_file(get_save_file_index());
-            }
-        }
-    }
+    taj_challenge_check(settings);
     gBossRaceIds[0] = TRUE;
     if (cutsceneID >= 0) {
         cutsceneCameraSegment->zoom = cutsceneID;
@@ -5696,30 +5745,28 @@ UNUSED s16 get_taj_challenge_type(void) {
     return gTajChallengeType;
 }
 
-/**
- * Updates information pertaining to all checkpoints in the current race.
- */
-void checkpoint_update_all(void) {
+static f32 distance_between_objects(Object *a, Object *b) {
     f32 xDiff;
-    f32 zDiff;
     f32 yDiff;
-    s32 tempCheckpointID;
-    s32 checkpointNum;
-    s32 duplicateCheckpoint;
-    s32 breakOut;
-    s32 altRouteId;
-    s32 i;
-    s32 isSorted;
-    s32 checkpointID;
-    f32 ox;
-    f32 oy;
-    f32 oz;
+    f32 zDiff;
+
+    xDiff = a->trans.x_position - b->trans.x_position;
+    yDiff = a->trans.y_position - b->trans.y_position;
+    zDiff = a->trans.z_position - b->trans.z_position;
+    return sqrtf(((xDiff * xDiff) + (yDiff * yDiff)) + (zDiff * zDiff));
+}
+
+/**
+ * Gather the checkpoint objects of the current challenge type into gTrackCheckpoints.
+ * Alternate-route checkpoints are numbered 255 above their main-route twin. Returns how
+ * many alternates were found.
+ */
+static s32 checkpoints_collect(void) {
     Object *obj;
-    CheckpointNode *checkpoint;
     LevelObjectEntry_Checkpoint *checkpointEntry;
-    MtxF mtx;
-    ObjectTransform transform;
+    s32 checkpointID;
     s32 alternateCount;
+    s32 i;
 
     alternateCount = 0;
     gNumberOfMainCheckpoints = 0;
@@ -5741,17 +5788,28 @@ void checkpoint_update_all(void) {
             }
         }
     }
+    return alternateCount;
+}
 
-    duplicateCheckpoint = FALSE;
+/**
+ * Bubble-sort the checkpoints by ID so the main route comes first in order, then the
+ * alternates. Returns TRUE and the offending ID if two checkpoints share one.
+ */
+static s32 checkpoints_sort(s32 *duplicateID) {
+    Object *obj;
+    s32 tempCheckpointID;
+    s32 duplicate;
+    s32 isSorted;
+    s32 i;
+
+    duplicate = FALSE;
     do {
         isSorted = TRUE;
-
         for (i = 0; i < gNumberOfMainCheckpoints - 1; i++) {
             if (gTrackCheckpoints[i].checkpointID == gTrackCheckpoints[i + 1].checkpointID) {
-                duplicateCheckpoint = TRUE;
-                checkpointNum = gTrackCheckpoints[i].checkpointID;
+                duplicate = TRUE;
+                *duplicateID = gTrackCheckpoints[i].checkpointID;
             }
-
             if (gTrackCheckpoints[i + 1].checkpointID < gTrackCheckpoints[i].checkpointID) {
                 tempCheckpointID = gTrackCheckpoints[i].checkpointID;
                 obj = gTrackCheckpoints[i].obj;
@@ -5763,99 +5821,155 @@ void checkpoint_update_all(void) {
             }
         }
     } while (!isSorted);
-    gNumberOfTotalCheckpoints = gNumberOfMainCheckpoints;
-    gNumberOfMainCheckpoints -= alternateCount;
-    if (duplicateCheckpoint) {
-        set_render_printf_position(20, 220);
-        render_printf("Error: Multiple checkpoint no: %d !!\n", checkpointNum);
-    }
+    return duplicate;
+}
+
+/**
+ * Pair each alternate checkpoint with the main-route checkpoint it replaces.
+ */
+static void checkpoints_link_alternates(void) {
+    s32 mainID;
+    s32 i;
+    s32 j;
+
     for (i = gNumberOfMainCheckpoints; i < gNumberOfTotalCheckpoints; i++) {
-        tempCheckpointID = gTrackCheckpoints[i].checkpointID - 255;
-        for (checkpointID = 0, breakOut = FALSE; checkpointID < gNumberOfMainCheckpoints && !breakOut; checkpointID++) {
-            if (tempCheckpointID == gTrackCheckpoints[checkpointID].checkpointID) {
-                gTrackCheckpoints[checkpointID].altRouteID = i;
-                gTrackCheckpoints[i].altRouteID = checkpointID;
-                breakOut = TRUE;
+        mainID = gTrackCheckpoints[i].checkpointID - 255;
+        for (j = 0; j < gNumberOfMainCheckpoints; j++) {
+            if (mainID == gTrackCheckpoints[j].checkpointID) {
+                gTrackCheckpoints[j].altRouteID = i;
+                gTrackCheckpoints[i].altRouteID = j;
+                break;
             }
         }
+    }
+}
+
+/**
+ * Derive a checkpoint's plane (its facing and offset), size and the distances to the next
+ * checkpoint on the main and alternate routes. From here on checkpointID holds the
+ * checkpoint's radius, not its number.
+ */
+static void checkpoint_init_node(s32 i) {
+    CheckpointNode *checkpoint;
+    Object *obj;
+    LevelObjectEntry_Checkpoint *checkpointEntry;
+    MtxF mtx;
+    ObjectTransform transform;
+    f32 ox;
+    f32 oy;
+    f32 oz;
+    s32 next;
+    s32 altRouteId;
+
+    checkpoint = &gTrackCheckpoints[i];
+    obj = checkpoint->obj;
+    checkpointEntry = &obj->level_entry->checkpoint;
+    transform.rotation.y_rotation = obj->trans.rotation.y_rotation;
+    transform.rotation.x_rotation = obj->trans.rotation.x_rotation;
+    transform.rotation.z_rotation = obj->trans.rotation.z_rotation;
+    transform.scale = 1.0f;
+    transform.x_position = 0.0f;
+    transform.y_position = 0.0f;
+    transform.z_position = 0.0f;
+    mtxf_from_transform(&mtx, &transform);
+    mtxf_transform_point(mtx, 0.0f, 0.0f, 1.0f, &ox, &oy, &oz);
+    checkpoint->rotationXFrac = ox;
+    checkpoint->rotationYFrac = oy;
+    checkpoint->rotationZFrac = oz;
+    checkpoint->planeOffset =
+        -(((obj->trans.x_position * ox) + (obj->trans.y_position * oy)) + (obj->trans.z_position * oz));
+    checkpoint->x = obj->trans.x_position;
+    checkpoint->y = obj->trans.y_position;
+    checkpoint->z = obj->trans.z_position;
+    checkpoint->scale = obj->trans.scale * 2;
+    checkpoint->checkpointID = obj->trans.scale * 128.0f;
+
+    if (i < gNumberOfMainCheckpoints) {
+        next = i + 1;
+    } else {
+        next = gTrackCheckpoints[i].altRouteID + 1;
+    }
+    if (next == gNumberOfMainCheckpoints) {
+        next = 0;
+    }
+    checkpoint->distance = distance_between_objects(obj, gTrackCheckpoints[next].obj);
+    altRouteId = gTrackCheckpoints[next].altRouteID;
+    if (altRouteId != -1) {
+        checkpoint->altDistance = distance_between_objects(obj, gTrackCheckpoints[altRouteId].obj);
+    } else {
+        checkpoint->altDistance = checkpoint->distance;
     }
 
-    for (i = 0; i < gNumberOfTotalCheckpoints; i++) {
-        checkpoint = &gTrackCheckpoints[i];
-        obj = checkpoint->obj;
-        checkpointEntry = &obj->level_entry->checkpoint;
-        transform.rotation.y_rotation = obj->trans.rotation.y_rotation;
-        transform.rotation.x_rotation = obj->trans.rotation.x_rotation;
-        transform.rotation.z_rotation = obj->trans.rotation.z_rotation;
-        transform.scale = 1.0f;
-        transform.x_position = 0.0f;
-        transform.y_position = 0.0f;
-        transform.z_position = 0.0f;
-        mtxf_from_transform(&mtx, &transform);
-        mtxf_transform_point(mtx, 0.0f, 0.0f, 1.0f, &ox, &oy, &oz);
-        checkpoint->rotationXFrac = ox;
-        checkpoint->rotationYFrac = oy;
-        checkpoint->rotationZFrac = oz;
-        checkpoint->unkC =
-            -(((obj->trans.x_position * ox) + (obj->trans.y_position * oy)) + (obj->trans.z_position * oz));
-        checkpoint->x = obj->trans.x_position;
-        checkpoint->y = obj->trans.y_position;
-        checkpoint->z = obj->trans.z_position;
-        checkpoint->scale = obj->trans.scale * 2;
-        checkpoint->checkpointID = obj->trans.scale * 128.0f;
-        checkpoint->altDistance = 0.0f;
-        checkpoint->distance = 0.0f;
-        if (i < gNumberOfMainCheckpoints) {
-            tempCheckpointID = i + 1;
-            if (tempCheckpointID == gNumberOfMainCheckpoints) {
-                tempCheckpointID = 0;
-            }
-            xDiff = obj->trans.x_position - gTrackCheckpoints[tempCheckpointID].obj->trans.x_position;
-            yDiff = obj->trans.y_position - gTrackCheckpoints[tempCheckpointID].obj->trans.y_position;
-            zDiff = obj->trans.z_position - gTrackCheckpoints[tempCheckpointID].obj->trans.z_position;
-            checkpoint->distance = sqrtf(((xDiff * xDiff) + (yDiff * yDiff)) + (zDiff * zDiff));
-            altRouteId = gTrackCheckpoints[tempCheckpointID].altRouteID;
-            if (altRouteId != -1) {
-                xDiff = obj->trans.x_position - gTrackCheckpoints[altRouteId].obj->trans.x_position;
-                yDiff = obj->trans.y_position - gTrackCheckpoints[altRouteId].obj->trans.y_position;
-                zDiff = obj->trans.z_position - gTrackCheckpoints[altRouteId].obj->trans.z_position;
-                checkpoint->altDistance = sqrtf(((xDiff * xDiff) + (yDiff * yDiff)) + (zDiff * zDiff));
-            } else {
-                checkpoint->altDistance = checkpoint->distance;
-            }
-        } else {
-            tempCheckpointID = gTrackCheckpoints[i].altRouteID + 1;
-            if (tempCheckpointID == gNumberOfMainCheckpoints) {
-                tempCheckpointID = 0;
-            }
-            xDiff = obj->trans.x_position - gTrackCheckpoints[tempCheckpointID].obj->trans.x_position;
-            yDiff = obj->trans.y_position - gTrackCheckpoints[tempCheckpointID].obj->trans.y_position;
-            zDiff = obj->trans.z_position - gTrackCheckpoints[tempCheckpointID].obj->trans.z_position;
-            checkpoint->distance = sqrtf(((xDiff * xDiff) + (yDiff * yDiff)) + (zDiff * zDiff));
-            altRouteId = gTrackCheckpoints[tempCheckpointID].altRouteID;
-            if (altRouteId != -1) {
-                xDiff = obj->trans.x_position - gTrackCheckpoints[altRouteId].obj->trans.x_position;
-                yDiff = obj->trans.y_position - gTrackCheckpoints[altRouteId].obj->trans.y_position;
-                zDiff = obj->trans.z_position - gTrackCheckpoints[altRouteId].obj->trans.z_position;
-                checkpoint->altDistance = sqrtf(((xDiff * xDiff) + (yDiff * yDiff)) + (zDiff * zDiff));
-            } else {
-                checkpoint->altDistance = checkpoint->distance;
-            }
-        }
-        checkpoint->unk2E[0] = checkpointEntry->unkB;
-        checkpoint->unk32[0] = checkpointEntry->unkF;
-        checkpoint->unk36[0] = checkpointEntry->unk13;
-        checkpoint->unk2E[1] = checkpointEntry->unkC;
-        checkpoint->unk32[1] = checkpointEntry->unk10;
-        checkpoint->unk36[1] = checkpointEntry->unk14;
-        checkpoint->unk2E[2] = checkpointEntry->unkD;
-        checkpoint->unk32[2] = checkpointEntry->unk11;
-        checkpoint->unk36[2] = checkpointEntry->unk15;
-        checkpoint->unk2E[3] = checkpointEntry->unkE;
-        checkpoint->unk32[3] = checkpointEntry->unk12;
-        checkpoint->unk36[3] = checkpointEntry->unk16;
-        checkpoint->unk3B = checkpointEntry->unk19;
+    checkpoint->unk2E[0] = checkpointEntry->unkB;
+    checkpoint->unk32[0] = checkpointEntry->unkF;
+    checkpoint->unk36[0] = checkpointEntry->unk13;
+    checkpoint->unk2E[1] = checkpointEntry->unkC;
+    checkpoint->unk32[1] = checkpointEntry->unk10;
+    checkpoint->unk36[1] = checkpointEntry->unk14;
+    checkpoint->unk2E[2] = checkpointEntry->unkD;
+    checkpoint->unk32[2] = checkpointEntry->unk11;
+    checkpoint->unk36[2] = checkpointEntry->unk15;
+    checkpoint->unk2E[3] = checkpointEntry->unkE;
+    checkpoint->unk32[3] = checkpointEntry->unk12;
+    checkpoint->unk36[3] = checkpointEntry->unk16;
+    checkpoint->indicatorType = checkpointEntry->unk19;
+}
+
+/**
+ * Updates information pertaining to all checkpoints in the current race.
+ */
+void checkpoint_update_all(void) {
+    s32 alternateCount;
+    s32 duplicateID;
+    s32 i;
+
+    alternateCount = checkpoints_collect();
+    if (checkpoints_sort(&duplicateID)) {
+        set_render_printf_position(20, 220);
+        render_printf("Error: Multiple checkpoint no: %d !!\n", duplicateID);
     }
+    gNumberOfTotalCheckpoints = gNumberOfMainCheckpoints;
+    gNumberOfMainCheckpoints -= alternateCount;
+    checkpoints_link_alternates();
+    for (i = 0; i < gNumberOfTotalCheckpoints; i++) {
+        checkpoint_init_node(i);
+    }
+}
+
+/**
+ * Signed distance of a point from the checkpoint's plane, positive on the far side.
+ */
+static f32 checkpoint_plane_distance(CheckpointNode *node, f32 x, f32 y, f32 z) {
+    return node->rotationXFrac * x + node->rotationYFrac * y + node->rotationZFrac * z + node->planeOffset;
+}
+
+/**
+ * How far along the segment from `prev` to `current` the object is, as a fraction, found by
+ * projecting the object onto each plane along `dir`. Also returns the distance still to go
+ * to the current plane.
+ */
+static f32 checkpoint_progress(CheckpointNode *current, CheckpointNode *prev, Object *obj, f32 dirX, f32 dirY, f32 dirZ,
+                               f32 *toNextOut) {
+    f32 toNext;
+    f32 nextLength;
+    f32 fromPrev;
+    f32 length;
+
+    toNext = checkpoint_plane_distance(current, obj->trans.x_position, obj->trans.y_position, obj->trans.z_position);
+    nextLength = current->rotationXFrac * dirX + current->rotationYFrac * dirY + current->rotationZFrac * dirZ;
+    nextLength = -toNext / nextLength;
+
+    fromPrev = checkpoint_plane_distance(prev, obj->trans.x_position, obj->trans.y_position, obj->trans.z_position);
+    length = prev->rotationXFrac * dirX + prev->rotationYFrac * dirY + prev->rotationZFrac * dirZ;
+    length = fromPrev / length;
+
+    if (nextLength + length != 0.0) {
+        length = nextLength / (nextLength + length);
+    } else {
+        length = 0.0f;
+    }
+    *toNextOut = nextLength;
+    return length;
 }
 
 /**
@@ -5872,9 +5986,7 @@ s32 checkpoint_is_passed(s32 checkpointIndex, Object *obj, f32 objX, f32 objY, f
     f32 distX, distY, distZ;
     f32 length;
     f32 nextLength;
-    f32 toNext;
     Object_Racer *racer;
-    f32 fromPrev;
     CheckpointNode *currentCheckpoint;
     CheckpointNode *prevCheckpoint;
     CheckpointNode *altRouteCheckpoint;
@@ -5899,6 +6011,7 @@ s32 checkpoint_is_passed(s32 checkpointIndex, Object *obj, f32 objX, f32 objY, f
         }
     }
 
+    // Entering an alternate route: switch to its checkpoint once within its radius.
     isAltCheckpoint = FALSE;
     if (!(*isOnAlternateRoute) && prevCheckpoint->altRouteID == -1 && currentCheckpoint->altRouteID != -1) {
         altRouteCheckpoint = &gTrackCheckpoints[currentCheckpoint->altRouteID];
@@ -5911,6 +6024,7 @@ s32 checkpoint_is_passed(s32 checkpointIndex, Object *obj, f32 objX, f32 objY, f
         }
     }
 
+    // Unit direction from the previous checkpoint to the current one.
     distX = currentCheckpoint->x - prevCheckpoint->x;
     distY = currentCheckpoint->y - prevCheckpoint->y;
     distZ = currentCheckpoint->z - prevCheckpoint->z;
@@ -5921,27 +6035,7 @@ s32 checkpoint_is_passed(s32 checkpointIndex, Object *obj, f32 objX, f32 objY, f
         distZ *= 1.0f / length;
     }
 
-    toNext = currentCheckpoint->rotationXFrac * obj->trans.x_position +
-             currentCheckpoint->rotationYFrac * obj->trans.y_position +
-             currentCheckpoint->rotationZFrac * obj->trans.z_position + currentCheckpoint->unkC;
-
-    nextLength = currentCheckpoint->rotationXFrac * distX + currentCheckpoint->rotationYFrac * distY +
-                 currentCheckpoint->rotationZFrac * distZ;
-    nextLength = -toNext / nextLength;
-
-    fromPrev = prevCheckpoint->rotationXFrac * obj->trans.x_position +
-               prevCheckpoint->rotationYFrac * obj->trans.y_position +
-               prevCheckpoint->rotationZFrac * obj->trans.z_position + prevCheckpoint->unkC;
-
-    length = prevCheckpoint->rotationXFrac * distX + prevCheckpoint->rotationYFrac * distY +
-             prevCheckpoint->rotationZFrac * distZ;
-    length = fromPrev / length;
-
-    if (nextLength + length != 0.0) {
-        length = nextLength / (nextLength + length);
-    } else {
-        length = 0.0f;
-    }
+    length = checkpoint_progress(currentCheckpoint, prevCheckpoint, obj, distX, distY, distZ, &nextLength);
     *checkpointDistance = length;
 
     if (obj->behaviorId == BHV_RACER) {
@@ -5956,63 +6050,42 @@ s32 checkpoint_is_passed(s32 checkpointIndex, Object *obj, f32 objX, f32 objY, f
         }
     }
 
-    if (nextLength <= 0) {
-        if (isAltCheckpoint) {
-            *isOnAlternateRoute = TRUE;
-        } else if (currentCheckpoint->altRouteID == -1) {
-            *isOnAlternateRoute = FALSE;
-        }
-
-        distY = currentCheckpoint->rotationXFrac * objX + currentCheckpoint->rotationYFrac * objY +
-                currentCheckpoint->rotationZFrac * objZ + currentCheckpoint->unkC;
-        if (distY > 0) {
-            if (obj->behaviorId == BHV_RACER) {
-                Object_Racer *objRacer = obj->racer;
-                if (currentCheckpoint->unk3B != 0) {
-                    objRacer->indicator_type = currentCheckpoint->unk3B;
-                    objRacer->indicator_timer = 120;
-                }
-            }
-
-            prevCheckpoint = currentCheckpoint;
-            checkpointIndex++;
-            if (checkpointIndex == gNumberOfMainCheckpoints) {
-                checkpointIndex = 0;
-            }
-
-            currentCheckpoint = &gTrackCheckpoints[checkpointIndex];
-
-            toNext = currentCheckpoint->rotationXFrac * obj->trans.x_position +
-                     currentCheckpoint->rotationYFrac * obj->trans.y_position +
-                     currentCheckpoint->rotationZFrac * obj->trans.z_position + currentCheckpoint->unkC;
-            nextLength = currentCheckpoint->rotationXFrac * distX + currentCheckpoint->rotationYFrac * distY +
-                         currentCheckpoint->rotationZFrac * distZ;
-            nextLength = -toNext / nextLength;
-
-            fromPrev = prevCheckpoint->rotationXFrac * obj->trans.x_position +
-                       prevCheckpoint->rotationYFrac * obj->trans.y_position +
-                       prevCheckpoint->rotationZFrac * obj->trans.z_position + prevCheckpoint->unkC;
-            length = prevCheckpoint->rotationXFrac * distX + prevCheckpoint->rotationYFrac * distY +
-                     prevCheckpoint->rotationZFrac * distZ;
-            length = fromPrev / length;
-
-            if (nextLength + length != 0.0) {
-                length = nextLength / (nextLength + length);
-            } else {
-                length = 0.0;
-            }
-            *checkpointDistance = length;
-        } else {
-            *checkpointDistance = 0.0;
-        }
-        return 0;
-    } else {
+    if (nextLength > 0) {
         retLength = length * 100.0f;
         if (retLength == 0) {
             retLength++;
         }
         return retLength;
     }
+
+    // The object is past the plane of the current checkpoint.
+    if (isAltCheckpoint) {
+        *isOnAlternateRoute = TRUE;
+    } else if (currentCheckpoint->altRouteID == -1) {
+        *isOnAlternateRoute = FALSE;
+    }
+    distY = checkpoint_plane_distance(currentCheckpoint, objX, objY, objZ);
+    if (distY > 0) {
+        if (obj->behaviorId == BHV_RACER) {
+            racer = obj->racer;
+            if (currentCheckpoint->indicatorType != 0) {
+                racer->indicator_type = currentCheckpoint->indicatorType;
+                racer->indicator_timer = 120;
+            }
+        }
+        prevCheckpoint = currentCheckpoint;
+        checkpointIndex++;
+        if (checkpointIndex == gNumberOfMainCheckpoints) {
+            checkpointIndex = 0;
+        }
+        currentCheckpoint = &gTrackCheckpoints[checkpointIndex];
+        //!@bug distY now holds the plane distance, not the direction's Y component.
+        length = checkpoint_progress(currentCheckpoint, prevCheckpoint, obj, distX, distY, distZ, &nextLength);
+        *checkpointDistance = length;
+    } else {
+        *checkpointDistance = 0.0;
+    }
+    return 0;
 }
 
 /**
@@ -6287,7 +6360,431 @@ s32 homing_rocket_get_next_direction(Object *obj, s32 checkpoint, u8 isOnAlterna
 }
 
 // D_B0000574 is a direct read from the ROM as opposed to RAM
-extern s32 D_B0000574;
+/**
+ * A challenge racer's score for ranking those who have not finished: bananas lost in battle,
+ * laps elsewhere, with eggs counting progress towards the next lap. Clamped to 0..10.
+ */
+static s8 challenge_score(Object_Racer *racer, s8 raceType) {
+    s8 score;
+
+    if (raceType == RACETYPE_CHALLENGE_BATTLE) {
+        score = 10 - racer->bananas;
+    } else {
+        score = racer->lap;
+        if (raceType == RACETYPE_CHALLENGE_EGGS) {
+            score *= 3;
+            if (racer->eggHudCounter != 0) {
+                score += 2;
+            } else if (racer->held_obj != NULL) {
+                score += 1;
+            }
+        }
+    }
+    if (score > 10) {
+        score = 10;
+    }
+    if (score < 0) {
+        score = 0;
+    }
+    return score;
+}
+
+/**
+ * Hand out the remaining finish positions by score, best first. In battle mode the last to
+ * finish wins, so the order is flipped.
+ */
+static void challenge_rank_remaining(Object_Racer **racer, s8 *score, s8 raceType) {
+    s16 best;
+    s16 bestIndex;
+    s32 i;
+
+    do {
+        bestIndex = -1;
+        best = -1;
+        for (i = 0; i < gNumRacers; i++) {
+            if (!racer[i]->raceFinished && score[i] >= best) {
+                best = score[i];
+                bestIndex = i;
+            }
+        }
+        if (bestIndex != -1) {
+            if (raceType == RACETYPE_CHALLENGE_BATTLE) {
+                racer[bestIndex]->finishPosition = 5 - gNumFinishedRacers;
+            } else {
+                racer[bestIndex]->finishPosition = gNumFinishedRacers;
+            }
+            gNumFinishedRacers++;
+            racer[bestIndex]->raceFinished = TRUE;
+        }
+    } while (bestIndex != -1);
+}
+
+/**
+ * Winning a challenge for the first time in adventure mode awards a T.T. amulet piece.
+ * Returns the new amulet count, or 0 if nothing was awarded.
+ */
+static s32 challenge_award_amulet(Settings *settings, Object_Racer **racer) {
+    s32 amulet;
+
+    if (is_in_tracks_mode()) {
+        return 0;
+    }
+    if (racer[0]->finishPosition != 1 && !(is_in_two_player_adventure() && racer[1]->finishPosition == 1)) {
+        return 0;
+    }
+    if (settings->courseFlagsPtr[settings->courseId] & RACE_CLEARED) {
+        return 0;
+    }
+    settings->courseFlagsPtr[settings->courseId] |= RACE_CLEARED;
+    amulet = settings->ttAmulet + 1;
+    if (amulet > 4) {
+        amulet = 4;
+    }
+    settings->ttAmulet = amulet;
+    return amulet;
+}
+
+/**
+ * Record the finish order as next race's starting positions, play the victory or defeat
+ * jingle, and note whether player two now leads a shared adventure.
+ */
+static void challenge_store_results(Settings *settings, Object_Racer **racer) {
+    s32 sequence;
+    s32 nextPosition;
+    s32 i;
+
+    for (i = 0; i < 8; i++) {
+        settings->racers[i].starting_position = -1;
+    }
+    sequence = SEQUENCE_BATTLE_LOSE;
+    for (i = 0; i < gNumRacers; i++) {
+        if (racer[i]->playerIndex != PLAYER_COMPUTER && racer[i]->finishPosition == 1) {
+            sequence = SEQUENCE_BATTLE_VICTORY;
+        }
+        settings->racers[i].starting_position = racer[i]->finishPosition - 1;
+    }
+    music_play(sequence);
+    nextPosition = 4;
+    for (i = 0; i < 8; i++) {
+        if (settings->racers[i].starting_position == -1) {
+            settings->racers[i].starting_position = nextPosition;
+            nextPosition++;
+        }
+    }
+    gSwapLeadPlayer = FALSE;
+    if (is_in_two_player_adventure() &&
+        settings->racers[PLAYER_TWO].starting_position < settings->racers[PLAYER_ONE].starting_position) {
+        gSwapLeadPlayer = TRUE;
+    }
+}
+
+/**
+ * In a shared adventure the player who placed better leads from here on.
+ */
+static void race_apply_lead_player_swap(void) {
+    if (!is_in_two_player_adventure()) {
+        return;
+    }
+    if (gSwapLeadPlayer) {
+        gSwapLeadPlayer = FALSE;
+        swap_lead_player();
+        if (gLeadPlayerIndex != 0) {
+            gIsP2LeadPlayer = TRUE;
+        }
+    } else if (gLeadPlayerIndex != 0) {
+        gIsP2LeadPlayer = TRUE;
+    }
+}
+
+/**
+ * Win conditions for the Taj and trophy challenges (battle, eggs, treasure hunt). Battle
+ * eliminates racers as they run out of bananas; the challenge ends when the humans are done
+ * or three racers have finished, and the rest are ranked by score.
+ */
+static void race_check_finish_challenge(Settings *settings, LevelHeader *header) {
+    Object_Racer *racer[4];
+    s8 score[4];
+    s16 numHumanRacers;
+    s16 numHumanRacersFinished;
+    s16 numFinishedRacers;
+    s32 amulet;
+    s32 i;
+
+    if (header->race_type == RACETYPE_CHALLENGE_EGGS) {
+        racer_update_eggs(*gRacers);
+    }
+    if (gRaceFinishTriggered != FALSE) {
+        return;
+    }
+    numHumanRacers = 0;
+    numHumanRacersFinished = 0;
+    numFinishedRacers = 0;
+    for (i = 0; i < gNumRacers; i++) {
+        racer[i] = (*gRacers)[i]->racer;
+        // Manage eliminated racers in deathmatch.
+        if (header->race_type == RACETYPE_CHALLENGE_BATTLE && racer[i]->bananas <= 0 && !racer[i]->raceFinished) {
+            racer[i]->raceFinished = TRUE;
+            racer[i]->balloon_quantity = 0;
+            racer_sound_free((*gRacers)[i]);
+            (*gRacers)[i]->trans.flags |= OBJ_FLAGS_INVISIBLE;
+            (*gRacers)[i]->interactObj->flags = INTERACT_FLAGS_NONE;
+            racer[i]->finishPosition = 5 - gNumFinishedRacers;
+            gNumFinishedRacers++;
+        }
+        if (racer[i]->playerIndex != PLAYER_COMPUTER) {
+            if (racer[i]->raceFinished) {
+                numHumanRacersFinished++;
+            }
+            numHumanRacers++;
+        }
+        if (racer[i]->raceFinished) {
+            numFinishedRacers++;
+            if (racer[i]->finishPosition == 0) {
+                racer[i]->finishPosition = gNumFinishedRacers;
+                gNumFinishedRacers++;
+            }
+        }
+    }
+    if (!((header->race_type != RACETYPE_CHALLENGE_BATTLE && numFinishedRacers > 0) ||
+          ((((numHumanRacers == 1 && numHumanRacersFinished == 1) ||
+             (numHumanRacers >= 2 && numHumanRacersFinished >= numHumanRacers)) ||
+            numFinishedRacers >= 3)))) {
+        return;
+    }
+    for (i = 0; i < gNumRacers; i++) {
+        score[i] = challenge_score(racer[i], header->race_type);
+    }
+    challenge_rank_remaining(racer, score, header->race_type);
+    gSwapLeadPlayer = FALSE;
+    amulet = challenge_award_amulet(settings, racer);
+    challenge_store_results(settings, racer);
+    if (amulet == 0) {
+        race_apply_lead_player_swap();
+        postrace_start(0, 30);
+    } else {
+        level_properties_push(SPECIAL_MAP_ID_NO_LEVEL, 0, VEHICLE_CAR, CUTSCENE_ID_NONE);
+        level_properties_push(ASSET_LEVEL_TTAMULETSEQUENCE, 0, VEHICLE_NO_OVERRIDE, settings->ttAmulet - 1);
+        race_finish_adventure(TRUE);
+    }
+    gRaceFinishTriggered = TRUE;
+}
+
+/**
+ * Rank every racer against every other by checkpoint progress (finished racers first) and
+ * record it as racerOrder. The HUD position only follows once the order has held for a
+ * couple of frames.
+ */
+static void race_update_positions(LevelHeader *header) {
+    Object_Racer *racer;
+    Object_Racer *other;
+    s32 prevOrder;
+    s32 order;
+    s32 i;
+    s32 j;
+
+    for (i = 0; i < gNumRacers; i++) {
+        order = 1;
+        racer = (*gRacers)[i]->racer;
+        prevOrder = racer->racerOrder;
+        for (j = 0; j < gNumRacers; j++) {
+            if (j == i) {
+                continue;
+            }
+            other = (*gRacers)[j]->racer;
+            if (racer->raceFinished == FALSE && other->raceFinished != FALSE) {
+                order++;
+            } else if (racer->courseCheckpoint < other->courseCheckpoint) {
+                order++;
+            } else if (racer->courseCheckpoint == other->courseCheckpoint) {
+                if (other->checkpointRank < racer->checkpointRank) {
+                    order++;
+                }
+                if (racer->checkpointRank == other->checkpointRank && i < j) {
+                    order++;
+                }
+            }
+        }
+        racer->racerOrder = order;
+        if (racer->lap < header->laps) {
+            if (prevOrder == racer->racerOrder) {
+                if (racer->positionStableTimer < 2) {
+                    if (racer->vehicleID != VEHICLE_LOOPDELOOP) {
+                        racer->positionStableTimer++;
+                    }
+                } else if (racer->racerOrder != racer->racePosition) {
+                    racer->positionChangeTimer = 10;
+                    racer->racePosition = racer->racerOrder;
+                }
+            } else {
+                racer->positionStableTimer = 0;
+            }
+        }
+    }
+}
+
+/**
+ * Racers that have completed the laps are marked finished and given the next finish
+ * position. Also counts the humans and the finishers.
+ */
+static void race_mark_finished_laps(LevelHeader *header, s16 *numHumanRacers, s16 *numHumanRacersFinished,
+                                    s16 *numFinishedRacers) {
+    Object_Racer *racer;
+    s32 i;
+
+    for (i = 0; i < gNumRacers; i++) {
+        racer = (*gRacers)[i]->racer;
+        if (racer->lap >= header->laps && racer->raceFinished == FALSE) {
+            if (get_game_mode() != GAMEMODE_UNUSED_4) {
+                racer->raceFinished = TRUE;
+                racer->finishPosition = gNumFinishedRacers;
+                if (gNumFinishedRacers == 1 && racer->playerIndex == PLAYER_COMPUTER) {
+                    sound_play(SOUND_WHOOSH5, NULL);
+                }
+                gNumFinishedRacers++;
+            }
+        }
+        if (racer->playerIndex != PLAYER_COMPUTER) {
+            (*numHumanRacers)++;
+            if (racer->raceFinished) {
+                (*numHumanRacersFinished)++;
+                (*numFinishedRacers)++;
+            }
+        } else if (racer->raceFinished) {
+            (*numFinishedRacers)++;
+        }
+    }
+}
+
+/**
+ * Rebuild gRacersByPosition: finished racers by finish position, the rest by current
+ * order. Racers that collide on a slot are dropped into the first free one.
+ */
+static void race_sort_by_position(void) {
+    Object_Racer *racer;
+    s32 position;
+    s32 listed;
+    s32 i;
+    s32 j;
+
+    for (i = 0; i < gNumRacers; i++) {
+        gRacersByPosition[i] = 0;
+    }
+    for (i = 0; i < gNumRacers; i++) {
+        racer = (*gRacers)[i]->racer;
+        if (racer->raceFinished) {
+            position = racer->finishPosition - 1;
+        } else {
+            position = racer->racerOrder - 1;
+        }
+        gRacersByPosition[position] = (*gRacers)[i];
+    }
+    for (i = 0; i < gNumRacers; i++) {
+        listed = FALSE;
+        for (j = 0; j < gNumRacers; j++) {
+            if (gRacersByPosition[j] == (*gRacers)[i]) {
+                listed = TRUE;
+                break;
+            }
+        }
+        if (listed == FALSE) {
+            for (j = 0; j < gNumRacers; j++) {
+                if (gRacersByPosition[j] == 0) {
+                    gRacersByPosition[j] = (*gRacers)[i];
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Once the race is decided, the racers still going are finished in their current order and
+ * the humans among them get the finish-line camera.
+ */
+static void race_finish_remaining_racers(void) {
+    Object_Racer *racer;
+    s32 i;
+
+    for (i = 0; i < gNumRacers; i++) {
+        racer = gRacersByPosition[i]->racer;
+        if (racer->raceFinished == FALSE) {
+            if (racer->playerIndex >= 0) {
+                set_active_camera(racer->playerIndex);
+                cam_get_active_camera_no_cutscenes()->mode = CAMERA_FINISH_CHALLENGE;
+            }
+            racer->raceFinished = TRUE;
+            racer->finishPosition = gNumFinishedRacers;
+            gNumFinishedRacers++;
+        }
+    }
+}
+
+/**
+ * The end of a normal, Horseshoe Gulch or boss race. The race is over when every human has
+ * finished (or all but one racer, with several humans), or when a shared adventure's first
+ * finisher has already cleared the course. A first clear in adventure mode awards a balloon
+ * and plays the sequence; otherwise the results screen follows.
+ */
+static void race_finish_default(Settings *settings, s16 numHumanRacers, s16 numHumanRacersFinished,
+                                s16 numFinishedRacers) {
+    Object_Racer *racer;
+    s32 adventureClearedEarly;
+    s32 awardBalloon;
+    s32 i;
+
+    adventureClearedEarly = FALSE;
+    if (is_in_two_player_adventure() && numHumanRacersFinished > 0 && get_trophy_race_world_id() == 0 &&
+        set_course_finish_flags(settings) != 0) {
+        adventureClearedEarly = TRUE;
+    }
+    if (!((numHumanRacersFinished == numHumanRacers ||
+           (numHumanRacers >= 2 && numFinishedRacers >= (gNumRacers - 1))) ||
+          adventureClearedEarly)) {
+        return;
+    }
+    if (numHumanRacersFinished != numHumanRacers) {
+        race_finish_remaining_racers();
+    }
+    if (!gIsTimeTrial) {
+        for (i = 0; i < gNumRacers; i++) {
+            racer = gRacersByPosition[i]->racer;
+            settings->racers[racer->racerIndex].starting_position = i;
+        }
+    }
+    gSwapLeadPlayer = FALSE;
+    if (is_in_two_player_adventure() &&
+        (settings->racers[PLAYER_TWO].starting_position < settings->racers[PLAYER_ONE].starting_position)) {
+        gSwapLeadPlayer = TRUE;
+    }
+    racer = (*gRacersByPosition)->racer;
+    gFirstTimeFinish = FALSE;
+    if ((settings->gNumRacers == 1 || is_in_two_player_adventure()) && racer->playerIndex != PLAYER_COMPUTER &&
+        !is_in_tracks_mode() && get_trophy_race_world_id() == 0) {
+        gFirstTimeFinish = TRUE;
+    }
+    awardBalloon = FALSE;
+    if (gFirstTimeFinish && !adventureClearedEarly) {
+        awardBalloon = set_course_finish_flags(settings);
+    }
+    if (adventureClearedEarly) {
+        gFirstTimeFinish = TRUE;
+        awardBalloon = TRUE;
+    }
+    if (!awardBalloon) {
+        race_apply_lead_player_swap();
+        postrace_start(gFirstTimeFinish, 30);
+    } else {
+        settings->balloonsPtr[settings->worldId]++;
+        if (settings->worldId != 0) {
+            settings->balloonsPtr[0]++;
+        }
+        race_finish_adventure(TRUE);
+    }
+    gRaceFinishTriggered = -1; // -1 doesn't do anything different.
+    if (get_number_of_active_players() == 1) {
+        race_finish_time_trial();
+    }
+}
 
 /**
  * Check the win conditions of the current race.
@@ -6296,422 +6793,43 @@ extern s32 D_B0000574;
  * but adventure mode will start the balloon cutscene if it has not yet been awarded.
  */
 void race_check_finish(s32 updateRate) {
-    s32 prevRacerPos;
-    s32 i;
-    s32 j;
-    s32 racerPos;
     Settings *settings;
+    LevelHeader *header;
+    Object_Racer *racer;
     s16 numHumanRacers;
     s16 numHumanRacersFinished;
-    Object_Racer *curRacer2;
-    Object_Racer *curRacer;
     s16 numFinishedRacers;
-    s16 foundIndex;
-    Object_Racer *racer[4];
-    s16 racerIndex;
     s8 raceType;
-    s8 someBool;
-    LevelHeader *currentLevelHeader;
-    s32 newStartingPosition;
-    s8 sp5C[4];
-    s8 someBool2;
-    s8 flags[3];
-    ptrint_t camera;
 
-    currentLevelHeader = level_header();
+    header = level_header();
     settings = get_settings();
-    numHumanRacersFinished = 0;
-    numHumanRacers = 0;
-    someBool2 = currentLevelHeader->race_type;
-    numFinishedRacers = 0;
-    if (someBool2 != RACETYPE_DEFAULT && someBool2 != RACETYPE_HORSESHOE_GULCH && someBool2 != RACETYPE_BOSS) {
-        if (someBool2 & RACETYPE_CHALLENGE) {
-            if (someBool2 == RACETYPE_CHALLENGE_EGGS) {
-                racer_update_eggs(*gRacers);
-            }
-            if (gRaceFinishTriggered == FALSE) {
-                for (i = 0; i < gNumRacers; i++) {
-                    racer[i] = (*gRacers)[i]->racer;
-                    // Manage eliminated racers in deathmatch.
-                    if (currentLevelHeader->race_type == RACETYPE_CHALLENGE_BATTLE && racer[i]->bananas <= 0 &&
-                        !racer[i]->raceFinished) {
-                        racer[i]->raceFinished = TRUE;
-                        racer[i]->balloon_quantity = 0;
-                        racer_sound_free((*gRacers)[i]);
-                        (*gRacers)[i]->trans.flags |= OBJ_FLAGS_INVISIBLE;
-                        (*gRacers)[i]->interactObj->flags = INTERACT_FLAGS_NONE;
-                        racer[i]->finishPosition = 5 - gNumFinishedRacers;
-                        gNumFinishedRacers++;
-                    }
-                    if (racer[i]->playerIndex != PLAYER_COMPUTER) {
-                        if (racer[i]->raceFinished) {
-                            numHumanRacersFinished++;
-                        }
-                        numHumanRacers++;
-                    }
-                    if (racer[i]->raceFinished) {
-                        numFinishedRacers++;
-                        if (racer[i]->finishPosition == 0) {
-                            racer[i]->finishPosition = gNumFinishedRacers;
-                            gNumFinishedRacers++;
-                        }
-                    }
-                }
-                if ((currentLevelHeader->race_type != RACETYPE_CHALLENGE_BATTLE && numFinishedRacers > 0) ||
-                    ((((numHumanRacers == 1 && numHumanRacersFinished == 1) ||
-                       (numHumanRacers >= 2 && numHumanRacersFinished >= numHumanRacers)) ||
-                      numFinishedRacers >= 3))) {
-                    for (i = 0; i < gNumRacers; i++) {
-                        if (currentLevelHeader->race_type == RACETYPE_CHALLENGE_BATTLE) {
-                            sp5C[i] = 10 - racer[i]->bananas;
-                        } else {
-                            sp5C[i] = racer[i]->lap;
-                            if (currentLevelHeader->race_type == RACETYPE_CHALLENGE_EGGS) {
-                                sp5C[i] *= 3;
-                                if (racer[i]->eggHudCounter != 0) {
-                                    sp5C[i] += 2;
-                                } else if (racer[i]->held_obj != NULL) {
-                                    sp5C[i] += 1;
-                                }
-                            }
-                        }
-                        if (sp5C[i] > 10) {
-                            sp5C[i] = 10;
-                        }
-                        if (sp5C[i] < 0) {
-                            sp5C[i] = 0;
-                        }
-                    }
-
-                    i = 0;
-                    do {
-                        racerIndex = -1;
-                        foundIndex = -1;
-                        for (i = 0; i < gNumRacers; i++) {
-                            if (!racer[i]->raceFinished && sp5C[i] >= foundIndex) {
-                                foundIndex = sp5C[i];
-                                racerIndex = i;
-                            }
-                        }
-
-                        if (racerIndex != -1) {
-                            // In battle mode, last to finish wins, so flip the finish order.
-                            if (currentLevelHeader->race_type == RACETYPE_CHALLENGE_BATTLE) {
-                                racer[racerIndex]->finishPosition = 5 - gNumFinishedRacers;
-                            } else {
-                                racer[racerIndex]->finishPosition = gNumFinishedRacers;
-                            }
-                            gNumFinishedRacers++;
-                            racer[racerIndex]->raceFinished = TRUE;
-                        }
-                        i = 0;
-                    } while (racerIndex != -1);
-
-                    gSwapLeadPlayer = FALSE;
-                    // Award the winner a TT amulet if not in tracks mode.
-                    if (!is_in_tracks_mode() &&
-                        (racer[0]->finishPosition == 1 ||
-                         (is_in_two_player_adventure() && racer[1]->finishPosition == 1)) &&
-                        (!(settings->courseFlagsPtr[settings->courseId] & RACE_CLEARED))) {
-                        settings->courseFlagsPtr[settings->courseId] |= RACE_CLEARED;
-                        i = settings->ttAmulet + 1;
-                        if (i > 4) {
-                            i = 4;
-                        }
-                        settings->ttAmulet = i;
-                    }
-                    for (racerPos = 0; racerPos < 8;) {
-                        settings->racers[racerPos++].starting_position = -1;
-                    }
-
-                    newStartingPosition = SEQUENCE_BATTLE_LOSE;
-                    for (racerPos = 0; racerPos < gNumRacers; racerPos++) {
-                        if (racer[racerPos]->playerIndex != PLAYER_COMPUTER && racer[racerPos]->finishPosition == 1) {
-                            newStartingPosition = SEQUENCE_BATTLE_VICTORY;
-                        }
-                        settings->racers[racerPos].starting_position = racer[racerPos]->finishPosition - 1;
-                    }
-
-                    music_play(newStartingPosition);
-                    newStartingPosition = 4;
-                    for (prevRacerPos = 0; prevRacerPos < 8; prevRacerPos++) {
-                        if (settings->racers[prevRacerPos].starting_position == -1) {
-                            settings->racers[prevRacerPos].starting_position = newStartingPosition;
-                            newStartingPosition++;
-                        }
-                    }
-
-                    gSwapLeadPlayer = FALSE;
-                    if (is_in_two_player_adventure() && settings->racers[PLAYER_TWO].starting_position <
-                                                            settings->racers[PLAYER_ONE].starting_position) {
-                        gSwapLeadPlayer = TRUE;
-                    }
-                    // i will be nonzero if any adventure mode award triggers happened.
-                    if (i == 0) {
-                        if (is_in_two_player_adventure()) {
-                            if (gSwapLeadPlayer) {
-                                gSwapLeadPlayer = FALSE;
-                                swap_lead_player();
-                                if (gLeadPlayerIndex != 0) {
-                                    gIsP2LeadPlayer = TRUE;
-                                }
-                            } else if (gLeadPlayerIndex != 0) {
-                                gIsP2LeadPlayer = TRUE;
-                            }
-                        }
-                        postrace_start(0, 30);
-                    } else {
-                        level_properties_push(SPECIAL_MAP_ID_NO_LEVEL, 0, VEHICLE_CAR, CUTSCENE_ID_NONE);
-                        level_properties_push(ASSET_LEVEL_TTAMULETSEQUENCE, 0, VEHICLE_NO_OVERRIDE,
-                                              settings->ttAmulet - 1);
-                        race_finish_adventure(TRUE);
-                    }
-                    gRaceFinishTriggered = TRUE;
-                }
-            }
+    raceType = header->race_type;
+    if (raceType != RACETYPE_DEFAULT && raceType != RACETYPE_HORSESHOE_GULCH && raceType != RACETYPE_BOSS) {
+        if (raceType & RACETYPE_CHALLENGE) {
+            race_check_finish_challenge(settings, header);
         }
         return;
     }
 
-    i = 0;
-    do {
-        racerPos = 1;
-        curRacer = (*gRacers)[i]->racer;
-        prevRacerPos = curRacer->racerOrder;
-        j = 0;
-        do {
-            if (j != i) {
-                curRacer2 = (*gRacers)[j]->racer;
-                if (curRacer->raceFinished == FALSE && curRacer2->raceFinished != FALSE) {
-                    racerPos++;
-                } else if (curRacer->courseCheckpoint < curRacer2->courseCheckpoint) {
-                    racerPos++;
-                } else if (curRacer->courseCheckpoint == curRacer2->courseCheckpoint) {
-                    if (curRacer2->checkpointRank < curRacer->checkpointRank) {
-                        racerPos++;
-                    }
-                    if (curRacer->checkpointRank == curRacer2->checkpointRank && i < j) {
-                        racerPos++;
-                    }
-                }
-            }
-            j++;
-        } while (j < gNumRacers);
-
-        curRacer->racerOrder = racerPos;
-        if (curRacer->lap < currentLevelHeader->laps) {
-            if (prevRacerPos == curRacer->racerOrder) {
-                if (curRacer->unk1B0 < 2) {
-                    if (curRacer->vehicleID != VEHICLE_LOOPDELOOP) {
-                        curRacer->unk1B0++;
-                    }
-                } else if (curRacer->racerOrder != curRacer->racePosition) {
-                    curRacer->unk1B2 = 10;
-                    curRacer->racePosition = curRacer->racerOrder;
-                }
-            } else {
-                curRacer->unk1B0 = 0;
-            }
-        }
-        i++;
-    } while (i < gNumRacers);
-
-    i = 0;
-    do {
-        curRacer = (*gRacers)[i]->racer;
-        if (curRacer->lap >= currentLevelHeader->laps && curRacer->raceFinished == FALSE) {
-            if (get_game_mode() != GAMEMODE_UNUSED_4) {
-                curRacer->raceFinished = TRUE;
-                curRacer->finishPosition = gNumFinishedRacers;
-                if (gNumFinishedRacers == 1 && curRacer->playerIndex == PLAYER_COMPUTER) {
-                    sound_play(SOUND_WHOOSH5, NULL);
-                }
-                gNumFinishedRacers++;
-            }
-        }
-        if (curRacer->playerIndex != PLAYER_COMPUTER) {
-            numHumanRacers++;
-            if (curRacer->raceFinished) {
-                // clang-format off
-                numHumanRacersFinished++;\
-                numFinishedRacers++;
-                // clang-format on
-            }
-        } else if (curRacer->raceFinished) {
-            numFinishedRacers++;
-        }
-        i++;
-    } while (i < gNumRacers);
-
-    i = 0;
-    do {
-        gRacersByPosition[i] = 0;
-        i++;
-    } while (i < gNumRacers);
-
-    i = 0;
-    do {
-        curRacer = (*gRacers)[i]->racer;
-        if (curRacer->raceFinished) {
-            racerPos = curRacer->finishPosition - 1;
-        } else {
-            racerPos = curRacer->racerOrder - 1;
-        }
-        gRacersByPosition[racerPos] = (*gRacers)[i];
-        i++;
-    } while (i < gNumRacers);
-
-    i = 0;
-    j = 0;
-    do {
-        // @fake
-        if (1) {}
-
-        someBool = FALSE;
-
-        for (; j < gNumRacers; j++) {
-            if (gRacersByPosition[j] == (*gRacers)[i]) {
-                someBool = TRUE;
-                if (!curRacer) {}
-                j = gNumRacers;
-            }
-        }
-
-        j = 0;
-        if (someBool == FALSE) {
-            for (; j < gNumRacers; j++) {
-                if (gRacersByPosition[j] == 0) {
-                    gRacersByPosition[j] = (*gRacers)[i];
-                    j = gNumRacers;
-                }
-            }
-        }
-        j = 0;
-        i++;
-    } while (i < gNumRacers);
-
-    j = 0;
-    for (i = 0; i < MAXCONTROLLERS; i++) {
-        // @fake
-        if (1) {}
-        if (1) {}
-        if (1) {}
-        if (1) {}
-        j |= input_pressed(i);
-    }
+    race_update_positions(header);
+    numHumanRacers = 0;
+    numHumanRacersFinished = 0;
+    numFinishedRacers = 0;
+    race_mark_finished_laps(header, &numHumanRacers, &numHumanRacersFinished, &numFinishedRacers);
+    race_sort_by_position();
 
     if (gIsTajChallenge && numHumanRacersFinished != 0) {
         mode_end_taj_race(CHALLENGE_END_FINISH);
     } else if (gBossRaceMode != 0 && numFinishedRacers != 0) {
-        curRacer = (*gRacers)[0]->racer;
-        if (!curRacer->raceFinished) {
-            curRacer->raceFinished = TRUE;
-            curRacer->finishPosition = gNumFinishedRacers;
+        // The boss race ends for the player as soon as either racer crosses the line.
+        racer = (*gRacers)[0]->racer;
+        if (!racer->raceFinished) {
+            racer->raceFinished = TRUE;
+            racer->finishPosition = gNumFinishedRacers;
             gNumFinishedRacers++;
         }
     } else if (gRaceFinishTriggered == FALSE) {
-        someBool2 = FALSE;
-        if (is_in_two_player_adventure() && numHumanRacersFinished > 0 && get_trophy_race_world_id() == 0 &&
-            set_course_finish_flags(settings) != 0) {
-            someBool2 = TRUE;
-        }
-        if ((numHumanRacersFinished == numHumanRacers ||
-             (numHumanRacers >= 2 && numFinishedRacers >= (gNumRacers - 1))) ||
-            someBool2) {
-            if (numHumanRacersFinished != numHumanRacers) {
-                i = 0;
-                do {
-                    curRacer = gRacersByPosition[i]->racer;
-                    if (curRacer->raceFinished == FALSE) {
-                        if (curRacer->playerIndex >= 0) {
-                            set_active_camera(curRacer->playerIndex);
-                            camera = (ptrint_t) cam_get_active_camera_no_cutscenes();
-                            // we need the camera to be a s32 for the WAIT_ON_IOBUSY anti tamper call to work
-                            // but we *know* that cam_get_active_camera_no_cutscenes returns a Camera pointer so this
-                            // should be safe
-                            ((Camera *) camera)->mode = CAMERA_FINISH_CHALLENGE;
-                        }
-                        curRacer->raceFinished = TRUE;
-                        curRacer->finishPosition = gNumFinishedRacers;
-                        gNumFinishedRacers++;
-                    }
-                    i++;
-                } while (i < gNumRacers);
-            }
-
-#ifdef ANTI_TAMPER
-            raceType = FALSE;
-            // Anti-Piracy check
-            // passing in camera here is probably a fake
-            WAIT_ON_IOBUSY(camera);
-            // D_B0000574 is a direct read from the ROM as opposed to RAM
-            if (((D_B0000574 & 0xFFFF) & 0xFFFF) != 0x6C07) {
-                raceType = TRUE;
-            }
-#endif
-
-            if (!gIsTimeTrial) {
-                i = 0;
-                do {
-                    curRacer = gRacersByPosition[i]->racer;
-                    racerPos = curRacer->racerIndex;
-                    settings->racers[racerPos].starting_position = i;
-                    i++;
-                } while (i < gNumRacers);
-            }
-            gSwapLeadPlayer = FALSE;
-            flags[2] = raceType;
-            if (is_in_two_player_adventure() &&
-                (settings->racers[PLAYER_TWO].starting_position < settings->racers[PLAYER_ONE].starting_position)) {
-                gSwapLeadPlayer = TRUE;
-            }
-            curRacer = (*gRacersByPosition)->racer;
-            gFirstTimeFinish = FALSE;
-            if ((settings->gNumRacers == 1 || is_in_two_player_adventure()) &&
-                curRacer->playerIndex != PLAYER_COMPUTER && !is_in_tracks_mode() && get_trophy_race_world_id() == 0) {
-                gFirstTimeFinish = TRUE;
-            }
-            i = FALSE;
-            if (gFirstTimeFinish && !someBool2) {
-                i = set_course_finish_flags(settings);
-            }
-            if (someBool2) {
-                gFirstTimeFinish = TRUE;
-                i = TRUE;
-            }
-
-#ifdef ANTI_TAMPER
-            if (flags[2]) {
-                i = FALSE;
-                gFirstTimeFinish = FALSE;
-            }
-#endif
-
-            if (!i) {
-                if (is_in_two_player_adventure()) {
-                    if (gSwapLeadPlayer) {
-                        gSwapLeadPlayer = FALSE;
-                        swap_lead_player();
-                        if (gLeadPlayerIndex) {
-                            gIsP2LeadPlayer = TRUE;
-                        }
-                    } else if (gLeadPlayerIndex) {
-                        gIsP2LeadPlayer = TRUE;
-                    }
-                }
-                postrace_start(gFirstTimeFinish, 30);
-            } else {
-                settings->balloonsPtr[settings->worldId]++;
-                if (settings->worldId != 0) {
-                    settings->balloonsPtr[0]++;
-                }
-                race_finish_adventure(TRUE);
-            }
-            gRaceFinishTriggered = -1; // -1 doesn't do anything different.
-            if (get_number_of_active_players() == 1) {
-                race_finish_time_trial();
-            }
-        }
+        race_finish_default(settings, numHumanRacers, numHumanRacersFinished, numFinishedRacers);
     }
 }
 
