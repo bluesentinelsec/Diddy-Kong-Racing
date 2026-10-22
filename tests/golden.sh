@@ -1,4 +1,7 @@
 #!/bin/sh
+# Traces never need sound: silence SDL's audio so a run cannot surprise anyone wearing headphones.
+export SDL_AUDIO_DRIVER=dummy
+export SDL_AUDIODRIVER=dummy
 # Golden-trace regression check.
 #
 #   tests/golden.sh BINARY [GOLDEN] [FRAMES] [INPUT]            compare against the golden trace

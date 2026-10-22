@@ -234,7 +234,7 @@ typedef struct CheckpointNode {
     /* 0x00 */ f32 rotationXFrac;
     /* 0x04 */ f32 rotationYFrac;
     /* 0x08 */ f32 rotationZFrac;
-    /* 0x0C */ f32 unkC;
+    /* 0x0C */ f32 planeOffset; // plane constant: rotation . position + planeOffset = 0 on the checkpoint plane
     /* 0x10 */ f32 x;
     /* 0x14 */ f32 y;
     /* 0x18 */ f32 z;
@@ -247,7 +247,7 @@ typedef struct CheckpointNode {
     /* 0x32 */ s8 unk32[4];
     /* 0x36 */ s8 unk36[4];   // Appear to be flags of some sort?
     /* 0x3A */ s8 altRouteID; // -1 if there's none to be found.
-    /* 0x3B */ u8 unk3B;
+    /* 0x3B */ u8 indicatorType; // HUD arrow shown to racers passing this checkpoint, 0 for none
 } CheckpointNode;
 
 /* Size: 0x40 bytes */

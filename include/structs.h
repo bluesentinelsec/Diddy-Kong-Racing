@@ -1255,8 +1255,8 @@ typedef struct Object_Racer {
     /* 0x1AA */ s16 racerOrder; // Current racer index order, but doesn't necessarily mean their exact race place.
     /* 0x1AC */ s16 finishPosition;
     /* 0x1AE */ s16 racePosition; // Current decided race position.
-    /* 0x1B0 */ s16 unk1B0;
-    /* 0x1B2 */ s16 unk1B2;
+    /* 0x1B0 */ s16 positionStableTimer; // frames the race order has not changed; the HUD position only updates after 2
+    /* 0x1B2 */ s16 positionChangeTimer; // counts down from 10 after the displayed position changes
     /* 0x1B4 */ s32 unk1B4;
     /* 0x1B8 */ s16 unk1B8;
     /* 0x1BA */ s16 unk1BA;
