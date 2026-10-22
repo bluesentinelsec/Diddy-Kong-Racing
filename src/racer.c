@@ -4833,9 +4833,9 @@ void update_car(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer 
         } else {
             update_car_velocity_offground(racerObj, racer, updateRate, updateRateF);
         }
-        if (racer->unk1C != 0) {
-            sndp_stop((SoundHandle) (uintptr_t) racer->unk1C); // type cast required to match
-            racer->unk1C = 0;
+        if (racer->unusedSoundHandle1C != 0) {
+            sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle1C); // type cast required to match
+            racer->unusedSoundHandle1C = 0;
         }
         if (racer->buoyancy != 0.0f && racer->vehicleIDPrev != VEHICLE_BUBBLER) {
             spB8 = racer->buoyancy - 10.0;
@@ -5298,27 +5298,27 @@ void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 upd
             obj->particleEmittersEnabled |= 0x2000 | 0x800;
         }
         if (racer->drift_direction != 0 || racer->drifting != 0 || racer->unk1FB != 0) {
-            if (racer->unk10 == 0) {
+            if (racer->slideSoundHandle == 0) {
                 sound_play_spatial(SOUND_CAR_SLIDE, obj->trans.x_position, obj->trans.y_position, obj->trans.z_position,
-                                   &racer->unk10);
+                                   &racer->slideSoundHandle);
             } else {
-                audspat_calculate_echo((SoundHandle) (uintptr_t) racer->unk10, obj->trans.x_position, obj->trans.y_position,
+                audspat_calculate_echo((SoundHandle) (uintptr_t) racer->slideSoundHandle, obj->trans.x_position, obj->trans.y_position,
                                        obj->trans.z_position); // type cast required to match
             }
-            if (racer->unk14) {
-                sndp_stop((SoundHandle) (uintptr_t) racer->unk14); // type cast required to match
+            if (racer->unusedSoundHandle14) {
+                sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle14); // type cast required to match
             }
         } else {
-            if (racer->unk10) {
-                sndp_stop((SoundHandle) (uintptr_t) racer->unk10); // type cast required to match
+            if (racer->slideSoundHandle) {
+                sndp_stop((SoundHandle) (uintptr_t) racer->slideSoundHandle); // type cast required to match
             }
         }
     } else {
-        if (racer->unk10) {
-            sndp_stop((SoundHandle) (uintptr_t) racer->unk10); // type cast required to match
+        if (racer->slideSoundHandle) {
+            sndp_stop((SoundHandle) (uintptr_t) racer->slideSoundHandle); // type cast required to match
         }
-        if (racer->unk14) {
-            sndp_stop((SoundHandle) (uintptr_t) racer->unk14); // type cast required to match
+        if (racer->unusedSoundHandle14) {
+            sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle14); // type cast required to match
         }
     }
     // Velocity of steering input
@@ -5495,11 +5495,11 @@ void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 upd
     }
     // Play a sound on grass and sand when landing on it
     surfaceType = gSurfaceSoundTable[surfaceType];
-    if (racer->unk18 == 0 && surfaceType != SOUND_NONE && racer->velocity < -2.0) {
-        sound_play(surfaceType, &racer->unk18);
+    if (racer->surfaceSoundHandle == 0 && surfaceType != SOUND_NONE && racer->velocity < -2.0) {
+        sound_play(surfaceType, &racer->surfaceSoundHandle);
     }
-    if (racer->unk18 != 0 && (surfaceType == SOUND_NONE || racer->velocity > -2.0)) {
-        sndp_stop((SoundHandle) (uintptr_t) racer->unk18); // type cast required to match
+    if (racer->surfaceSoundHandle != 0 && (surfaceType == SOUND_NONE || racer->velocity > -2.0)) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->surfaceSoundHandle); // type cast required to match
     }
     // Apply a bobbing effect when on grass and sand.
     if (racer->velocity < -2.0 && sp68 >= 4) {
@@ -5962,14 +5962,14 @@ void update_car_velocity_offground(Object *obj, Object_Racer *racer, s32 updateR
         WRAP(angle, -0x8000, 0x8000);
         racer->x_rotation_vel += (angle >> 3); //!@Delta
     }
-    if (racer->unk18) {
-        sndp_stop((SoundHandle) (uintptr_t) racer->unk18); // type cast required to match
+    if (racer->surfaceSoundHandle) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->surfaceSoundHandle); // type cast required to match
     }
-    if (racer->unk10) {
-        sndp_stop((SoundHandle) (uintptr_t) racer->unk10); // type cast required to match
+    if (racer->slideSoundHandle) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->slideSoundHandle); // type cast required to match
     }
-    if (racer->unk14) {
-        sndp_stop((SoundHandle) (uintptr_t) racer->unk14); // type cast required to match
+    if (racer->unusedSoundHandle14) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle14); // type cast required to match
     }
     if (racer->effectBoxType == 1 || racer->effectBoxType == 3) {
         racer->smoothedStickY = racer->steerAngle;
@@ -6777,8 +6777,8 @@ void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRat
         }
     }
     if (sp5C && numCollisions >= 3) {
-        if (racer->playerIndex != PLAYER_COMPUTER && racer->unk20 == 0 && racer->shieldTimer <= 0) {
-            sound_play(SOUND_SPLAT, &racer->unk20);
+        if (racer->playerIndex != PLAYER_COMPUTER && racer->splatSoundHandle == 0 && racer->shieldTimer <= 0) {
+            sound_play(SOUND_SPLAT, &racer->splatSoundHandle);
         }
         if (racer->squish_timer == 0) {
             racer->attackType = ATTACK_SQUISHED;

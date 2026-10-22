@@ -299,7 +299,12 @@ s8 gIsTajChallenge;
 s8 gTajRaceInit;
 s8 gChallengePrevMusic;
 s32 gChallengePrevInstruments;
-s8 D_8011AF00;
+enum CountdownSkipState {
+    COUNTDOWN_SKIP_PENDING, // Level just loaded; becomes ALLOWED on the first object update
+    COUNTDOWN_SKIP_ALLOWED, // A/B at a fixed point of the countdown skip the intro
+    COUNTDOWN_SKIP_NEVER    // First visit to the course, or not a normal race
+};
+s8 gCountdownSkipState;
 Object *(*gAINodes)[AINODE_COUNT];
 s32 gAINodeTail[2];
 s32 gInitAINodes;
@@ -1335,7 +1340,7 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     gEventCountdown = 0;
     gFirstTimeFinish = FALSE;
     gNumRacers = 0;
-    D_8011AF00 = 0;
+    gCountdownSkipState = COUNTDOWN_SKIP_PENDING;
     set_taj_status(TAJ_WANDER);
     levelHeader = level_header();
     raceType = levelHeader->race_type;
@@ -1359,10 +1364,10 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     if (!(settings->courseFlagsPtr[settings->courseId] &
           RACE_VISITED)) { // Check if the player has not visited the course yet.
         settings->courseFlagsPtr[settings->courseId] |= RACE_VISITED;
-        D_8011AF00 = 2;
+        gCountdownSkipState = COUNTDOWN_SKIP_NEVER;
     }
     if (raceType != RACETYPE_DEFAULT) {
-        D_8011AF00 = 2;
+        gCountdownSkipState = COUNTDOWN_SKIP_NEVER;
     }
     for (j = 0; j < ARRAY_COUNT(spawnZ); j++) {
         spawnX[j] = 0;
@@ -2117,20 +2122,251 @@ void add_particle_to_entity_list(Object *obj) {
 }
 
 // Official Name: objSetupObject
+/**
+ * Some behaviours show a different model depending on the save: which character was picked,
+ * how many trophies are held, whether the amulet is complete. Sets the first model index to
+ * load and the number of models, and may rewrite the header's model list.
+ */
+static void spawn_pick_models(Object *obj, Settings *settings, s32 spawnFlags, s32 *firstModel, s32 *modelCount,
+                              s32 *modelType) {
+    s32 i;
+    s32 trophies;
+
+    i = 0;
+    switch (obj->header->behaviorId) {
+        case BHV_PARK_WARDEN:
+            model_anim_offset(7);
+            break;
+        case BHV_ANIMATED_OBJECT_4:
+            i = get_character_id_from_slot(PLAYER_ONE);
+            obj->modelIndex = i;
+            *modelCount = i + 1;
+            break;
+        case BHV_UNK_5B:
+            i = (settings->trophies >> ((settings->worldId - 1) << 1));
+            i = i & 0x3;
+            if (i) {
+                i--;
+                *modelCount = i + 1;
+                obj->modelIndex = i;
+            }
+            break;
+        case BHV_DYNAMIC_LIGHT_OBJECT_2:
+            i = settings->wizpigAmulet;
+            *modelCount = i + 1;
+            obj->modelIndex = settings->wizpigAmulet;
+            break;
+        case BHV_ROCKET_SIGNPOST_2:
+            // Count the worlds with a gold trophy.
+            trophies = settings->trophies;
+            for (*modelCount = 0; *modelCount < 4; (*modelCount)++) {
+                if ((trophies & 3) == 3) {
+                    i++;
+                }
+                trophies >>= 2;
+            }
+            obj->modelIndex = i;
+            *modelCount = i + 1;
+            *modelType = trophies; //!@bug the model type is clobbered with the shifted-out trophy bits (always 0)
+            break;
+        case BHV_GOLDEN_BALLOON:
+            *modelCount = 1;
+            if (is_in_adventure_two()) {
+                obj->header->modelIds[0] = obj->header->modelIds[1];
+            }
+            obj->header->numberOfModelIds = 1;
+            break;
+    }
+    if (!(spawnFlags & OBJECT_SPAWN_UNK02)) {
+        switch (obj->objectID) {
+            case ASSET_OBJECT_ID_POLYGOLDBALOON:
+                *modelCount = 1;
+                if (is_in_adventure_two()) {
+                    obj->header->modelIds[0] = obj->header->modelIds[1];
+                }
+                obj->header->numberOfModelIds = 1;
+                break;
+            case ASSET_OBJECT_ID_LEVELDOOR:
+                if (is_in_adventure_two()) {
+                    for (i = 0; i < 5; i++) {
+                        obj->header->modelIds[i] = obj->header->modelIds[i + 5];
+                    }
+                }
+                *modelCount = 5;
+                obj->header->numberOfModelIds = 5;
+                i = 0;
+                break;
+        }
+    }
+    *firstModel = i;
+}
+
+/**
+ * Load the object's 3D models, textures or sprites. Returns FALSE when any of them is missing.
+ */
+static s32 spawn_load_assets(Object *obj, s32 firstModel, s32 modelCount, s32 modelType, s32 spawnFlags,
+                             s32 behaviourFlags) {
+    s32 i;
+    s32 loaded;
+
+    loaded = TRUE;
+    for (i = firstModel; i < modelCount; i++) {
+        if (modelType == OBJECT_MODEL_TYPE_3D_MODEL) {
+            if (i == 0 && (spawnFlags & OBJECT_SPAWN_UNK04)) {
+                obj->modelInstances[i] = NULL;
+            } else if (i == 1 && (spawnFlags & OBJECT_SPAWN_UNK08)) {
+                obj->modelInstances[i] = NULL;
+            } else {
+                obj->modelInstances[i] = object_model_init(obj->header->modelIds[i], behaviourFlags);
+                if (obj->modelInstances[i] == NULL) {
+                    loaded = FALSE;
+                }
+            }
+        } else if (modelType == OBJECT_MODEL_TYPE_MISC) {
+            obj->textures[i] = load_texture(obj->header->modelIds[i]);
+            if (obj->textures[i] == NULL) {
+                loaded = FALSE;
+            }
+        } else {
+            obj->sprites[i] = tex_load_sprite(obj->header->modelIds[i], 10);
+            if (obj->sprites[i] == NULL) {
+                loaded = FALSE;
+            }
+        }
+    }
+    return loaded;
+}
+
+/**
+ * Undo a partial spawn: release the textures the shadow and water effect loaded (as many as
+ * `texturesToFree` of them), the object's models and its header.
+ */
+static void spawn_abort(Object *obj, s32 modelCount, s32 modelType, s32 headerType, s32 texturesToFree, s32 stage) {
+    if (texturesToFree > 0 && gLastObjectTextureA != NULL) {
+        tex_free(gLastObjectTextureA);
+    }
+    if (texturesToFree > 1 && gLastObjectTextureB != NULL) {
+        tex_free(gLastObjectTextureB);
+    }
+    objFreeAssets(obj, modelCount, modelType);
+    try_free_object_header(headerType);
+    stubbed_printf("ObjSetupObject(%d) Memory fail!!\n", stage);
+}
+
+/**
+ * Lay the optional property blocks (shading, shadow, water effect, interaction, collision,
+ * attach points, emitters, lights) out after the model instances. Returns the end address,
+ * or NULL with *failStage set when a block could not be set up.
+ */
+static u8 *spawn_layout_properties(Object *obj, u8 *address, s32 behaviourFlags, s32 *failStage) {
+    s32 size;
+
+    address += get_object_property_size(obj, address);
+    gLastObjectTextureA = NULL;
+    gLastObjectTextureB = NULL;
+
+    if (behaviourFlags & OBJECT_BEHAVIOUR_SHADED) {
+        address += init_object_shading(obj, (ShadeProperties *) address);
+    }
+    if (behaviourFlags & OBJECT_BEHAVIOUR_SHADOW) {
+        size = init_object_shadow(obj, (ShadowData *) address);
+        address += size;
+        if (size == 0) {
+            *failStage = 5;
+            return NULL;
+        }
+    }
+    if (behaviourFlags & OBJECT_BEHAVIOUR_WATER_EFFECT) {
+        size = init_object_water_effect(obj, (WaterEffect *) address);
+        address += size;
+        if (size == 0) {
+            *failStage = 6;
+            return NULL;
+        }
+    }
+    if (behaviourFlags & OBJECT_BEHAVIOUR_INTERACTIVE) {
+        address += init_object_interaction_data(obj, (ObjectInteraction *) address);
+    }
+    if (behaviourFlags & OBJECT_BEHAVIOUR_COLLIDABLE) {
+#ifdef GBI_FLOAT_MTX
+        // ObjectCollision embeds MtxF matrices[4] at offset 0; under the float
+        // matrix ABI those are copied with SH4 paired fmov.d (8-byte), so the
+        // struct must start 8-aligned. The raw arena address isn't guaranteed
+        // aligned. N64/fixed builds keep the original layout (matching).
+        address = align8(address);
+#endif
+        address += obj_init_collision(obj, (ObjectCollision *) address);
+    }
+    if (obj->header->attachPointCount > 0 && obj->header->attachPointCount < 10) {
+        obj->attachPoints = (AttachPoint *) address;
+        address += sizeof(AttachPoint);
+    }
+    if (obj->header->particleCount > 0) {
+        address += obj_init_emitter(obj, (ParticleEmitter *) address);
+    }
+    if (obj->header->numLightSources > 0) {
+        obj->lightData = (ObjectLight **) address;
+        address += obj->header->numLightSources * sizeof(ObjectLight *);
+    }
+    return address;
+}
+
+/**
+ * The object was built in the scratch heap; its property pointers still point there.
+ * Rebase each one onto the object's final home.
+ */
+static void spawn_relocate_pointers(Object *obj) {
+#define REBASE(field, type) \
+    obj->field = (type) (((uintptr_t) obj + (uintptr_t) obj->field) - (uintptr_t) gSpawnObjectHeap)
+    if (obj->waterEffect != NULL) {
+        REBASE(waterEffect, WaterEffect *);
+    }
+    if (obj->shadow != NULL) {
+        REBASE(shadow, ShadowData *);
+    }
+    if (obj->shading != NULL) {
+        REBASE(shading, ShadeProperties *);
+    }
+    if (obj->anyBehaviorData != NULL) {
+        REBASE(anyBehaviorData, void *);
+    }
+    if (obj->interactObj != NULL) {
+        REBASE(interactObj, ObjectInteraction *);
+    }
+    if (obj->collisionData != NULL) {
+        REBASE(collisionData, ObjectCollision *);
+    }
+    if (obj->attachPoints != NULL) {
+        REBASE(attachPoints, AttachPoint *);
+    }
+    if (obj->header->particleCount > 0) {
+        REBASE(particleEmitter, ParticleEmitter *);
+    }
+    if (obj->header->numLightSources > 0) {
+        REBASE(lightData, ObjectLight **);
+    }
+#undef REBASE
+    obj->modelInstances = (ModelInstance **) &obj[1];
+}
+
+/**
+ * Build an object from a level entry. The object is assembled in a scratch heap first,
+ * because its size depends on which optional property blocks the behaviour needs, then
+ * copied into the object pool and registered.
+ */
 Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
     s32 objType;
     Settings *settings;
     s32 i;
-    s32 unused2;
-    s32 unused;
     s32 behaviourFlags;
     s16 headerType;
     u8 *address;
     s32 sizeOfobj;
+    s32 failStage;
     Object *curObj;
     Object *prevObj;
+    s32 firstModel;
     s32 assetCount;
-    s8 failed;
 
     settings = get_settings();
     objType = entry->objectID | ((entry->size & 0x80) << 1);
@@ -2180,240 +2416,42 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
     curObj->header->unk52++;
 
     assetCount = curObj->header->numberOfModelIds;
-
     objType = curObj->header->modelType;
     curObj->modelInstances = (ModelInstance **) &curObj[1];
     if (spawnFlags & OBJECT_SPAWN_NO_LODS) {
         assetCount = 1;
     }
-    i = 0; // a2
-    switch (curObj->header->behaviorId) {
-        case BHV_PARK_WARDEN:
-            model_anim_offset(7);
-            break;
-        case BHV_ANIMATED_OBJECT_4:
-            i = get_character_id_from_slot(PLAYER_ONE);
-            curObj->modelIndex = i;
-            assetCount = i + 1;
-            break;
-        case BHV_UNK_5B:
-            i = (settings->trophies >> ((settings->worldId - 1) << 1));
-            i = i & 0x3;
-            if (i) {
-                i--;
-                assetCount = i + 1;
-                curObj->modelIndex = i;
-            }
-            break;
-        case BHV_DYNAMIC_LIGHT_OBJECT_2:
-            i = settings->wizpigAmulet;
-            assetCount = i + 1;
-            curObj->modelIndex = settings->wizpigAmulet;
-            break;
-        case BHV_ROCKET_SIGNPOST_2:
-            objType = settings->trophies;
-            for (assetCount = 0; assetCount < 4; assetCount++) {
-                if ((objType & 3) == 3) {
-                    i++;
-                }
-                objType >>= 2;
-            }
-            curObj->modelIndex = i;
-            assetCount = i + 1;
-            break;
-        case BHV_GOLDEN_BALLOON:
-            assetCount = 1;
-            if (is_in_adventure_two()) {
-                curObj->header->modelIds[0] = curObj->header->modelIds[1];
-            }
-            curObj->header->numberOfModelIds = 1;
-            break;
-    }
-    if (!(spawnFlags & OBJECT_SPAWN_UNK02)) {
-        switch (curObj->objectID) {
-            case ASSET_OBJECT_ID_POLYGOLDBALOON:
-                assetCount = 1;
-                if (is_in_adventure_two()) {
-                    curObj->header->modelIds[0] = curObj->header->modelIds[1];
-                }
-                curObj->header->numberOfModelIds = 1;
-                break;
-            case ASSET_OBJECT_ID_LEVELDOOR:
-                if (is_in_adventure_two()) {
-                    for (i = 0; i < 5; i++) {
-                        curObj->header->modelIds[i] = curObj->header->modelIds[i + 5];
-                    }
-                }
-                assetCount = 5;
-                curObj->header->numberOfModelIds = 5;
-                i = 0;
-                break;
-        }
-    }
-
-    failed = FALSE;
-    if (objType == OBJECT_MODEL_TYPE_3D_MODEL) {
-        while (i < assetCount) {
-            if (i == 0 && (spawnFlags & OBJECT_SPAWN_UNK04)) {
-                curObj->modelInstances[i] = NULL;
-            } else if (i == 1 && (spawnFlags & OBJECT_SPAWN_UNK08)) {
-                curObj->modelInstances[i] = NULL;
-            } else {
-                curObj->modelInstances[i] = object_model_init(curObj->header->modelIds[i], behaviourFlags);
-                if (curObj->modelInstances[i] == NULL) {
-                    failed = TRUE;
-                }
-            }
-            i++;
-        }
-    } else if (objType == OBJECT_MODEL_TYPE_MISC) {
-        while (i < assetCount) {
-            curObj->textures[i] = load_texture(curObj->header->modelIds[i]);
-            if (curObj->textures[i] == NULL) {
-                failed = TRUE;
-            }
-            i++;
-        }
-    } else {
-        while (i < assetCount) {
-            curObj->sprites[i] = tex_load_sprite(curObj->header->modelIds[i], 10);
-            if (curObj->sprites[i] == NULL) {
-                failed = TRUE;
-            }
-            i++;
-        }
-    }
-    if (failed) {
-        objFreeAssets(curObj, assetCount, objType);
-        try_free_object_header(headerType);
-        stubbed_printf("ObjSetupObject(2) Memory fail!!\n");
+    spawn_pick_models(curObj, settings, spawnFlags, &firstModel, &assetCount, &objType);
+    if (!spawn_load_assets(curObj, firstModel, assetCount, objType, spawnFlags, behaviourFlags)) {
+        spawn_abort(curObj, assetCount, objType, headerType, 0, 2);
         return NULL;
     }
 
-    address = (u8 *) &curObj->modelInstances[curObj->header->numberOfModelIds];
-    address += get_object_property_size(curObj, address);
-    gLastObjectTextureA = NULL;
-    gLastObjectTextureB = NULL;
-
-    if (behaviourFlags & OBJECT_BEHAVIOUR_SHADED) {
-        address += init_object_shading(curObj, (ShadeProperties *) address);
-    }
-    if (behaviourFlags & OBJECT_BEHAVIOUR_SHADOW) {
-        sizeOfobj = init_object_shadow(curObj, (ShadowData *) address);
-        address += sizeOfobj;
-        if (sizeOfobj == 0) {
-            objFreeAssets(curObj, assetCount, objType);
-            try_free_object_header(headerType);
-            stubbed_printf("ObjSetupObject(5) Memory fail!!\n");
-            return NULL;
-        }
-    }
-    if (behaviourFlags & OBJECT_BEHAVIOUR_WATER_EFFECT) {
-        sizeOfobj = init_object_water_effect(curObj, (WaterEffect *) address);
-        address += sizeOfobj;
-        if (sizeOfobj == 0) {
-            if (gLastObjectTextureA != NULL) {
-                tex_free(gLastObjectTextureA);
-            }
-            objFreeAssets(curObj, assetCount, objType);
-            try_free_object_header(headerType);
-            stubbed_printf("ObjSetupObject(6) Memory fail!!\n");
-            return NULL;
-        }
-    }
-    if (behaviourFlags & OBJECT_BEHAVIOUR_INTERACTIVE) {
-        address += init_object_interaction_data(curObj, (ObjectInteraction *) address);
-    }
-    if (behaviourFlags & OBJECT_BEHAVIOUR_COLLIDABLE) {
-#ifdef GBI_FLOAT_MTX
-        // ObjectCollision embeds MtxF matrices[4] at offset 0; under the float
-        // matrix ABI those are copied with SH4 paired fmov.d (8-byte), so the
-        // struct must start 8-aligned. The raw arena address isn't guaranteed
-        // aligned. N64/fixed builds keep the original layout (matching).
-        address = align8(address);
-#endif
-        address += obj_init_collision(curObj, (ObjectCollision *) address);
-    }
-    if (curObj->header->attachPointCount > 0 && curObj->header->attachPointCount < 10) {
-        curObj->attachPoints = (AttachPoint *) address;
-        address += sizeof(AttachPoint);
-    }
-    if (curObj->header->particleCount > 0) {
-        address += obj_init_emitter(curObj, (ParticleEmitter *) address);
-    }
-
-    if (curObj->header->numLightSources > 0) {
-        curObj->lightData = (ObjectLight **) address;
-        address += curObj->header->numLightSources * sizeof(ObjectLight *);
+    address = spawn_layout_properties(curObj, (u8 *) &curObj->modelInstances[curObj->header->numberOfModelIds],
+                                      behaviourFlags, &failStage);
+    if (address == NULL) {
+        spawn_abort(curObj, assetCount, objType, headerType, failStage == 6 ? 1 : 0, failStage);
+        return NULL;
     }
 
     sizeOfobj = (s32) ((uintptr_t) address - (uintptr_t) curObj);
     prevObj = curObj;
     curObj = mempool_alloc_pool((MemoryPoolSlot *) gObjectMemoryPool, sizeOfobj);
     if (curObj == NULL) {
-        if (gLastObjectTextureA != NULL) {
-            tex_free(gLastObjectTextureA);
-        }
-        if (gLastObjectTextureB != NULL) {
-            tex_free(gLastObjectTextureB);
-        }
-        objFreeAssets(prevObj, assetCount, objType);
-        try_free_object_header(headerType);
-        stubbed_printf("ObjSetupObject(3) Memory fail!!\n");
+        spawn_abort(prevObj, assetCount, objType, headerType, 2, 3);
         return NULL;
     }
 
-    i = 0;
     if (sizeOfobj & 0xF) {
         sizeOfobj = _ALIGN16(sizeOfobj);
     }
-
     sizeOfobj >>= 2;
-    while (i < sizeOfobj) {
+    for (i = 0; i < sizeOfobj; i++) {
         ((u32 *) curObj)[i] = gSpawnObjectHeap[i];
-        i++;
     }
-
-    if (curObj->waterEffect != NULL) {
-        curObj->waterEffect =
-            (WaterEffect *) (((uintptr_t) curObj + (uintptr_t) curObj->waterEffect) - (uintptr_t) gSpawnObjectHeap);
-    }
-    if (curObj->shadow != NULL) {
-        curObj->shadow =
-            (ShadowData *) (((uintptr_t) curObj + (uintptr_t) curObj->shadow) - (uintptr_t) gSpawnObjectHeap);
-    }
-    if (curObj->shading != NULL) {
-        curObj->shading =
-            (ShadeProperties *) (((uintptr_t) curObj + (uintptr_t) curObj->shading) - (uintptr_t) gSpawnObjectHeap);
-    }
-    if (curObj->anyBehaviorData != NULL) {
-        curObj->anyBehaviorData =
-            (void *) (((uintptr_t) curObj + (uintptr_t) curObj->anyBehaviorData) - (uintptr_t) gSpawnObjectHeap);
-    }
-    if (curObj->interactObj != NULL) {
-        curObj->interactObj = (ObjectInteraction *) (((uintptr_t) curObj + (uintptr_t) curObj->interactObj) -
-                                                     (uintptr_t) gSpawnObjectHeap);
-    }
-    if (curObj->collisionData != NULL) {
-        curObj->collisionData = (ObjectCollision *) (((uintptr_t) curObj + (uintptr_t) curObj->collisionData) -
-                                                     (uintptr_t) gSpawnObjectHeap);
-    }
-    if (curObj->attachPoints != NULL) {
-        curObj->attachPoints =
-            (AttachPoint *) (((uintptr_t) curObj + (uintptr_t) curObj->attachPoints) - (uintptr_t) gSpawnObjectHeap);
-    }
-    if (curObj->header->particleCount > 0) {
-        curObj->particleEmitter = (ParticleEmitter *) (((uintptr_t) curObj + (uintptr_t) curObj->particleEmitter) -
-                                                       (uintptr_t) gSpawnObjectHeap);
-    }
-    if (curObj->header->numLightSources > 0) {
-        curObj->lightData =
-            (ObjectLight **) (((uintptr_t) curObj + (uintptr_t) curObj->lightData) - (uintptr_t) gSpawnObjectHeap);
-    }
-    curObj->modelInstances = (ModelInstance **) &curObj[1];
+    spawn_relocate_pointers(curObj);
 
     if (spawnFlags & OBJECT_SPAWN_UNK01) {
-        if (curObj && curObj) {} // Fakematch
         gObjPtrList[gObjectCount++] = curObj;
         if (gObjectCount > OBJECT_SLOT_COUNT) {
             stubbed_printf("ObjList Overflow %d!!!\n", gObjectCount);
@@ -2426,19 +2464,11 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
         curObj->interactObj->z_position = curObj->trans.z_position;
     }
     if (curObj->header->attachPointCount > 0 && curObj->header->attachPointCount < 10 && obj_init_attachpoint(curObj)) {
-        if (gLastObjectTextureA != NULL) {
-            tex_free(gLastObjectTextureA);
-        }
-        if (gLastObjectTextureB != NULL) {
-            tex_free(gLastObjectTextureB);
-        }
-        objFreeAssets(curObj, assetCount, objType);
-        try_free_object_header(headerType);
+        spawn_abort(curObj, assetCount, objType, headerType, 2, 4);
         mempool_free(curObj);
         if (spawnFlags & OBJECT_SPAWN_UNK01) {
             gObjectCount--;
         }
-        stubbed_printf("ObjSetupObject(4) Memory fail!!\n");
         return NULL;
     }
     if (curObj->header->numLightSources > 0) {
@@ -2772,68 +2802,56 @@ void gParticlePtrList_flush(void) {
 }
 
 /**
- * Destroys an object and frees its resources.
+ * Objects attached to this one (riders, held items) are owned by it: free their models,
+ * headers and memory.
  */
-void obj_destroy(Object *obj, s32 arg1) {
-    Object *tempObj;
-    Object_Weapon *weapon;
-    Object_Racer *racer;
-    Object_AnimatedObject *snowball;
-    Object_Weapon *fireball;
-    Object_Log *log;
-    Object_Butterfly *butterfly;
-    SoundHandle soundMask;
-    s32 numberOfModelIds;
+static void obj_destroy_attachments(Object *obj) {
+    Object *attached;
     s32 i;
     s32 j;
-    Object_AnimatedObject *obj64;
-    ModelInstance *models;
-    s32 modelType;
 
-    if (obj->trans.flags & OBJ_FLAGS_PARTICLE) {
-        particle_deallocate((Particle *) obj);
-        gParticleCount--;
-        return;
-    }
-
-    if (obj->attachPoints != NULL) {
-        for (i = 0; i < obj->attachPoints->count; i++) {
-            tempObj = obj->attachPoints->obj[i];
-            numberOfModelIds = tempObj->header->numberOfModelIds;
-            modelType = tempObj->header->modelType;
-            if (modelType == OBJECT_MODEL_TYPE_3D_MODEL) {
-                for (j = 0; j < numberOfModelIds; j++) {
-                    free_3d_model((ModelInstance *) &tempObj->modelInstances[j]->objModel);
-                }
-            } else {
-                for (j = 0; j < numberOfModelIds; j++) {
-                    sprite_free(tempObj->sprites[j]);
-                }
+    for (i = 0; i < obj->attachPoints->count; i++) {
+        attached = obj->attachPoints->obj[i];
+        if (attached->header->modelType == OBJECT_MODEL_TYPE_3D_MODEL) {
+            for (j = 0; j < attached->header->numberOfModelIds; j++) {
+                free_3d_model((ModelInstance *) &attached->modelInstances[j]->objModel);
             }
-            try_free_object_header(tempObj->headerType);
-            mempool_free(tempObj);
+        } else {
+            for (j = 0; j < attached->header->numberOfModelIds; j++) {
+                sprite_free(attached->sprites[j]);
+            }
         }
+        try_free_object_header(attached->headerType);
+        mempool_free(attached);
     }
-    if (obj->lightData != NULL) {
-        for (i = 0; i < obj->header->numLightSources; i++) {
-            light_remove(obj->lightData[i]);
-        }
-    }
+}
+
+/**
+ * Per-behaviour teardown: stop sounds, drop registrations and free side allocations.
+ * `keepAnimTarget` leaves an animation's target object alive.
+ */
+static void obj_destroy_behaviour_data(Object *obj, s32 keepAnimTarget) {
+    Object *other;
+    Object_Butterfly *butterfly;
+    Object_Weapon *weapon;
+    Object_AnimatedObject *snowball;
+    s32 i;
+    s32 j;
+
     switch (obj->behaviorId) {
         case BHV_RACER:
         case BHV_ANIMATED_OBJECT_3:
+            // Butterflies that were following this object lose their target.
             for (i = 0; i < gObjectCount; i++) {
-                tempObj = gObjPtrList[i];
-                if (tempObj->behaviorId == BHV_BUTTERFLY) {
-                    butterfly = tempObj->butterfly;
+                other = gObjPtrList[i];
+                if (other->behaviorId == BHV_BUTTERFLY) {
+                    butterfly = other->butterfly;
                     if (obj == butterfly->unk100) {
                         butterfly->unk100 = 0;
                         butterfly->unkFD = 1;
                     }
                 }
             }
-
-            i = BHV_RACER;
             break;
         case BHV_WEAPON:
         case BHV_WEAPON_2:
@@ -2845,16 +2863,12 @@ void obj_destroy(Object *obj, s32 arg1) {
                     decrease_rocket_sound_timer();
                 }
             }
-
-            i = BHV_RACER;
             break;
         case BHV_FIREBALL_OCTOWEAPON_2:
             weapon = obj->weapon;
             if (weapon->soundMask != NULL) {
                 audspat_point_stop(weapon->soundMask);
             }
-
-            i = BHV_RACER;
             break;
         case BHV_SNOWBALL:
         case BHV_SNOWBALL_2:
@@ -2864,25 +2878,17 @@ void obj_destroy(Object *obj, s32 arg1) {
             if (snowball->soundMask != NULL) {
                 audspat_point_stop((AudioPoint *) snowball->soundMask);
             }
-
-            i = BHV_RACER;
             break;
         case BHV_WAVE_GENERATOR:
             wavegen_destroy(obj);
-
-            i = BHV_RACER;
             break;
         case BHV_LIGHT_RGBA:
             light_remove(obj->light);
-
-            i = BHV_RACER;
             break;
         case BHV_ANIMATION:
-            if (obj->animTarget != NULL && arg1 == 0) {
+            if (obj->animTarget != NULL && keepAnimTarget == 0) {
                 free_object(obj->animTarget);
             }
-
-            i = BHV_RACER;
             break;
         case BHV_OVERRIDE_POS:
             for (j = 0; j < gOverridePosCount && obj != gOverridePosObjects[j]; j++) {}
@@ -2892,33 +2898,26 @@ void obj_destroy(Object *obj, s32 arg1) {
                     gOverridePosObjects[j] = gOverridePosObjects[j + 1];
                 }
             }
-
-            i = BHV_RACER;
             break;
         case BHV_BUOY_PIRATE_SHIP:
         case BHV_LOG:
-            log = obj->log;
-            if (log != NULL) {
-                mempool_free(log);
+            if (obj->log != NULL) {
+                mempool_free(obj->log);
             }
-
-            i = BHV_RACER;
             break;
         case BHV_LENS_FLARE:
             lensflare_remove(obj);
-
-            i = BHV_RACER;
             break;
         case BHV_LENS_FLARE_SWITCH:
             lensflare_override_remove(obj);
-
-            i = BHV_RACER;
-            break;
-        default:
-
-            i = BHV_RACER;
             break;
     }
+}
+
+/**
+ * Animated objects carry one sound handle that must be silenced with them.
+ */
+static void obj_stop_animated_object_sound(Object *obj) {
     switch (obj->behaviorId) {
         case BHV_DINO_WHALE:
         case BHV_ANIMATED_OBJECT:
@@ -2942,96 +2941,126 @@ void obj_destroy(Object *obj, s32 arg1) {
         case BHV_DOOR_OPENER:
         case BHV_PIG_ROCKETEER:
         case BHV_WIZPIG_GHOSTS:
-            obj64 = obj->animatedObject;
-            soundMask = obj64->unk18;
-            if (soundMask != NULL) {
-                sndp_stop(soundMask);
+            if (obj->animatedObject->unk18 != NULL) {
+                sndp_stop(obj->animatedObject->unk18);
             }
             break;
     }
-    if (obj->behaviorId == i) {
-        racer = obj->racer;
-        if (racer->unk18 != NULL) {
-            sndp_stop((SoundHandle) (uintptr_t) racer->unk18); // type cast required to match
+}
+
+/**
+ * A racer going away takes its sounds with it, and every weapon and fly coin in the level,
+ * and clears the parent link of particles it spawned.
+ */
+static void obj_destroy_racer(Object *obj) {
+    Object_Racer *racer;
+    s32 j;
+
+    racer = obj->racer;
+    if (racer->surfaceSoundHandle != NULL) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->surfaceSoundHandle);
+    }
+    if (racer->slideSoundHandle != NULL) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->slideSoundHandle);
+    }
+    if (racer->unusedSoundHandle14 != NULL) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle14);
+    }
+    if (racer->unusedSoundHandle1C != NULL) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle1C);
+    }
+    if (racer->splatSoundHandle != NULL) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->splatSoundHandle);
+    }
+    if (racer->soundMask != NULL) {
+        audspat_point_stop(racer->soundMask);
+    }
+    if (racer->shieldSoundMask != NULL) {
+        audspat_point_stop(racer->shieldSoundMask);
+    }
+    if (racer->magnetSoundMask != NULL) {
+        sndp_stop(racer->magnetSoundMask);
+    }
+    racer_sound_free(obj);
+    for (j = 0; j < gObjectCount; j++) {
+        if ((gObjPtrList[j]->trans.flags & OBJ_FLAGS_PARTICLE) && ((s32) gObjPtrList[j]->level_entry == (s32) obj)) {
+            gObjPtrList[j]->level_entry = NULL;
         }
-        if (racer->unk10 != NULL) {
-            sndp_stop((SoundHandle) (uintptr_t) racer->unk10); // type cast required to match
-        }
-        if (racer->unk14 != NULL) {
-            sndp_stop((SoundHandle) (uintptr_t) racer->unk14); // type cast required to match
-        }
-        if (racer->unk1C != NULL) {
-            sndp_stop((SoundHandle) (uintptr_t) racer->unk1C); // type cast required to match
-        }
-        if (racer->unk20 != NULL) {
-            sndp_stop((SoundHandle) (uintptr_t) racer->unk20); // type cast required to match
-        }
-        if (racer->soundMask != NULL) {
-            audspat_point_stop(racer->soundMask);
-        }
-        if (racer->shieldSoundMask != NULL) {
-            audspat_point_stop(racer->shieldSoundMask);
-        }
-        if (racer->magnetSoundMask != NULL) {
-            sndp_stop(racer->magnetSoundMask);
-        }
-        racer_sound_free(obj);
-        for (j = 0; j < gObjectCount; j++) {
-            if ((gObjPtrList[j]->trans.flags & OBJ_FLAGS_PARTICLE) &&
-                ((s32) gObjPtrList[j]->level_entry == (s32) obj)) {
-                gObjPtrList[j]->level_entry = NULL;
-            }
-            if (gObjPtrList[j]->behaviorId == BHV_WEAPON_2 || gObjPtrList[j]->behaviorId == BHV_FLY_COIN ||
-                gObjPtrList[j]->behaviorId == BHV_WEAPON) {
-                free_object(gObjPtrList[j]);
-            }
+        if (gObjPtrList[j]->behaviorId == BHV_WEAPON_2 || gObjPtrList[j]->behaviorId == BHV_FLY_COIN ||
+            gObjPtrList[j]->behaviorId == BHV_WEAPON) {
+            free_object(gObjPtrList[j]);
         }
     }
+}
+
+/**
+ * Release the object's own graphics: shadow and water textures, then its models, textures or
+ * sprites.
+ */
+static void obj_free_models(Object *obj) {
+    s32 j;
+
     if (obj->shadow != NULL && obj->shadow->texture != NULL) {
         tex_free(obj->shadow->texture);
     }
     if (obj->waterEffect != NULL && obj->waterEffect->texture != NULL) {
         tex_free(obj->waterEffect->texture);
     }
-    numberOfModelIds = obj->header->numberOfModelIds;
-    modelType = obj->header->modelType;
-    if (modelType == OBJECT_MODEL_TYPE_3D_MODEL) {
-        for (j = 0; j < numberOfModelIds; j++) {
+    if (obj->header->modelType == OBJECT_MODEL_TYPE_3D_MODEL) {
+        for (j = 0; j < obj->header->numberOfModelIds; j++) {
             if (obj->modelInstances[j] != NULL) {
-                models = obj->modelInstances[j];
-                free_3d_model(models);
+                free_3d_model(obj->modelInstances[j]);
             }
         }
-    } else if (modelType == OBJECT_MODEL_TYPE_MISC) {
-        for (j = 0; j < numberOfModelIds; j++) {
+    } else if (obj->header->modelType == OBJECT_MODEL_TYPE_MISC) {
+        for (j = 0; j < obj->header->numberOfModelIds; j++) {
             tex_free(obj->textures[j]);
         }
     } else {
-        for (j = 0; j < numberOfModelIds; j++) {
+        for (j = 0; j < obj->header->numberOfModelIds; j++) {
             sprite_free(obj->sprites[j]);
         }
     }
-    if (obj->header->particleCount > 0) {
-        for (j = 0; j < obj->header->particleCount; j++) {
-            emitter_cleanup(&obj->particleEmitter[j]);
+}
+
+/**
+ * Free the object and everything it owns. Particles have their own pool and only need
+ * deallocating.
+ */
+void obj_destroy(Object *obj, s32 keepAnimTarget) {
+    s32 i;
+
+    if (obj->trans.flags & OBJ_FLAGS_PARTICLE) {
+        particle_deallocate((Particle *) obj);
+        gParticleCount--;
+        return;
+    }
+
+    if (obj->attachPoints != NULL) {
+        obj_destroy_attachments(obj);
+    }
+    if (obj->lightData != NULL) {
+        for (i = 0; i < obj->header->numLightSources; i++) {
+            light_remove(obj->lightData[i]);
         }
+    }
+    obj_destroy_behaviour_data(obj, keepAnimTarget);
+    obj_stop_animated_object_sound(obj);
+    if (obj->behaviorId == BHV_RACER) {
+        obj_destroy_racer(obj);
+    }
+    obj_free_models(obj);
+    for (i = 0; i < obj->header->particleCount; i++) {
+        emitter_cleanup(&obj->particleEmitter[i]);
     }
     try_free_object_header(obj->headerType);
     mempool_free(obj);
 }
 
 /**
- * Updates all objects in the game.
+ * Run the countdown while the race is starting; otherwise advance the level clock.
  */
-void obj_update(s32 updateRate) {
-    s32 i;
-    s32 j;
-    Object_Racer *racer;
-    ModelInstance *modInst;
-    s32 sp54;
-    Object *obj;
-
-    readout_log_push(-1);
+static void obj_update_countdown(s32 updateRate) {
     gEventStartTimer = gEventCountdown;
     if (gEventCountdown > 0 && race_starting() != FALSE) {
         gEventCountdown -= updateRate;
@@ -3042,14 +3071,161 @@ void obj_update(s32 updateRate) {
     if (gEventCountdown <= 0) {
         gEventCountdown = 0;
     }
+}
+
+/**
+ * Tick every ordinary object in the list: not particles, and not lights, weapons or fog
+ * changers, which run after the racers. Inactive interactables (state 2) are skipped.
+ * 3D models also get their texture scroll advanced.
+ */
+static void obj_update_scenery(s32 updateRate, s32 objectCount) {
+    Object *obj;
+    ModelInstance *modInst;
+    s32 i;
+    s32 j;
+
+    for (i = gObjectListStart; i < objectCount; i++) {
+        obj = gObjPtrList[i];
+        if (obj->trans.flags & OBJ_FLAGS_PARTICLE) {
+            continue;
+        }
+        if (obj->behaviorId == BHV_LIGHT_RGBA || obj->behaviorId == BHV_WEAPON || obj->behaviorId == BHV_FOG_CHANGER) {
+            continue;
+        }
+        if (obj->interactObj == NULL || obj->interactObj->unk11 != 2) {
+            run_object_loop_func(obj, updateRate);
+        }
+        if (obj->header->modelType == OBJECT_MODEL_TYPE_3D_MODEL) {
+            for (j = 0; j < obj->header->numberOfModelIds; j++) {
+                modInst = obj->modelInstances[j];
+                if (modInst != NULL) {
+                    modInst->objModel->texOffsetUpdateRate = updateRate;
+                }
+            }
+            if (obj->header->unk72 != 0xFF) {
+                object_scroll_texture(obj, updateRate);
+            }
+        }
+    }
+}
+
+/**
+ * Move the racers, then let the best-placed human racer tune the AI's aggression.
+ */
+static void obj_update_racers(s32 updateRate) {
+    Object_Racer *racer;
+    s32 i;
+
+    for (i = 0; i < gNumRacers; i++) {
+        update_player_racer((*gRacers)[i], updateRate);
+    }
+    if (level_type() == RACETYPE_DEFAULT) {
+        for (i = 0; i < gNumRacers; i++) {
+            racer = gRacersByPosition[i]->racer;
+            if (racer->playerIndex != -1) {
+                increment_ai_behaviour_chances(gRacersByPosition[i], racer, updateRate);
+                break;
+            }
+        }
+    }
+    racerfx_update(updateRate);
+}
+
+/**
+ * Weapons and fog changers run after the racers they react to.
+ */
+static void obj_update_weapons(s32 updateRate, s32 objectCount) {
+    Object *obj;
+    s32 i;
+
+    for (i = gObjectListStart; i < objectCount; i++) {
+        obj = gObjPtrList[i];
+        if ((!(obj->trans.flags & OBJ_FLAGS_PARTICLE) && (obj->behaviorId == BHV_WEAPON)) ||
+            (obj->behaviorId == BHV_FOG_CHANGER)) {
+            run_object_loop_func(obj, updateRate);
+        }
+    }
+}
+
+static void obj_update_particles(s32 updateRate, s32 objectCount) {
+    Object *obj;
+    s32 i;
+
+    if (gParticleCount <= 0) {
+        return;
+    }
+    for (i = gObjectListStart; i < objectCount; i++) {
+        obj = gObjPtrList[i];
+        if (obj->trans.flags & OBJ_FLAGS_PARTICLE) {
+            particle_update((Particle *) obj, updateRate);
+        }
+    }
+}
+
+/**
+ * Advance the dynamic lights and re-shade every lit object.
+ */
+static void obj_update_lighting(s32 updateRate) {
+    Object *obj;
+    s32 i;
+
+    light_update_all(updateRate);
+    if (light_count() <= 0) {
+        return;
+    }
+    for (i = gObjectListStart; i < gObjectCount; i++) {
+        obj = gObjPtrList[i];
+        if (!(obj->trans.flags & OBJ_FLAGS_PARTICLE) && (obj->shading != NULL)) {
+            light_update_shading(obj);
+        }
+    }
+}
+
+/**
+ * On the first update after a level loads the intro becomes skippable; from then on, at a
+ * fixed point of the countdown, A skips to the race and B (in adventure mode) leaves the
+ * course. Courses visited for the first time and non-default races are never skippable.
+ */
+static void obj_update_intro_skip(void) {
+    s32 buttons;
+    s32 j;
+
+    if (gCountdownSkipState == COUNTDOWN_SKIP_ALLOWED) {
+        if (gEventCountdown == 80 && gCutsceneID == CUTSCENE_NONE) {
+            buttons = 0;
+            for (j = 0; j < MAXCONTROLLERS; j++) {
+                buttons |= input_pressed(j);
+            }
+            if (buttons & A_BUTTON) {
+                cutscene_set(CUTSCENE_ID_UNK_64);
+            } else if ((buttons & B_BUTTON) && (get_trophy_race_world_id() == 0) && (is_in_tracks_mode() == 0)) {
+                level_transition_begin(1); // FADE_BARNDOOR_HORIZONTAL?
+            }
+        }
+    } else if (gCountdownSkipState == COUNTDOWN_SKIP_PENDING) {
+        gCountdownSkipState = COUNTDOWN_SKIP_ALLOWED;
+    }
+}
+
+/**
+ * Updates all objects in the game, in a fixed order: collidable objects, scenery, racers,
+ * weapons, particles, lights, then the race bookkeeping that depends on all of them.
+ */
+void obj_update(s32 updateRate) {
+    Object_Racer *racer;
+    s32 objectCount;
+    s32 i;
+
+    readout_log_push(-1);
+    obj_update_countdown(updateRate);
     gAnimStage = 0;
     gAnimFrameParity = 1 - gAnimFrameParity;
     gAnimFrameState[gAnimFrameParity] = 0;
-    for (j = 0; j < gNumRacers; j++) {
-        racer = (*gRacers)[j]->racer;
-        racer->prev_x_position = (*gRacers)[j]->trans.x_position;
-        racer->prev_y_position = (*gRacers)[j]->trans.y_position;
-        racer->prev_z_position = (*gRacers)[j]->trans.z_position;
+    for (i = 0; i < gNumRacers; i++) {
+        racer = (*gRacers)[i]->racer;
+        racer->prev_x_position = (*gRacers)[i]->trans.x_position;
+        racer->prev_y_position = (*gRacers)[i]->trans.y_position;
+        racer->prev_z_position = (*gRacers)[i]->trans.z_position;
     }
     obj_tick_anims();
     process_object_interactions();
@@ -3062,75 +3238,13 @@ void obj_update(s32 updateRate) {
     for (i = 0; i < gCollisionObjectCount; i++) {
         obj_collision_transform(gCollisionObjects[i]);
     }
-    // Update nonspecific objects
-    j = gObjectCount;
-    for (i = gObjectListStart; i < j; i++) {
-        obj = gObjPtrList[i];
-        if (!(obj->trans.flags & OBJ_FLAGS_PARTICLE)) {
-            if ((obj->behaviorId != BHV_LIGHT_RGBA) && (obj->behaviorId != BHV_WEAPON) &&
-                (obj->behaviorId != BHV_FOG_CHANGER)) {
-                if (obj->interactObj != NULL) {
-                    if (obj->interactObj->unk11 != 2) {
-                        run_object_loop_func(obj, updateRate);
-                    }
-                } else {
-                    run_object_loop_func(obj, updateRate);
-                }
-                if (obj->header->modelType == OBJECT_MODEL_TYPE_3D_MODEL) {
-                    for (sp54 = 0; sp54 < obj->header->numberOfModelIds; sp54++) {
-                        modInst = obj->modelInstances[sp54];
-                        if (modInst != NULL) {
-                            modInst->objModel->texOffsetUpdateRate = updateRate;
-                        }
-                    }
-                    if (obj->header->unk72 != 0xFF) {
-                        object_scroll_texture(obj, updateRate);
-                    }
-                }
-            }
-        }
-    }
-    // Update racers
-    for (i = 0; i < gNumRacers; i++) {
-        update_player_racer((*gRacers)[i], updateRate);
-    }
-    if (level_type() == RACETYPE_DEFAULT) {
-        for (i = 0; i < gNumRacers; i++) {
-            racer = gRacersByPosition[i]->racer;
-            if (racer->playerIndex != -1) {
-                increment_ai_behaviour_chances(gRacersByPosition[i], racer, updateRate);
-                i = gNumRacers; // Why not just break?
-            }
-        }
-    }
-    racerfx_update(updateRate);
-    for (i = gObjectListStart; i < j; i++) {
-        obj = gObjPtrList[i];
-        if ((!(obj->trans.flags & OBJ_FLAGS_PARTICLE) && (obj->behaviorId == BHV_WEAPON)) ||
-            (obj->behaviorId == BHV_FOG_CHANGER)) {
-            run_object_loop_func(obj, updateRate);
-        }
-    }
-    // Update particles
-    if (gParticleCount > 0) {
-        for (i = gObjectListStart; i < j; i++) {
-            obj = gObjPtrList[i];
-            if (obj->trans.flags & OBJ_FLAGS_PARTICLE) {
-                particle_update((Particle *) obj, updateRate);
-            }
-        }
-    }
-
-    // Update lights
-    light_update_all(updateRate);
-    if (light_count() > 0) {
-        for (i = gObjectListStart; i < gObjectCount; i++) {
-            obj = gObjPtrList[i];
-            if (!(obj->trans.flags & OBJ_FLAGS_PARTICLE) && (obj->shading != NULL)) {
-                light_update_shading(obj);
-            }
-        }
-    }
+    // Objects spawned during this update are not ticked until the next one.
+    objectCount = gObjectCount;
+    obj_update_scenery(updateRate, objectCount);
+    obj_update_racers(updateRate);
+    obj_update_weapons(updateRate, objectCount);
+    obj_update_particles(updateRate, objectCount);
+    obj_update_lighting(updateRate);
     override_pos_apply(FALSE);
     if (gTajRaceInit) {
         mode_init_taj_race();
@@ -3156,26 +3270,7 @@ void obj_update(s32 updateRate) {
     transform_player_vehicle();
     dialogue_try_close();
     collision_pairs_tick();
-
-    // @fake
-    do {
-    } while (0);
-    if (D_8011AF00 == 1) {
-        if (gEventCountdown == 80 && gCutsceneID == CUTSCENE_NONE) {
-            sp54 = 0;
-            for (j = 0; j < MAXCONTROLLERS; j++) {
-                sp54 |= input_pressed(j);
-            }
-
-            if (sp54 & A_BUTTON) {
-                cutscene_set(CUTSCENE_ID_UNK_64);
-            } else if ((sp54 & B_BUTTON) && (get_trophy_race_world_id() == 0) && (is_in_tracks_mode() == 0)) {
-                level_transition_begin(1); // FADE_BARNDOOR_HORIZONTAL?
-            }
-        }
-    } else if (D_8011AF00 == 0) {
-        D_8011AF00 = 1;
-    }
+    obj_update_intro_skip();
 }
 
 /**
