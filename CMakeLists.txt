@@ -422,7 +422,10 @@ if(EMSCRIPTEN)
         configure_file(${CMAKE_CURRENT_SOURCE_DIR}/linux/web/${f} ${CMAKE_CURRENT_BINARY_DIR}/${f} COPYONLY)
     endforeach()
     if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.bin)
-        target_link_options(dkracing PRIVATE --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets@/assets)
+        # Only the packed image: assets/ also holds the unpacked tree and any overrides.
+        target_link_options(dkracing PRIVATE
+            --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.bin@/assets/assets.bin
+            --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.lut.bin@/assets/assets.lut.bin)
         set_property(TARGET dkracing APPEND PROPERTY LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/assets.bin)
     else()
         message(WARNING "assets/assets.bin not found: the web build will have no game data (run `make assets` first)")
