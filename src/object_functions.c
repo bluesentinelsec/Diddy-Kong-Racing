@@ -123,11 +123,11 @@ void obj_init_scenery(Object *obj, LevelObjectEntry_Scenery *entry) {
     obj->trans.rotation.y_rotation = U8_ANGLE_TO_U16(entry->angleY);
     if (entry->solid) {
         obj->interactObj->flags = INTERACT_FLAGS_SOLID;
-        obj->interactObj->unk11 = 1;
+        obj->interactObj->hitboxKind = 1;
         obj->interactObj->hitboxRadius = 20;
         obj->interactObj->pushForce = 0;
-        obj->interactObj->unk16 = -5;
-        obj->interactObj->unk17 = entry->solid;
+        obj->interactObj->yRangeMin = -5;
+        obj->interactObj->yRangeMax = entry->solid;
     }
     if (obj->modelIndex >= obj->header->numberOfModelIds) {
         obj->modelIndex = 0;
@@ -180,7 +180,7 @@ void obj_loop_scenery(Object *obj, s32 updateRate) {
  */
 void obj_init_fireball_octoweapon(Object *obj, UNUSED LevelObjectEntry_Fireball_Octoweapon *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
 }
 
 /**
@@ -319,7 +319,7 @@ void obj_loop_fireball_octoweapon(Object *obj, s32 updateRate) {
 void obj_init_lasergun(Object *obj, LevelObjectEntry_Lasergun *entry) {
     Object_LaserGun *laserGun;
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE | INTERACT_FLAGS_UNK_0020;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     laserGun = obj->lasergun;
     laserGun->targeting = entry->targeting;
     laserGun->fireRate = entry->fireRate;
@@ -410,7 +410,7 @@ void obj_loop_lasergun(Object *obj, s32 updateRate) {
  */
 void obj_init_laserbolt(Object *obj, UNUSED LevelObjectEntry_Laserbolt *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
 }
 
 /**
@@ -573,7 +573,7 @@ void obj_loop_effectbox(Object *obj, UNUSED s32 updateRate) {
  */
 void obj_init_trophycab(Object *obj, LevelObjectEntry_TrophyCab *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_SOLID;
-    obj->interactObj->unk11 = 2;
+    obj->interactObj->hitboxKind = 2;
     obj->trans.rotation.y_rotation = U8_ANGLE_TO_U16(entry->angleY);
 }
 
@@ -695,7 +695,7 @@ void obj_loop_trophycab(Object *obj, s32 updateRate) {
  */
 void obj_init_collectegg(Object *obj, UNUSED LevelObjectEntry_CollectEgg *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
 }
@@ -850,7 +850,7 @@ void obj_init_lighthouse_rocketsignpost(Object *obj, LevelObjectEntry_Lighthouse
         obj->modelIndex = 0;
     }
     obj->interactObj->flags = INTERACT_FLAGS_SOLID;
-    obj->interactObj->unk11 = 2;
+    obj->interactObj->hitboxKind = 2;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
 }
@@ -899,7 +899,7 @@ void obj_init_airzippers_waterzippers(Object *obj, LevelObjectEntry_AirZippers_W
         obj->modelIndex = 0;
     }
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
     if (get_filtered_cheats() & CHEAT_TURN_OFF_ZIPPERS) {
@@ -974,11 +974,11 @@ void obj_init_groundzipper(Object *obj, LevelObjectEntry_GroundZipper *entry) {
         obj->properties.zipper.radius = 255;
     }
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
-    obj->interactObj->unk16 = -0x64;
-    obj->interactObj->unk17 = 0x64;
+    obj->interactObj->yRangeMin = -0x64;
+    obj->interactObj->yRangeMax = 0x64;
     if (get_filtered_cheats() & CHEAT_TURN_OFF_ZIPPERS) {
         free_object(obj);
     }
@@ -1173,7 +1173,7 @@ void try_to_collect_egg(Object *obj, Object_CollectEgg *egg) {
 void obj_init_stopwatchman(Object *obj, UNUSED LevelObjectEntry_StopWatchMan *entry) {
     Object_NPC *tt;
     obj->interactObj->flags = INTERACT_FLAGS_SOLID;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 30;
     obj->interactObj->pushForce = 0;
     tt = obj->npc;
@@ -1974,7 +1974,7 @@ void obj_loop_vehicleanim(Object *obj, s32 updateRate) {
  */
 void obj_init_hittester(Object *obj, UNUSED LevelObjectEntry_HitTester *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_SOLID | INTERACT_FLAGS_UNK_0080;
-    obj->interactObj->unk11 = 2;
+    obj->interactObj->hitboxKind = 2;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
 }
@@ -1989,14 +1989,14 @@ void obj_loop_hittester(Object *obj, s32 updateRate) {
  */
 void obj_init_dynamic_lighting_object(Object *obj, UNUSED LevelObjectEntry_DynamicLightingObject *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_SOLID;
-    obj->interactObj->unk11 = 2;
+    obj->interactObj->hitboxKind = 2;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
 }
 
 void obj_init_unknown96(Object *obj, UNUSED LevelObjectEntry_Unknown96 *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_SOLID | INTERACT_FLAGS_UNK_0080;
-    obj->interactObj->unk11 = 2;
+    obj->interactObj->hitboxKind = 2;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
 }
@@ -2007,7 +2007,7 @@ void obj_init_unknown96(Object *obj, UNUSED LevelObjectEntry_Unknown96 *entry) {
  */
 void obj_init_snowball(Object *obj, UNUSED LevelObjectEntry_Snowball *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_SOLID;
-    obj->interactObj->unk11 = 2;
+    obj->interactObj->hitboxKind = 2;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
 }
@@ -2205,7 +2205,7 @@ void obj_init_infopoint(Object *obj, LevelObjectEntry_InfoPoint *entry) {
     } else {
         obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE | INTERACT_FLAGS_UNK_0020;
     }
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 15;
     obj->interactObj->pushForce = 0;
     obj->properties.infoPoint.radius = (entry->hitbox[2] << 16) | entry->hitbox[0]; // Not sure about the values here.
@@ -2352,7 +2352,7 @@ void obj_loop_bombexplosion(Object *obj, s32 updateRate) {
  */
 void obj_init_teleport(Object *obj, UNUSED LevelObjectEntry_Teleport *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 15;
     obj->interactObj->pushForce = 0;
     if (get_settings()->cutsceneFlags & CUTSCENE_LIGHTHOUSE_ROCKET) {
@@ -2399,7 +2399,7 @@ void obj_init_exit(Object *obj, LevelObjectEntry_Exit *entry) {
     exit->radius = entry->radius;
     exit->bossFlag = entry->bossFlag;
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = entry->radius;
     obj->interactObj->pushForce = 0;
 }
@@ -2499,7 +2499,7 @@ void obj_loop_setuppoint(UNUSED Object *obj, UNUSED s32 updateRate) {
  */
 void obj_init_dino_whale(Object *obj, UNUSED LevelObjectEntry_Dino_Whale *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_SOLID;
-    obj->interactObj->unk11 = 3;
+    obj->interactObj->hitboxKind = 3;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
 }
@@ -2536,7 +2536,7 @@ void obj_loop_dino_whale(Object *obj, s32 updateRate) {
 void obj_init_parkwarden(Object *obj, UNUSED LevelObjectEntry_Parkwarden *entry) {
     Object_NPC *taj;
     obj->interactObj->flags = INTERACT_FLAGS_SOLID;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 30;
     obj->interactObj->pushForce = 0;
     taj = obj->npc;
@@ -3230,7 +3230,7 @@ void obj_init_modechange(Object *obj, LevelObjectEntry_ModeChange *entry) {
     obj64->radius = entry->radius;
     obj64->vehicleID = entry->vehicleID;
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = entry->radius;
     obj->interactObj->pushForce = 0;
 }
@@ -3315,7 +3315,7 @@ void obj_init_bonus(Object *obj, LevelObjectEntry_Bonus *entry) {
     bonus->radius = entry->radius;
     bonus->unk14 = entry->unkA; // Unused?
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = entry->radius;
     obj->interactObj->pushForce = 0;
 }
@@ -3381,7 +3381,7 @@ void obj_init_goldenballoon(Object *obj, LevelObjectEntry_GoldenBalloon *entry) 
         rmonPrintf("Illegal door no!!!\n"); // Did the devs just copy-paste the door init function?
     }
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 4;
+    obj->interactObj->hitboxKind = 4;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
     scalef = entry->scale & 0xFF;
@@ -3534,7 +3534,7 @@ void obj_init_door(Object *obj, LevelObjectEntry_Door *entry) {
     door->textID = entry->textID;
     door->keyID = entry->keyID;
     obj->interactObj->flags = INTERACT_FLAGS_SOLID | INTERACT_FLAGS_UNK_0020;
-    obj->interactObj->unk11 = 2;
+    obj->interactObj->hitboxKind = 2;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
     if (obj->modelIndex >= obj->header->numberOfModelIds) {
@@ -3777,7 +3777,7 @@ void obj_init_ttdoor(Object *obj, LevelObjectEntry_TTDoor *entry) {
     radius /= 64;
     obj->trans.scale = obj->header->scale * radius;
     obj->interactObj->flags = INTERACT_FLAGS_SOLID | INTERACT_FLAGS_UNK_0020;
-    obj->interactObj->unk11 = 2;
+    obj->interactObj->hitboxKind = 2;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
     if (obj->modelIndex >= obj->header->numberOfModelIds) {
@@ -3898,7 +3898,7 @@ void obj_init_trigger(Object *obj, LevelObjectEntry_Trigger *entry) {
     trigger->radius = entry->scale;
     trigger->unk14 = entry->unkD;
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = entry->scale;
     obj->interactObj->pushForce = 0;
 }
@@ -3971,7 +3971,7 @@ void obj_init_bridge_whaleramp(Object *obj, LevelObjectEntry_Bridge_WhaleRamp *e
     obj->trans.rotation.y_rotation = U8_ANGLE_TO_U16(entry->angleY);
     bridge->homeY = obj->trans.y_position;
     obj->interactObj->flags = INTERACT_FLAGS_SOLID | INTERACT_FLAGS_UNK_0020;
-    obj->interactObj->unk11 = 2;
+    obj->interactObj->hitboxKind = 2;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
     bridge->soundMask = NULL;
@@ -4107,7 +4107,7 @@ void obj_loop_bridge_whaleramp(Object *obj, s32 updateRate) {
  */
 void obj_init_rampswitch(Object *obj, LevelObjectEntry_RampSwitch *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
     obj->properties.rampSwitch.unk0 = entry->unk8;
@@ -4158,7 +4158,7 @@ void obj_init_fogchanger(Object *obj, LevelObjectEntry_FogChanger *entry) {
  */
 void obj_init_skycontrol(Object *obj, LevelObjectEntry_SkyControl *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = entry->radius;
     obj->properties.skyControl.setting = entry->setting;
     obj->properties.skyControl.radius = entry->radius;
@@ -4351,7 +4351,7 @@ void obj_loop_bananacreator(Object *obj, s32 updateRate) {
  */
 void obj_init_banana(Object *obj, UNUSED LevelObjectEntry_Banana *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 30;
     obj->properties.banana.intangibleTimer = 20; // PAL users doomed to wait 24 frames.
     obj->properties.banana.destroyTimer = 16;
@@ -4505,7 +4505,7 @@ void obj_loop_banana(Object *obj, s32 updateRate) {
  */
 void obj_init_silvercoin_adv2(Object *obj, UNUSED LevelObjectEntry_SilverCoinAdv2 *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 30;
     obj->properties.silverCoin.action = SILVER_COIN_INACTIVE;
     obj->properties.silverCoin.timer = 16;
@@ -4529,7 +4529,7 @@ void obj_init_silvercoin_adv2(Object *obj, UNUSED LevelObjectEntry_SilverCoinAdv
  */
 void obj_init_silvercoin(Object *obj, UNUSED LevelObjectEntry_SilverCoin *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 30;
     obj->properties.silverCoin.action = SILVER_COIN_INACTIVE;
     obj->properties.silverCoin.timer = 0;
@@ -4595,7 +4595,7 @@ void obj_loop_silvercoin(Object *obj, s32 updateRate) {
 void obj_init_worldkey(Object *obj, LevelObjectEntry_WorldKey *entry) {
     Settings *settings;
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 30;
     entry->keyID &= 0xF;
     obj->properties.worldKey.keyID = entry->keyID;
@@ -4649,7 +4649,7 @@ void obj_init_weaponballoon(Object *obj, LevelObjectEntry_WeaponBalloon *entry) 
     f32 scale;
 
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 4;
+    obj->interactObj->hitboxKind = 4;
     obj->interactObj->hitboxRadius = 20;
 
     cheats = get_filtered_cheats();
@@ -4833,7 +4833,7 @@ void obj_loop_wballoonpop(UNUSED Object *obj, UNUSED s32 updateRate) {
  */
 void obj_init_weapon(Object *obj, UNUSED LevelObjectEntry_Weapon *entry) {
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 24;
     obj->interactObj->pushForce = 0;
     obj->properties.projectile.timer = normalise_time(480);
@@ -5625,7 +5625,7 @@ void obj_init_rgbalight(Object *obj, LevelObjectEntry_RgbaLight *entry, UNUSED s
 void obj_init_buoy_pirateship(Object *obj, UNUSED LevelObjectEntry_Buoy_PirateShip *entry, UNUSED s32 arg2) {
     obj->log = obj_wave_init(obj->segmentID, obj->trans.x_position, obj->trans.z_position);
     obj->interactObj->flags = INTERACT_FLAGS_SOLID;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 30;
     obj->interactObj->pushForce = 0;
 }
@@ -5650,7 +5650,7 @@ void obj_init_log(Object *obj, LevelObjectEntry_Log *entry, UNUSED s32 arg2) {
     f32 radius;
     obj->log = obj_wave_init(obj->segmentID, obj->trans.x_position, obj->trans.z_position);
     obj->interactObj->flags = INTERACT_FLAGS_SOLID;
-    obj->interactObj->unk11 = 2;
+    obj->interactObj->hitboxKind = 2;
     obj->interactObj->hitboxRadius = 30;
     radius = entry->radius & 0xFF;
     if (radius < 10.0f) {
@@ -6211,15 +6211,16 @@ void obj_init_midifade(Object *obj, LevelObjectEntry_MidiFade *entry) {
     transform.z_position = 0.0f;
     mtxf_from_transform(&mtx, &transform);
     mtxf_transform_point(mtx, 0.0f, 0.0f, 1.0f, &ox, &oy, &oz);
-    midiFade->unk8 = ox;
-    midiFade->unkC = oy;
-    midiFade->unk10 = oz;
-    midiFade->unk14 = -((obj->trans.x_position * ox) + (obj->trans.y_position * oy) + (obj->trans.z_position * oz));
-    midiFade->unk2 = entry->unk1A;
-    midiFade->unk40 = entry->unk1B;
+    midiFade->planeX = ox;
+    midiFade->planeY = oy;
+    midiFade->planeZ = oz;
+    midiFade->planeOffset =
+        -((obj->trans.x_position * ox) + (obj->trans.y_position * oy) + (obj->trans.z_position * oz));
+    midiFade->duration = entry->unk1A;
+    midiFade->sequenceID = entry->unk1B;
 
-    for (i = 0; i < ARRAY_COUNT(midiFade->unk2F) - 1; i++) {
-        midiFade->unk2F[i] = entry->unkA[i];
+    for (i = 0; i < ARRAY_COUNT(midiFade->channelModes) - 1; i++) {
+        midiFade->channelModes[i] = entry->unkA[i];
     }
 
     modInst = obj->modelInstances[0];
@@ -6270,13 +6271,13 @@ void obj_init_midifade(Object *obj, LevelObjectEntry_MidiFade *entry) {
         maxZ = minZ;
         minZ = tempF2;
     }
-    midiFade->unk18 = (obj->trans.scale * minX) + obj->trans.x_position;
-    midiFade->unk1C = (obj->trans.scale * minY) + obj->trans.y_position;
-    midiFade->unk20 = (obj->trans.scale * minZ) + obj->trans.z_position;
-    midiFade->unk24 = (obj->trans.scale * maxX) + obj->trans.x_position;
-    midiFade->unk28 = (obj->trans.scale * maxY) + obj->trans.y_position;
-    midiFade->unk2C = (obj->trans.scale * maxZ) + obj->trans.z_position;
-    midiFade->unk1 = 0;
+    midiFade->minX = (obj->trans.scale * minX) + obj->trans.x_position;
+    midiFade->minY = (obj->trans.scale * minY) + obj->trans.y_position;
+    midiFade->minZ = (obj->trans.scale * minZ) + obj->trans.z_position;
+    midiFade->maxX = (obj->trans.scale * maxX) + obj->trans.x_position;
+    midiFade->maxY = (obj->trans.scale * maxY) + obj->trans.y_position;
+    midiFade->maxZ = (obj->trans.scale * maxZ) + obj->trans.z_position;
+    midiFade->progress = 0;
 }
 
 void obj_init_midifadepoint(Object *obj, LevelObjectEntry_MidiFadePoint *entry) {
@@ -6291,18 +6292,18 @@ void obj_init_midifadepoint(Object *obj, LevelObjectEntry_MidiFadePoint *entry) 
     f32 dist;
 
     midi_fade_point = obj->midi_fade_point;
-    midi_fade_point->unk2 = entry->unkA;
-    midi_fade_point->unk0 = entry->unk8;
-    midi_fade_point->unk1C = entry->unk1C;
-    if (midi_fade_point->unk2 < midi_fade_point->unk0) {
-        midi_fade_point->unk2 = midi_fade_point->unk0 + 10;
+    midi_fade_point->outerRadius = entry->unkA;
+    midi_fade_point->innerRadius = entry->unk8;
+    midi_fade_point->sequenceID = entry->unk1C;
+    if (midi_fade_point->outerRadius < midi_fade_point->innerRadius) {
+        midi_fade_point->outerRadius = midi_fade_point->innerRadius + 10;
     }
     obj->trans.rotation.z_rotation = 0;
     obj->trans.rotation.x_rotation = 0;
     obj->trans.rotation.y_rotation = 0;
 
     for (i = 0; i < 15; i++) {
-        midi_fade_point->unkC[i] = entry->unkC[i];
+        midi_fade_point->channelModes[i] = entry->unkC[i];
     }
 
     modInst = obj->modelInstances[0];
@@ -6312,16 +6313,16 @@ void obj_init_midifadepoint(Object *obj, LevelObjectEntry_MidiFadePoint *entry) 
     y = vertex->y;
     z = vertex->z;
     dist = sqrtf(((x * x) + (y * y)) + (z * z));
-    midi_fade_point->unk4 = entry->unk8 / dist;
-    midi_fade_point->unk8 = entry->unkA / dist;
-    obj->trans.scale = midi_fade_point->unk8;
+    midi_fade_point->innerScale = entry->unk8 / dist;
+    midi_fade_point->outerScale = entry->unkA / dist;
+    obj->trans.scale = midi_fade_point->outerScale;
 }
 
 void obj_init_midichset(Object *obj, LevelObjectEntry_Midichset *entry) {
     Object_MidiChannelSet *temp = obj->midi_channel_set;
-    temp->unk0 = entry->unk8;
-    temp->unk2 = entry->unkA;
-    temp->unk3 = entry->unkB;
+    temp->channelMask = entry->unk8;
+    temp->radius = entry->unkA;
+    temp->sequenceID = entry->unkB;
 }
 
 /**

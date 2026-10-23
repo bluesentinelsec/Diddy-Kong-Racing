@@ -857,12 +857,13 @@ typedef struct ObjectInteraction {
     /* 0x08 */ f32 y_position;
     /* 0x0C */ f32 z_position;
     /* 0x10 */ s8 hitboxRadius;
-    /* 0x11 */ u8 unk11;
+    /* 0x11 */ u8
+        hitboxKind; // 0 sphere, 1 vertical range (yRangeMin..yRangeMax, x10 units), 2 inactive, 4 soft from below
     /* 0x12 */ u8 pushForce;
     /* 0x13 */ u8 distance;
     /* 0x14 */ s16 flags;
-    /* 0x16 */ s8 unk16;
-    /* 0x17 */ s8 unk17;
+    /* 0x16 */ s8 yRangeMin;
+    /* 0x17 */ s8 yRangeMax;
     /* 0x18 */ s32 pad[4];
 } ObjectInteraction;
 
@@ -1197,8 +1198,8 @@ typedef struct Object_Racer {
     /* 0x110 */ s32 unk110;
     /* 0x114 */ s32 unk114;
     /* 0x118 */ struct VehicleSoundData *vehicleSound;
-    /* 0x11C */ f32 unk11C;
-    /* 0x120 */ f32 unk120;
+    /* 0x11C */ f32 bumpVelX; // extra velocity while bumpTimer runs, from hitting a solid object
+    /* 0x120 */ f32 bumpVelZ;
     /* 0x124 */ f32 aiTargetSpeed;
     /* 0x128 */ s32 lap_times[5]; // mode_init_taj_race implies there should be at least 5 lap times.
     /* 0x13C */ s32 unk13C;
@@ -1276,7 +1277,7 @@ typedef struct Object_Racer {
     /* 0x1CF */ s8 eggHudCounter;
     /* 0x1D0 */ s8 spectateCamID;
     /* 0x1D1 */ s8 unk1D1;
-    /* 0x1D2 */ s8 unk1D2;
+    /* 0x1D2 */ s8 bumpTimer;
     /* 0x1D3 */ s8 boostTimer;
     /* 0x1D4 */ s8 unk1D4;
     /* 0x1D5 */ s8 unk1D5;
@@ -1385,39 +1386,50 @@ typedef struct Object_Audio {
     /* 0x0D */ u8 priority;
 } Object_Audio;
 
+/**
+ * A plane the player crosses to start a music fade. Which channels fade in or out depends on
+ * the crossing direction: channelModes holds two 2-bit modes per channel, the low pair for a
+ * forward crossing and the high pair for a backward one (0 off, 1 on, 2 fade out, 3 fade in).
+ */
 typedef struct Object_MidiFade {
-    /* 0x00 */ s8 unk0;
-    /* 0x01 */ u8 unk1;
-    /* 0x02 */ u8 unk2;
-    /* 0x04 */ u16 unk4;
+    /* 0x00 */ s8 direction; // 1 crossed forward, -1 crossed backward
+    /* 0x01 */ u8 progress;  // 0..254 through the fade
+    /* 0x02 */ u8 duration;  // seconds
+    /* 0x04 */ u16 timer;    // frames since the crossing
     /* 0x06 */ s16 unk6;
-    /* 0x08 */ f32 unk8;
-    /* 0x0C */ f32 unkC;
-    /* 0x10 */ f32 unk10;
-    /* 0x14 */ f32 unk14;
-    /* 0x18 */ f32 unk18;
-    /* 0x1C */ f32 unk1C;
-    /* 0x20 */ f32 unk20;
-    /* 0x24 */ f32 unk24;
-    /* 0x28 */ f32 unk28;
-    /* 0x2C */ f32 unk2C;
-    /* 0x2F */ u8 unk2F[16];
-    /* 0x40 */ u8 unk40;
+    /* 0x08 */ f32 planeX;
+    /* 0x0C */ f32 planeY;
+    /* 0x10 */ f32 planeZ;
+    /* 0x14 */ f32 planeOffset;
+    /* 0x18 */ f32 minX; // The crossing only counts inside this box.
+    /* 0x1C */ f32 minY;
+    /* 0x20 */ f32 minZ;
+    /* 0x24 */ f32 maxX;
+    /* 0x28 */ f32 maxY;
+    /* 0x2C */ f32 maxZ;
+    /* 0x2F */ u8 channelModes[16];
+    /* 0x40 */ u8 sequenceID;
 } Object_MidiFade;
 
+/**
+ * A point the music reacts to by distance: inside innerRadius the effect is full, fading
+ * out to nothing at outerRadius. channelModes: 1 fade the channel out with distance,
+ * 2 fade it in.
+ */
 typedef struct Object_MidiFadePoint {
-    /* 0x00 */ u16 unk0;
-    /* 0x02 */ u16 unk2;
-    /* 0x04 */ f32 unk4;
-    /* 0x08 */ f32 unk8;
-    /* 0x0C */ u8 unkC[16];
-    /* 0x1C */ u8 unk1C;
+    /* 0x00 */ u16 innerRadius;
+    /* 0x02 */ u16 outerRadius;
+    /* 0x04 */ f32 innerScale; // radii relative to the model size, for drawing
+    /* 0x08 */ f32 outerScale;
+    /* 0x0C */ u8 channelModes[16];
+    /* 0x1C */ u8 sequenceID;
 } Object_MidiFadePoint;
 
+/** Switches the music's active channel mask when the player comes within range. */
 typedef struct Object_MidiChannelSet {
-    u16 unk0;
-    u8 unk2;
-    u8 unk3;
+    u16 channelMask;
+    u8 radius; // x4 units
+    u8 sequenceID;
 } Object_MidiChannelSet;
 
 typedef struct Object_Banana {
@@ -1476,45 +1488,46 @@ typedef struct Object_Log {
     /* 0x0E */ s8 unkE[2];
 } Object_Log;
 
+/** An actor driven along a cutscene path of animation nodes (see anim_object_follow_path). */
 typedef struct Object_AnimatedObject {
-    /* 0x00 */ f32 unk0;
-    /* 0x04 */ f32 unk4;
-    /* 0x08 */ f32 unk8;
-    /* 0x0C */ f32 x;
-    /* 0x10 */ f32 y;
-    /* 0x14 */ f32 z;
-    /* 0x18 */ SoundHandle unk18;
-    /* 0x1C */ struct Object *unk1C;
+    /* 0x00 */ f32 segmentProgress; // 0..1 along the current path segment
+    /* 0x04 */ f32 segmentStep;     // progress per frame, retuned each frame to hold `speed`
+    /* 0x08 */ f32 speed;           // units per frame; 0 or less means the actor does not move
+    /* 0x0C */ f32 x;               // node speed while on a path; otherwise a position
+    /* 0x10 */ f32 y;               // model animation frame (x16) while on a path
+    /* 0x14 */ f32 z;               // model animation frame step while on a path
+    /* 0x18 */ SoundHandle soundHandle;
+    /* 0x1C */ struct Object *animator; // the BHV_ANIMATION object that spawned this actor
     /* 0x20 */ u32 soundMask;
     /* 0x24 */ s16 currentSound;
-    /* 0x26 */ s16 unk26;
+    /* 0x26 */ s16 nodeIndex;
     /* 0x28 */ s16 actorIndex;
     /* 0x2A */ s16 startDelay;
     /* 0x2C */ u8 loopType;
-    /* 0x2D */ u8 unk2D;
-    /* 0x2E */ u8 unk2E;
-    /* 0x2F */ s8 unk2F;
+    /* 0x2D */ u8 modelReversing; // ping-pong loops: playing backwards
+    /* 0x2E */ u8 rotateType; // 1 spin, 2 face along the path, 3 face another actor, else interpolate node rotations
+    /* 0x2F */ s8 emitterMask;
     /* 0x30 */ s8 cameraID;
-    /* 0x31 */ s8 unk31;
-    /* 0x32 */ s8 unk32;
-    /* 0x33 */ s8 unk33;
-    /* 0x34 */ u8 unk34;
+    /* 0x31 */ s8 yawSpinSpeed;
+    /* 0x32 */ s8 rollSpinSpeed;
+    /* 0x33 */ s8 pitchSpinSpeed;
+    /* 0x34 */ u8 skipButtons; // bit 0 A, bit 1 B, bit 2 Start: any of these starts a waiting actor
     /* 0x35 */ u8 unk35;
     /* 0x36 */ s16 pauseCounter;
     /* 0x38 */ s8 soundID;
-    /* 0x39 */ s8 unk39;
-    /* 0x3A */ s8 unk3A;
-    /* 0x3B */ u8 unk3B;
-    /* 0x3C */ u8 unk3C;
-    /* 0x3D */ u8 unk3D;
-    /* 0x3E */ s8 unk3E;
-    /* 0x3F */ s8 unk3F;
-    /* 0x40 */ s8 unk40;
-    /* 0x41 */ s8 unk41;
-    /* 0x42 */ u8 unk42;
-    /* 0x43 */ s8 unk43;
+    /* 0x39 */ s8 musicSequence; // >0 sequence to start, -2 started this frame, -1 none
+    /* 0x3A */ s8 specialHide;
+    /* 0x3B */ u8 fadeType; // 0xFF once applied; bit 7 forces the transition
+    /* 0x3C */ u8 fadeLength;
+    /* 0x3D */ u8 channel;
+    /* 0x3E */ s8 targetActorIndex; // actor to face for rotateType 3
+    /* 0x3F */ s8 linearInterp;     // lerp between nodes instead of a Catmull-Rom spline
+    /* 0x40 */ s8 fadeColourIndex;
+    /* 0x41 */ s8 fadeOptions; // bit 0 fade the actor out, bit 1 start from fully in/out
+    /* 0x42 */ u8 opacity;
+    /* 0x43 */ s8 musicFadeVolume;
     /* 0x44 */ u8 unk44;
-    /* 0x45 */ s8 unk45;
+    /* 0x45 */ s8 started;
 } Object_AnimatedObject;
 
 /* Size: 0x018 bytes */

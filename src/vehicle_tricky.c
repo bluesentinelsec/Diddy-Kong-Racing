@@ -55,7 +55,7 @@ enum TrickyAnimations { ANIM_TRICKY_IDLE, ANIM_TRICKY_RUN, ANIM_TRICKY_WALK, ANI
  */
 void racer_special_init(Object *object, Object_Racer *racer) {
     object->interactObj->flags = INTERACT_FLAGS_SOLID | INTERACT_FLAGS_UNK_0004;
-    object->interactObj->unk11 = 0;
+    object->interactObj->hitboxKind = 0;
     object->interactObj->hitboxRadius = 30;
     object->interactObj->pushForce = 0;
     racer->animationSpeed = 0.0f;

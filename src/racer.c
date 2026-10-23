@@ -2058,19 +2058,19 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
     obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
     racer->z_rotation_vel += (gRacerTargetRoll - racer->z_rotation_vel) >> 3;
     obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
-    if (racer->unk1D2 > 0) {
-        racer->unk1D2 -= updateRate;
+    if (racer->bumpTimer > 0) {
+        racer->bumpTimer -= updateRate;
     } else {
-        racer->unk1D2 = 0;
+        racer->bumpTimer = 0;
     }
     racerOx1 += racer->ox1 * 10 * spC8;
     racerOz1 += racer->oz1 * 10 * spC8;
     if (racer->approachTarget == NULL) {
         temp = obj->x_velocity;
         zVelTemp = obj->z_velocity;
-        if (racer->unk1D2 != 0) {
-            temp += racer->unk11C;
-            zVelTemp += racer->unk120;
+        if (racer->bumpTimer != 0) {
+            temp += racer->bumpVelX;
+            zVelTemp += racer->bumpVelZ;
         }
         if (gRacerInputBlocked) {
             if (temp > 0.5 || temp < -0.5) {
@@ -2152,16 +2152,16 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
         racer->unkC4 += (0.75 - racer->unkC4) * 0.125;
     }
 
-    iTemp = racer->unk1D2; // saves unk1D2
+    iTemp = racer->bumpTimer; // saves bumpTimer
     if (gCurrentPlayerIndex == PLAYER_COMPUTER && !boss_race_number()) {
         onscreen_ai_racer_physics(obj, racer, updateRate);
     } else {
         update_racer_collision(obj, racer, updateRate);
     }
-    if (iTemp == 0 && racer->unk1D2 != 0) {
+    if (iTemp == 0 && racer->bumpTimer != 0) {
         iTemp = 1;
     }
-    racer->unk1D2 = iTemp; // restores unk1D2
+    racer->bumpTimer = iTemp; // restores bumpTimer
 
     var_f2 = 1.0f / updateRateF;
     temp = ((obj->trans.x_position - (xPos + racerOx1)) - gRacerExternalShiftX) * var_f2;
@@ -3257,9 +3257,9 @@ void update_plane(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
     if (racer->approachTarget == NULL) {
         var_f20 = obj->x_velocity;
         spEC = obj->z_velocity;
-        if (racer->unk1D2 != 0) {
-            var_f20 += racer->unk11C * 0.5;
-            spEC += racer->unk120 * 0.5;
+        if (racer->bumpTimer != 0) {
+            var_f20 += racer->bumpVelX * 0.5;
+            spEC += racer->bumpVelZ * 0.5;
         }
         if (gRacerInputBlocked) {
             if (var_f20 > 0.5 || var_f20 < -0.5) {
@@ -3300,10 +3300,10 @@ void update_plane(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
             gCameraObject->shakeMagnitude = 6.0f;
         }
     }
-    if (racer->unk1D2 != 0) {
-        racer->unk1D2 -= updateRate;
-        if (racer->unk1D2 < 0) {
-            racer->unk1D2 = 0;
+    if (racer->bumpTimer != 0) {
+        racer->bumpTimer -= updateRate;
+        if (racer->bumpTimer < 0) {
+            racer->bumpTimer = 0;
         }
     } else {
         var_f0 = 1.0f / updateRateF;
@@ -3894,7 +3894,7 @@ void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Obje
     racerObj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
     temp2 = racerObj->x_velocity;
     temp3 = racerObj->z_velocity;
-    racer->unk1D2 = 0;
+    racer->bumpTimer = 0;
     moveObjResult = move_object(racerObj, temp2 * updateRateF, racerObj->y_velocity * updateRateF, temp3 * updateRateF);
     if ((moveObjResult) && (gCurrentPlayerIndex != -1)) {
         objectMoved = TRUE;
@@ -4124,7 +4124,7 @@ void obj_init_racer(Object *obj, LevelObjectEntry_Racer *racer) {
         gRacerInputBlocked = FALSE;
     }
     obj->interactObj->flags = INTERACT_FLAGS_SOLID | INTERACT_FLAGS_UNK_0004;
-    obj->interactObj->unk11 = 0;
+    obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 15;
     obj->interactObj->pushForce = 20;
     tempRacer->unk1EE = 0;
@@ -4752,7 +4752,7 @@ void update_car(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer 
     s32 objectMoved;
 
     playerObjectHasMoved = FALSE;
-    if (racer->unk1D2 != 0) {
+    if (racer->bumpTimer != 0) {
         gCurrentRacerInput &= ~A_BUTTON;
     }
     if (gCurrentPlayerIndex == PLAYER_COMPUTER || racer->raceFinished) {
@@ -4916,9 +4916,9 @@ void update_car(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer 
         if (racer->approachTarget == NULL) {
             spB8 = racerObj->x_velocity;
             spB4 = racerObj->z_velocity;
-            if (racer->unk1D2 != 0) {
-                spB8 += racer->unk11C;
-                spB4 += racer->unk120;
+            if (racer->bumpTimer != 0) {
+                spB8 += racer->bumpVelX;
+                spB4 += racer->bumpVelZ;
             }
             if (gRacerInputBlocked != 0) {
                 spB8 *= 0.65;
@@ -4963,10 +4963,10 @@ void update_car(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer 
         gCurrentRacerTransform.scale = 1.0f;
         mtxf_from_inverse_transform(&sp60, &gCurrentRacerTransform);
         mtxf_transform_point(sp60, spB8, 0.0f, spB4, &spAC, &spBC, &spB0);
-        if (racer->unk1D2 != 0) {
-            racer->unk1D2 -= updateRate;
-            if (racer->unk1D2 < 0) {
-                racer->unk1D2 = 0;
+        if (racer->bumpTimer != 0) {
+            racer->bumpTimer -= updateRate;
+            if (racer->bumpTimer < 0) {
+                racer->bumpTimer = 0;
             }
         } else {
             spBC = racer->velocity - spB0;
@@ -6446,9 +6446,9 @@ void update_onscreen_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, 
     if (!racer->approachTarget) {
         xVel = obj->x_velocity;
         zVel = obj->z_velocity;
-        if (racer->unk1D2 != 0) {
-            xVel += racer->unk11C;
-            zVel += racer->unk120;
+        if (racer->bumpTimer != 0) {
+            xVel += racer->bumpVelX;
+            zVel += racer->bumpVelZ;
         }
         xVel += racer->pushVelX;
         zVel += racer->pushVelZ;
@@ -6480,10 +6480,10 @@ void update_onscreen_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, 
     gCurrentRacerTransform.scale = 1.0f;
     mtxf_from_inverse_transform(&mtx, &gCurrentRacerTransform);
     mtxf_transform_point(mtx, xVel, 0.0f, zVel, &hVel, &tempVel, &yVel);
-    if (racer->unk1D2 != 0) {
-        racer->unk1D2 -= updateRate;
-        if (racer->unk1D2 < 0) {
-            racer->unk1D2 = 0;
+    if (racer->bumpTimer != 0) {
+        racer->bumpTimer -= updateRate;
+        if (racer->bumpTimer < 0) {
+            racer->bumpTimer = 0;
         }
     } else {
         tempVel = racer->velocity - yVel;
@@ -6760,7 +6760,7 @@ void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRat
                 if (gCurrentPlayerIndex != PLAYER_COMPUTER) {
                     gCameraObject->shakeMagnitude = 3.0f;
                 }
-                racer->unk1D2 = 7;
+                racer->bumpTimer = 7;
                 if (racer->playerIndex != PLAYER_COMPUTER) {
                     play_random_character_voice(racerObj, SOUND_VOICE_CHARACTER_NEGATIVE, 8, 0x80 | 0x2);
                     racer_play_sound(racerObj, SOUND_CRASH);
@@ -6769,8 +6769,8 @@ void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRat
                 if (racer->vehicleID == VEHICLE_HOVERCRAFT) {
                     sp178 *= 0.5;
                 }
-                racer->unk11C = sp180 * sp178;
-                racer->unk120 = sp17C * sp178;
+                racer->bumpVelX = sp180 * sp178;
+                racer->bumpVelZ = sp17C * sp178;
                 racer->velocity *= 0.15;
                 racer->lateral_velocity = 0;
             }
@@ -6835,7 +6835,7 @@ void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRat
         new_var2 = spF4[2] + spF4[3];
         new_var3 = (arctan2_f(sp180 - new_var, sp17C - new_var2) + 0x8000) & 0xFFFF;
         temp_s16 = new_var3;
-        if (racer->unk1D2 == 7) {
+        if (racer->bumpTimer == 7) {
             if (temp_s16 > 0) {
                 racer->unk19C = 2048;
             }
@@ -6843,7 +6843,7 @@ void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRat
                 racer->unk19C = -2048;
             }
         }
-        if (racer->unk1D2 != 0) {
+        if (racer->bumpTimer != 0) {
             temp_s16 = racer->unk19C;
         }
         if (temp_s16 > 500 || temp_s16 < -500) {
@@ -9272,7 +9272,7 @@ void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f3
     racer->drift_direction = 0;
     racer->y_rotation_vel = 0;
     racer->z_rotation_vel = 0;
-    racer->unk1D2 = 0;
+    racer->bumpTimer = 0;
     racer->carBobX = 0.0f;
     racer->carBobY = 0.0f;
     racer->carBobZ = 0.0f;
