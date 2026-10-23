@@ -1479,7 +1479,8 @@ typedef struct Object_AnimatedObject {
     /* 0x14 */ f32 z;               // model animation frame step while on a path
     /* 0x18 */ SoundHandle soundHandle;
     /* 0x1C */ struct Object *animator; // the BHV_ANIMATION object that spawned this actor
-    /* 0x20 */ u32 soundMask;
+    /* 0x20 */ struct AudioPoint
+        *soundMask; // the snowball's looping sound (a u32 on the N64, too small for a host pointer)
     /* 0x24 */ s16 currentSound;
     /* 0x26 */ s16 nodeIndex;
     /* 0x28 */ s16 actorIndex;

@@ -64,10 +64,9 @@ void obj_loop_snowball(Object *obj, s32 updateRate) {
     if (animated->currentSound != SOUND_NONE) {
         if (animated->soundMask == NULL) {
             audspat_play_sound_at_position(animated->currentSound, obj->trans.x_position, obj->trans.y_position,
-                                           obj->trans.z_position, AUDIO_POINT_FLAG_1,
-                                           (AudioPoint **) &animated->soundMask);
+                                           obj->trans.z_position, AUDIO_POINT_FLAG_1, &animated->soundMask);
         } else {
-            audspat_point_set_position((AudioPoint *) animated->soundMask, obj->trans.x_position, obj->trans.y_position,
+            audspat_point_set_position(animated->soundMask, obj->trans.x_position, obj->trans.y_position,
                                        obj->trans.z_position);
         }
     }
@@ -77,7 +76,7 @@ void obj_loop_snowball(Object *obj, s32 updateRate) {
 void obj_destroy_snowball(Object *obj, s32 keepAnimTarget) {
     Object_AnimatedObject *snowball = obj->animatedObject;
     if (snowball->soundMask != NULL) {
-        audspat_point_stop((AudioPoint *) snowball->soundMask);
+        audspat_point_stop(snowball->soundMask);
     }
     obj_destroy_animated_object(obj, keepAnimTarget);
 }

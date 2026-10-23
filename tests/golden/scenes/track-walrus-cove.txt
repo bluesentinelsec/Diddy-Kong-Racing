@@ -1,0 +1,8 @@
+# frames 3600
+# save 100
+# level 6
+# Walrus Cove (car): the loop-de-loop vehicle switch and its camera, snow weather,
+# started from the title (# level) on the 100% save and driven by the autopilot (AUTO).
+# Chosen from a sweep of every track under make coverage for the code it adds.
+# Format: <frame> <buttons> <stickX> <stickY> [p<N>], held until the next line (DKR_INPUT_SCRIPT).
+150 AUTO 0 0

@@ -205,8 +205,11 @@ the port honest:
   the pause menu, a race driven to the finish and through the results menu, a
   two-player split-screen race joined through the menus, a race against each
   boss (Tricky, Bluey, Bubbler, Smokey and both Wizpig races), the three battle
-  arenas, an adventure-mode race, Diddy on the character select screen, and a
-  drive around the central hub (doors, Taj, the music fade zones). Each script's header gives its length (`# frames N`) and, as needed,
+  arenas, an adventure-mode race, Diddy on the character select screen, eight
+  more tracks picked by coverage (the loop-de-loop, bridges, lava, snowballs,
+  weapons, the pirate ship), the Future Fun Land hub, the Options and Magic
+  Codes menus, and a drive around the central hub (doors, Taj, the music fade
+  zones). Each script's header gives its length (`# frames N`) and, as needed,
   `# save 100` to start from the 100%-completion save image, `# level N` to
   start level N straight from the title menu (for the places the menus cannot
   reach by script), `# adventure` to start that level in adventure mode
@@ -232,7 +235,7 @@ the port honest:
   function coverage per game file, lowest first) and `unexecuted.txt` (every
   game function no trace enters). Code listed there can change without a
   trace noticing, so give it a scene before rewriting it. The traces execute
-  about two thirds of the game's lines today.
+  about 71% of the game's lines today.
 
 ## Running
 

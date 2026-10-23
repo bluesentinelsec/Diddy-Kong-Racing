@@ -1,0 +1,8 @@
+# frames 3600
+# save 100
+# level 7
+# Hot Top Volcano (plane): lava spurts and the lava waves,
+# started from the title (# level) on the 100% save and driven by the autopilot (AUTO).
+# Chosen from a sweep of every track under make coverage for the code it adds.
+# Format: <frame> <buttons> <stickX> <stickY> [p<N>], held until the next line (DKR_INPUT_SCRIPT).
+150 AUTO 0 0
