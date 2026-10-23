@@ -45,13 +45,10 @@
 #define VERSION VERSION_80
 #define REGION REGION_PAL
 #else
-// Default to NA V1 if somehow we don't have a proper define.
-#define Func80019808Checksum 0x35281
-#define ViewportFuncChecksum 0x585E
-#define TractionTableChecksum 0x1C65B
-#define ObjLoopGoldenBalloonChecksum 0xA597
-#define VERSION VERSION_77
-#define REGION REGION_NA
+// The build must say which ROM the data came from (CMake passes -DVERSION_us_v80 or
+// -DVERSION_us_v77). Falling back to a default once compiled the 1.0 code against the 1.1
+// data without anyone noticing (issue #52), so a missing define is an error now.
+#error "No game version defined: build with -DVERSION_us_v80 or -DVERSION_us_v77"
 #endif
 
 #endif // COMMON_H
