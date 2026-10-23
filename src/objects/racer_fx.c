@@ -34,8 +34,8 @@ void racerfx_alloc(s32 numberOfVertices, s32 numberOfTriangles) {
         objEntry.racerIndex = i;
         gBoostEffectObjects[i] = spawn_object(&objEntry.common, OBJECT_SPAWN_UNK01);
         if (gBoostEffectObjects[i] != NULL) {
-            gBoostEffectObjects[i]->properties.common.unk0 = 0;
-            gBoostEffectObjects[i]->properties.common.unk4 = 0;
+            gBoostEffectObjects[i]->properties.boost.obj = NULL;
+            gBoostEffectObjects[i]->properties.boost.indexes = 0;
             boostObj[i].effectState = 0;
             boostObj[i].effectScale = 0.0f;
             boostObj[i].sprite = tex_load_sprite(boostObj[i].spriteId, 0);
@@ -277,7 +277,7 @@ void racerfx_update(s32 updateRate) {
     gBoostObjOverrideID = 9;
     for (i = 0; i < NUMBER_OF_CHARACTERS; i++) {
         if (gBoostEffectFree[i] && gBoostEffectObjects[i] != NULL) {
-            gBoostEffectObjects[i]->properties.common.unk0 = 0;
+            gBoostEffectObjects[i]->properties.boost.obj = NULL;
         }
         gBoostEffectFree[i] = TRUE;
     }

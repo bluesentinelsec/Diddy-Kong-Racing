@@ -210,8 +210,8 @@ static void model_render_attachments(Object *obj, ObjectModel *objModel, Object_
             gDPSetEnvColor(gObjectCurrDisplayList++, 255, 255, 255, 0);
             gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, intensity, intensity, intensity, opacity);
         }
-        attached->properties.common.unk0 = render_sprite_billboard(&gObjectCurrDisplayList, &gObjectCurrMatrix,
-                                                                   &gObjectCurrVertexList, attached, sprite, flags);
+        attached->properties.vehiclePart.frontFacing = render_sprite_billboard(
+            &gObjectCurrDisplayList, &gObjectCurrMatrix, &gObjectCurrVertexList, attached, sprite, flags);
         if (isCargo) {
             gSPSelectMatrixDKR(gObjectCurrDisplayList++, G_MTX_DKR_INDEX_0);
             deferred_dl_end(&gObjectCurrDisplayList);

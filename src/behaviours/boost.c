@@ -40,7 +40,7 @@ void obj_init_boost(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param)
 }
 
 void obj_render_boost(Object *obj) {
-    if (obj->properties.common.unk0 && (obj->boost->effectState > 0 || obj->boost->effectScale > 0.0f)) {
+    if (obj->properties.boost.obj != NULL && (obj->boost->effectState > 0 || obj->boost->effectScale > 0.0f)) {
         render_boost_effect(obj);
     }
 }

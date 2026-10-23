@@ -49,7 +49,7 @@ void obj_init_bonus(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param)
     bonus->directionZ = coss_f(obj->trans.rotation.y_rotation);
     bonus->rotationDiff = -((bonus->directionX * obj->trans.x_position) + (bonus->directionZ * obj->trans.z_position));
     bonus->radius = entry->radius;
-    bonus->racerFilterFlags = entry->unkA; // Unused?
+    bonus->racerFilterFlags = entry->racerFilterFlags; // Unused?
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
     obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = entry->radius;

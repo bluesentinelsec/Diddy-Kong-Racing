@@ -45,7 +45,7 @@ void obj_loop_pigrocketeer(Object *obj, s32 updateRate) {
 
     if (boostObj != NULL) {
         boost = boostObj->boost;
-        boostObj->properties.common.unk0 = 0;
+        boostObj->properties.boost.obj = NULL;
         if (boost != 0) {
             boost->pulseTimer += updateRate;
             boost->effectState = 2;

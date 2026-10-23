@@ -62,7 +62,8 @@ void obj_init_scenery(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 para
         obj->modelIndex = 0;
     }
     obj->properties.scenery.interactObj = NULL;
-    obj->properties.common.unk4 = 0;
+    obj->properties.scenery.hitTimer = 0;
+    obj->properties.scenery.angleVel = 0;
 }
 
 /**

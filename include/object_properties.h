@@ -10,14 +10,20 @@
  * Here's a collection of unions to help improve readability for them.
  */
 
-typedef struct ObjPropertyCommon {
-    s32 unk0;
-    s32 unk4;
-} ObjPropertyCommon;
+// A sprite attachment (wheel, propeller, fan) on a racer: whether its last billboard was drawn
+// front-facing (the car's wheels spin the other way when it was mirrored).
+typedef struct ObjPropertyVehiclePart {
+    s32 frontFacing;
+} ObjPropertyVehiclePart;
+
+// Smokey's fireball trigger: set while the boss is in range, so it drops one fireball per pass.
+typedef struct ObjPropertyBossHazardTrigger {
+    s32 triggered;
+} ObjPropertyBossHazardTrigger;
 
 typedef struct ObjPropertyDistance {
     f32 radius;
-    s32 unk4;
+    s32 unused4;
 } ObjPropertyDistance;
 
 typedef struct ObjPropertyTorchMist {
@@ -38,7 +44,7 @@ typedef struct ObjPropertyName {
 
 typedef struct ObjPropertyProjectile {
     s32 timer;
-    s32 unk4;
+    s32 age;
 } ObjPropertyProjectile;
 
 typedef struct ObjPropertyLog {
@@ -58,7 +64,7 @@ typedef struct ObjPropertyFireball {
 } ObjPropertyFireball;
 
 typedef struct ObjPropertyWizPigShip {
-    s32 unk0;
+    s32 attachRacerID;
     s32 timer;
 } ObjPropertyWizPigShip;
 
@@ -144,11 +150,11 @@ typedef struct ObjPropertyDoor {
 } ObjPropertyDoor;
 
 typedef struct ObjPropertyBridgeWhaleRamp {
-    s32 unk0;
+    s32 raiseTimer;
 } ObjPropertyBridgeWhaleRamp;
 
 typedef struct ObjPropertyRampSwitch {
-    s32 unk0;
+    s32 bridgeID;
 } ObjPropertyRampSwitch;
 
 typedef struct ObjPropertySkyControl {
@@ -212,11 +218,11 @@ typedef struct ObjPropertyTimeTrial {
 } ObjPropertyTimeTrial;
 
 typedef struct ObjPropertyDinoWhale {
-    s32 unk0;
+    s32 roarTimer;
 } ObjPropertyDinoWhale;
 
 typedef struct ObjPropertyBubbler {
-    s32 unk0;
+    s32 emitChance;
 } ObjPropertyBubbler;
 
 typedef struct ObjPropertyBoost {
@@ -235,7 +241,8 @@ typedef struct ObjPropertyBoost {
 
 typedef struct ObjProperties {
     union {
-        ObjPropertyCommon common;
+        ObjPropertyVehiclePart vehiclePart;             // sprite attachments
+        ObjPropertyBossHazardTrigger bossHazardTrigger; // BHV_BOSS_HAZARD_TRIGGER
         ObjPropertyDistance distance;               // BHV_FOG_CHANGER, BHV_WEATHER
         ObjPropertyTorchMist torchMist;             // BHV_TORCH_MIST
         ObjPropertyBanana banana;                   // BHV_BANANA
