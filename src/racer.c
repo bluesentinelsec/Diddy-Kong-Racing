@@ -1583,173 +1583,238 @@ void racer_ai_drive(Object *obj, Object_Racer *racer, s32 updateRate) {
 }
 
 /**
- * Hovercraft physics for one tick: throttle, drift, water surface and waves,
- * collision and the vehicle parts, as update_car and update_plane are for theirs.
+ * Step `diff` units towards a target at diff * rate / divisor per frame, always moving at
+ * least one unit while the two differ.
  */
-void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *racer) {
-    s32 objectMoved;
-    UNUSED s32 pad1;
-    f32 sp11C;
-    f32 waterHeight;
-    f32 velocity;
-    f32 xPos;
-    f32 yPos;
-    f32 zPos;
-    f32 xVelTemp;
-    f32 zVelTemp;
-    f32 spFC;
-    UNUSED s32 pad2;
-    f32 spF4;
-    f32 spF0;
-    f32 temp;
-    f32 racerOx1;
-    f32 racerOz1;
-    f32 var_f0;
-    Vec3f water_rotation;
-    f32 var_f2;
-    s32 var_v0;
-    f32 spC8;
-    s32 iTemp; // Seems to be reused for some reason
-    s32 var_a3;
-    s32 var_v1;
-    Object *vehiclePart;
-    s32 var_t0;
-    Object_Boost *asset20;
-    s8 lastWheelSurface;
-    s8 wave_properties;
-    s8 wheelsOnStone;
-    UNUSED s32 pad3;
-    MtxF transformedMtx;
-    s8 playerObjectHasMoved;
-    f32 var_f6;
+static s32 ease_step(s32 diff, f32 rate, f32 divisor) {
+    s32 step;
 
-    if (is_nondefault_vehicle()) {
-        updateRateF *= 1.15;
-    }
-    playerObjectHasMoved = FALSE;
-    if (racer->playerIndex >= PLAYER_ONE && gNumViewports < 2) {
-        obj->particleEmittersEnabled |= OBJ_EMIT_9;
-    }
-    gRacerSurfaceSoundId = 0;
-    gCurrentCarSteerVel = 0;
-    gRacerTargetRoll = 0;
-    xPos = obj->trans.x_position;
-    yPos = obj->trans.y_position;
-    zPos = obj->trans.z_position;
-    spC8 = 1.0 - (gDialogueCameraAngle / 10240.0f);
-    racerOx1 = -racer->ox1 * 10 * spC8;
-    racerOz1 = -racer->oz1 * 10 * spC8;
-    var_f2 = 8.0f;
-    if (gCurrentPlayerIndex == PLAYER_COMPUTER || racer->raceFinished) {
-        var_f2 = 32.0f;
-    }
-    var_v1 = gCurrentStickX - racer->steerAngle;
-    var_a3 = (var_v1 * updateRateF) / var_f2;
-    if ((var_v1 != 0) && (var_a3 == 0)) {
-        if (var_v1 > 0) {
-            var_a3 = 1;
+    step = (diff * rate) / divisor;
+    if ((diff != 0) && (step == 0)) {
+        if (diff > 0) {
+            step = 1;
         }
-        if (var_v1 < 0) {
-            var_a3 = -1;
+        if (diff < 0) {
+            step = -1;
         }
     }
-    racer->steerAngle += var_a3;
-    handle_racer_items(obj, racer, updateRate);
-    racer_update_tilt_vector(obj, racer);
-    racer_attack_handler_hovercraft(obj, racer);
-    if (gCurrentPlayerIndex != PLAYER_COMPUTER) {
-        handle_racer_head_turning(obj, racer, updateRate);
-    } else {
-        slowly_reset_head_angle(racer);
-    }
+    return step;
+}
+
+/**
+ * Throttle builds while A is held and bleeds off when it is not, by `step` per frame.
+ */
+static void racer_ease_throttle(Object_Racer *racer, f32 updateRateF, f64 step) {
     if (gCurrentRacerInput & A_BUTTON) {
-        racer->throttle += updateRateF * 0.016;
+        racer->throttle += updateRateF * step;
         if (racer->throttle > 1.0) {
             racer->throttle = 1.0;
         }
     } else {
-        racer->throttle -= updateRateF * 0.016;
+        racer->throttle -= updateRateF * step;
         if (racer->throttle < 0.0f) {
             racer->throttle = 0.0f;
         }
     }
-    sp11C = racer->throttle;
-    if ((racer->velocity > 0.0f) && (gCurrentRacerInput & A_BUTTON)) {
-        sp11C = 1.0f;
-    }
-    sp11C *= 3.0f;
-    spF4 = (sp11C * sp11C) / 9.0f;
-    if (racer->exitObj != NULL) {
-        racer->throttle = 0.5f;
-    }
-    if (racer->velocity > 0.0) {
-        spF4 *= 1.2;
-    }
+}
+
+/**
+ * Brake builds while B is held with the stick pulled back or while reversing, by `step` per
+ * frame, up to 1.2. Returns TRUE while braking.
+ */
+static s32 racer_ease_brake(Object_Racer *racer, f32 updateRateF, f64 step) {
     if ((gCurrentRacerInput & B_BUTTON) && (gCurrentStickY < -40 || racer->velocity < 0.0f)) {
-        racer->brake += updateRateF * 0.046;
+        racer->brake += updateRateF * step;
         if (racer->brake > 1.2) {
             racer->brake = 1.2f;
         }
-        if (racer->velocity < -2.0) {
-            rumble_set(racer->playerIndex, RUMBLE_TYPE_5);
-        }
-    } else {
-        racer->brake -= updateRateF * 0.046;
-        if (racer->brake < 0.0f) {
-            racer->brake = 0.0f;
-        }
+        return TRUE;
     }
-    sp11C = racer->brake * 3.0f;
-    spF0 = sp11C * sp11C / 9.0f;
-    if (racer->velocity > 0.0) {
-        spF0 *= 0.3;
+    racer->brake -= updateRateF * step;
+    if (racer->brake < 0.0f) {
+        racer->brake = 0.0f;
     }
+    return FALSE;
+}
 
-    if (racer->zipperDirCorrection != 0) {
-        gCurrentStickX = 0;
-        racer->magnetTimer = 0;
-        racer->steerAngle = 0;
-        racer->spinout_timer = 0;
-        racer->trickType = 0;
-        var_v1 = racer->zipperObj->trans.rotation.y_rotation - (racer->steerVisualRotation & 0xFFFF);
-        if (var_v1 > 0x8000) {
-            var_v1 -= 0xFFFF;
+/**
+ * Lining up with a zipper: turn towards its heading, slowed until aligned, then boost.
+ * AI racers boost at once.
+ */
+static void racer_zipper_align(Object *obj, Object_Racer *racer, s32 updateRate) {
+    s32 diff;
+
+    diff = racer->zipperObj->trans.rotation.y_rotation - (racer->steerVisualRotation & 0xFFFF);
+    if (diff > 0x8000) {
+        diff -= 0xFFFF;
+    }
+    if (diff < -0x8000) {
+        diff += 0xFFFF;
+    }
+    racer->steerVisualRotation += (diff * updateRate) >> 3;
+    if ((diff < 0x400 && diff > -0x400) || (racer->playerIndex == PLAYER_COMPUTER)) {
+        if (racer->playerIndex != PLAYER_COMPUTER) {
+            sound_play_spatial(SOUND_ZIP_PAD_BOOST, obj->trans.x_position, obj->trans.y_position, obj->trans.z_position,
+                               NULL);
+            play_random_character_voice(obj, SOUND_VOICE_CHARACTER_POSITIVE, 8, 0x80 | 0x2);
         }
-        if (var_v1 < -0x8000) {
-            var_v1 += 0xFFFF;
+        racer->boostTimer = normalise_time(45);
+        racer->boostType = BOOST_LARGE;
+        if (racer->throttleReleased) {
+            racer->boostType |= EMPOWER_BOOST;
         }
-        racer->steerVisualRotation += (var_v1 * updateRate) >> 3;
-        if ((var_v1 < 0x400 && var_v1 > -0x400) || (racer->playerIndex == PLAYER_COMPUTER)) {
-            if (racer->playerIndex != PLAYER_COMPUTER) {
-                sound_play_spatial(SOUND_ZIP_PAD_BOOST, obj->trans.x_position, obj->trans.y_position,
-                                   obj->trans.z_position, NULL);
-                play_random_character_voice(obj, SOUND_VOICE_CHARACTER_POSITIVE, 8, 0x80 | 0x2);
-            }
-            racer->boostTimer = normalise_time(45);
-            racer->boostType = BOOST_LARGE;
-            if (racer->throttleReleased) {
-                racer->boostType |= BOOST_SMALL_FAST;
-            }
-            racer->zipperDirCorrection = 0;
-            rumble_set(racer->playerIndex, RUMBLE_TYPE_8);
-        } else {
-            obj->x_velocity = (obj->x_velocity * 1.0) * 0.75f;
-            obj->y_velocity = (obj->y_velocity * 1.0) * 0.75f;
-            obj->z_velocity = (obj->z_velocity * 1.0) * 0.75f;
+        racer->zipperDirCorrection = 0;
+        rumble_set(racer->playerIndex, RUMBLE_TYPE_8);
+    } else {
+        obj->x_velocity = (obj->x_velocity * 1.0) * 0.75f;
+        obj->y_velocity = (obj->y_velocity * 1.0) * 0.75f;
+        obj->z_velocity = (obj->z_velocity * 1.0) * 0.75f;
+    }
+}
+
+/**
+ * The most significant surface under the wheels, and how many wheels are on stone.
+ */
+static s32 racer_dominant_surface(Object_Racer *racer, s32 *stoneWheels) {
+    s32 surface;
+    s32 i;
+
+    surface = SURFACE_DEFAULT;
+    *stoneWheels = 0;
+    for (i = 0; i < 4; i++) {
+        if (racer->wheel_surfaces[i] == SURFACE_NONE) {
+            continue;
+        }
+        if (surface < racer->wheel_surfaces[i]) {
+            surface = racer->wheel_surfaces[i];
+        }
+        if (racer->wheel_surfaces[i] == SURFACE_STONE) {
+            (*stoneWheels)++;
         }
     }
-    var_f2 = -racer->velocity;
-    if (var_f2 < 0.0f) {
-        var_f2 = 0.0f;
+    return surface;
+}
+
+/**
+ * Honking the horn on Taj's pad summons him.
+ */
+static void racer_check_taj_pad(Object_Racer *racer, s32 surface) {
+    if (racer->playerIndex == PLAYER_ONE && racer->groundedWheels && surface == SURFACE_TAJ_PAD &&
+        gCurrentButtonsPressed & Z_TRIG) {
+        gTajInteractStatus = TAJ_TELEPORT;
     }
-    if (var_f2 > 14.0) {
-        var_f2 = 14.0f;
+}
+
+/**
+ * A zip pad gives a large boost, empowered if the throttle was released for it.
+ */
+static void racer_start_zip_pad_boost(Object *obj, Object_Racer *racer) {
+    racer->boostTimer = normalise_time(45);
+    racer->boostType = BOOST_LARGE;
+    if (racer->throttleReleased) {
+        racer->boostType |= EMPOWER_BOOST;
     }
-    var_f2 /= 14.0f;
+    racer_play_sound(obj, SOUND_ZIP_PAD_BOOST);
+    play_random_character_voice(obj, SOUND_VOICE_CHARACTER_POSITIVE, 8, 0x80 | 0x2);
+    rumble_set(racer->playerIndex, RUMBLE_TYPE_8);
+}
+
+/**
+ * Acceleration available at the current speed, from the character's 13-entry speed curve.
+ */
+static f32 racer_speed_curve(f32 speed) {
+    s32 index;
+    f32 frac;
+
+    index = speed;
+    frac = speed - index;
+    return (gCurrentRacerMiscAssetPtr[index + 1] * frac) + (gCurrentRacerMiscAssetPtr[index] * (1.0 - frac));
+}
+
+/**
+ * Light the boost-flame emitter while the boost meter asset shows one charging or burning.
+ * Empowered boosts use the emitter one above `baseBit`.
+ */
+static void racer_enable_boost_emitter(Object *obj, Object_Racer *racer, s32 baseBit) {
+    Object_Boost *boost;
+    s32 bit;
+
+    boost = (Object_Boost *) get_misc_asset(ASSET_MISC_20);
+    boost = &boost[racer->racerIndex];
+    bit = ((racer->boostType & EMPOWER_BOOST) >> 2) + baseBit;
+    if (bit > baseBit) {
+        if (boost->unk70 > 0 || boost->unk74 > 0.0) {
+            obj->particleEmittersEnabled |= 1 << bit;
+        }
+    } else if (boost->unk70 == 2 && boost->unk74 < 0.5) {
+        obj->particleEmittersEnabled |= 1 << bit;
+    } else if (boost->unk70 < 2 && boost->unk74 > 0.0f) {
+        obj->particleEmittersEnabled |= 1 << bit;
+    }
+}
+
+/**
+ * Express the world velocity in the racer's own frame: lateral, vertical and forward.
+ */
+static void racer_velocity_to_local(Object *obj, Object_Racer *racer, s32 includeRoll) {
+    MtxF mtx;
+
+    gCurrentRacerTransform.rotation.y_rotation = -obj->trans.rotation.y_rotation;
+    gCurrentRacerTransform.rotation.x_rotation = -obj->trans.rotation.x_rotation;
+    if (includeRoll) {
+        gCurrentRacerTransform.rotation.z_rotation = -obj->trans.rotation.z_rotation;
+    } else {
+        gCurrentRacerTransform.rotation.z_rotation = 0;
+    }
+    gCurrentRacerTransform.scale = 1.0f;
+    gCurrentRacerTransform.x_position = 0.0f;
+    gCurrentRacerTransform.y_position = 0.0f;
+    gCurrentRacerTransform.z_position = 0.0f;
+    mtxf_from_inverse_transform(&mtx, &gCurrentRacerTransform);
+    mtxf_transform_point(mtx, obj->x_velocity, obj->y_velocity, obj->z_velocity, &racer->lateral_velocity,
+                         &racer->vehiclePitch, &racer->velocity);
+}
+
+/**
+ * Run the collision step (AI racers use their cheaper physics), keeping a bump that was
+ * already running from being restarted by it.
+ */
+static void racer_collide_keeping_bump(Object *obj, Object_Racer *racer, s32 updateRate) {
+    s32 bumpTimer;
+
+    bumpTimer = racer->bumpTimer;
+    if (gCurrentPlayerIndex == PLAYER_COMPUTER && !boss_race_number()) {
+        onscreen_ai_racer_physics(obj, racer, updateRate);
+    } else {
+        update_racer_collision(obj, racer, updateRate);
+    }
+    if (bumpTimer == 0 && racer->bumpTimer != 0) {
+        bumpTimer = 1;
+    }
+    racer->bumpTimer = bumpTimer;
+}
+
+/**
+ * Hovercraft spin-outs turn the craft on the spot: unk1D4 ramps to +/-10 while the spin
+ * lasts and drives the heading offset, then unk1D5 eases the offset back. Braking at
+ * speed also yaws the craft.
+ */
+static void hovercraft_update_spinout(Object *obj, Object_Racer *racer, s32 updateRate, f32 brakeForce) {
+    f32 speedFrac;
+    s32 prevOffset;
+
+    speedFrac = -racer->velocity;
+    if (speedFrac < 0.0f) {
+        speedFrac = 0.0f;
+    }
+    if (speedFrac > 14.0) {
+        speedFrac = 14.0f;
+    }
+    speedFrac /= 14.0f;
     if (racer->unk1D4 != 0 || racer->unk1D5 != 0) {
         apply_vehicle_rotation_offset(racer, updateRate, racer->y_rotation_offset, 0, 0);
     } else {
-        apply_vehicle_rotation_offset(racer, updateRate, 0, (spF0 * 4096.0f) * var_f2, 0);
+        apply_vehicle_rotation_offset(racer, updateRate, 0, (brakeForce * 4096.0f) * speedFrac, 0);
     }
     if (racer->unk1D5 != 0) {
         racer->y_rotation_offset -= racer->y_rotation_offset >> 3;
@@ -1786,17 +1851,17 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
         racer->x_rotation_vel -= (racer->x_rotation_vel * updateRate) >> 6;
     }
     if (racer->unk1D4 != 0) {
-        iTemp = racer->y_rotation_offset;
+        prevOffset = racer->y_rotation_offset;
         racer->unk1D5 = 0;
         if (racer->unk1D4 > 0) {
             racer->y_rotation_offset += (racer->unk1D4 * (180 - 1)) * updateRate;
-            if (iTemp < -0x1000 && racer->y_rotation_offset >= -0x1000) {
+            if (prevOffset < -0x1000 && racer->y_rotation_offset >= -0x1000) {
                 racer->spinout_timer--;
             }
         }
         if (racer->unk1D4 < 0) {
             racer->y_rotation_offset -= (racer->unk1D4 * (180 - 1)) * updateRate;
-            if (iTemp > 0x1000 && racer->y_rotation_offset <= 0x1000) {
+            if (prevOffset > 0x1000 && racer->y_rotation_offset <= 0x1000) {
                 racer->spinout_timer++;
             }
         }
@@ -1809,321 +1874,236 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
         racer->y_rotation_offset += updateRate * 0x500;
         racer->x_rotation_offset += updateRate * 0x600;
     }
-    gCurrentRacerTransform.rotation.y_rotation = obj->trans.rotation.y_rotation;
-    gCurrentRacerTransform.rotation.x_rotation = obj->trans.rotation.x_rotation;
-    gCurrentRacerTransform.rotation.z_rotation = 0;
-    gCurrentRacerTransform.x_position = 0.0f;
-    gCurrentRacerTransform.y_position = 0.0f;
-    gCurrentRacerTransform.z_position = 0.0f;
-    gCurrentRacerTransform.scale = 1.0f;
-    mtxf_from_transform(&transformedMtx, &gCurrentRacerTransform);
-    mtxf_transform_point(transformedMtx, 0.0f, 0.0f, 1.0f, &racer->ox1, &racer->oy1, &racer->oz1);
-    mtxf_transform_point(transformedMtx, 0.0f, 1.0f, 0.0f, &racer->ox2, &racer->oy2, &racer->oz2);
-    mtxf_transform_point(transformedMtx, 1.0f, 0.0f, 0.0f, &racer->ox3, &racer->oy3, &racer->oz3);
-    if (racer->approachTarget == NULL) {
-        obj->animationID = 0;
-        var_v0 = racer->steerAngle;
-        var_v0 >>= 1;
-        var_v0 = 40 - var_v0;
-        if (var_v0 < 0) {
-            var_v0 = 0;
-        }
-        if (var_v0 > 73) {
-            var_v0 = 73;
-        }
-        obj->animFrame = var_v0;
-    }
-    xVelTemp = racer->velocity;
-    if (xVelTemp < 0.0f) {
-        xVelTemp = -xVelTemp;
-    }
-    lastWheelSurface = SURFACE_DEFAULT;
-    wheelsOnStone = 0;
-    if (xVelTemp > 12.0f) {
-        xVelTemp = 12.0f;
-    }
-    var_v0 = xVelTemp;
-    var_f0 = xVelTemp - var_v0;
-    xVelTemp = (gCurrentRacerMiscAssetPtr[var_v0 + 1] * var_f0) + (gCurrentRacerMiscAssetPtr[var_v0] * (1.0 - var_f0));
-    gCurrentRacerWeightStat *= 0.75;
-    if (racer->groundedWheels >= 3) {
-        obj->y_velocity -= gCurrentRacerWeightStat * 0.5 * updateRateF;
-    } else {
-        obj->y_velocity -= gCurrentRacerWeightStat * updateRateF;
-    }
-    iTemp = (gCurrentPlayerIndex != PLAYER_COMPUTER && !racer->raceFinished) ? racer->steerAngle : gCurrentStickX;
-    spFC = 0.004;
-    obj->y_velocity -= (obj->y_velocity * 0.025) * updateRateF;
-    if (gCurrentRacerInput & B_BUTTON && gCurrentStickY >= -40 && racer->velocity >= -0.5) {
-        spFC *= 16.0f;
-    }
-    velocity = (iTemp * 8) * updateRate;
-    if (gCurrentStickY < 0) {
-        temp = -gCurrentStickY;
-        velocity *= 1.0 + (temp / 112.0);
-        xVelTemp *= 1.0 - (temp / 300.0);
-    }
-    velocity *= gCurrentRacerHandlingStat;
-    racer->steerVisualRotation -= (((s32) velocity) & 0xffff) & 0xffff;
-    if (racer->groundedWheels == 0 && racer->buoyancy == 0.0) {
-        if (obj->y_velocity < 0.0f) {
-            racer->trickType += updateRate;
-        }
-        if (racer->trickType > 25) {
-            racer->trickType = 25;
-        }
-    }
+}
 
-    for (iTemp = 0; iTemp < 4; iTemp++) {
-        if (racer->wheel_surfaces[iTemp] == SURFACE_NONE) {
-            continue;
-        }
-        if (lastWheelSurface < racer->wheel_surfaces[iTemp]) {
-            lastWheelSurface = racer->wheel_surfaces[iTemp];
-        }
-        if (racer->wheel_surfaces[iTemp] == SURFACE_STONE) {
-            wheelsOnStone++;
-        }
-    }
+/**
+ * Landing after air time: a thud for the player, a splash on water, and a squash of the
+ * character that grows with the time spent airborne (trickType counts that time).
+ */
+static void hovercraft_land(Object *obj, Object_Racer *racer) {
+    f32 squash;
 
-    if (racer->playerIndex == PLAYER_ONE && racer->groundedWheels && lastWheelSurface == SURFACE_TAJ_PAD &&
-        gCurrentButtonsPressed & Z_TRIG) {
-        gTajInteractStatus = TAJ_TELEPORT;
+    if (!(racer->groundedWheels || racer->buoyancy > 0.0f)) {
+        return;
     }
-    if (racer->groundedWheels || racer->buoyancy > 0.0f) {
-        if (racer->trickType != 0) {
-            if (racer->groundedWheels) {
-                if (gRaceStartTimer != 100 && racer->playerIndex != PLAYER_COMPUTER && racer->trickType >= 6) {
-                    sound_play(SOUND_BOUNCE, &racer->unk21C);
-                    sound_volume_set_relative(SOUND_BOUNCE, racer->unk21C, (racer->trickType * 2) + 50);
-                }
-            } else if (racer->approachTarget == NULL) {
-                racer_play_sound(obj, SOUND_UNK_AF);
-                obj->particleEmittersEnabled |= OBJ_EMIT_5 | OBJ_EMIT_6;
-            }
-            var_f2 = racer->trickType;
-            var_f2 -= 5.0f;
-            if (var_f2 > 0.0f && racer->approachTarget == NULL) {
-                racer->stretch_height_cap = 1.0 - (var_f2 * 0.02);
-            }
-            racer->trickType = 0;
+    if (racer->trickType == 0) {
+        return;
+    }
+    if (racer->groundedWheels) {
+        if (gRaceStartTimer != 100 && racer->playerIndex != PLAYER_COMPUTER && racer->trickType >= 6) {
+            sound_play(SOUND_BOUNCE, &racer->unk21C);
+            sound_volume_set_relative(SOUND_BOUNCE, racer->unk21C, (racer->trickType * 2) + 50);
         }
+    } else if (racer->approachTarget == NULL) {
+        racer_play_sound(obj, SOUND_UNK_AF);
+        obj->particleEmittersEnabled |= OBJ_EMIT_5 | OBJ_EMIT_6;
     }
-    xVelTemp *= handle_racer_top_speed(obj, racer) * 1.7;
-    if (racer->boostTimer > 0) {
-        if (gRaceStartTimer == 0) {
-            spF4 = 1.0f;
-            spF0 = 0.0f;
-            if (xVelTemp != 0.0) {
-                xVelTemp = 2.0f;
-            }
-            racer->boostTimer -= updateRate;
-        }
-    } else {
-        racer->boostTimer = 0;
+    squash = racer->trickType;
+    squash -= 5.0f;
+    if (squash > 0.0f && racer->approachTarget == NULL) {
+        racer->stretch_height_cap = 1.0 - (squash * 0.02);
     }
-    if (gRaceStartTimer != 0) {
-        xVelTemp = 0.0f;
-    }
-    if (wheelsOnStone != 0) {
-        var_f0 = ((f32 *) get_misc_asset(ASSET_MISC_32))[wheelsOnStone];
-        xVelTemp *= var_f0;
-        spFC /= var_f0;
-        racer->magnetTimer = 0;
-        racer->lateral_velocity = 0.0f;
-    }
-    if ((racer->boostTimer == 0) && (lastWheelSurface == 3)) {
-        racer->boostTimer = normalise_time(45);
-        racer->boostType = BOOST_LARGE;
-        if (racer->throttleReleased) {
-            racer->boostType |= BOOST_SMALL_FAST;
-        }
-        racer_play_sound(obj, SOUND_ZIP_PAD_BOOST);
-        play_random_character_voice(obj, SOUND_VOICE_CHARACTER_POSITIVE, 8, 0x80 | 0x2);
-        rumble_set(racer->playerIndex, RUMBLE_TYPE_8);
-    }
+    racer->trickType = 0;
+}
 
-    var_f2 = sqrtf((obj->z_velocity * obj->z_velocity) + (obj->x_velocity * obj->x_velocity));
-    if (var_f2 > 0.25) {
+/**
+ * The camera yaw trails the direction of travel, and the craft's heading trails the camera,
+ * both faster the faster it goes and when accelerating or sliding.
+ */
+static void hovercraft_update_camera_yaw(Object *obj, Object_Racer *racer, s32 updateRate) {
+    f32 speed;
+    f32 blend;
+    f32 var_f6;
+    s32 diff;
+    s32 step;
+
+    speed = sqrtf((obj->z_velocity * obj->z_velocity) + (obj->x_velocity * obj->x_velocity));
+    if (speed > 0.25) {
         racer->unk168 = arctan2_f(obj->x_velocity, obj->z_velocity) + 0x8000;
-        var_v1 = ((0x8000 - racer->unk168) & 0xFFFF) - (racer->cameraYaw & 0xFFFF);
-        if (var_v1 > 0x8000) {
-            var_v1 -= 0xFFFF;
+        diff = ((0x8000 - racer->unk168) & 0xFFFF) - (racer->cameraYaw & 0xFFFF);
+        if (diff > 0x8000) {
+            diff -= 0xFFFF;
         }
-        if (var_v1 < -0x8000) {
-            var_v1 += 0xFFFF;
+        if (diff < -0x8000) {
+            diff += 0xFFFF;
         }
-        sp11C = var_f2 - 0.25;
-        if (sp11C > 8.0) {
-            sp11C = 8.0f;
+        blend = speed - 0.25;
+        if (blend > 8.0) {
+            blend = 8.0f;
         }
-        sp11C *= 0.125;
-        var_v1 = (sp11C * var_v1) * 0.75;
-        racer->cameraYaw += (var_v1 * updateRate) >> 4;
-        var_v1 = (0x8000 - racer->cameraYaw) - (racer->steerVisualRotation & 0xFFFF);
-        if (var_v1 > 0x8000) {
-            var_v1 -= 0xFFFF;
+        blend *= 0.125;
+        diff = (blend * diff) * 0.75;
+        racer->cameraYaw += (diff * updateRate) >> 4;
+        diff = (0x8000 - racer->cameraYaw) - (racer->steerVisualRotation & 0xFFFF);
+        if (diff > 0x8000) {
+            diff -= 0xFFFF;
         }
-        if (var_v1 < -0x8000) {
-            var_v1 += 0xFFFF;
+        if (diff < -0x8000) {
+            diff += 0xFFFF;
         }
-        if (var_f2 > 10.0) {
-            var_f2 = 10.0;
+        if (speed > 10.0) {
+            speed = 10.0;
         }
-
-        var_f2 /= 10.0;
-        var_v1 *= var_f2;
+        speed /= 10.0;
+        diff *= speed;
         if (gCurrentRacerInput & A_BUTTON || gCurrentRacerInput & R_TRIG) {
-            var_v1 *= 2;
+            diff *= 2;
         }
-        racer->steerVisualRotation += ((s32) (var_v1 * updateRate)) >> 7;
+        racer->steerVisualRotation += ((s32) (diff * updateRate)) >> 7;
     }
-    var_v1 = (0x8000 - racer->steerVisualRotation) - (racer->cameraYaw & 0xFFFF);
-    if (var_v1 > 0x8000) {
-        var_v1 -= 0xFFFF;
+    diff = (0x8000 - racer->steerVisualRotation) - (racer->cameraYaw & 0xFFFF);
+    if (diff > 0x8000) {
+        diff -= 0xFFFF;
     }
-    if (var_v1 < -0x8000) {
-        var_v1 += 0xFFFF;
+    if (diff < -0x8000) {
+        diff += 0xFFFF;
     }
     var_f6 = 1.0f;
-    var_v1 = ((s32) ((((f32) var_v1) * 1.75) * var_f6));
-    var_t0 = (var_v1 * updateRate);
-    racer->cameraYaw += var_t0 >> 6;
-    if (racer->zipperDirCorrection == 0) {
-        if (gCurrentPlayerIndex == PLAYER_COMPUTER && !racer->raceFinished) {
-            temp = racer->lateral_velocity * 0.25;
-            zVelTemp = temp * 0.35;
-            if (zVelTemp < 0.0) {
-                zVelTemp = -zVelTemp;
+    diff = ((s32) ((((f32) diff) * 1.75) * var_f6));
+    step = (diff * updateRate);
+    racer->cameraYaw += step >> 6;
+}
+
+/**
+ * Apply the frame's forces: sideways slip (AI racers slide less and use the slide button),
+ * throttle, brake, the tilt of the ground, drag, and the magnet override.
+ */
+static void hovercraft_apply_forces(Object *obj, Object_Racer *racer, f32 updateRateF, f32 throttleForce,
+                                    f32 brakeForce, f32 accel, f32 drag) {
+    f32 slip;
+    f32 temp;
+    f32 pitchForce;
+    f32 rollForce;
+    f32 velSquared;
+
+    if (gCurrentPlayerIndex == PLAYER_COMPUTER && !racer->raceFinished) {
+        temp = racer->lateral_velocity * 0.25;
+        slip = temp * 0.35;
+        if (slip < 0.0) {
+            slip = -slip;
+        }
+        if (0.2 < slip) {
+            gCurrentRacerInput |= R_TRIG;
+        }
+        obj->x_velocity += racer->ox1 * slip;
+        obj->y_velocity += racer->oy1 * slip;
+        obj->z_velocity += racer->oz1 * slip;
+    } else {
+        temp = racer->lateral_velocity * 0.07;
+        if (gCurrentRacerInput & R_TRIG) {
+            temp *= 2;
+            if (gCurrentStickX > -40 && gCurrentStickX < 40) {
+                throttleForce *= 0.8;
+            } else if (racer->lateral_velocity > 2.5 || racer->lateral_velocity < -2.5) {
+                throttleForce *= 1.5;
             }
-            if (0.2 < zVelTemp) {
-                gCurrentRacerInput |= R_TRIG;
-            }
-            obj->x_velocity += racer->ox1 * zVelTemp;
-            obj->y_velocity += racer->oy1 * zVelTemp;
-            obj->z_velocity += racer->oz1 * zVelTemp;
-        } else {
-            temp = racer->lateral_velocity * 0.07;
-            if (gCurrentRacerInput & R_TRIG) {
+            if (gCurrentRacerInput & B_BUTTON) {
                 temp *= 2;
-                if (gCurrentStickX > -40 && gCurrentStickX < 40) {
-                    spF4 *= 0.8;
-                } else if (racer->lateral_velocity > 2.5 || racer->lateral_velocity < -2.5) {
-                    spF4 *= 1.5;
-                }
-                if (gCurrentRacerInput & B_BUTTON) {
-                    temp *= 2;
-                }
             }
-            if (gCurrentRacerInput) {}
-        }
-        obj->x_velocity -= racer->ox3 * temp;
-        obj->y_velocity -= racer->oy3 * temp;
-        obj->z_velocity -= racer->oz3 * temp;
-        spF4 *= xVelTemp;
-        obj->x_velocity -= racer->ox1 * spF4;
-        obj->y_velocity -= racer->oy1 * spF4;
-        obj->z_velocity -= racer->oz1 * spF4;
-        spF0 *= xVelTemp / 2;
-        obj->x_velocity += racer->ox1 * spF0;
-        obj->y_velocity += racer->oy1 * spF0;
-        obj->z_velocity += racer->oz1 * spF0;
-        if (racer->groundedWheels && !gRacerInputBlocked && gRaceStartTimer == 0) {
-            var_f2 = (gCurrentRacerWeightStat * updateRateF) * 0.25;
-            sp11C = racer->pitch * var_f2;
-            var_f2 *= racer->roll;
-            obj->x_velocity += (racer->ox1 * sp11C) + (racer->ox3 * var_f2);
-            obj->y_velocity += (racer->oy1 * sp11C) + (racer->oy3 * var_f2);
-            obj->z_velocity += (racer->oz1 * sp11C) + (racer->oz3 * var_f2);
-        }
-        zVelTemp = racer->velocity * racer->velocity;
-        if (racer->velocity < 0.0f) {
-            zVelTemp = -zVelTemp;
-        }
-        if (zVelTemp < 1.0f && (!(gCurrentRacerInput & A_BUTTON))) {
-            temp = racer->velocity * spFC * 8.0f;
-        } else {
-            temp = zVelTemp * spFC;
-        }
-        obj->x_velocity -= racer->ox1 * temp;
-        obj->y_velocity -= racer->oy1 * temp;
-        obj->z_velocity -= racer->oz1 * temp;
-        if (racer->magnetTimer != 0) {
-            obj->x_velocity = gRacerMagnetVelX;
-            obj->z_velocity = gRacerMagnetVelZ;
         }
     }
-    racer->driftHeadingOffset = 0;
-    racer->y_rotation_vel += (gCurrentCarSteerVel - racer->y_rotation_vel) >> 3;
-    obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
-    racer->z_rotation_vel += (gRacerTargetRoll - racer->z_rotation_vel) >> 3;
-    obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
-    if (racer->bumpTimer > 0) {
-        racer->bumpTimer -= updateRate;
-    } else {
-        racer->bumpTimer = 0;
+    obj->x_velocity -= racer->ox3 * temp;
+    obj->y_velocity -= racer->oy3 * temp;
+    obj->z_velocity -= racer->oz3 * temp;
+    throttleForce *= accel;
+    obj->x_velocity -= racer->ox1 * throttleForce;
+    obj->y_velocity -= racer->oy1 * throttleForce;
+    obj->z_velocity -= racer->oz1 * throttleForce;
+    brakeForce *= accel / 2;
+    obj->x_velocity += racer->ox1 * brakeForce;
+    obj->y_velocity += racer->oy1 * brakeForce;
+    obj->z_velocity += racer->oz1 * brakeForce;
+    if (racer->groundedWheels && !gRacerInputBlocked && gRaceStartTimer == 0) {
+        rollForce = (gCurrentRacerWeightStat * updateRateF) * 0.25;
+        pitchForce = racer->pitch * rollForce;
+        rollForce *= racer->roll;
+        obj->x_velocity += (racer->ox1 * pitchForce) + (racer->ox3 * rollForce);
+        obj->y_velocity += (racer->oy1 * pitchForce) + (racer->oy3 * rollForce);
+        obj->z_velocity += (racer->oz1 * pitchForce) + (racer->oz3 * rollForce);
     }
-    racerOx1 += racer->ox1 * 10 * spC8;
-    racerOz1 += racer->oz1 * 10 * spC8;
-    if (racer->approachTarget == NULL) {
-        temp = obj->x_velocity;
-        zVelTemp = obj->z_velocity;
-        if (racer->bumpTimer != 0) {
-            temp += racer->bumpVelX;
-            zVelTemp += racer->bumpVelZ;
-        }
-        if (gRacerInputBlocked) {
-            if (temp > 0.5 || temp < -0.5) {
-                temp *= 0.65;
-            } else {
-                temp = 0.0f;
-            }
-            if (zVelTemp > 0.5 || zVelTemp < -0.5) {
-                zVelTemp *= 0.65;
-            } else {
-                zVelTemp = 0.0f;
-            }
-        } else {
-            racerOx1 += racer->pushVelX * updateRateF;
-            racerOz1 += racer->pushVelZ * updateRateF;
-        }
-
-        objectMoved = move_object(obj, (temp * updateRateF) + racerOx1, obj->y_velocity * updateRateF,
-                                  (zVelTemp * updateRateF) + racerOz1);
-
-        if (objectMoved && gCurrentPlayerIndex != PLAYER_COMPUTER) {
-            playerObjectHasMoved = TRUE;
-        }
+    velSquared = racer->velocity * racer->velocity;
+    if (racer->velocity < 0.0f) {
+        velSquared = -velSquared;
+    }
+    if (velSquared < 1.0f && (!(gCurrentRacerInput & A_BUTTON))) {
+        temp = racer->velocity * drag * 8.0f;
     } else {
-        racerOx1 = 0.0;
-        racerOz1 = 0.0;
+        temp = velSquared * drag;
+    }
+    obj->x_velocity -= racer->ox1 * temp;
+    obj->y_velocity -= racer->oy1 * temp;
+    obj->z_velocity -= racer->oz1 * temp;
+    if (racer->magnetTimer != 0) {
+        obj->x_velocity = gRacerMagnetVelX;
+        obj->z_velocity = gRacerMagnetVelZ;
+    }
+}
+
+/**
+ * Move the craft by its velocity plus any bump and push, or draw it towards the object it
+ * is approaching. Returns TRUE when a human player's craft moved.
+ */
+static s32 hovercraft_move(Object *obj, Object_Racer *racer, f32 updateRateF, f32 *shiftX, f32 *shiftZ) {
+    f32 velX;
+    f32 velZ;
+
+    if (racer->approachTarget != NULL) {
+        *shiftX = 0.0;
+        *shiftZ = 0.0;
         racer_approach_object(obj, racer, updateRateF);
+        return FALSE;
     }
-    racer->unkD0 -= (racer->unkD0 * 0.125) * updateRateF;
-    racer->unkD4 = (-obj->y_velocity) * 7.0;
-    if (racer->unkD4 > 35.0) {
-        racer->unkD4 = 35.0;
+    velX = obj->x_velocity;
+    velZ = obj->z_velocity;
+    if (racer->bumpTimer != 0) {
+        velX += racer->bumpVelX;
+        velZ += racer->bumpVelZ;
     }
-    if (racer->unkD4 < 0.0) {
-        racer->unkD4 = 0;
+    if (gRacerInputBlocked) {
+        if (velX > 0.5 || velX < -0.5) {
+            velX *= 0.65;
+        } else {
+            velX = 0.0f;
+        }
+        if (velZ > 0.5 || velZ < -0.5) {
+            velZ *= 0.65;
+        } else {
+            velZ = 0.0f;
+        }
+    } else {
+        *shiftX += racer->pushVelX * updateRateF;
+        *shiftZ += racer->pushVelZ * updateRateF;
     }
-    velocity = 5.0f;
+    return move_object(obj, (velX * updateRateF) + *shiftX, obj->y_velocity * updateRateF,
+                       (velZ * updateRateF) + *shiftZ) &&
+           gCurrentPlayerIndex != PLAYER_COMPUTER;
+}
+
+/**
+ * Buoyancy from the waves under the craft, the water-contact interaction flag, and the
+ * rotation to the wave surface. Returns how far above the water line the craft sits.
+ */
+static f32 hovercraft_update_water(Object *obj, Object_Racer *racer, s32 updateRate) {
+    Vec3f waterRotation;
+    f32 waterHeight;
+    f32 sink;
+    s8 waveType;
+    s32 steer;
+
+    sink = 5.0f;
     waterHeight = -10000.0f;
-    // clang-format off
-    // the backslash here is relevant for the match
-    wave_properties = get_wave_properties(obj->trans.y_position, &waterHeight, &water_rotation); \
-    if (wave_properties != SURFACE_DEFAULT) {
-        // clang-format on
-        velocity = racer->velocity;
-        if (velocity < 0.0f) {
-            velocity = -velocity;
+    waveType = get_wave_properties(obj->trans.y_position, &waterHeight, &waterRotation);
+    if (waveType != SURFACE_DEFAULT) {
+        sink = racer->velocity;
+        if (sink < 0.0f) {
+            sink = -sink;
         }
-        if (velocity > 4.0) {
-            velocity = 4.0f;
+        if (sink > 4.0) {
+            sink = 4.0f;
         }
-        velocity *= 0.8;
-        if ((obj->trans.y_position - velocity) < waterHeight) {
-            racer->buoyancy = waterHeight - (obj->trans.y_position - velocity);
+        sink *= 0.8;
+        if ((obj->trans.y_position - sink) < waterHeight) {
+            racer->buoyancy = waterHeight - (obj->trans.y_position - sink);
             racer->waterTimer = 5;
         } else {
             racer->buoyancy = 0.0f;
@@ -2134,46 +2114,32 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
     } else {
         racer->buoyancy = 0.0f;
     }
-    if (racer->waterTimer > 0 && obj->trans.y_position < (waterHeight + velocity)) {
+    if (racer->waterTimer > 0 && obj->trans.y_position < (waterHeight + sink)) {
         obj->interactObj->flags |= INTERACT_FLAGS_UNK_0010;
     } else {
         obj->interactObj->flags &= ~INTERACT_FLAGS_UNK_0010;
     }
-    waterHeight = obj->trans.y_position - (waterHeight + velocity);
+    waterHeight = obj->trans.y_position - (waterHeight + sink);
     if (racer->buoyancy > 0.0) {
-        iTemp = 0;
+        steer = 0;
         if (gCurrentRacerInput & R_TRIG) {
-            iTemp = gCurrentStickX * 2;
+            steer = gCurrentStickX * 2;
         }
-        rotate_racer_in_water(obj, racer, &water_rotation, wave_properties, updateRate, iTemp, 1.0f);
+        rotate_racer_in_water(obj, racer, &waterRotation, waveType, updateRate, steer, 1.0f);
     }
     if (racer->buoyancy > 0.0) {
         obj->trans.y_position += racer->buoyancy * racer->unkC4;
         racer->unkC4 += (0.75 - racer->unkC4) * 0.125;
     }
+    return waterHeight;
+}
 
-    iTemp = racer->bumpTimer; // saves bumpTimer
-    if (gCurrentPlayerIndex == PLAYER_COMPUTER && !boss_race_number()) {
-        onscreen_ai_racer_physics(obj, racer, updateRate);
-    } else {
-        update_racer_collision(obj, racer, updateRate);
-    }
-    if (iTemp == 0 && racer->bumpTimer != 0) {
-        iTemp = 1;
-    }
-    racer->bumpTimer = iTemp; // restores bumpTimer
+/**
+ * Spray and boost emitters for the player's craft, then the particle update itself.
+ */
+static void hovercraft_update_particles(Object *obj, Object_Racer *racer, s32 updateRate) {
+    f32 speedSquared;
 
-    var_f2 = 1.0f / updateRateF;
-    temp = ((obj->trans.x_position - (xPos + racerOx1)) - gRacerExternalShiftX) * var_f2;
-    zVelTemp = ((obj->trans.z_position - (zPos + racerOz1)) - gRacerExternalShiftZ) * var_f2;
-    obj->z_velocity = zVelTemp;
-    obj->x_velocity = temp;
-    obj->y_velocity = (obj->trans.y_position - yPos) * var_f2;
-
-    racer->forwardVel -= (racer->forwardVel + (racer->velocity * 0.05)) * 0.125;
-    if (racer->buoyancy > 0.0 && racer->unk1FB == 0 && obj->y_velocity > 4.0) {
-        obj->y_velocity = 4.0f;
-    }
     if (gNumViewports < 2 && obj->header->particleCount >= 9) {
         if ((gCurrentRacerInput & (A_BUTTON | R_TRIG)) == (A_BUTTON | R_TRIG) &&
             (gCurrentStickX < -30 || gCurrentStickX > 30)) {
@@ -2184,43 +2150,32 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
     }
     if (gCurrentPlayerIndex >= PLAYER_ONE && racer->buoyancy > 0.0) {
         if (gNumViewports < 3) {
-            var_f2 = ((obj->x_velocity * obj->x_velocity) + (obj->y_velocity * obj->y_velocity)) +
-                     (obj->z_velocity * obj->z_velocity);
-            if (var_f2 > 16.0f) {
-                if (var_f2 < 80.0f) {
+            speedSquared = ((obj->x_velocity * obj->x_velocity) + (obj->y_velocity * obj->y_velocity)) +
+                           (obj->z_velocity * obj->z_velocity);
+            if (speedSquared > 16.0f) {
+                if (speedSquared < 80.0f) {
                     obj->particleEmittersEnabled |= OBJ_EMIT_3 | OBJ_EMIT_4;
                 }
-                if (var_f2 > 28.0f) {
+                if (speedSquared > 28.0f) {
                     obj->particleEmittersEnabled |= OBJ_EMIT_1 | OBJ_EMIT_2;
                 }
-                if (gNumViewports == 1 && var_f2 > 10.25f) {
+                if (gNumViewports == 1 && speedSquared > 10.25f) {
                     obj->particleEmittersEnabled |= OBJ_EMIT_7;
                 }
             }
         } else {
             if (racer->velocity < 0.0f) {
-                var_f2 = -racer->velocity;
+                speedSquared = -racer->velocity;
             } else {
-                var_f2 = racer->velocity;
+                speedSquared = racer->velocity;
             }
-            if (var_f2 > 4.0f) {
+            if (speedSquared > 4.0f) {
                 obj->particleEmittersEnabled |= OBJ_EMIT_3 | OBJ_EMIT_4;
             }
         }
     }
     if (gCurrentPlayerIndex != PLAYER_COMPUTER && racer->boostTimer == 0 && gNumViewports < 2) {
-        asset20 = (Object_Boost *) get_misc_asset(ASSET_MISC_20);
-        asset20 = &asset20[racer->racerIndex];
-        iTemp = ((racer->boostType & EMPOWER_BOOST) >> 2) + 10;
-        if (iTemp > 10) {
-            if (asset20->unk70 > 0 || asset20->unk74 > 0.0) {
-                obj->particleEmittersEnabled |= 1 << iTemp;
-            }
-        } else if (asset20->unk70 == 2 && asset20->unk74 < 0.5) {
-            obj->particleEmittersEnabled |= 1 << iTemp;
-        } else if (asset20->unk70 < 2 && asset20->unk74 > 0.0f) {
-            obj->particleEmittersEnabled |= 1 << iTemp;
-        }
+        racer_enable_boost_emitter(obj, racer, 10);
     }
     if (racer->aiPhysicsTimer == 0) {
         obj->particleEmittersEnabled = OBJ_EMIT_NONE;
@@ -2229,36 +2184,45 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
         update_vehicle_particles(obj, updateRate);
         obj->y_velocity -= updateRate * gCurrentRacerWeightStat;
     }
-    gCurrentRacerTransform.rotation.y_rotation = -obj->trans.rotation.y_rotation;
-    gCurrentRacerTransform.rotation.x_rotation = -obj->trans.rotation.x_rotation;
-    gCurrentRacerTransform.rotation.z_rotation = -obj->trans.rotation.z_rotation;
-    gCurrentRacerTransform.scale = 1.0f;
-    gCurrentRacerTransform.x_position = 0.0f;
-    gCurrentRacerTransform.y_position = 0.0f;
-    gCurrentRacerTransform.z_position = 0.0f;
-    mtxf_from_inverse_transform(&transformedMtx, &gCurrentRacerTransform);
-    mtxf_transform_point(transformedMtx, obj->x_velocity, obj->y_velocity, obj->z_velocity, &racer->lateral_velocity,
-                         (f32 *) &racer->vehiclePitch, &racer->velocity);
-    if (racer->groundedWheels == 0 && racer->waterTimer == 0) {
-        iTemp = (-gCurrentStickY * 0x40) & 0xFFFF;
-        var_v1 = iTemp - (obj->trans.rotation.x_rotation & 0xFFFF);
-        if (var_v1 > 0x8000) {
-            var_v1 -= 0xFFFF;
-        }
-        if (var_v1 < -0x8000) {
-            var_v1 += 0xFFFF;
-        }
-        obj->trans.rotation.x_rotation += var_v1 >> 2;
-        var_v0 = -(racer->x_rotation_vel & 0xFFFF);
-        if (var_v0 > 0x8000) {
-            var_v0 -= 0xFFFF;
-        }
-        if (var_v0 < -0x8000) {
-            var_v0 += 0xFFFF;
-        }
-        var_v0 *= updateRate;
-        racer->x_rotation_vel += var_v0 >> 4;
+}
+
+/**
+ * In the air the stick pitches the craft, and its roll settles.
+ */
+static void hovercraft_update_air_pitch(Object *obj, Object_Racer *racer, s32 updateRate) {
+    s32 target;
+    s32 diff;
+    s32 roll;
+
+    if (racer->groundedWheels != 0 || racer->waterTimer != 0) {
+        return;
     }
+    target = (-gCurrentStickY * 0x40) & 0xFFFF;
+    diff = target - (obj->trans.rotation.x_rotation & 0xFFFF);
+    if (diff > 0x8000) {
+        diff -= 0xFFFF;
+    }
+    if (diff < -0x8000) {
+        diff += 0xFFFF;
+    }
+    obj->trans.rotation.x_rotation += diff >> 2;
+    roll = -(racer->x_rotation_vel & 0xFFFF);
+    if (roll > 0x8000) {
+        roll -= 0xFFFF;
+    }
+    if (roll < -0x8000) {
+        roll += 0xFFFF;
+    }
+    roll *= updateRate;
+    racer->x_rotation_vel += roll >> 4;
+}
+
+/**
+ * Tapping R hops the craft; unk1FB holds the frames until it may hop again.
+ */
+static void hovercraft_hop(Object *obj, Object_Racer *racer, s32 updateRate) {
+    f32 airTime;
+
     if (gRaceStartTimer != 0) {
         gCurrentButtonsPressed &= ~R_TRIG;
     }
@@ -2275,25 +2239,249 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
         } else {
             obj->y_velocity += 3.5;
         }
-        var_f2 = ((2.0 * obj->y_velocity) / gCurrentRacerWeightStat);
-        racer->unk1FB = (s32) (var_f2) + 1;
+        airTime = ((2.0 * obj->y_velocity) / gCurrentRacerWeightStat);
+        racer->unk1FB = (s32) (airTime) + 1;
     }
     if (racer->unk1FB > 0) {
         racer->unk1FB -= updateRate;
     } else {
         racer->unk1FB = 0;
     }
-    if (waterHeight > 40.0f) {
+}
+
+/**
+ * The fan at the back turns with the stick and alternates between its two models.
+ */
+static void hovercraft_update_fan(Object *obj) {
+    Object *fan;
+
+    if (obj->attachPoints->count == 1) {
+        fan = obj->attachPoints->obj[0];
+        fan->trans.rotation.y_rotation = (gCurrentStickX * 20) + 0x4000;
+        fan->modelIndex++;
+        fan->modelIndex &= 1;
+    }
+}
+
+/**
+ * One frame of hovercraft physics: read the controls, turn and spin, apply the forces,
+ * move, float on the waves, collide, then derive the velocities for next frame.
+ */
+void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *racer) {
+    f32 throttleForce;
+    f32 brakeForce;
+    f32 drag;
+    f32 accel;
+    f32 speed;
+    f32 force;
+    f32 waterDepth;
+    f32 xPos;
+    f32 yPos;
+    f32 zPos;
+    f32 shiftX;
+    f32 shiftZ;
+    f32 invRate;
+    f32 dialogueScale;
+    f32 steerDivisor;
+    s32 steerInput;
+    s32 surface;
+    s32 stoneWheels;
+    s32 frame;
+    s32 playerMoved;
+
+    if (is_nondefault_vehicle()) {
+        updateRateF *= 1.15;
+    }
+    if (racer->playerIndex >= PLAYER_ONE && gNumViewports < 2) {
+        obj->particleEmittersEnabled |= OBJ_EMIT_9;
+    }
+    gRacerSurfaceSoundId = 0;
+    gCurrentCarSteerVel = 0;
+    gRacerTargetRoll = 0;
+    xPos = obj->trans.x_position;
+    yPos = obj->trans.y_position;
+    zPos = obj->trans.z_position;
+    // The craft is drawn offset along its heading while a dialogue camera is active.
+    dialogueScale = 1.0 - (gDialogueCameraAngle / 10240.0f);
+    shiftX = -racer->ox1 * 10 * dialogueScale;
+    shiftZ = -racer->oz1 * 10 * dialogueScale;
+
+    // Controls.
+    steerDivisor = 8.0f;
+    if (gCurrentPlayerIndex == PLAYER_COMPUTER || racer->raceFinished) {
+        steerDivisor = 32.0f;
+    }
+    racer->steerAngle += ease_step(gCurrentStickX - racer->steerAngle, updateRateF, steerDivisor);
+    handle_racer_items(obj, racer, updateRate);
+    racer_update_tilt_vector(obj, racer);
+    racer_attack_handler_hovercraft(obj, racer);
+    if (gCurrentPlayerIndex != PLAYER_COMPUTER) {
+        handle_racer_head_turning(obj, racer, updateRate);
+    } else {
+        slowly_reset_head_angle(racer);
+    }
+    racer_ease_throttle(racer, updateRateF, 0.016);
+    force = racer->throttle;
+    if ((racer->velocity > 0.0f) && (gCurrentRacerInput & A_BUTTON)) {
+        force = 1.0f;
+    }
+    force *= 3.0f;
+    throttleForce = (force * force) / 9.0f;
+    if (racer->exitObj != NULL) {
+        racer->throttle = 0.5f;
+    }
+    if (racer->velocity > 0.0) {
+        throttleForce *= 1.2;
+    }
+    if (racer_ease_brake(racer, updateRateF, 0.046) && racer->velocity < -2.0) {
+        rumble_set(racer->playerIndex, RUMBLE_TYPE_5);
+    }
+    force = racer->brake * 3.0f;
+    brakeForce = force * force / 9.0f;
+    if (racer->velocity > 0.0) {
+        brakeForce *= 0.3;
+    }
+
+    if (racer->zipperDirCorrection != 0) {
+        gCurrentStickX = 0;
+        racer->magnetTimer = 0;
+        racer->steerAngle = 0;
+        racer->spinout_timer = 0;
+        racer->trickType = 0;
+        racer_zipper_align(obj, racer, updateRate);
+    }
+    hovercraft_update_spinout(obj, racer, updateRate, brakeForce);
+    racer_update_basis_vectors(obj, racer);
+    if (racer->approachTarget == NULL) {
+        obj->animationID = 0;
+        frame = racer->steerAngle;
+        frame >>= 1;
+        frame = 40 - frame;
+        if (frame < 0) {
+            frame = 0;
+        }
+        if (frame > 73) {
+            frame = 73;
+        }
+        obj->animFrame = frame;
+    }
+
+    // Acceleration from the speed curve, gravity, and steering.
+    speed = racer->velocity;
+    if (speed < 0.0f) {
+        speed = -speed;
+    }
+    if (speed > 12.0f) {
+        speed = 12.0f;
+    }
+    accel = racer_speed_curve(speed);
+    gCurrentRacerWeightStat *= 0.75;
+    if (racer->groundedWheels >= 3) {
+        obj->y_velocity -= gCurrentRacerWeightStat * 0.5 * updateRateF;
+    } else {
+        obj->y_velocity -= gCurrentRacerWeightStat * updateRateF;
+    }
+    steerInput = (gCurrentPlayerIndex != PLAYER_COMPUTER && !racer->raceFinished) ? racer->steerAngle : gCurrentStickX;
+    drag = 0.004;
+    obj->y_velocity -= (obj->y_velocity * 0.025) * updateRateF;
+    if (gCurrentRacerInput & B_BUTTON && gCurrentStickY >= -40 && racer->velocity >= -0.5) {
+        drag *= 16.0f;
+    }
+    force = (steerInput * 8) * updateRate;
+    if (gCurrentStickY < 0) {
+        speed = -gCurrentStickY;
+        force *= 1.0 + (speed / 112.0);
+        accel *= 1.0 - (speed / 300.0);
+    }
+    force *= gCurrentRacerHandlingStat;
+    racer->steerVisualRotation -= (((s32) force) & 0xffff) & 0xffff;
+    if (racer->groundedWheels == 0 && racer->buoyancy == 0.0) {
+        if (obj->y_velocity < 0.0f) {
+            racer->trickType += updateRate;
+        }
+        if (racer->trickType > 25) {
+            racer->trickType = 25;
+        }
+    }
+
+    // Surfaces.
+    surface = racer_dominant_surface(racer, &stoneWheels);
+    racer_check_taj_pad(racer, surface);
+    hovercraft_land(obj, racer);
+    accel *= handle_racer_top_speed(obj, racer) * 1.7;
+    if (racer->boostTimer > 0) {
+        if (gRaceStartTimer == 0) {
+            throttleForce = 1.0f;
+            brakeForce = 0.0f;
+            if (accel != 0.0) {
+                accel = 2.0f;
+            }
+            racer->boostTimer -= updateRate;
+        }
+    } else {
+        racer->boostTimer = 0;
+    }
+    if (gRaceStartTimer != 0) {
+        accel = 0.0f;
+    }
+    if (stoneWheels != 0) {
+        speed = ((f32 *) get_misc_asset(ASSET_MISC_32))[stoneWheels];
+        accel *= speed;
+        drag /= speed;
+        racer->magnetTimer = 0;
+        racer->lateral_velocity = 0.0f;
+    }
+    if ((racer->boostTimer == 0) && (surface == SURFACE_ZIP_PAD)) {
+        racer_start_zip_pad_boost(obj, racer);
+    }
+
+    hovercraft_update_camera_yaw(obj, racer, updateRate);
+    if (racer->zipperDirCorrection == 0) {
+        hovercraft_apply_forces(obj, racer, updateRateF, throttleForce, brakeForce, accel, drag);
+    }
+    racer->driftHeadingOffset = 0;
+    racer->y_rotation_vel += (gCurrentCarSteerVel - racer->y_rotation_vel) >> 3;
+    obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
+    racer->z_rotation_vel += (gRacerTargetRoll - racer->z_rotation_vel) >> 3;
+    obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
+    if (racer->bumpTimer > 0) {
+        racer->bumpTimer -= updateRate;
+    } else {
+        racer->bumpTimer = 0;
+    }
+    shiftX += racer->ox1 * 10 * dialogueScale;
+    shiftZ += racer->oz1 * 10 * dialogueScale;
+    playerMoved = hovercraft_move(obj, racer, updateRateF, &shiftX, &shiftZ);
+    racer->unkD0 -= (racer->unkD0 * 0.125) * updateRateF;
+    racer->unkD4 = (-obj->y_velocity) * 7.0;
+    if (racer->unkD4 > 35.0) {
+        racer->unkD4 = 35.0;
+    }
+    if (racer->unkD4 < 0.0) {
+        racer->unkD4 = 0;
+    }
+    waterDepth = hovercraft_update_water(obj, racer, updateRate);
+    racer_collide_keeping_bump(obj, racer, updateRate);
+
+    // The velocity for next frame is whatever movement survived collision.
+    invRate = 1.0f / updateRateF;
+    obj->x_velocity = ((obj->trans.x_position - (xPos + shiftX)) - gRacerExternalShiftX) * invRate;
+    obj->z_velocity = ((obj->trans.z_position - (zPos + shiftZ)) - gRacerExternalShiftZ) * invRate;
+    obj->y_velocity = (obj->trans.y_position - yPos) * invRate;
+    racer->forwardVel -= (racer->forwardVel + (racer->velocity * 0.05)) * 0.125;
+    if (racer->buoyancy > 0.0 && racer->unk1FB == 0 && obj->y_velocity > 4.0) {
+        obj->y_velocity = 4.0f;
+    }
+    hovercraft_update_particles(obj, racer, updateRate);
+    racer_velocity_to_local(obj, racer, TRUE);
+    hovercraft_update_air_pitch(obj, racer, updateRate);
+    hovercraft_hop(obj, racer, updateRate);
+    if (waterDepth > 40.0f) {
         racer->unkC4 = 0.11f;
     }
-    if (obj->attachPoints->count == 1) {
-        vehiclePart = obj->attachPoints->obj[0];
-        vehiclePart->trans.rotation.y_rotation = (gCurrentStickX * 20) + 0x4000;
-        vehiclePart->modelIndex++;
-        vehiclePart->modelIndex &= 1;
-    }
+    hovercraft_update_fan(obj);
     second_racer_camera_update(obj, racer, CAMERA_HOVERCRAFT, updateRateF);
-    if (playerObjectHasMoved) {
+    if (playerMoved) {
         racer_find_start_node(obj, racer);
     }
 }
