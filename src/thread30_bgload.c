@@ -1,12 +1,9 @@
 #include "thread30_bgload.h"
 #include "game.h"
 #include "macros.h"
-#include "stacks.h"
 #include "thread3_main.h"
-#include <ultra64.h>
 
 /************ .data ************/
-
 s32 gThread30NeedToLoadLevel = FALSE;
 s32 gThread30LevelIdToLoad = -1;
 s32 gThread30CutsceneIdToLoad = -1;
@@ -14,30 +11,13 @@ s32 gThread30LoadDelay = 0;
 
 /*******************************/
 
-/************ .bss ************/
-
-OSThread gThread30;
-OSMesgQueue gThread30MesgQueue;
-OSMesg gThread30Message[2];
-u64 gThread30Stack[STACKSIZE(STACK_BGLOAD)];
-
-/*****************************/
-
 /**
- * Initalizes and starts thread30()
+ * On the N64 a background thread loaded the menus' preview levels. The host
+ * loads them on the main thread a few frames after they are requested, which
+ * is all the menus can observe.
  */
 void bgload_init(void) {
-    osCreateMesgQueue(&gThread30MesgQueue, gThread30Message, ARRAY_COUNT(gThread30Message));
-    osCreateThread(&gThread30, 30, &thread30_bgload, NULL, &gThread30Stack[STACKSIZE(STACK_BGLOAD)], 8);
-    osStartThread(&gThread30);
-}
-
-/**
- * Stop thread30()
- * Official Name: amStop
- */
-void bgload_kill(void) {
-    osStopThread(&gThread30);
+    gThread30NeedToLoadLevel = FALSE;
 }
 
 /**
@@ -48,17 +28,13 @@ s32 bgload_active(void) {
 }
 
 /**
- * If gThread30NeedToLoadLevel is set, then decrement gThread30LoadDelay. If gThread30LoadDelay is 0,
- * then signal thread30 to load a level.
+ * If a level has been requested, count down the delay and then load it.
  */
 void bgload_tick(void) {
     if (gThread30NeedToLoadLevel && gThread30LoadDelay > 0) {
         gThread30LoadDelay--;
         if (gThread30LoadDelay == 0) {
-            // There is no thread 30 on PC — nothing would ever receive the
-            // message, and gThread30NeedToLoadLevel would stay set forever,
-            // which wedges every menu that waits on bgload_active(). Load here
-            // instead and clear the flag thread30_bgload() would have cleared.
+            // -1 means there won't be any racers loaded.
             load_level_for_menu(gThread30LevelIdToLoad, -1, gThread30CutsceneIdToLoad);
             gThread30NeedToLoadLevel = FALSE;
         }
@@ -85,21 +61,4 @@ s32 bgload_start(s32 levelId, s32 cutsceneId) {
         return TRUE;
     }
     return FALSE;
-}
-
-/**
- * Waits for a signal from the main thread to load a level asynchronously.
- */
-void thread30_bgload(UNUSED void *arg) {
-    OSMesg mesg = 0;
-    while (TRUE) {
-        // Wait for a signal from the main thread
-        osRecvMesg(&gThread30MesgQueue, &mesg, OS_MESG_BLOCK);
-        if (mesg != (OSMesg) OS_MESG_TYPE_LOOPBACK) {
-            continue;
-        }
-        // -1 means there won't be any racers loaded.
-        load_level_for_menu(gThread30LevelIdToLoad, -1, gThread30CutsceneIdToLoad);
-        gThread30NeedToLoadLevel = FALSE;
-    }
 }

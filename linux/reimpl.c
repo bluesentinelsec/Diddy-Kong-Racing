@@ -1,4 +1,4 @@
-// OS reimplementation stubs for the PC build.
+// The host services the game uses (see src/host.h).
 
 #include <stdarg.h>
 #include <stdint.h>
@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "../src/host.h"
 #include "input.h"
 #include "trace.h"
 #include <SDL3/SDL.h>
@@ -19,25 +20,11 @@ typedef unsigned int u32;
 typedef unsigned long long u64;
 
 // ---------------------------------------------------------------------------
-// RSP microcode blobs (task-submission code references these; replaced by the
-// HLE renderer / audio interpreter later)
-// ---------------------------------------------------------------------------
-u64 rspbootTextStart[1] = { 0 };
-u64 rspbootTextEnd[1] = { 0 };
-u64 aspMainTextStart[1] = { 0 };
-u64 aspMainDataStart[1] = { 0 };
-u64 rspF3DDKRXbusStart[1] = { 0 };
-u64 rspF3DDKRDataXbusStart[1] = { 0 };
-u64 rspF3DDKRFifoStart[1] = { 0 };
-u64 rspF3DDKRDataFifoStart[1] = { 0 };
-
-// ---------------------------------------------------------------------------
 // Linker-script symbols (placed by the N64 linker script; static here)
 // ---------------------------------------------------------------------------
 // Becomes the real asset LUT/data location once the PC asset loader exists.
 #include "pc_rom.h"
 u8 *__ROM_END; // cheat-menu checksum bound
-u8 *main_BSS_START[1] = { 0 };
 
 // N64: the main heap is [end of BSS .. RAM_END], carved out by the linker.
 // PC: a static pool. memory.c's "ramEnd - (s32)&gMainMemoryPool" sizing math
@@ -283,26 +270,11 @@ float __libm_qnan_f = __builtin_nanf("");
 // save file on disk.
 // ---------------------------------------------------------------------------
 #define PC_CONT_TYPE_NORMAL 0x0005
-#define PC_CONT_NO_RESPONSE 0x8
+#define PC_CONT_NO_RESPONSE 0x8 // CONT_NO_RESPONSE_ERROR
 #define PC_PFS_ERR_NOPACK 1
 #define PC_MAXCONTROLLERS 4
 
-typedef struct {
-    u16 type;
-    u8 status;
-    u8 error;
-} PCContStatus;
-
-typedef struct {
-    u16 button;
-    s8 stick_x;
-    s8 stick_y;
-    u8 error;
-} PCContPad;
-
-extern s32 osSendMesg(void *mq, void *msg, s32 flags);
-
-s32 osContInit(void *mq, u8 *bitpattern, PCContStatus *status) {
+u8 pc_controllers_init(PcContStatus *status) {
     s32 i;
 
     s32 ports = input_script_ports(); // a script may plug in controllers 2..4
@@ -310,22 +282,15 @@ s32 osContInit(void *mq, u8 *bitpattern, PCContStatus *status) {
     if (ports < 1) {
         ports = 1;
     }
-    *bitpattern = (u8) ((1 << ports) - 1);
     for (i = 0; i < PC_MAXCONTROLLERS; i++) {
         status[i].type = (i < ports) ? PC_CONT_TYPE_NORMAL : 0;
         status[i].status = 0;
         status[i].error = (i < ports) ? 0 : PC_CONT_NO_RESPONSE;
     }
-    return 0;
+    return (u8) ((1 << ports) - 1);
 }
 
-s32 osContStartReadData(void *mq) {
-    // Poll "completes" instantly: post the done-message the game waits for.
-    osSendMesg(mq, NULL, 0 /* OS_MESG_NOBLOCK */);
-    return 0;
-}
-
-void osContGetReadData(PCContPad *pads) {
+void pc_controllers_read(PcContPad *pads) {
     s32 i;
 
     s32 ports = input_script_ports();
@@ -460,12 +425,12 @@ static void eeprom_init(void) {
     eeprom_flush();
 }
 
-s32 osEepromProbe(void *mq) {
+s32 pc_eeprom_probe(void) {
     eeprom_init();
     return 1; // EEPROM_TYPE_4K — present
 }
 
-s32 osEepromRead(void *mq, u8 address, u8 *buffer) {
+s32 pc_eeprom_read(u8 address, u8 *buffer) {
     eeprom_init();
     if (address >= PC_EEPROM_BLOCKS) {
         memset(buffer, 0xFF, 8);
@@ -475,7 +440,7 @@ s32 osEepromRead(void *mq, u8 address, u8 *buffer) {
     return 0;
 }
 
-s32 osEepromWrite(void *mq, u8 address, u8 *buffer) {
+s32 pc_eeprom_write(u8 address, u8 *buffer) {
     eeprom_init();
     if (address < PC_EEPROM_BLOCKS) {
         if (memcmp(&gEeprom[address * 8], buffer, 8) != 0) {
@@ -486,60 +451,60 @@ s32 osEepromWrite(void *mq, u8 address, u8 *buffer) {
     return 0;
 }
 
-s32 osPfsInit(void *mq, void *pfs, s32 channel) {
+s32 pc_pfs_init(void *pfs, s32 channel) {
     return PC_PFS_ERR_NOPACK;
 }
 
-s32 osPfsIsPlug(void *mq, u8 *pattern) {
+s32 pc_pfs_is_plug(u8 *pattern) {
     *pattern = 0;
     return 0;
 }
 
-s32 osPfsFileState(void *pfs, s32 fileNo, void *state) {
+s32 pc_pfs_file_state(void *pfs, s32 fileNo, void *state) {
     return PC_PFS_ERR_NOPACK;
 }
 
-s32 osPfsReadWriteFile(void *pfs, s32 fileNo, u8 flag, s32 offset, s32 size, u8 *data) {
+s32 pc_pfs_read_write_file(void *pfs, s32 fileNo, u8 flag, s32 offset, s32 size, u8 *data) {
     return PC_PFS_ERR_NOPACK;
 }
 
-s32 osPfsNumFiles(void *pfs, s32 *maxFiles, s32 *filesUsed) {
+s32 pc_pfs_num_files(void *pfs, s32 *maxFiles, s32 *filesUsed) {
     return PC_PFS_ERR_NOPACK;
 }
 
-s32 osPfsFreeBlocks(void *pfs, s32 *bytesNotUsed) {
+s32 pc_pfs_free_blocks(void *pfs, s32 *bytesNotUsed) {
     return PC_PFS_ERR_NOPACK;
 }
 
-s32 osPfsReFormat(void *pfs, void *mq, s32 channel) {
+s32 pc_pfs_reformat(void *pfs, s32 channel) {
     return PC_PFS_ERR_NOPACK;
 }
 
-s32 osPfsFindFile(void *pfs, u16 companyCode, u32 gameCode, u8 *gameName, u8 *extName, s32 *fileNo) {
+s32 pc_pfs_find_file(void *pfs, u16 companyCode, u32 gameCode, u8 *gameName, u8 *extName, s32 *fileNo) {
     return PC_PFS_ERR_NOPACK;
 }
 
-s32 osPfsDeleteFile(void *pfs, u16 companyCode, u32 gameCode, u8 *gameName, u8 *extName) {
+s32 pc_pfs_delete_file(void *pfs, u16 companyCode, u32 gameCode, u8 *gameName, u8 *extName) {
     return PC_PFS_ERR_NOPACK;
 }
 
-s32 osPfsChecker(void *pfs) {
+s32 pc_pfs_checker(void *pfs) {
     return PC_PFS_ERR_NOPACK;
 }
 
-s32 osPfsAllocateFile(void *pfs, u16 companyCode, u32 gameCode, u8 *gameName, u8 *extName, s32 size, s32 *fileNo) {
+s32 pc_pfs_allocate_file(void *pfs, u16 companyCode, u32 gameCode, u8 *gameName, u8 *extName, s32 size, s32 *fileNo) {
     return PC_PFS_ERR_NOPACK;
 }
 
-s32 osMotorInit(void *mq, void *pfs, s32 channel) {
+s32 pc_motor_init(void *pfs, s32 channel) {
     return PC_PFS_ERR_NOPACK; // no rumble pak
 }
 
-s32 osMotorStart(void *pfs) {
+s32 pc_motor_start(void *pfs) {
     return 0;
 }
 
-s32 osMotorStop(void *pfs) {
+s32 pc_motor_stop(void *pfs) {
     return 0;
 }
 
@@ -558,31 +523,41 @@ void isv_printf(const char *fmt, ...) {
 }
 
 // ---------------------------------------------------------------------------
-// Cache management (no caches to manage on the host)
+// Logging: the game's diagnostic prints (stubbed_printf, formerly the IS-Viewer
+// and rmon channels) land on the host's standard output.
 // ---------------------------------------------------------------------------
-void osWritebackDCache(void *vaddr, s32 size) {
+void pc_vlog(const char *fmt, va_list args) {
+    vprintf(fmt, args);
 }
-void osWritebackDCacheAll(void) {
-}
-void osInvalDCache(void *vaddr, s32 size) {
-}
-void osInvalICache(void *vaddr, s32 size) {
+
+void pc_log(const char *fmt, ...) {
+    va_list args;
+
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
 }
 
 // ---------------------------------------------------------------------------
-// Interrupt management (single-threaded host: nothing to mask)
+// The audio library (libultra/src/audio, the one part of libultra still in the
+// build) speaks three names of the N64 OS: a virtual-to-physical address map,
+// an interrupt mask and an assertion. On the host they are the identity, a
+// no-op and a message.
 // ---------------------------------------------------------------------------
-s32 __osDisableInt(void) {
-    return 0;
+uintptr_t osVirtualToPhysical(void *addr) {
+    return (uintptr_t) addr;
 }
-void __osRestoreInt(s32 mask) {
-}
+
 u32 osSetIntMask(u32 mask) {
     return 0;
 }
 
+void __n64_assert(const char *condition, const char *file, s32 line) {
+    fprintf(stderr, "ASSERT: %s (%s:%d)\n", condition, file, line);
+}
+
 // ---------------------------------------------------------------------------
-// Timer / CP0 / FPU registers
+// Clock
 // ---------------------------------------------------------------------------
 // The N64 Count register ticks at 46.875 MHz (CPU clock / 2).
 // 46875000 ticks/sec over 1e9 ns/sec = exactly 3/64 ticks per nanosecond.
@@ -592,7 +567,7 @@ u32 osSetIntMask(u32 mask) {
 // scrambled the character-select dance on hosts whose clock has microsecond
 // granularity (macOS CLOCK_MONOTONIC). So read the finest clock available and
 // force each read past the previous one.
-u32 osGetCount(void) {
+u32 pc_clock_count(void) {
     static u32 sLast;
     struct timespec ts;
     u64 ns;
@@ -613,55 +588,4 @@ u32 osGetCount(void) {
     }
     sLast = count;
     return count;
-}
-void __osSetCompare(u32 value) {
-}
-u32 __osGetSR(void) {
-    return 0;
-}
-void __osSetSR(u32 value) {
-}
-u32 __osSetFpcCsr(u32 value) {
-    return 0;
-}
-
-// ---------------------------------------------------------------------------
-// TLB (host has a real MMU; virtual==physical as far as the game cares)
-// ---------------------------------------------------------------------------
-u32 __osProbeTLB(void *vaddr) {
-    return 0;
-}
-void osMapTLBRdb(void) {
-}
-
-// ---------------------------------------------------------------------------
-// Exception / hardware-interrupt plumbing (was exceptasm.s data)
-// ---------------------------------------------------------------------------
-typedef struct {
-    unsigned int inst1;
-    unsigned int inst2;
-    unsigned int inst3;
-    unsigned int inst4;
-} __osExceptionVector;
-__osExceptionVector __osExceptionPreamble[1] = { { 0, 0, 0, 0 } };
-
-// Pre-2.0J layout (both PC targets build VERSION_G): a plain array of
-// handlers, with no stack frame.
-s32 (*__osHwIntTable[8])(void) = { 0 };
-
-// ---------------------------------------------------------------------------
-// Thread context switching (was exceptasm.s code).
-// Empty stubs for now, same as the OoT port's bring-up state — the real
-// scheduler replacement is its own milestone.
-// ---------------------------------------------------------------------------
-void __osEnqueueThread(void **queue, void *thread) {
-}
-void __osEnqueueAndYield(void **queue) {
-}
-void *__osPopThread(void **queue) {
-    return 0;
-}
-void __osDispatchThread(void) {
-}
-void __osCleanupThread(void) {
 }

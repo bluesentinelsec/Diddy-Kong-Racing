@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "host.h"
 #include "memory.h"
 
 #include "asset_enums.h"
@@ -83,7 +84,7 @@ SoundHandle gRacerSoundMask;
  * Allocate memory for all the audio systems, including sequence data, sound data and heaps.
  * Afterwards, set up the audio thread and start it.
  */
-void audio_init(OSSched *sc) {
+void audio_init(void) {
     s32 i;
     ALSynConfig synth_config;
     s32 *addrPtr;
@@ -151,7 +152,7 @@ void audio_init(OSSched *sc) {
     synth_config.fxType[1] = AL_FX_BIGROOM;
     synth_config.outputRate = 0;
     synth_config.heap = &gALHeap;
-    amCreateAudioMgr(&synth_config, 12, sc);
+    amCreateAudioMgr(&synth_config);
     gMusicPlayer = sound_seqplayer_init(24, MUSIC_PLAYER_MAX_EVENTS);
     set_voice_limit(gMusicPlayer, 18);
     gJinglePlayer = sound_seqplayer_init(16, 50);
@@ -166,7 +167,6 @@ void audio_init(OSSched *sc) {
     audConfig.numGroups = 64;
     audConfig.heap = &gALHeap;
     sndp_init_player(&audConfig);
-    audioStartThread();
     sound_volume_change(VOLUME_NORMAL);
     mempool_free(addrPtr);
     sndp_set_active_sound_limit(10);
@@ -265,7 +265,7 @@ void music_play(u8 seqID) {
             music_sequence_start(gCurrentSequenceID, gMusicPlayer);
         }
         gMusicTempo = alCSPGetTempo(gMusicPlayer);
-        audioPrevCount = osGetCount();
+        audioPrevCount = pc_clock_count();
         gMusicPlaying = TRUE;
         gDynamicMusicChannelMask = MUSIC_CHAN_MASK_NONE;
     }
@@ -573,7 +573,7 @@ u8 music_is_playing(void) {
  */
 f32 music_animation_fraction(void) {
     f32 tmp;
-    u32 cnt = osGetCount();
+    u32 cnt = pc_clock_count();
     if ((u32) audioPrevCount < cnt) {
         gMusicAnimationTick += (f32) (cnt - audioPrevCount) / 46875.0f;
     } else {

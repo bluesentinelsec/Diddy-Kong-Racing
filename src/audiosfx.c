@@ -490,9 +490,6 @@ static void sndp_remove_events(ALEventQueue *evtq, ALSoundState *state, u16 even
     ALEventListItem *thisItem;
     ALEventListItem *nextItem;
     ALSndpEvent *thisEvent;
-    OSIntMask mask;
-
-    mask = osSetIntMask(OS_IM_NONE);
 
     thisNode = evtq->allocList.next;
     while (thisNode != 0) {
@@ -509,8 +506,6 @@ static void sndp_remove_events(ALEventQueue *evtq, ALSoundState *state, u16 even
         }
         thisNode = nextNode;
     }
-
-    osSetIntMask(mask);
 }
 
 /**
@@ -520,15 +515,12 @@ static void sndp_remove_events(ALEventQueue *evtq, ALSoundState *state, u16 even
  * Official Name: getSoundStateCounts
  */
 u16 sndp_get_state_counts(u16 *numFree, u16 *numAllocated) {
-    OSIntMask mask;
     u16 allocatedCounter;
     u16 freeCounter;
     u16 allocatedRevCounter;
     ALSoundState *freePtr;
     ALSoundState *allocatedPtr;
     ALSoundState *allocatedRevPtr;
-
-    mask = osSetIntMask(OS_IM_NONE);
     allocatedPtr = gSoundStateLists.allocHead;
     freePtr = gSoundStateLists.freeHead;
     allocatedRevPtr = gSoundStateLists.allocTail;
@@ -548,8 +540,6 @@ u16 sndp_get_state_counts(u16 *numFree, u16 *numAllocated) {
     *numFree = freeCounter;
     *numAllocated = allocatedCounter;
 
-    osSetIntMask(mask);
-
     return allocatedRevCounter;
 }
 
@@ -562,13 +552,11 @@ ALSoundState *sndp_allocate(UNUSED ALBank *bank, ALSound *sound) {
     s32 isLooping;
     ALKeyMap *keyMap;
     ALSoundState *state;
-    u32 mask;
     s32 priority;
 
     state = gSoundStateLists.freeHead;
     keyMap = sound->keyMap;
     if (state != NULL) {
-        mask = osSetIntMask(OS_IM_NONE);
         gSoundStateLists.freeHead = state->next;
         alUnlink((ALLink *) state);
         if (gSoundStateLists.allocHead != NULL) {
@@ -582,7 +570,6 @@ ALSoundState *sndp_allocate(UNUSED ALBank *bank, ALSound *sound) {
             gSoundStateLists.allocHead = state;
             gSoundStateLists.allocTail = state;
         }
-        osSetIntMask(mask);
 
         isLooping = sound->envelope->decayTime == -1;
         priority = isLooping + AL_SNDP_PRIORITY_DEFAULT; // Looped sounds are assigned higher priority
@@ -794,11 +781,8 @@ void sndp_stop(ALSoundState *state) {
  * Schedules a stop event for all sound states that have the specified flags set.
  */
 void sndp_stop_with_flags(u8 flags) {
-    OSIntMask mask;
     ALSndpEvent evt;
     ALSoundState *soundState;
-
-    mask = osSetIntMask(OS_IM_NONE);
     soundState = gSoundStateLists.allocHead;
     while (soundState != NULL) {
         evt.common.type = AL_SNDP_STOP_EVT;
@@ -809,7 +793,6 @@ void sndp_stop_with_flags(u8 flags) {
         }
         soundState = soundState->next;
     }
-    osSetIntMask(mask);
 }
 
 /**
@@ -871,12 +854,9 @@ u16 sndp_get_group_volume(u8 groupID) {
  * Official Name: gsSndpSetMasterVolume
  */
 void sndp_set_group_volume(u8 groupID, u16 volume) {
-    OSIntMask mask;
     ALSoundState *state;
     UNUSED s32 pad;
     ALSndpEvent evt;
-
-    mask = osSetIntMask(OS_IM_NONE);
     state = gSoundStateLists.allocHead;
     gSoundGroupVolume[groupID] = volume;
 
@@ -888,6 +868,4 @@ void sndp_set_group_volume(u8 groupID, u16 volume) {
         }
         state = state->next;
     }
-
-    osSetIntMask(mask);
 }

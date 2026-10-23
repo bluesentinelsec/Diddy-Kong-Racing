@@ -4,6 +4,7 @@
 #include "macros.h"
 #include "memory.h"
 #include "types.h"
+#include "host.h"
 #include "video.h"
 
 #define SCREEN_HEIGHT_PART 6
@@ -41,7 +42,7 @@ UNUSED u32 screenimage_load(s32 screenIndex) {
         return (u32) OS_PHYSICAL_TO_K0(0x100000);
     } else {
         if (screenIndex < 0 || screenIndex >= screenTableCount) {
-            rmonPrintf("SCREEN: No out of range!!\n");
+            pc_log("SCREEN: No out of range!!\n");
             screenIndex = 0;
         }
 

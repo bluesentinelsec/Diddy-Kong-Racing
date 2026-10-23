@@ -3,66 +3,29 @@
 
 #include "common.h"
 #include "gzip.h"
+#include "host.h"
 #include "macros.h"
 #include "memory.h"
-#include "ultra64.h"
 
 /************ .bss ************/
 
-OSIoMesg gAssetsDmaIoMesg;
-OSMesg gDmaMesg;
-OSMesgQueue gDmaMesgQueue;
-OSMesg gPIMesgBuf[16];
-OSMesgQueue gPIMesgQueue;
-#if VERSION >= VERSION_79
-OSMesg gDmaMutexBuf;
-OSMesgQueue gDmaMutex;
-#define dmacopy_internal dmacopy_v1
-#else
-#define dmacopy_internal dmacopy
-#endif
 u32 *gAssetsLookupTable;
 
 /*******************************/
 
-// These are both defined in the generated dkr.ld file.
-#include "pc_rom.h" // the same two ROM offsets, as constants
-
-// linux/reimpl.c: assets served from assets/assets{,.lut}.bin on disk.
-extern u32 pc_asset_lut_size(void);
-extern void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes);
-extern s32 pc_asset_image_inflated(void);
+#include "pc_rom.h" // the two ROM offsets the asset image is addressed from, as constants
 
 /**
- * TRUE when the asset image was packed by tools/assets.py and so stores the
- * entries the ROM keeps deflated (object models, animations, level models and
- * level object maps) already inflated. Those loaders then read them as they are.
- */
-s32 asset_image_inflated(void) {
-    return pc_asset_image_inflated();
-}
-
-/**
- * Set up the peripheral interface message queues and scheduling.
- * This will send messages when DMA reads are finished.
- * After, allocate space and load the asset table into RAM.
+ * Load the asset lookup table: the offset of every section of the asset image.
  * Official Name: piInit
  */
 void pi_init(void) {
     u32 assetTableSize;
-    osCreateMesgQueue(&gPIMesgQueue, gPIMesgBuf, ARRAY_COUNT(gPIMesgBuf));
-    osCreateMesgQueue(&gDmaMesgQueue, &gDmaMesg, 1);
-    osCreatePiManager((OSPri) 150, &gPIMesgQueue, gPIMesgBuf, ARRAY_COUNT(gPIMesgBuf));
-
-#if VERSION >= VERSION_79
-    osCreateMesgQueue(&gDmaMutex, &gDmaMutexBuf, 1);
-    osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
-#endif
 
     assetTableSize = pc_asset_lut_size();
     gAssetsLookupTable = (u32 *) mempool_alloc_safe(assetTableSize, COLOUR_TAG_GREY);
     mempool_locked_set((u8 *) gAssetsLookupTable);
-    dmacopy_internal((u32) (uintptr_t) __ASSETS_LUT_START, (uintptr_t) gAssetsLookupTable, (s32) assetTableSize);
+    dmacopy((u32) (uintptr_t) __ASSETS_LUT_START, (uintptr_t) gAssetsLookupTable, (s32) assetTableSize);
 }
 
 /**
@@ -75,11 +38,6 @@ u32 *asset_table_load(u32 assetIndex) {
     s32 size;
     u32 start;
 
-#if VERSION >= VERSION_79
-    OSMesg msg = NULL;
-    osRecvMesg(&gDmaMutex, &msg, OS_MESG_BLOCK);
-#endif
-
     if (gAssetsLookupTable[0] < assetIndex) {
         return NULL;
     }
@@ -91,91 +49,8 @@ u32 *asset_table_load(u32 assetIndex) {
     if (out == 0) {
         return NULL;
     }
-
-    dmacopy_internal((u32) (uintptr_t) (start + __ASSETS_LUT_END), (uintptr_t) out, size);
-
-#if VERSION >= VERSION_79
-    osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
-#endif
-
+    dmacopy((u32) (uintptr_t) (start + __ASSETS_LUT_END), (uintptr_t) out, size);
     return out;
-}
-
-/**
- * Loads a gzip compressed asset from the ROM file.
- * Returns a pointer to the decompressed data.
- * Official name: piRomLoadCompressed
- */
-UNUSED u8 *asset_table_load_zipped(u32 assetIndex, s32 extraMemory) {
-    s32 size;
-    s32 start;
-    s32 totalSpace;
-    u8 *gzipHeaderRamPos;
-    u8 *out;
-
-#if VERSION >= VERSION_79
-    OSMesg msg = NULL;
-    osRecvMesg(&gDmaMutex, &msg, OS_MESG_BLOCK);
-#endif
-
-    if (gAssetsLookupTable[0] < assetIndex) {
-        return NULL;
-    }
-    assetIndex++;
-    out = (u8 *) (assetIndex + gAssetsLookupTable);
-    start = ((s32 *) out)[0];
-    size = ((s32 *) out)[1] - start;
-    gzipHeaderRamPos = (u8 *) mempool_alloc_safe(8, COLOUR_TAG_WHITE);
-
-    dmacopy_internal((u32) (start + __ASSETS_LUT_END), (u32) gzipHeaderRamPos, 8);
-
-    totalSpace = byteswap32(gzipHeaderRamPos) + extraMemory;
-    mempool_free(gzipHeaderRamPos);
-    out = (u8 *) mempool_alloc_safe(totalSpace + extraMemory, COLOUR_TAG_GREY);
-    if (out == NULL) {
-        return NULL;
-    }
-    gzipHeaderRamPos = (out + totalSpace) - size;
-    if (1) {} // Fakematch
-    dmacopy_internal((u32) (start + __ASSETS_LUT_END), (u32) gzipHeaderRamPos, size);
-    gzip_inflate(gzipHeaderRamPos, out);
-
-#if VERSION >= VERSION_79
-    osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
-#endif
-
-    return out;
-}
-
-/**
- * Loads an asset section to a specific memory address.
- * Returns the size of asset section.
- */
-UNUSED s32 asset_table_load_addr(u32 assetIndex, uintptr_t address) {
-    u32 start;
-    s32 size;
-    u32 *index;
-
-#if VERSION >= VERSION_79
-    OSMesg msg = NULL;
-    osRecvMesg(&gDmaMutex, &msg, OS_MESG_BLOCK);
-#endif
-
-    if (gAssetsLookupTable[0] < assetIndex) {
-        return NULL;
-    }
-    assetIndex++;
-    index = assetIndex + gAssetsLookupTable;
-    start = *index;
-    size = *(index + 1) - start;
-
-    dmacopy_internal((u32) (uintptr_t) (start + __ASSETS_LUT_END), address, size);
-
-#if VERSION >= VERSION_79
-    osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
-#endif
-
-    return size;
 }
 
 /**
@@ -187,25 +62,13 @@ s32 asset_load(u32 assetIndex, uintptr_t address, s32 assetOffset, s32 size) {
     u32 *index;
     s32 start;
 
-#if VERSION >= VERSION_79
-    OSMesg msg = NULL;
-    osRecvMesg(&gDmaMutex, &msg, OS_MESG_BLOCK);
-#endif
-
     if (size == 0 || gAssetsLookupTable[0] < assetIndex) {
         return NULL;
     }
-
     assetIndex++;
     index = assetIndex + gAssetsLookupTable;
     start = *index + assetOffset;
-
-    dmacopy_internal((u32) (uintptr_t) (start + __ASSETS_LUT_END), address, size);
-
-#if VERSION >= VERSION_79
-    osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
-#endif
-
+    dmacopy((u32) (uintptr_t) (start + __ASSETS_LUT_END), address, size);
     return size;
 }
 
@@ -241,24 +104,22 @@ u8 *asset_rom_offset(u32 assetIndex, u32 assetOffset) {
     u32 *index;
     u32 start;
 
-#if VERSION >= VERSION_79
-    OSMesg msg = NULL;
-    osRecvMesg(&gDmaMutex, &msg, OS_MESG_BLOCK);
-#endif
-
     if (gAssetsLookupTable[0] < assetIndex) {
         return NULL;
     }
-
     assetIndex++;
     index = assetIndex + gAssetsLookupTable;
     start = *index + assetOffset;
-
-#if VERSION >= VERSION_79
-    osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
-#endif
-
     return start + __ASSETS_LUT_END;
+}
+
+/**
+ * TRUE when the asset image was packed by tools/assets.py and so stores the
+ * entries the ROM keeps deflated (object models, animations, level models and
+ * level object maps) already inflated. Those loaders then read them as they are.
+ */
+s32 asset_image_inflated(void) {
+    return pc_asset_image_inflated();
 }
 
 /**
@@ -268,41 +129,18 @@ u8 *asset_rom_offset(u32 assetIndex, u32 assetOffset) {
 s32 asset_table_size(u32 assetIndex) {
     u32 *index;
 
-#if VERSION >= VERSION_79
-    OSMesg msg = NULL;
-    osRecvMesg(&gDmaMutex, &msg, OS_MESG_BLOCK);
-#endif
-
     if (gAssetsLookupTable[0] < assetIndex) {
         return NULL;
     }
-
     assetIndex++;
     index = assetIndex + gAssetsLookupTable;
-
-#if VERSION >= VERSION_79
-    osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
-#endif
-
     return *(index + 1) - *index;
 }
-
-#define MAX_TRANSFER_SIZE 0x5000
 
 /**
  * Copies data from the game cartridge to a ram address.
  * Official name: romCopy
  */
 void dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes) {
-#if VERSION >= VERSION_79
-    OSMesg msg = NULL;
-    osRecvMesg(&gDmaMutex, &msg, OS_MESG_BLOCK);
-    dmacopy_internal(romOffset, ramAddress, numBytes);
-    osSendMesg(&gDmaMutex, (OSMesg) 1, OS_MESG_NOBLOCK);
-}
-
-// Looks like v2 ROMs made an alternate version of this function, and this is the original.
-void dmacopy_internal(u32 romOffset, uintptr_t ramAddress, s32 numBytes) {
-#endif
     pc_dmacopy(romOffset, ramAddress, numBytes);
 }

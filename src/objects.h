@@ -391,6 +391,9 @@ void obj_door_open(s32 setting);
 void run_object_init_func(Object *obj, void *entry, s32 param);
 void run_object_loop_func(Object *obj, s32 updateRate);
 s16 *readout_log_get(s32 *currentCount, s32 *maxCount);
+enum ObjectStackTraceID { OBJECT_CLEAR = -1, OBJECT_SPAWN, OBJECT_UPDATE, OBJECT_DRAW };
+
+void update_object_stack_trace(s32 index, s32 value);
 void readout_log_push(s16 arg0);
 void object_do_player_tumble(Object *this);
 f32 catmull_rom_interpolation(f32 *data, s32 index, f32 x);

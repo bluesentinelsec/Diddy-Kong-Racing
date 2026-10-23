@@ -2,16 +2,14 @@
 #include "camera.h"
 #include "common.h"
 #include "game.h"
+#include "host.h"
 #include "joypad.h"
 #include "libc/string.h"
 #include "macros.h"
 #include "memory.h"
 #include "menu.h"
 #include "objects.h"
-#include "PR/os_cont.h"
-#include "PR/os_motor.h"
 #include "PR/os_pfs.h"
-#include "PRinternal/viint.h"
 #include "save_layout.h"
 #include "structs.h"
 #include "thread3_main.h"
@@ -33,8 +31,6 @@ s32 gRumbleEnable = TRUE;
 /*******************************/
 
 /************ .bss ************/
-
-OSMesgQueue *sControllerMesgQueue;
 
 OSPfs pfs[MAXCONTROLLERS];
 
@@ -221,10 +217,10 @@ void rumble_update(s32 updateRate) {
         gRumbleDetectionTimer += updateRate;
         if (gRumbleDetectionTimer > 120) {
             gRumbleDetectionTimer = 0;
-            osPfsIsPlug(sControllerMesgQueue, &pfsBitPattern);
+            pc_pfs_is_plug(&pfsBitPattern);
             for (i = 0, controllerToCheck = 1; i < MAXCONTROLLERS; i++, controllerToCheck <<= 1) {
                 if ((pfsBitPattern & controllerToCheck) && !(~gRumbleIdle & gRumblePresent & controllerToCheck)) {
-                    if (osMotorInit(sControllerMesgQueue, &pfs[i], i) != 0) {
+                    if (pc_motor_init(&pfs[i], i) != 0) {
                         gRumbleIdle &= ~controllerToCheck;
                         gRumbleActive &= ~controllerToCheck;
                         gRumblePresent &= ~controllerToCheck;
@@ -237,22 +233,22 @@ void rumble_update(s32 updateRate) {
         if (gRumblePresent != 0 || gRumbleKillTimer != 0) {
             pfsStatus = 0;
             if (gRumbleKillTimer != 0) {
-                osPfsIsPlug(sControllerMesgQueue, &pfsBitPattern);
+                pc_pfs_is_plug(&pfsBitPattern);
             }
             for (i = 0, controllerToCheck = 1, pak = gRumble; i < MAXCONTROLLERS; i++, controllerToCheck <<= 1, pak++) {
                 if (gRumbleKillTimer != 0) {
                     pak->rumbleType = pak->lingeringStrength = pak->timer = -1;
                     if (!(pfsBitPattern & controllerToCheck)) {
                         continue;
-                    } else if (osMotorInit(sControllerMesgQueue, &pfs[i], i) == 0) {
-                        osMotorStop(&pfs[i]);
+                    } else if (pc_motor_init(&pfs[i], i) == 0) {
+                        pc_motor_stop(&pfs[i]);
                     }
                 } else if (gRumbleIdle & gRumblePresent & controllerToCheck) {
                     if (pak->timer <= 0) {
                         gRumbleIdle &= ~controllerToCheck;
                         pak->rumbleType = -1;
                         pak->spinTime = 0;
-                        osMotorStop(&pfs[i]);
+                        pc_motor_stop(&pfs[i]);
                     } else {
                         pak->timer -= updateRate;
                         pak->spinTime += updateRate;
@@ -262,27 +258,27 @@ void rumble_update(s32 updateRate) {
                             gRumbleIdle &= ~controllerToCheck;
                             pak->rumbleType = -1;
                             pak->spinTime = -300;
-                            osMotorStop(&pfs[i]);
+                            pc_motor_stop(&pfs[i]);
                         } else {
                             if (pak->initialStrength > 490.0) {
                                 if (!(gRumbleActive & controllerToCheck)) {
-                                    pfsStatus |= osMotorStart(&pfs[i]);
+                                    pfsStatus |= pc_motor_start(&pfs[i]);
                                     gRumbleActive |= controllerToCheck;
                                 }
                             } else if (pak->initialStrength < 3.6) {
                                 if (gRumbleActive & controllerToCheck) {
-                                    pfsStatus |= osMotorStop(&pfs[i]);
+                                    pfsStatus |= pc_motor_stop(&pfs[i]);
                                     gRumbleActive &= ~controllerToCheck;
                                 }
                             } else if (pak->lingeringStrength >= 256) {
                                 if (!(gRumbleActive & controllerToCheck)) {
-                                    pfsStatus |= osMotorStart(&pfs[i]);
+                                    pfsStatus |= pc_motor_start(&pfs[i]);
                                     gRumbleActive |= controllerToCheck;
                                 }
                                 pak->lingeringStrength -= 256;
                             } else {
                                 if (gRumbleActive & controllerToCheck) {
-                                    pfsStatus |= osMotorStop(&pfs[i]);
+                                    pfsStatus |= pc_motor_stop(&pfs[i]);
                                     gRumbleActive &= ~controllerToCheck;
                                 }
                                 pak->lingeringStrength += pak->initialStrength + 4;
@@ -837,7 +833,7 @@ s32 read_save_file(s32 saveFileNum, Settings *settings) {
     s32 block;
     s32 ret;
 
-    if (osEepromProbe(si_mesg()) == 0) {
+    if (pc_eeprom_probe() == 0) {
         stubbed_printf("WARNING : No Eprom\n");
         return -1;
     }
@@ -858,7 +854,7 @@ s32 read_save_file(s32 saveFileNum, Settings *settings) {
     blocks = 5;
     saveData = mempool_alloc_safe(blocks * sizeof(u64), COLOUR_TAG_WHITE);
     for (block = 0, address = startingAddress; block < blocks; block++, address++) {
-        osEepromRead(si_mesg(), address, (u8 *) &saveData[block]);
+        pc_eeprom_read(address, (u8 *) &saveData[block]);
     }
     populate_settings_from_save_data(settings, (u8 *) saveData);
     mempool_free(saveData);
@@ -880,7 +876,7 @@ void erase_save_file(s32 saveFileNum, Settings *settings) {
     s32 address;
     s32 i;
 
-    if (osEepromProbe(si_mesg()) != 0) {
+    if (pc_eeprom_probe() != 0) {
         level_count(&levelCount, &worldCount);
         for (i = 0; i < levelCount; i++) {
             settings->courseFlagsPtr[i] = 0;
@@ -918,7 +914,7 @@ void erase_save_file(s32 saveFileNum, Settings *settings) {
 
         if (!is_reset_pressed()) {
             for (i = 0, address = startingAddress; i < blockSize; i++, address++) {
-                osEepromWrite(si_mesg(), address, (u8 *) &alloc[i]);
+                pc_eeprom_write(address, (u8 *) &alloc[i]);
             }
         }
         mempool_free(alloc);
@@ -941,7 +937,7 @@ s32 write_save_data(s32 saveFileNum, Settings *settings) {
     s32 blocks;
     s32 i;
 
-    if (osEepromProbe(si_mesg()) == 0) {
+    if (pc_eeprom_probe() == 0) {
         stubbed_printf("WARNING : No Eprom\n");
         return -1;
     }
@@ -967,7 +963,7 @@ s32 write_save_data(s32 saveFileNum, Settings *settings) {
 
     if (!is_reset_pressed()) {
         for (i = 0, address = startingAddress; i < blocks; i++, address++) {
-            osEepromWrite(si_mesg(), address, (u8 *) &alloc[i]);
+            pc_eeprom_write(address, (u8 *) &alloc[i]);
         }
     }
 
@@ -987,7 +983,7 @@ s32 read_eeprom_data(Settings *settings, u8 flags) {
     u64 *alloc;
     s32 i;
 
-    if (osEepromProbe(si_mesg()) == 0) {
+    if (pc_eeprom_probe() == 0) {
         stubbed_printf("WARNING : No Eprom\n");
         return -1;
     }
@@ -997,7 +993,7 @@ s32 read_eeprom_data(Settings *settings, u8 flags) {
     if (flags & SAVE_DATA_FLAG_READ_FLAP_TIMES) {
         s32 blocks = BLOCK_SIZE(sizeof(CourseRecords));
         for (i = 0; i < blocks; i++) {
-            osEepromRead(si_mesg(), BLOCK_SIZE(FASTEST_LAPS_START) + i, (u8 *) &alloc[i]);
+            pc_eeprom_read(BLOCK_SIZE(FASTEST_LAPS_START) + i, (u8 *) &alloc[i]);
         }
         save_unpack_records(settings, (u8 *) alloc, SAVE_DATA_FLAG_READ_FLAP_TIMES);
     }
@@ -1005,8 +1001,8 @@ s32 read_eeprom_data(Settings *settings, u8 flags) {
     if (flags & SAVE_DATA_FLAG_READ_COURSE_TIMES) {
         s32 blocks = BLOCK_SIZE(sizeof(CourseRecords));
         for (i = 0; i < blocks; i++) {
-            osEepromRead(si_mesg(), BLOCK_SIZE(COURSE_TIMES_START) + i,
-                         (u8 *) (&alloc[sizeof(CourseRecords) / sizeof(u64)] + i));
+            pc_eeprom_read(BLOCK_SIZE(COURSE_TIMES_START) + i,
+                           (u8 *) (&alloc[sizeof(CourseRecords) / sizeof(u64)] + i));
         }
         save_unpack_records(settings, (u8 *) alloc, SAVE_DATA_FLAG_READ_COURSE_TIMES);
     }
@@ -1027,7 +1023,7 @@ s32 write_eeprom_data(Settings *settings, u8 flags) {
     u64 *alloc;
     s32 i;
 
-    if (osEepromProbe(si_mesg()) == 0) {
+    if (pc_eeprom_probe() == 0) {
         stubbed_printf("WARNING : No Eprom\n");
         return -1;
     }
@@ -1041,7 +1037,7 @@ s32 write_eeprom_data(Settings *settings, u8 flags) {
         if (1) {} // Fake Match
         if (is_reset_pressed() == FALSE) {
             for (i = 0; i != blocks; i++) {
-                osEepromWrite(si_mesg(), BLOCK_SIZE(FASTEST_LAPS_START) + i, (u8 *) &alloc[i]);
+                pc_eeprom_write(BLOCK_SIZE(FASTEST_LAPS_START) + i, (u8 *) &alloc[i]);
             }
         }
     }
@@ -1050,8 +1046,8 @@ s32 write_eeprom_data(Settings *settings, u8 flags) {
         s32 blocks = BLOCK_SIZE(sizeof(CourseRecords));
         if (is_reset_pressed() == FALSE) {
             for (i = 0; i != blocks; i++) {
-                osEepromWrite(si_mesg(), BLOCK_SIZE(COURSE_TIMES_START) + i,
-                              (u8 *) (&alloc[sizeof(CourseRecords) / sizeof(u64)] + i));
+                pc_eeprom_write(BLOCK_SIZE(COURSE_TIMES_START) + i,
+                                (u8 *) (&alloc[sizeof(CourseRecords) / sizeof(u64)] + i));
             }
         }
     }
@@ -1095,12 +1091,12 @@ s32 read_eeprom_settings(u64 *eepromSettings) {
     s32 checksum;
     s32 expected;
 
-    if (osEepromProbe(si_mesg()) == 0) {
+    if (pc_eeprom_probe() == 0) {
         stubbed_printf("WARNING : No Eprom\n");
         return -1;
     }
 
-    osEepromRead(si_mesg(), BLOCK_SIZE(CONFIG_START), (u8 *) eepromSettings);
+    pc_eeprom_read(BLOCK_SIZE(CONFIG_START), (u8 *) eepromSettings);
     expected = calculate_eeprom_settings_checksum(*eepromSettings);
     checksum = *eepromSettings >> 56;
     if (expected != checksum) {
@@ -1126,7 +1122,7 @@ s32 read_eeprom_settings(u64 *eepromSettings) {
  * Address (0xF * sizeof(u64)) = 0x78 - 0x80 of the actual save data file
  */
 s32 write_eeprom_settings(u64 *eepromSettings) {
-    if (osEepromProbe(si_mesg()) == 0) {
+    if (pc_eeprom_probe() == 0) {
         stubbed_printf("WARNING : No Eprom\n");
         return -1;
     }
@@ -1134,7 +1130,7 @@ s32 write_eeprom_settings(u64 *eepromSettings) {
     *eepromSettings >>= 8;
     *eepromSettings |= (u64) (calculate_eeprom_settings_checksum(*eepromSettings)) << 56;
     if (is_reset_pressed() == FALSE) {
-        osEepromWrite(si_mesg(), BLOCK_SIZE(CONFIG_START), (u8 *) eepromSettings);
+        pc_eeprom_write(BLOCK_SIZE(CONFIG_START), (u8 *) eepromSettings);
     }
     return 1;
 }
@@ -1195,7 +1191,7 @@ s32 ghost_load(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharac
     if (pakStatus == CONTROLLER_PAK_GOOD) {
         cPakFile = mempool_alloc_safe(GHSS_SIZE, COLOUR_TAG_BLACK);
         if (!(pfs[controllerIndex].status & 1)) {
-            osPfsInit(sControllerMesgQueue, &pfs[controllerIndex], controllerIndex);
+            pc_pfs_init(&pfs[controllerIndex], controllerIndex);
         }
         pakStatus = read_data_from_controller_pak(controllerIndex, fileNumber, AS_BYTES(cPakFile), GHSS_SIZE);
         if (pakStatus == CONTROLLER_PAK_GOOD) {
@@ -1224,8 +1220,8 @@ s32 ghost_load(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharac
         if (ghostSize != 0) {
             if (ghostCharacterId != NULL) {
                 cPakFile = mempool_alloc_safe(allocateSpace + GHSS_SIZE, COLOUR_TAG_BLACK);
-                if (osPfsReadWriteFile(&pfs[controllerIndex], fileNumber, PFS_READ, ghostSize, allocateSpace,
-                                       AS_BYTES(cPakFile)) == 0) {
+                if (pc_pfs_read_write_file(&pfs[controllerIndex], fileNumber, PFS_READ, ghostSize, allocateSpace,
+                                           AS_BYTES(cPakFile)) == 0) {
                     // Hmm... The ghost data struct might not be quite right here...
                     if (cPakFile->data[-1].unk0_hw == calculate_ghost_header_checksum((GhostHeader *) cPakFile)) {
                         *ghostCharacterId = cPakFile->data[-1].unk2_b;
@@ -1545,37 +1541,27 @@ SIDeviceStatus ghost_list(s32 controllerIndex, u8 *levelIDs, u8 *vehicleIDs, u8 
 
 /* Official name: packOpen */
 SIDeviceStatus get_si_device_status(s32 controllerIndex) {
-    OSMesg unusedMsg;
     s32 ret;
     s32 bytes_not_used;
     s32 i;
 
-    if (sControllerMesgQueue->validCount == 0) {
-        if (osMotorInit(sControllerMesgQueue, &pfs[controllerIndex], controllerIndex) == 0) {
-            return CONTROLLER_PAK_RUMBLE_PAK_FOUND;
-        }
-    }
-
-    // Couldn't get a for loop to match this
-    i = 0;
-    while (sControllerMesgQueue->validCount != 0 && i < 10) {
-        osRecvMesg(sControllerMesgQueue, &unusedMsg, OS_MESG_NOBLOCK);
-        i++;
+    if (pc_motor_init(&pfs[controllerIndex], controllerIndex) == 0) {
+        return CONTROLLER_PAK_RUMBLE_PAK_FOUND;
     }
 
     for (i = 0; i <= 4; i++) {
-        ret = osPfsFreeBlocks(&pfs[controllerIndex], &bytes_not_used);
+        ret = pc_pfs_free_blocks(&pfs[controllerIndex], &bytes_not_used);
         if (ret == PFS_ERR_INVALID) {
-            ret = osPfsInit(sControllerMesgQueue, &pfs[controllerIndex], controllerIndex);
+            ret = pc_pfs_init(&pfs[controllerIndex], controllerIndex);
         }
         if (ret == PFS_ERR_ID_FATAL) {
-            if (osMotorInit(sControllerMesgQueue, &pfs[controllerIndex], controllerIndex) == 0) {
+            if (pc_motor_init(&pfs[controllerIndex], controllerIndex) == 0) {
                 return CONTROLLER_PAK_RUMBLE_PAK_FOUND;
             }
         }
         if (ret == PFS_ERR_NEW_PACK) {
-            if ((osPfsInit(sControllerMesgQueue, &pfs[controllerIndex], controllerIndex) == PFS_ERR_ID_FATAL) &&
-                (osMotorInit(sControllerMesgQueue, &pfs[controllerIndex], controllerIndex) == 0)) {
+            if ((pc_pfs_init(&pfs[controllerIndex], controllerIndex) == PFS_ERR_ID_FATAL) &&
+                (pc_motor_init(&pfs[controllerIndex], controllerIndex) == 0)) {
                 return CONTROLLER_PAK_RUMBLE_PAK_FOUND;
             }
             return CONTROLLER_PAK_CHANGED;
@@ -1602,7 +1588,6 @@ SIDeviceStatus get_si_device_status(s32 controllerIndex) {
 
 /* Official name: packClose */
 s32 start_reading_controller_data(UNUSED s32 controllerIndex) {
-    osContStartReadData(sControllerMesgQueue);
     return 0;
 }
 
@@ -1613,7 +1598,6 @@ void init_controller_paks(void) {
     u8 pakPattern;
     s8 maxControllers;
 
-    sControllerMesgQueue = si_mesg();
     sRumbleTable = (s16 *) get_misc_asset(ASSET_MISC_RUMBLE_DATA);
     gRumbleIdle = gRumbleActive = 0xF;
     gRumbleOn = TRUE;
@@ -1623,7 +1607,7 @@ void init_controller_paks(void) {
 
     // pakPattern will set the first 4 bits representing each controller
     // and it will be 1 if there's something attached.
-    osPfsIsPlug(sControllerMesgQueue, &pakPattern);
+    pc_pfs_is_plug(&pakPattern);
 
     for (controllerIndex = 0, controllerBit = 1, maxControllers = MAXCONTROLLERS;
          (0, controllerIndex) != maxControllers; controllerIndex++, controllerBit <<= 1) {
@@ -1634,16 +1618,16 @@ void init_controller_paks(void) {
 
         // If something is plugged into the controller
         if (pakPattern & controllerBit) {
-            ret = osPfsInit(sControllerMesgQueue, &pfs[controllerIndex], controllerIndex);
+            ret = pc_pfs_init(&pfs[controllerIndex], controllerIndex);
             if (ret == PFS_ERR_NEW_PACK) {
-                ret = osPfsInit(sControllerMesgQueue, &pfs[controllerIndex], controllerIndex);
+                ret = pc_pfs_init(&pfs[controllerIndex], controllerIndex);
             }
             if (ret == 0) {
                 // If we found a controller pak, set the bit that has one
                 sControllerPaksPresent |= controllerBit;
             } else if (ret == PFS_ERR_ID_FATAL) {
                 if (controllerIndex) {} // Fakematch
-                ret = osMotorInit(sControllerMesgQueue, &pfs[controllerIndex], controllerIndex);
+                ret = pc_motor_init(&pfs[controllerIndex], controllerIndex);
                 if (ret == 0) {
                     // If we found a rumble pak, set the bit that has one
                     gRumblePresent |= controllerBit;
@@ -1651,8 +1635,6 @@ void init_controller_paks(void) {
             }
         }
     }
-
-    osContStartReadData(sControllerMesgQueue);
 }
 
 /* Official name: packIsPresent */
@@ -1675,7 +1657,7 @@ SIDeviceStatus repair_controller_pak(s32 controllerIndex) {
     s32 ret;
     s32 status = get_si_device_status(controllerIndex);
     if (status == CONTROLLER_PAK_GOOD || status == CONTROLLER_PAK_INCONSISTENT) {
-        status = osPfsChecker(&pfs[controllerIndex]);
+        status = pc_pfs_checker(&pfs[controllerIndex]);
         if (status == 0) {
             ret = CONTROLLER_PAK_GOOD;
         } else if (status == PFS_ERR_NEW_PACK) {
@@ -1697,7 +1679,7 @@ SIDeviceStatus reformat_controller_pak(s32 controllerIndex) {
     s32 status = get_si_device_status(controllerIndex);
     if (status == CONTROLLER_PAK_GOOD || status == CONTROLLER_PAK_INCONSISTENT ||
         status == CONTROLLER_PAK_WITH_BAD_ID) {
-        status = osPfsReFormat(&pfs[controllerIndex], sControllerMesgQueue, controllerIndex);
+        status = pc_pfs_reformat(&pfs[controllerIndex], controllerIndex);
         if (status == 0) {
             ret = CONTROLLER_PAK_GOOD;
         } else if (status == PFS_ERR_NEW_PACK) {
@@ -1729,7 +1711,7 @@ s32 get_controller_pak_file_list(s32 controllerIndex, s32 maxNumOfFilesToGet, ch
         return (controllerIndex << 30) | ret;
     }
 
-    if (osPfsNumFiles(&pfs[controllerIndex], &maxNumOfFilesOnCpak, &files_used) != 0) {
+    if (pc_pfs_num_files(&pfs[controllerIndex], &maxNumOfFilesOnCpak, &files_used) != 0) {
         start_reading_controller_data(controllerIndex);
         return (controllerIndex << 30) | CONTROLLER_PAK_BAD_DATA;
     }
@@ -1792,7 +1774,7 @@ s32 get_controller_pak_file_list(s32 controllerIndex, s32 maxNumOfFilesToGet, ch
     }
 
     for (i = 0; i < maxNumOfFilesOnCpak; i++) {
-        ret = osPfsFileState(&pfs[controllerIndex], i, &state);
+        ret = pc_pfs_file_state(&pfs[controllerIndex], i, &state);
         if (ret == PFS_ERR_INVALID) {
             fileNames[i] = 0;
             continue;
@@ -1840,7 +1822,7 @@ s32 get_free_space(s32 controllerIndex, u32 *bytesFree, s32 *notesFree) {
     ret = get_si_device_status(controllerIndex);
     if (ret == CONTROLLER_PAK_GOOD) {
         if (bytesFree != 0) {
-            ret = osPfsFreeBlocks(&pfs[controllerIndex], &bytesNotUsed);
+            ret = pc_pfs_free_blocks(&pfs[controllerIndex], &bytesNotUsed);
             if (ret != 0) {
                 start_reading_controller_data(controllerIndex);
                 return (controllerIndex << 30) | CONTROLLER_PAK_BAD_DATA;
@@ -1848,7 +1830,7 @@ s32 get_free_space(s32 controllerIndex, u32 *bytesFree, s32 *notesFree) {
             *bytesFree = bytesNotUsed;
         }
         if (notesFree != 0) {
-            ret = osPfsNumFiles(&pfs[controllerIndex], &maxNotes, &notesUsed);
+            ret = pc_pfs_num_files(&pfs[controllerIndex], &maxNotes, &notesUsed);
             if (ret != 0) {
                 start_reading_controller_data(controllerIndex);
                 return (controllerIndex << 30) | CONTROLLER_PAK_BAD_DATA;
@@ -1879,9 +1861,9 @@ s32 delete_file(s32 controllerIndex, s32 fileNum) {
 
     ret = (controllerIndex << 30) | CONTROLLER_PAK_BAD_DATA;
 
-    if (osPfsFileState(&pfs[controllerIndex], fileNum, &state) == 0) {
-        if (osPfsDeleteFile(&pfs[controllerIndex], state.company_code, state.game_code, (u8 *) &state.game_name,
-                            (u8 *) &state.ext_name) == 0) {
+    if (pc_pfs_file_state(&pfs[controllerIndex], fileNum, &state) == 0) {
+        if (pc_pfs_delete_file(&pfs[controllerIndex], state.company_code, state.game_code, (u8 *) &state.game_name,
+                               (u8 *) &state.ext_name) == 0) {
             ret = CONTROLLER_PAK_GOOD;
         }
     }
@@ -1908,7 +1890,7 @@ s32 copy_controller_pak_data(s32 controllerIndex, s32 fileNumber, s32 secondCont
         return (controllerIndex << 30) | status;
     }
 
-    if (osPfsFileState(&pfs[controllerIndex], fileNumber, &state) != 0) {
+    if (pc_pfs_file_state(&pfs[controllerIndex], fileNumber, &state) != 0) {
         start_reading_controller_data(controllerIndex);
         return (controllerIndex << 30) | CONTROLLER_PAK_BAD_DATA;
     }
@@ -1959,8 +1941,8 @@ SIDeviceStatus get_file_number(s32 controllerIndex, char *fileName, char *fileEx
         gameCode = NTSC_GAME_CODE;
     }
 
-    ret = osPfsFindFile(&pfs[controllerIndex], COMPANY_CODE, gameCode, (u8 *) fileNameAsFontCodes,
-                        (u8 *) fileExtAsFontCodes, fileNumber);
+    ret = pc_pfs_find_file(&pfs[controllerIndex], COMPANY_CODE, gameCode, (u8 *) fileNameAsFontCodes,
+                           (u8 *) fileExtAsFontCodes, fileNumber);
     if (ret == 0) {
         return CONTROLLER_PAK_GOOD;
     }
@@ -1982,7 +1964,7 @@ SIDeviceStatus get_file_number(s32 controllerIndex, char *fileName, char *fileEx
 
 /* Official name: packReadFile */
 SIDeviceStatus read_data_from_controller_pak(s32 controllerIndex, s32 fileNum, u8 *data, s32 dataLength) {
-    s32 readResult = osPfsReadWriteFile(&pfs[controllerIndex], fileNum, PFS_READ, 0, dataLength, data);
+    s32 readResult = pc_pfs_read_write_file(&pfs[controllerIndex], fileNum, PFS_READ, 0, dataLength, data);
 
     if (readResult == 0) {
         return CONTROLLER_PAK_GOOD;
@@ -2048,8 +2030,8 @@ SIDeviceStatus write_controller_pak_file(s32 controllerIndex, s32 fileNumber, ch
         if (fileNumber != -1) {
             ret = CONTROLLER_PAK_BAD_DATA;
         } else {
-            temp = osPfsAllocateFile(&pfs[controllerIndex], COMPANY_CODE, game_code, fileNameAsFontCodes,
-                                     fileExtAsFontCodes, bytesToSave, &file_number);
+            temp = pc_pfs_allocate_file(&pfs[controllerIndex], COMPANY_CODE, game_code, fileNameAsFontCodes,
+                                        fileExtAsFontCodes, bytesToSave, &file_number);
             if (temp == 0) {
                 ret = CONTROLLER_PAK_GOOD;
             } else if (temp == PFS_DATA_FULL || temp == PFS_DIR_FULL) {
@@ -2061,7 +2043,7 @@ SIDeviceStatus write_controller_pak_file(s32 controllerIndex, s32 fileNumber, ch
     }
 
     if (ret == CONTROLLER_PAK_GOOD) {
-        temp = osPfsReadWriteFile(&pfs[controllerIndex], file_number, PFS_WRITE, 0, bytesToSave, dataToWrite);
+        temp = pc_pfs_read_write_file(&pfs[controllerIndex], file_number, PFS_WRITE, 0, bytesToSave, dataToWrite);
         if (temp == 0) {
             ret = CONTROLLER_PAK_GOOD;
         } else if ((temp == PFS_ERR_NOPACK) || (temp == PFS_ERR_DEVICE)) {
@@ -2087,7 +2069,7 @@ SIDeviceStatus get_file_size(s32 controllerIndex, s32 fileNum, s32 *fileSize) {
     OSPfsState state;
 
     *fileSize = 0;
-    if (osPfsFileState(&pfs[controllerIndex], fileNum, &state) == 0) {
+    if (pc_pfs_file_state(&pfs[controllerIndex], fileNum, &state) == 0) {
         *fileSize = state.file_size;
         return CONTROLLER_PAK_GOOD;
     }

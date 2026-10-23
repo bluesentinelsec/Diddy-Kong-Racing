@@ -29,6 +29,7 @@
 #include "thread3_main.h"
 #include "tracks.h"
 #include "types.h"
+#include "host.h"
 #include "video.h"
 #include "waves.h"
 #include "weather.h"
@@ -3378,7 +3379,7 @@ void obj_init_goldenballoon(Object *obj, LevelObjectEntry_GoldenBalloon *entry) 
         object_id_assign(obj, entry->balloonID);
     }
     if (entry->balloonID == -1) {
-        rmonPrintf("Illegal door no!!!\n"); // Did the devs just copy-paste the door init function?
+        pc_log("Illegal door no!!!\n"); // Did the devs just copy-paste the door init function?
     }
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
     obj->interactObj->hitboxKind = 4;
@@ -3517,7 +3518,7 @@ void obj_init_door(Object *obj, LevelObjectEntry_Door *entry) {
     door->balloonCount = entry->balloonCount;
     door->radius = entry->distanceToOpen;
     if (door->doorID == -1) {
-        rmonPrintf("Illegal door no!!!\n");
+        pc_log("Illegal door no!!!\n");
     }
     obj->modelIndex = entry->modelIndex;
     obj->trans.rotation.y_rotation = U8_ANGLE_TO_U16(entry->closedRotation);
@@ -3880,7 +3881,7 @@ void obj_init_trigger(Object *obj, LevelObjectEntry_Trigger *entry) {
         object_id_assign(obj, entry->index);
     }
     if (entry->index == -1) {
-        rmonPrintf("Illegal door no!!!\n");
+        pc_log("Illegal door no!!!\n");
     }
     radius = (s32) entry->scale & 0xFF;
     if (radius < 5.0f) {

@@ -7,7 +7,6 @@
 
 #include "macros.h"
 #include "PR/gu.h"
-#include "PR/os_internal_reg.h" // __osDisableInt / __osRestoreInt
 #include "structs.h"
 #include "types.h"
 #include <math.h>
@@ -175,26 +174,19 @@ u16 gArcTanTable[1025] = {
 /******************************/
 
 /**
- * Zero out the interrupt mask so the memory pool can be touched without
- * being interrupted, and return the mask that was in force. On the host there
- * is a single thread and __osDisableInt is a stub, so this is bookkeeping only.
+ * On the N64 the memory pool was guarded by masking interrupts. The game runs
+ * on one thread now, so there is nothing to mask: the two calls remain as
+ * markers of where the pool is touched.
  * Official Name: disableInterrupts
  */
 u32 interrupts_disable(void) {
-    if (gIntDisFlag) {
-        return __osDisableInt();
-    }
     return 0;
 }
 
 /**
- * Restore the interrupt mask returned by interrupts_disable.
  * Official Name: enableInterrupts
  */
-void interrupts_enable(u32 flags) {
-    if (gIntDisFlag) {
-        __osRestoreInt(flags);
-    }
+void interrupts_enable(UNUSED u32 flags) {
 }
 
 /**

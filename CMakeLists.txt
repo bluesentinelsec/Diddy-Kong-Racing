@@ -144,10 +144,10 @@ set(DKR_GAME_SOURCES
     src/asset_loading.c src/audio.c src/audiomgr.c src/audiosfx.c src/audio_spatial.c
     src/audio_vehicle.c src/borders.c src/camera.c src/fade_transition.c src/font.c
     src/game.c src/game_text.c src/game_ui.c src/get_stack_pointer.c src/gzip.c
-    src/joypad.c src/lights.c src/main.c src/memory.c src/menu.c src/object_functions.c
+    src/joypad.c src/lights.c src/memory.c src/menu.c src/object_functions.c
     src/object_models.c src/objects.c src/os_yield_data.c src/particles.c src/printf.c
     src/racer.c src/rcp_dkr.c src/save_data.c src/screen_asset.c src/set_rsp_segment.c
-    src/textures_sprites.c src/thread0_epc.c src/thread30_bgload.c src/thread3_main.c
+    src/textures_sprites.c src/thread30_bgload.c src/thread3_main.c
     src/tracks.c src/unused_string.c src/vehicle_bluey.c src/vehicle_bubbler.c
     src/vehicle_rocket.c src/vehicle_smokey.c src/vehicle_tricky.c src/vehicle_wizpig.c
     src/video.c src/waves.c src/weather.c
@@ -174,33 +174,7 @@ set(DKR_LIBULTRA_SOURCES
     libultra/src/audio/syndelete.c libultra/src/audio/synfreevoice.c libultra/src/audio/synsetfxmix.c
     libultra/src/audio/synsetpitch.c libultra/src/audio/synsetpriority.c libultra/src/audio/synsetvol.c
     libultra/src/audio/synstartvoice.c libultra/src/audio/synstopvoice.c
-    libultra/src/debug/assert.c libultra/src/debug/kdebugserver.c
-    libultra/src/gu/mtxutil.c libultra/src/gu/perspective.c
-    libultra/src/io/crc.c libultra/src/io/devmgr.c libultra/src/io/dp.c libultra/src/io/dpgetstat.c
-    libultra/src/io/dpsetnextbuf.c libultra/src/io/dpsetstat.c libultra/src/io/epirawdma.c
-    libultra/src/io/epirawwrite.c libultra/src/io/leointerrupt.c libultra/src/io/piacs.c
-    libultra/src/io/pidma.c libultra/src/io/pigetcmdq.c libultra/src/io/pimgr.c
-    libultra/src/io/pirawdma.c libultra/src/io/pirawread.c libultra/src/io/si.c
-    libultra/src/io/siacs.c libultra/src/io/sirawread.c libultra/src/io/sirawwrite.c
-    libultra/src/io/sp.c libultra/src/io/spgetstat.c libultra/src/io/sprawdma.c
-    libultra/src/io/spsetpc.c libultra/src/io/spsetstat.c libultra/src/io/sptask.c
-    libultra/src/io/sptaskyield.c libultra/src/io/sptaskyielded.c libultra/src/io/vi.c
-    libultra/src/io/viblack.c libultra/src/io/vigetcurrcontext.c libultra/src/io/vigetcurrframebuf.c
-    libultra/src/io/vigetnextframebuf.c libultra/src/io/vimgr.c libultra/src/io/visetevent.c
-    libultra/src/io/visetmode.c libultra/src/io/visetspecial.c libultra/src/io/viswapbuf.c
-    libultra/src/io/viswapcontext.c libultra/src/io/vitbl.c
-    libultra/src/libc/ldiv.c libultra/src/libc/ll.c libultra/src/libc/llcvt.c
-    libultra/src/libc/rmonPrintf.c libultra/src/libc/string.c libultra/src/libc/xldtob.c
-    libultra/src/libc/xlitob.c libultra/src/libc/xprintf.c
-    libultra/src/os/createmesgqueue.c libultra/src/os/createthread.c libultra/src/os/destroythread.c
-    libultra/src/os/getactivequeue.c libultra/src/os/getthreadpri.c libultra/src/os/gettime.c
-    libultra/src/os/initialize.c libultra/src/os/jammesg.c libultra/src/os/recvmesg.c
-    libultra/src/os/resetglobalintmask.c libultra/src/os/sendmesg.c libultra/src/os/seteventmesg.c
-    libultra/src/os/sethwinterrupt.c libultra/src/os/setthreadpri.c libultra/src/os/settime.c
-    libultra/src/os/settimer.c libultra/src/os/startthread.c libultra/src/os/stopthread.c
-    libultra/src/os/thread.c libultra/src/os/timerintr.c libultra/src/os/virtualtophysical.c
-    libultra/src/os/yieldthread.c libultra/src/sc/sched.c
-)
+    libultra/src/gu/mtxutil.c libultra/src/gu/perspective.c)
 
 # --- Common flags ---------------------------------------------------------------
 
@@ -262,11 +236,7 @@ set(DKR_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/hasm
     ${CMAKE_CURRENT_SOURCE_DIR}/libultra
     ${CMAKE_CURRENT_SOURCE_DIR}/libultra/src/gu
-    ${CMAKE_CURRENT_SOURCE_DIR}/libultra/src/libc
-    ${CMAKE_CURRENT_SOURCE_DIR}/libultra/src/io
-    ${CMAKE_CURRENT_SOURCE_DIR}/libultra/src/sc
     ${CMAKE_CURRENT_SOURCE_DIR}/libultra/src/audio
-    ${CMAKE_CURRENT_SOURCE_DIR}/libultra/src/os
 )
 
 function(dkr_configure_target tgt)

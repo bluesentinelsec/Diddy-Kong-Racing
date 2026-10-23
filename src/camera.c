@@ -1,7 +1,7 @@
 #include "camera.h"
 #include "audio.h"
 #include "game.h"
-#include "libultra/src/libc/rmonPrintf.h"
+#include "host.h"
 #include "math_util.h"
 #include "menu.h"
 #include "objects.h"
@@ -1718,14 +1718,14 @@ UNUSED void debug_print_fixed_matrix_values(s16 *mtx) {
     for (i = 0; i < 4; i++) {
         for (j = 0; j < 4; j++) {
             val = mtx[i * 4 + j];
-            rmonPrintf("%x.", val);
+            pc_log("%x.", val);
             val = mtx[((i + 4) * 4 + j)];
-            rmonPrintf("%x  ", (u16) val & 0xFFFF);
+            pc_log("%x  ", (u16) val & 0xFFFF);
         }
-        rmonPrintf("\n");
+        pc_log("\n");
         if (!val) {} // Fakematch
     }
-    rmonPrintf("\n");
+    pc_log("\n");
 }
 
 /**
@@ -1737,9 +1737,9 @@ UNUSED void debug_print_float_matrix_values(f32 *mtx) {
 
     for (i = 0; i < 4; i++) {
         for (j = 0; j < 4; j++) {
-            rmonPrintf("%f  ", mtx[i * 4 + j]);
+            pc_log("%f  ", mtx[i * 4 + j]);
         }
-        rmonPrintf("\n");
+        pc_log("\n");
     }
-    rmonPrintf("\n");
+    pc_log("\n");
 }
