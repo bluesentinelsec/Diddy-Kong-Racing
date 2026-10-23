@@ -305,11 +305,16 @@ extern s32 osSendMesg(void *mq, void *msg, s32 flags);
 s32 osContInit(void *mq, u8 *bitpattern, PCContStatus *status) {
     s32 i;
 
-    *bitpattern = 1; // controller in port 0 only
+    s32 ports = input_script_ports(); // a script may plug in controllers 2..4
+
+    if (ports < 1) {
+        ports = 1;
+    }
+    *bitpattern = (u8) ((1 << ports) - 1);
     for (i = 0; i < PC_MAXCONTROLLERS; i++) {
-        status[i].type = (i == 0) ? PC_CONT_TYPE_NORMAL : 0;
+        status[i].type = (i < ports) ? PC_CONT_TYPE_NORMAL : 0;
         status[i].status = 0;
-        status[i].error = (i == 0) ? 0 : PC_CONT_NO_RESPONSE;
+        status[i].error = (i < ports) ? 0 : PC_CONT_NO_RESPONSE;
     }
     return 0;
 }
@@ -323,14 +328,19 @@ s32 osContStartReadData(void *mq) {
 void osContGetReadData(PCContPad *pads) {
     s32 i;
 
+    s32 ports = input_script_ports();
+
     for (i = 0; i < PC_MAXCONTROLLERS; i++) {
         pads[i].button = 0;
         pads[i].stick_x = 0;
         pads[i].stick_y = 0;
-        pads[i].error = (i == 0) ? 0 : PC_CONT_NO_RESPONSE;
+        pads[i].error = (i == 0 || i < ports) ? 0 : PC_CONT_NO_RESPONSE;
     }
 
     input_host_read(&pads[0].button, &pads[0].stick_x, &pads[0].stick_y);
+    for (i = 1; i < ports; i++) {
+        input_host_read_port(i, &pads[i].button, &pads[i].stick_x, &pads[i].stick_y);
+    }
 }
 
 // EEPROM_TYPE_4K is 512 bytes / 64 eight-byte blocks. Persisted as

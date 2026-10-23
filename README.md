@@ -199,11 +199,18 @@ always there to compare against. The check that keeps the port honest:
   Then the **scene traces** in `tests/golden/scenes/`, one scripted path into
   each part of the game so that a change to its logic has a trace that
   exercises it: a car race, a hovercraft race and a plane race on Ancient Lake
-  with the AI, a time trial against the ghost, and a race paused and resumed
-  from the pause menu. Each script's header gives its length (`# frames N`)
-  and, where the fresh save would not unlock what it needs, `# save 100` to
-  start from the 100%-completion save image. `tests/golden/scenes.sh` runs
-  them all; adding a scene is adding a script and recording it.
+  with the AI, a time trial against the ghost, a race paused and resumed from
+  the pause menu, a race driven to the finish and through the results menu, a
+  two-player split-screen race joined through the menus, a boss race against
+  Tricky, and a drive around the central hub (doors, Taj, the music fade
+  zones). Each script's header gives its length (`# frames N`) and, as needed,
+  `# save 100` to start from the 100%-completion save image, `# level N` to
+  start level N straight from the title menu (for the places the menus cannot
+  reach by script) and `# players N`. A script line may end in `p2`..`p4` to
+  drive another controller, which plugs it in, and the `AUTO` token hands a
+  human racer to the AI's driving so a scene can finish a race.
+  `tests/golden/scenes.sh` runs them all; adding a scene is adding a script
+  and recording it.
   `make golden-update` regenerates everything; `tests/golden.sh` takes any
   binary and an optional input script. `DKR_TRACE_DETAIL=1` adds a line per
   renderer and audio event (blend colours included) to locate a divergence

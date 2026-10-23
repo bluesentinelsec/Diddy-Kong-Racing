@@ -957,6 +957,19 @@ void mode_menu(s32 updateRate) {
         gRenderMenu = FALSE;
         return;
     }
+    if (!gIsLoading) {
+        // A trace may ask for a level the menus cannot reach by script (linux/trace.c).
+        extern int pc_trace_level_request(unsigned int frame);
+        extern int pc_trace_players(void);
+        extern unsigned int gfx_frame_count(void);
+        s32 traceLevel = pc_trace_level_request(gfx_frame_count());
+
+        if (traceLevel >= 0) {
+            gSettingsPtr->gNumRacers = pc_trace_players();
+            gGameNumPlayers = gSettingsPtr->gNumRacers - 1;
+            menuLoopResult = MENU_RESULT_FLAGS_200 | (traceLevel & 0x7F);
+        }
+    }
     if (menuLoopResult != -1 && menuLoopResult & MENU_RESULT_FLAGS_200) {
         unload_level_menu();
         gCurrDisplayList = gDisplayLists[gSPTaskNum];

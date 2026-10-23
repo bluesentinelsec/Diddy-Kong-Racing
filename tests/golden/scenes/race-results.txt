@@ -1,0 +1,36 @@
+# frames 5100
+# Tracks mode, Ancient Lake, car, T.T. ghost off, driven to the finish by the
+# autopilot (AUTO): three laps against the AI, the finish, the results menu
+# that follows in Tracks mode, and Try Again starting the next race.
+# Format: <frame> <buttons> <stickX> <stickY> [p<N>], held until the next line (DKR_INPUT_SCRIPT).
+900 A 0 0
+903 - 0 0
+960 A 0 0
+963 - 0 0
+1020 A 0 0
+1023 - 0 0
+1080 A 0 0
+1083 - 0 0
+1140 A 0 0
+1143 - 0 0
+1220 - 0 -70
+1226 - 0 0
+1260 A 0 0
+1263 - 0 0
+1380 A 0 0
+1383 - 0 0
+1500 A 0 0
+1503 - 0 0
+1620 A 0 0
+1623 - 0 0
+1740 A 0 0
+1743 - 0 0
+1990 AUTO 0 0
+4600 A,AUTO 0 0
+4603 AUTO 0 0
+4750 A,AUTO 0 0
+4753 AUTO 0 0
+4900 A,AUTO 0 0
+4903 AUTO 0 0
+5050 A,AUTO 0 0
+5053 AUTO 0 0
