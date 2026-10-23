@@ -1151,7 +1151,7 @@ s16 calculate_ghost_header_checksum(GhostHeader *ghostHeader) {
 void ghost_header_fill(GhostHeader *ghostHeader, s16 characterID, s16 time, s16 nodeCount, u8 *dest) {
     ghostHeader->checksum = 0;
     ghostHeader->characterID = characterID;
-    ghostHeader->unk3 = 0;
+    ghostHeader->unused3 = 0;
     ghostHeader->time = time;
     ghostHeader->nodeCount = nodeCount;
     bcopy(dest, (u8 *) ghostHeader + 8, nodeCount * sizeof(GhostNode));
@@ -1198,16 +1198,16 @@ s32 ghost_load(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharac
             if (cPakFile->signature == GHSS) {
                 ghostDataBody = cPakFile->data;
                 for (i = 0; i < 6; i++) {
-                    if ((levelId == ghostDataBody[i].unk0) && (vehicleId == ghostDataBody[i].unk1)) {
-                        ghostSize = ghostDataBody[i].unk2;
-                        allocateSpace = ghostDataBody[i + 1].unk2 - ghostSize;
+                    if ((levelId == ghostDataBody[i].levelID) && (vehicleId == ghostDataBody[i].vehicleID)) {
+                        ghostSize = ghostDataBody[i].dataOffset;
+                        allocateSpace = ghostDataBody[i + 1].dataOffset - ghostSize;
                         break;
                     }
                 }
                 if (ghostSize == 0) {
                     pakStatus = CONTROLLER_PAK_NO_ROOM_FOR_GHOSTS;
                     for (i = 0; i < 6; i++) {
-                        if (ghostDataBody[i].unk0 == 0xFF) {
+                        if (ghostDataBody[i].levelID == 0xFF) {
                             pakStatus = CONTROLLER_PAK_SWITCH_TO_RUMBLE;
                         }
                     }
@@ -1223,10 +1223,10 @@ s32 ghost_load(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharac
                 if (pc_pfs_read_write_file(&pfs[controllerIndex], fileNumber, PFS_READ, ghostSize, allocateSpace,
                                            AS_BYTES(cPakFile)) == 0) {
                     // Hmm... The ghost data struct might not be quite right here...
-                    if (cPakFile->data[-1].unk0_hw == calculate_ghost_header_checksum((GhostHeader *) cPakFile)) {
-                        *ghostCharacterId = cPakFile->data[-1].unk2_b;
-                        *ghostTime = cPakFile->data[0].unk0_hw;
-                        *ghostNodeCount = cPakFile->data[0].unk2;
+                    if (cPakFile->data[-1].checksum == calculate_ghost_header_checksum((GhostHeader *) cPakFile)) {
+                        *ghostCharacterId = cPakFile->data[-1].characterID;
+                        *ghostTime = cPakFile->data[0].checksum;
+                        *ghostNodeCount = cPakFile->data[0].dataOffset;
                         bcopy(cPakFile->data + 1, ghostData, *ghostNodeCount * sizeof(GhostNode));
                         pakStatus = CONTROLLER_PAK_GOOD;
                     } else {
@@ -1300,16 +1300,16 @@ SIDeviceStatus ghost_file_create(s32 controllerIndex, s16 levelId, s16 vehicleId
     ghost = mempool_alloc_safe(sp24 + (GHSS_SIZE * 2), COLOUR_TAG_BLACK);
     ghost->signature = GHSS;
     ghostBody = &ghost->data[0];
-    ghostBody[0].unk0 = levelId;
-    ghostBody[0].unk1 = vehicleId;
-    ghostBody[0].unk2 = GHSS_SIZE;
-    ghostBody[1].unk2 = ghostBody[0].unk2 + sp30;
+    ghostBody[0].levelID = levelId;
+    ghostBody[0].vehicleID = vehicleId;
+    ghostBody[0].dataOffset = GHSS_SIZE;
+    ghostBody[1].dataOffset = ghostBody[0].dataOffset + sp30;
     for (i = 1; i < 7; i++) {
-        ghostBody[i].unk0 = 0xFF;
-        ghostBody[i].unk2 = ghostBody[1].unk2;
+        ghostBody[i].levelID = 0xFF;
+        ghostBody[i].dataOffset = ghostBody[1].dataOffset;
     }
 
-    ghost_header_fill((GhostHeader *) (AS_BYTES(ghost) + ghostBody[0].unk2), ghostCharacterId, ghostTime, ghostNodeCount,
+    ghost_header_fill((GhostHeader *) (AS_BYTES(ghost) + ghostBody[0].dataOffset), ghostCharacterId, ghostTime, ghostNodeCount,
                   dest);
     pakStatus = write_controller_pak_file(controllerIndex, -1, "DKRACING-GHOSTS", "", (u8 *) ghost, sp24 + GHSS_SIZE);
     mempool_free(ghost);
@@ -1348,7 +1348,7 @@ SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 g
     if (pakStatus == CONTROLLER_PAK_CHANGED) {
         start_reading_controller_data(controllerIndex);
         return ghost_file_create(controllerIndex, levelId, vehicleId, ghostCharacterId, ghostTime, ghostNodeCount,
-                             &ghostData->unk0);
+                             &ghostData->levelID);
     }
     if (pakStatus != CONTROLLER_PAK_GOOD) {
         start_reading_controller_data(controllerIndex);
@@ -1369,14 +1369,14 @@ SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 g
                     ghostFileData = &fileData->data[0];
 
                     for (i.w = 0, ghostIndex = -1; i.w < 6; i.w++) {
-                        if (levelId == ghostFileData[i.w].unk0 && vehicleId == ghostFileData[i.w].unk1) {
+                        if (levelId == ghostFileData[i.w].levelID && vehicleId == ghostFileData[i.w].vehicleID) {
                             ghostIndex = i.w;
                             break;
                         }
                     }
                     if (ghostIndex != -1) {
-                        i.ptr = ((unk80075000 *) (AS_BYTES(fileData) + ghostFileData[ghostIndex].unk2));
-                        i.w = i.ptr->data->unk0_hw;
+                        i.ptr = ((unk80075000 *) (AS_BYTES(fileData) + ghostFileData[ghostIndex].dataOffset));
+                        i.w = i.ptr->data->checksum;
                         if (i.w < ghostTime) {
                             ghostIndex = -2;
                         }
@@ -1384,7 +1384,7 @@ SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 g
 
                     if (ghostIndex == -1) {
                         for (i.w = 0; i.w < 6; i.w++) {
-                            if (ghostFileData[i.w].unk0 == 0xFF) {
+                            if (ghostFileData[i.w].levelID == 0xFF) {
                                 ghostIndex = i.w;
                                 break;
                             }
@@ -1395,28 +1395,28 @@ SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 g
                     } else if (ghostIndex == -1) {
                         pakStatus = CONTROLLER_PAK_NO_ROOM_FOR_GHOSTS;
                     } else {
-                        sp58 = ghostSize - (ghostFileData[ghostIndex + 1].unk2 - ghostFileData[ghostIndex].unk2);
+                        sp58 = ghostSize - (ghostFileData[ghostIndex + 1].dataOffset - ghostFileData[ghostIndex].dataOffset);
                         fileDataToWrite = mempool_alloc_safe(fileSize + GHSS_SIZE, COLOUR_TAG_BLACK);
                         fileDataToWrite->signature = GHSS;
                         sp70 = &fileDataToWrite->data[0];
-                        fileDataToWrite->data[6].unk0 = 0xFF;
-                        fileDataToWrite->data[6].unk2 = (s16) (ghostFileData[6].unk2 + sp58);
+                        fileDataToWrite->data[6].levelID = 0xFF;
+                        fileDataToWrite->data[6].dataOffset = (s16) (ghostFileData[6].dataOffset + sp58);
                         for (i.w = 0; i.w < 6; i.w++) {
-                            sp70[i.w].unk0 = ghostFileData[i.w].unk0;
-                            sp70[i.w].unk1 = ghostFileData[i.w].unk1;
+                            sp70[i.w].levelID = ghostFileData[i.w].levelID;
+                            sp70[i.w].vehicleID = ghostFileData[i.w].vehicleID;
                             if (ghostIndex >= i.w) {
-                                sp70[i.w].unk2 = ghostFileData[i.w].unk2;
+                                sp70[i.w].dataOffset = ghostFileData[i.w].dataOffset;
                             } else {
-                                sp70[i.w].unk2 = (ghostFileData[i.w].unk2 + sp58);
+                                sp70[i.w].dataOffset = (ghostFileData[i.w].dataOffset + sp58);
                             }
-                            bcopy(AS_BYTES(fileData) + ghostFileData[i.w].unk2,
-                                  AS_BYTES(fileDataToWrite) + sp70[i.w].unk2,
-                                  ghostFileData[i.w + 1].unk2 - ghostFileData[i.w].unk2);
+                            bcopy(AS_BYTES(fileData) + ghostFileData[i.w].dataOffset,
+                                  AS_BYTES(fileDataToWrite) + sp70[i.w].dataOffset,
+                                  ghostFileData[i.w + 1].dataOffset - ghostFileData[i.w].dataOffset);
                         }
-                        ghost_header_fill((GhostHeader *) (AS_BYTES(fileDataToWrite) + sp70[ghostIndex].unk2),
-                                      ghostCharacterId, ghostTime, ghostNodeCount, &ghostData->unk0);
-                        sp70[ghostIndex].unk0 = levelId;
-                        sp70[ghostIndex].unk1 = vehicleId;
+                        ghost_header_fill((GhostHeader *) (AS_BYTES(fileDataToWrite) + sp70[ghostIndex].dataOffset),
+                                      ghostCharacterId, ghostTime, ghostNodeCount, &ghostData->levelID);
+                        sp70[ghostIndex].levelID = levelId;
+                        sp70[ghostIndex].vehicleID = vehicleId;
                         pakStatus = write_controller_pak_file(controllerIndex, fileNumber, "DKRACING-GHOSTS", "",
                                                               AS_BYTES(fileDataToWrite), fileSize);
                         mempool_free(fileDataToWrite);
@@ -1459,22 +1459,22 @@ s32 ghost_delete_for_world(s32 controllerIndex, s32 worldId) {
         if (pakStatus == CONTROLLER_PAK_GOOD) {
             if (data->signature == GHSS) {
                 tempData = data->data;
-                sizeDiff = tempData[worldId].unk2 - tempData[worldId + 1].unk2;
+                sizeDiff = tempData[worldId].dataOffset - tempData[worldId + 1].dataOffset;
                 data2 = mempool_alloc_safe(fileSize + GHSS_SIZE, COLOUR_TAG_BLACK);
-                bcopy(data, data2, tempData[worldId].unk2); // Copy data into data2
+                bcopy(data, data2, tempData[worldId].dataOffset); // Copy data into data2
 
                 if (worldId != WORLD_FUTURE_FUN_LAND) {
-                    bcopy(AS_BYTES(data) + tempData[worldId + 1].unk2,
-                          AS_BYTES(data2) + tempData[worldId + 1].unk2 + sizeDiff,
-                          tempData[6].unk2 - tempData[worldId + 1].unk2);
+                    bcopy(AS_BYTES(data) + tempData[worldId + 1].dataOffset,
+                          AS_BYTES(data2) + tempData[worldId + 1].dataOffset + sizeDiff,
+                          tempData[6].dataOffset - tempData[worldId + 1].dataOffset);
                 }
                 tempData = data2->data;
                 for (i = worldId; i <= WORLD_FUTURE_FUN_LAND; i++) {
-                    tempData[i + 0].unk0 = tempData[i + 1].unk0;
-                    tempData[i + 0].unk1 = tempData[i + 1].unk1;
-                    tempData[i + 0].unk2 = tempData[i + 1].unk2 + sizeDiff;
+                    tempData[i + 0].levelID = tempData[i + 1].levelID;
+                    tempData[i + 0].vehicleID = tempData[i + 1].vehicleID;
+                    tempData[i + 0].dataOffset = tempData[i + 1].dataOffset + sizeDiff;
                 }
-                tempData[6].unk2 = tempData[5].unk2;
+                tempData[6].dataOffset = tempData[5].dataOffset;
                 pakStatus = write_controller_pak_file(controllerIndex, fileNumber, "DKRACING-GHOSTS", "", (u8 *) data2,
                                                       fileSize);
             } else {

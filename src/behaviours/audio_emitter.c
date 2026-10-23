@@ -73,20 +73,20 @@ void obj_init_audioline(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 pa
     Object_AudioLine *audLine;
 
     audLine = obj->audio_line;
-    audLine->unk0 = entry->unk8;
+    audLine->lineType = entry->lineType;
     audLine->soundID = entry->soundID;
     audLine->lineID = entry->lineID;
-    audLine->unkD = entry->unkD;
+    audLine->vertexIndex = entry->vertexIndex;
     audLine->unk_union.unk8_word = 0;
-    audLine->unk4 = entry->unkE;
-    audLine->unk11 = entry->unk12;
-    audLine->unk10 = entry->unk11;
-    audLine->unkE = entry->unk9;
-    audLine->unkF = entry->unk10;
-    audLine->unk12 = entry->unk13;
-    audspat_line_add_vertex(audLine->unk0, audLine->soundID, entry->common.x, entry->common.y, entry->common.z,
-                            audLine->unkF, audLine->unkE, audLine->unk10, audLine->unk12, audLine->unk4, audLine->unk11,
-                            audLine->lineID, audLine->unkD);
+    audLine->range = entry->range;
+    audLine->fastFalloff = entry->fastFalloff;
+    audLine->pitch = entry->pitch;
+    audLine->volume = entry->volume;
+    audLine->minVolume = entry->minVolume;
+    audLine->priority = entry->priority;
+    audspat_line_add_vertex(audLine->lineType, audLine->soundID, entry->common.x, entry->common.y, entry->common.z,
+                            audLine->minVolume, audLine->volume, audLine->pitch, audLine->priority, audLine->range, audLine->fastFalloff,
+                            audLine->lineID, audLine->vertexIndex);
     free_object(obj);
 }
 

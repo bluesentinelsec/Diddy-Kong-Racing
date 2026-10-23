@@ -216,7 +216,7 @@ void racer_sound_car(Object *obj, u32 buttonsPressed, u32 buttonsHeld, s32 ticks
     f32 brakePitch;
     s32 bananas;
 
-    if (gSoundRacerObj->unk1FB != 0) {
+    if (gSoundRacerObj->wheelspinTimer != 0) {
         speed = 12.0f;
     } else {
         speed = gSoundRacerObj->velocity;

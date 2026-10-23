@@ -691,7 +691,7 @@ void hud_render_player(Gfx **dList, Mtx **mtx, Vertex **vertexList, Object *obj,
             obj = get_racer_object_by_port(PLAYER_ONE);
         }
     }
-    if (obj != NULL && !(gHudLevelHeader->unkBC & 2)) {
+    if (obj != NULL && !(gHudLevelHeader->hudFlags & 2)) {
         if (get_game_mode() != GAMEMODE_MENU) {
             gHudDL = *dList;
             gHudMtx = *mtx;
@@ -3048,7 +3048,7 @@ void hud_weapon(Object *obj, s32 updateRate) {
             gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.prevLevel = racer->balloon_level;
         }
         if (racer->balloon_quantity > 0) {
-            if (gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.rotation < 16 && racer->unk170 == 0) {
+            if (gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.rotation < 16 && racer->weaponDisplayLock == 0) {
                 gCurrentHud->entry[HUD_WEAPON_DISPLAY].rotation.z_rotation =
                     gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.rotation * 0x1000;
                 gCurrentHud->entry[HUD_WEAPON_DISPLAY].scale =
@@ -3582,7 +3582,7 @@ void hud_render_general(Gfx **dList, Mtx **mtx, Vertex **vtx, s32 updateRate) {
     *dList = gHudDL;
     *mtx = gHudMtx;
     *vtx = gHudVtx;
-    if ((gHudLevelHeader->unkBC & 1)) {
+    if ((gHudLevelHeader->hudFlags & 1)) {
         return;
     }
 

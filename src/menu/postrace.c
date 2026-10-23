@@ -169,7 +169,7 @@ void postrace_start(s32 finishState, s32 worldID) {
     gMenuCurIndex = 0;
     gMenuOption = 0;
     gIgnorePlayerInputTime = 1;
-    gPostRace.unk0_s32 = -1;
+    gPostRace.assetLoadStep = -1;
     gMenuSubOption = 0;
     gPostRaceMessage = NULL;
     gTracksSaveGhost = FALSE;
@@ -191,7 +191,7 @@ void postrace_start(s32 finishState, s32 worldID) {
     gTrackSelectViewPortHalfX = gTrackSelectViewPortX >> 1;
     gTrackSelectViewPortHalfY = gTrackSelectViewportY >> 1;
     if (gNumberOfActivePlayers == 1 && gTrophyRaceWorldId == 0) {
-        gPostRace.unk0_s32 = 0;
+        gPostRace.assetLoadStep = 0;
         worldID = header->world - 1;
         var_v1 = &gTracksMenuBgTextureIndices[worldID * 3];
         if (var_v1[0] != -1) {
@@ -227,13 +227,13 @@ void postrace_load(void) {
     s32 i;
     s32 j;
 
-    if (gPostRace.unk0_s32 >= 0) {
-        if (gPostRace.unk0_s32 < 10) {
-            gPostRace.unk0_s32++;
+    if (gPostRace.assetLoadStep >= 0) {
+        if (gPostRace.assetLoadStep < 10) {
+            gPostRace.assetLoadStep++;
             return;
         }
 #ifdef AVOID_UB
-        temp_a0 = gRaceResultsObjectIndices[gPostRace.unk0_s32 - 10];
+        temp_a0 = gRaceResultsObjectIndices[gPostRace.assetLoadStep - 10];
 #else // This relies on the data laid out as is in memory, since the var itself is only 2 entries big.
         temp_a0 = sPostRaceRowOffsets[gPostRace.unk0_s32];
 #endif
@@ -258,11 +258,11 @@ void postrace_load(void) {
                     gRaceOrderMenuElements[0].t.element = &sMenuNullElement;
                 }
             }
-            gPostRace.unk0_s32 = -1;
+            gPostRace.assetLoadStep = -1;
             return;
         }
         menu_asset_load(temp_a0);
-        gPostRace.unk0_s32++;
+        gPostRace.assetLoadStep++;
     }
 }
 
@@ -568,7 +568,7 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
     postrace_load();
     postrace_music_fade(updateRate);
     if (gMenuDelay < 20 && gPostraceFinishState == 0) {
-        if (gPostRace.unk0_s32 < 0) {
+        if (gPostRace.assetLoadStep < 0) {
             postrace_viewport(updateRate);
         }
     } else {
@@ -576,7 +576,7 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
     }
     update_controller_sticks();
     buttonsPressed = 0;
-    if (gIgnorePlayerInputTime == FALSE && gPostRace.unk0_s32 < 0) {
+    if (gIgnorePlayerInputTime == FALSE && gPostRace.assetLoadStep < 0) {
         for (i = 0; i < numPlayers; i++) {
             buttonsPressed |= input_pressed(i);
         }

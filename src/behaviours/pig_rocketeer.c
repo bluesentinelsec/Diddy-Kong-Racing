@@ -49,9 +49,9 @@ void obj_loop_pigrocketeer(Object *obj, s32 updateRate) {
         boost = boostObj->boost;
         boostObj->properties.common.unk0 = 0;
         if (boost != 0) {
-            boost->unk72 += updateRate;
-            boost->unk70 = 2;
-            boost->unk74 = 1.0f;
+            boost->pulseTimer += updateRate;
+            boost->effectState = 2;
+            boost->effectScale = 1.0f;
             racer_set_boost_effect(obj, -1, 2, 1, 1);
         }
     }

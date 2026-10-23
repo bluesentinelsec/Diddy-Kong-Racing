@@ -123,20 +123,20 @@ typedef struct TextureHeader {
     /* 0x0A */ s16
         numberOfCommands; // initialized in RAM; Number of commands in the texture display list. (Usually 0x07)
     /* 0x0C */ Gfx *cmd;  // initialized in RAM; Pointer to texture display list.
-    /* 0x10 */ u8 unk10;
-    /* 0x11 */ u8 unk11;
+    /* 0x10 */ u8 unused10;
+    /* 0x11 */ u8 unused11;
     /* 0x12 */ u16
         numOfTextures; // For animated textures, static textures are just 0x01. Each texture has it's own header.
     /* 0x14 */ u16 frameAdvanceDelay; // How many frames to delay before moving to the next texture.
     /* 0x16 */ s16 textureSize;       // Size in number of bytes, including the header
-    /* 0x18 */ u8 unk18;
-    /* 0x19 */ u8 unk19;
-    /* 0x1A */ u8 unk1A;
-    /* 0x1B */ u8 unk1B;
-    /* 0x1C */ u8 unk1C;
+    /* 0x18 */ u8 unused18;
+    /* 0x19 */ u8 unused19;
+    /* 0x1A */ u8 unused1A;
+    /* 0x1B */ u8 unused1B;
+    /* 0x1C */ u8 unused1C;
     /* 0x1D */ u8 isCompressed;
-    /* 0x1E */ u8 unk1E;
-    /* 0x1F */ u8 unk1F;
+    /* 0x1E */ u8 unused1E;
+    /* 0x1F */ u8 unused1F;
 } TextureHeader;
 
 // Probably not unique to the boot menu.
@@ -302,7 +302,7 @@ typedef struct Settings {
     // 0x10 = Dragon Forest key
     /* 0x0008 */ u16 keys;
 
-    /* 0x000A */ u16 unkA;
+    /* 0x000A */ u16 unusedA;
 
     // Boss bits:
     // 0x001 = Wizpig 1
@@ -365,17 +365,17 @@ typedef struct Settings {
     /* 0x0049 */ u8 courseId;
     /* 0x004A */ u8 gNumRacers;
     /* 0x004B */ u8 newGame;
-    /* 0x004C */ Settings4C *unk4C;
+    /* 0x004C */ Settings4C *levelTransition;
     /* 0x0050 */ u32 filename;
     /* 0x0054 */ Racer racers[8];
     /* 0x0114 */ s8 timeTrialRacer;
-    /* 0x0115 */ s8 unk115[2];
+    /* 0x0115 */ s8 bestLapRacerAndLap[2];
     /* 0x0117 */ s8 display_times;
 } Settings;
 
 /* Size: 8 bytes */
 typedef struct LevelHeader_70_18 {
-    s32 unk0; // 0x0000001E
+    s32 duration; // 0x0000001E
     u8 red;   // 0xFF
     u8 green; // 0x70
     u8 blue;  // 0x00
@@ -396,13 +396,13 @@ typedef struct {
 
 /* Unknown size */
 typedef struct LevelHeader_70 {
-    /* 0x00 */ s32 unk0; // 0x00000004
-    /* 0x04 */ s32 unk4; // 0x00000000
-    /* 0x08 */ s32 unk8; // 0x00000000
-    /* 0x0C */ s32 unkC; // 0x00000000
+    /* 0x00 */ s32 numKeyframes;    // 0x00000004
+    /* 0x04 */ s32 currentKeyframe; // 0x00000000
+    /* 0x08 */ s32 keyframeTimer;   // 0x00000000
+    /* 0x0C */ s32 totalDuration;   // 0x00000000
     /* 0x10 */ ColourRGBA rgba;
     /* 0x14 */ ColourRGBA rgba2;
-    /* 0x18 */ LevelHeader_70_18 unk18[1]; // Actual length depends on unk0
+    /* 0x18 */ LevelHeader_70_18 keyframes[1]; // Actual length depends on numKeyframes
 } LevelHeader_70;
 
 // Used to update the pulsating lights in Spaceport Alpha
@@ -429,16 +429,16 @@ typedef struct ByteColour {
 /* Size: 0xC4 bytes */
 typedef struct LevelHeader {
     /* 0x00 */ s8 world;
-    /* 0x01 */ u8 unk1;
-    /* 0x02 */ s8 unk2;
-    /* 0x03 */ s8 unk3;
-    /* 0x04 */ s8 unk4[4];
+    /* 0x01 */ u8 unused1;
+    /* 0x02 */ s8 waterPathFollow;
+    /* 0x03 */ s8 levelRendered; // best guess
+    /* 0x04 */ s8 maxUpdateRateByPlayers[4];
     /* 0x08 */ f32 course_height;
-    /* 0x0C */ u8 unkC[10];
-    /* 0x16 */ u8 unk16[10];
+    /* 0x0C */ u8 aiSkillByCharacter[10];
+    /* 0x16 */ u8 trophyAiSkillByCharacter[10];
     /* 0x20 */ s8 *AILevelTable;
     /* 0x24 */ u8 pad24[6];
-    /* 0x2A */ s8 unk2A[10];
+    /* 0x2A */ s8 aiChallengeChances[10];
     /* 0x34 */ s16 geometry;
     /* 0x36 */ s16 collectables; // Objects such as bananas, balloons, etc.
     /* 0x38 */ s16 skybox;
@@ -450,7 +450,7 @@ typedef struct LevelHeader {
     /* 0x40 */ s16 fogG;
     /* 0x42 */ s16 fogB;
 
-    /* 0x44 */ u8 unk44[0x5];
+    /* 0x44 */ u8 unused44[0x5];
 
     /* 0x49 */ s8 skyDome;
     /* 0x4A */ s8 playerIndex;
@@ -459,14 +459,14 @@ typedef struct LevelHeader {
     /* 0x4D */ s8 vehicle;
     /* 0x4E */ s8 available_vehicles;
 
-    /* 0x4F */ s8 unk4F[3];
+    /* 0x4F */ s8 tajChallengeByVehicle[3];
 
     /* 0x52 */ u8 music;
-    /* 0x53 */ u8 unk53;
+    /* 0x53 */ u8 unused53;
     /* 0x54 */ u16 instruments;
     // Waves
     /* 0x56 */ u8 waveSubdivisons;  // values between 2 and 8 (except 5 and 7), used to determine waves count?
-    /* 0x57 */ u8 unk57;            // possible values: 2,4,8,16,20, related to waves
+    /* 0x57 */ u8 waveTileCount;    // possible values: 2,4,8,16,20, related to waves
     /* 0x58 */ u8 waveSineStep0;    // possible values: 1,2,4
     /* 0x59 */ u8 waveSineBase0;    // always 0?
     /* 0x5A */ s16 waveSineHeight0; // values between 512 and 4608
@@ -475,9 +475,9 @@ typedef struct LevelHeader {
     /* 0x5E */ s16 waveSineHeight1; // values between 512 and 4963
     /* 0x60 */ s16 waveSeedSize;    // possible values: 120, 130, 157, 178, 187
     /* 0x62 */ s16 wavePower;       // always 256
-    /* 0x64 */ s16 unk64; // Always 153 except in Smokey Castle where it's 0 and the title screen where it's 256 (Some
-                          // form of secondary power)
-    /* 0x66 */ s16 unk66; // values between 908 and 2560
+    /* 0x64 */ s16 waveMinDetailScale;    // Always 153 except in Smokey Castle where it's 0 and the title screen where
+                                          // it's 256 (Some form of secondary power)
+    /* 0x66 */ s16 waveHeightColourScale; // values between 908 and 2560
     /* 0x68 */ s16 waveTexID;    // always 62 except in the trophy race where it's 205
     /* 0x6A */ u8 waveUVScaleX;  // values between 1 and 6
     /* 0x6B */ u8 waveUVScaleY;  // values between 1 and 6
@@ -485,16 +485,16 @@ typedef struct LevelHeader {
     /* 0x6D */ s8 waveUVScrollY; // values between 0 and 2 except in Hot Top Volcano where it's -2
     /* 0x6E */ s16 waveViewDist; // possible values: 3,5
 
-    // waves_init_header Seems to use this struct, and it differs on unk70 only.
+    // waves_init_header Seems to use this struct, and it differs on colourCyclesByFlagIndex only.
     union {
-        /* 0x70 */ LevelHeader_70 *unk70[1]; // unknown size, however only size of 1 matches
+        /* 0x70 */ LevelHeader_70 *colourCyclesByFlagIndex[1]; // unknown size, however only size of 1 matches
         struct {
             /* 0x70 */ u8 wavesXlu;          // always 1 except in Hot Top Volcano where it's 0
             /* 0x71 */ u8 waveDoubleDensity; // possible values: 0,1
         };
     };
 
-    /* 0x74 */ LevelHeader_70 *unk74[7];
+    /* 0x74 */ LevelHeader_70 *colourCycles[7];
 
     // Weather related?
     /* 0x90 */ s16 weatherEnable; // This affects snow density, but for rain, it simply needs to be nonzero.
@@ -509,25 +509,25 @@ typedef struct LevelHeader {
     /* 0x9D */ u8 bgColorRed;
     /* 0x9E */ u8 bgColorGreen;
     /* 0x9F */ u8 bgColorBlue;
-    /* 0xA0 */ u8 unkA0;
-    /* 0xA1 */ u8 unkA1;
-    /* 0xA2 */ s8 unkA2;
-    /* 0xA3 */ s8 unkA3;
-    /* 0xA4 */ TextureHeader *unkA4;
-    /* 0xA8 */ s16 unkA8;
-    /* 0xAA */ s16 unkAA;
+    /* 0xA0 */ u8 skyTexScaleU;
+    /* 0xA1 */ u8 skyTexScaleV;
+    /* 0xA2 */ s8 skyTexScrollSpeedU;
+    /* 0xA3 */ s8 skyTexScrollSpeedV;
+    /* 0xA4 */ TextureHeader *skyTexture;
+    /* 0xA8 */ s16 skyTexScrollU;
+    /* 0xAA */ s16 skyTexScrollV;
     /* 0xAC */ PulsatingLightData *pulseLightData;
 
-    /* 0xB0 */ s16 unkB0;
-    /* 0xB2 */ u8 unkB2;
+    /* 0xB0 */ s16 unusedB0;
+    /* 0xB2 */ u8 unusedB2;
     /* 0xB3 */ u8 voiceLimit;
     /* 0xB4 */ ByteColour voidColour;
     /* 0xB7 */ u8 useVoid; // Disallow the player from looking through walls by drawing a blank screen behind walls.
     /* 0xB8 */ s8 bossRaceID;
-    /* 0xB9 */ u8 unkB9;
-    /* 0xBA */ s16 unkBA;
-    /* 0xBC */ u8 unkBC;
-    /* 0xBD */ s8 unkBD;
+    /* 0xB9 */ u8 unusedB9;
+    /* 0xBA */ s16 objectMapId;
+    /* 0xBC */ u8 hudFlags;
+    /* 0xBD */ s8 forceAntiAliasing;
     // Multiplayer gradient background
     /* 0xBE */ u8 BGColourBottomR;
     /* 0xBF */ u8 BGColourBottomG;
@@ -536,30 +536,6 @@ typedef struct LevelHeader {
     /* 0xC2 */ u8 BGColourTopG;
     /* 0xC3 */ u8 BGColourTopB;
 } LevelHeader;
-
-/* Size: 0x50 bytes */
-typedef struct {
-    /* 0x00 */ u32 unk00;
-    /* 0x04 */ u32 unk04;
-    /* 0x08 */ u32 unk08;
-    /* 0x0C */ f32 unk0C;
-    /* 0x10 */ ptrint_t unk10; // sound handles (pointers on the host)
-    /* 0x14 */ ptrint_t unk14;
-    /* 0x18 */ f32 unk18;
-    /* 0x1C */ ptrint_t unk1C;
-    /* 0x20 */ ptrint_t unk20;
-    /* 0x24 */ u32 unk24;
-    /* 0x28 */ u32 unk28;
-    /* 0x2C */ u32 unk2C;
-    /* 0x30 */ u32 unk30;
-    /* 0x34 */ u32 unk34;
-    /* 0x38 */ u32 unk38;
-    /* 0x3C */ u32 unk3C;
-    /* 0x40 */ f32 unk40;
-    /* 0x44 */ f32 unk44;
-    /* 0x48 */ f32 unk48;
-    /* 0x4C */ u32 unk4C;
-} dkr_wave_t;
 
 /* Size: 8 bytes */
 typedef struct TextureInfo {
@@ -649,7 +625,7 @@ typedef struct ObjectModel {
     /* 0x10 */ f32 *collisionPlanes;
     /* 0x14 */ s16 *attachPoints; // (Vehicle parts, Egg) Indices positions (stored in vertices).
     /* 0x18 */ s16 numberOfAttachPoints;
-    /* 0x1A */ s16 unk1A;
+    /* 0x1A */ s16 unused1A;
     /* 0x1C */ s16 *collisionSpheres; // Used in object_collide_with_object. Data is a pair of s16 values.
     /* 0x20 */ s16 collisionSpheresSize; // Should be an even number.
     /* 0x22 */ s16 numberOfTextures;
@@ -662,7 +638,7 @@ typedef struct ObjectModel {
     /* 0x32 */ s16 collisionFacetCount;
     /* 0x34 */ u8 pad34[4];
     /* 0x38 */ TriangleBatchInfo *batches;
-    /* 0x3C */ f32 unk3C;
+    /* 0x3C */ f32 boundingRadius;
     /* 0x40 */ Vec3s *normals;
     /* 0x44 */ ObjectModel_44 *animations;
     /* 0x48 */ s16 numberOfAnimations;
@@ -693,25 +669,25 @@ typedef struct ModelInstance {
 typedef struct LevelModelSegment {
     /* 0x00 */ Vertex *vertices;
     /* 0x04 */ Triangle *triangles;
-    /* 0x08 */ s32 unk8;
+    /* 0x08 */ s32 unused8;
     /* 0x0C */ TriangleBatchInfo *batches;
-    /* 0x10 */ s16 *unk10;
+    /* 0x10 */ s16 *triangleGridMasks;
     /* 0x14 */ CollisionFacetPlanes *collisionFacets;
     /* 0x18 */ f32 *collisionPlanes; // Array of plane equations (A, B, C, D) used in collision checks
     /* 0x1C */ s16 numberOfVertices;
     /* 0x1E */ s16 numberOfTriangles;
     /* 0x20 */ s16 numberOfBatches;
     u8 pad22[0x06];
-    /* 0x28 */ s16 unk28;
-    /* 0x2A */ s8 unk2A;
+    /* 0x28 */ s16 visibilityBitfieldOffset;
+    /* 0x2A */ s8 unused2A;
     /* 0x2B */ s8 hasWaves;
-    /* 0x2C */ Vertex *unk2C;
-    /* 0x30 */ s16 unk30;
-    /* 0x32 */ s16 unk32;
-    s16 *unk34;
-    /* 0x38 */ s16 unk38;
+    /* 0x2C */ Vertex *unused2C;
+    /* 0x30 */ s16 unused30;
+    /* 0x32 */ s16 numWaterBatches;
+    s16 *waterBatchIndices;
+    /* 0x38 */ s16 waterHeight;
     u8 pad3A[2];
-    /* 0x3C */ s32 unk3C;
+    /* 0x3C */ s32 segmentFlags;
     /* 0x40 */ u8 numberofOpaqueBatches;
     u8 pad41[0x3];
 } LevelModelSegment;
@@ -738,16 +714,16 @@ typedef struct LevelModel {
     /* 0x00 */ TextureInfo *textures;
     /* 0x04 */ LevelModelSegment *segments;
     /* 0x08 */ LevelModelSegmentBoundingBox *segmentsBoundingBoxes;
-    /* 0x0C */ u8 *unkC; // Unused?
+    /* 0x0C */ u8 *unusedC; // Unused?
     /* 0x10 */ u8 *segmentsBitfields;
     /* 0x14 */ BspTreeNode *segmentsBspTree;
     /* 0x18 */ s16 numberOfTextures;
     /* 0x1A */ s16 numberOfSegments;
-    /* 0x1C */ s16 unk1C; // Unused?
+    /* 0x1C */ s16 unused1C; // Unused?
     /* 0x1E */ s16 numberOfAnimatedTextures;
     /* 0x20 */ ptrint_t minimapSpriteIndex; // sprite id from the asset, replaced by the Sprite * at runtime
     /* 0x24 */ u16 minimapRotation; // angle for icons on minimap?
-    /* 0x26 */ u16 unk26;           // Unused? Common values: 0x0009, 0xFFFF, 0x0303
+    /* 0x26 */ u16 unused26;        // Unused? Common values: 0x0009, 0xFFFF, 0x0303
     /* 0x28 */ f32 minimapXScale;
     /* 0x2C */ f32 minimapYScale;
     /* 0x30 */ s16 minimapOffsetXAdv1; // minimap X offset (Adventure 1)
@@ -771,84 +747,84 @@ typedef struct ObjHeaderParticleEntry {
 
 // Size: 0x18 bytes
 typedef struct ObjectHeader24 {
-    u8 unk0;
-    u8 unk1;
-    u8 unk2;
-    u8 unk3;
-    u8 unk4;
-    u8 unk5;
-    u16 unk6; // Misc Asset Id?
+    u8 dirYaw;
+    u8 dirPitch;
+    u8 colourR;
+    u8 colourG;
+    u8 colourB;
+    u8 intensity;
+    u16 colourAnimAssetId; // Misc Asset Id?
     union {
-        u32 unk8;
+        u32 flagsWord;
         struct {
-            u8 unk8A;
-            u8 unk9;
-            u8 unkA;
-            u8 unkB;
+            u8 shapeAndEnabled;
+            u8 directionMode;
+            u8 falloffType;
+            u8 affectedObjectMask;
         };
     };
     s16 homeX;
     s16 homeY;
     s16 homeZ;
     u16 radius;
-    u16 unk14;
-    u16 unk16;
+    u16 extentY;
+    u16 extentZ;
 } ObjectHeader24;
 
 typedef struct ObjectHeader {
-    /* 0x00 */ s32 unk0; // The one use I've seen for this so far is water effect animation speed.
+    /* 0x00 */ s32 waterEffectAnimSpeed; // The one use I've seen for this so far is water effect animation speed.
     /* 0x04 */ f32 shadowScale;
-    /* 0x08 */ f32 unk8;
+    /* 0x08 */ f32 waterEffectScale;
     /* 0x0C */ f32 scale;
     /* 0x10 */ s32 *modelIds;
     /* 0x14 */ s32 *vehiclePartIds;
     /* 0x18 */ s8 *vehiclePartIndices;
     /* 0x1C */ ObjHeaderParticleEntry *objectParticles;
     s32 pad20;
-    /* 0x24 */ ObjectHeader24 *unk24;
+    /* 0x24 */ ObjectHeader24 *lightSources;
     /* 0x28 */ f32 shadeAmbient;
     /* 0x2C */ f32 shadeDiffuse;
     /* 0x30 */ u16 flags;
     /* 0x32 */ s16 shadowGroup;
-    /* 0x34 */ s16 unk34;
+    /* 0x34 */ s16 shadowTextureId;
     /* 0x36 */ s16 waterEffectGroup;
-    /* 0x38 */ s16 unk38;
-    /* 0x3A */ u8 unk3A;
-    /* 0x3B */ u8 unk3B;
-    /* 0x3C */ u8 unk3C;
+    /* 0x38 */ s16 waterEffectTextureId;
+    /* 0x3A */ u8 shadeLightR;
+    /* 0x3B */ u8 shadeLightG;
+    /* 0x3C */ u8 shadeLightB;
     /* 0x3D */ u8 shadeIntensityy;
     /* 0x3E */ s16 shadeAngleY;
     /* 0x40 */ s16 shadeAngleZ;
-    /* 0x42 */ s16 unk42;
-    /* 0x44 */ s16 unk44;
-    /* 0x48 */ s16 shadowBottom;  // Lower bounds for shadow
-    /* 0x48 */ s16 shadowTop;     // Upper bounds for shadow
+    /* 0x42 */ s16 shadowBottom;
+    /* 0x44 */ s16 shadowTop;
+    /* 0x46 */ s16 waterEffectBottom; // Lower bound of the water-surface effect
+    /* 0x48 */ s16 waterEffectTop;    // Upper bound of the water-surface effect
     /* 0x4A */ s16 shadowFadeMin; // Close reference distance for shadow opacity
     /* 0x4C */ s16 shadowFadeMax; // Far reference distance for shadow opacity
     /* 0x4E */ s16 drawDistance;
-    /* 0x50 */ s16 unk50;
-    /* 0x52 */ s8 unk52;
+    /* 0x50 */ s16 cullRadius;
+    /* 0x52 */ s8 instanceCount;
     /* 0x53 */ s8 modelType;
     /* 0x54 */ s8 behaviorId;
     /* 0x55 */ s8 numberOfModelIds; // size of array pointed by Object->unk68
     /* 0x56 */ s8 attachPointCount;
     /* 0x57 */ s8 particleCount; // Number of different particle types that are attached
-    /* 0x58 */ s8 unk58;
+    /* 0x58 */ s8 heldItemAttachPoint;
     /* 0x59 */ u8 pad59;
     /* 0x5A */ s8 numLightSources;
     /* 0x5B */ u8 miscAssetCount;
     // Misc asset indices used by this object. Racers: [0] acceleration curve, [1] the four collision spheres.
     /* 0x5C */ u8 miscAssetIds[4];
     /* 0x60 */ char internalName[16];
-    /* 0x70 */ u8 unk70;
+    /* 0x70 */ u8 unused70;
     /* 0x71 */ u8 directionalPointLighting; // If enabled, the model is lit from the direction of the light source; if
                                             // disabled, lighting is applied evenly from all sides
-    /* 0x72 */ u8 unk72;
-    /* 0x73 */ u8 unk73;
-    /* 0x74 */ s8 unk74;
-    /* 0x75 */ s8 unk75;
-    /* 0x76 */ u8 unk76;
-    /* 0x77 */ u8 unk77;
+    /* 0x72 */ u8 texScrollTextureIndex;
+    /* 0x73 */ u8 texScrollModelIndex;
+    /* 0x74 */ s8 texScrollSpeedU;
+    /* 0x75 */ s8 texScrollSpeedV;
+    /* 0x76 */ u8 unused76;
+    /* 0x77 */ u8 unused77;
 } ObjectHeader;
 
 typedef struct ObjectInteraction {
@@ -872,8 +848,8 @@ typedef struct ShadowData {
     TextureHeader *texture;
     s16 meshStart;
     s16 meshEnd;
-    s16 unkC;
-    s16 unkE;
+    s16 unusedC;
+    s16 unusedE;
 } ShadowData;
 
 typedef struct WaterEffect {
@@ -883,12 +859,12 @@ typedef struct WaterEffect {
     s16 meshEnd;
     s16 textureFrame;
     s16 animationSpeed;
-    s16 unk10;
-    s16 unk12;
+    s16 unused10;
+    s16 unused12;
 } WaterEffect;
 
 typedef struct ShadeProperties {
-    /* 0x00 */ f32 unk0;
+    /* 0x00 */ f32 brightness;
     /* 0x04 */ u8 lightR;
     /* 0x05 */ u8 lightG;
     /* 0x06 */ u8 lightB;
@@ -906,13 +882,13 @@ typedef struct ShadeProperties {
     /* 0x18 */ u8 shadowR;
     /* 0x19 */ u8 shadowG;
     /* 0x1A */ u8 shadowB;
-    /* 0x1B */ u8 unk1B;
+    /* 0x1B */ u8 unused1B;
     /* 0x1C */ s16 shadowDirX;
     /* 0x1E */ s16 shadowDirY;
     /* 0x20 */ s16 shadowDirZ;
-    /* 0x22 */ s16 unk22;
-    /* 0x24 */ s16 unk24;
-    /* 0x26 */ s16 unk26;
+    /* 0x22 */ s16 shadeAngleX;
+    /* 0x24 */ s16 shadeAngleY;
+    /* 0x26 */ s16 shadeAngleZ;
     /* 0x28 */ f32 ambient;
     /* 0x2C */ f32 diffuse;
 } ShadeProperties;
@@ -935,9 +911,9 @@ typedef struct AttachPoint {
 } AttachPoint;
 
 typedef struct Object_LaserGun {
-    /* 0x00 */ s32 unk0;
-    /* 0x00 */ s32 unk4;
-    /* 0x00 */ s32 unk7;
+    /* 0x00 */ s32 unused0;
+    /* 0x00 */ s32 unused4;
+    /* 0x00 */ s32 unused7;
     /* 0x0C */ s16 fireTimer;
     /* 0x0E */ s8 targeting;
     /* 0x0F */ s8 fireRate;
@@ -977,11 +953,11 @@ typedef struct Object_Weapon {
     /* 0x08 */ struct Object *hitObj;
     /* 0x0C */ f32 checkpointDist;
     /* 0x10 */ f32 forwardVel;
-    /* 0x14 */ s16 unk14;
-    /* 0x14 */ s16 unk16;
+    /* 0x14 */ s16 targetTrackOffsetX;
+    /* 0x14 */ s16 targetTrackOffsetY;
     /* 0x18 */ u8 weaponID;
     /* 0x19 */ s8 checkpoint;
-    /* 0x1A */ s16 unk1A;
+    /* 0x1A */ s16 unused1A;
     /* 0x1C */ struct AudioPoint *soundMask;
 } Object_Weapon;
 
@@ -989,44 +965,44 @@ typedef struct Object_Butterfly {
     /* 0x000 */ Triangle triangles[8];
     /* 0x080 */ Vertex vertices[12];
     /* 0x0F8 */ TextureHeader *texture;
-    /* 0x0FC */ u8 unkFC;
-    /* 0x0FD */ u8 unkFD;
-    /* 0x0FE */ u8 unkFE;
-    /* 0x0FF */ u8 unkFF;
-    /* 0x100 */ struct Object *unk100;
-    /* 0x104 */ u16 unk104;
-    /* 0x106 */ s16 unk106;
-    /* 0x108 */ f32 unk108;
-    /* 0x10C */ f32 unk10C;
+    /* 0x0FC */ u8 vertexBufferIndex;
+    /* 0x0FD */ u8 state;
+    /* 0x0FE */ u8 isAscending;
+    /* 0x0FF */ u8 unusedFF;
+    /* 0x100 */ struct Object *targetObj;
+    /* 0x104 */ u16 retargetTimer;
+    /* 0x106 */ s16 turnSpeed;
+    /* 0x108 */ f32 forwardSpeed;
+    /* 0x10C */ f32 unused10C;
 } Object_Butterfly;
 
 typedef struct Object_Fish {
     /* 0x000 */ Triangle triangles[8];
     /* 0x080 */ Vertex vertices[12];
     /* 0x0F8 */ TextureHeader *texture;
-    /* 0x0FC */ u8 unkFC;
-    /* 0x0FD */ u8 unkFD;
-    /* 0x0FE */ s16 unkFE;
-    /* 0x100 */ s16 unk100;
-    /* 0x102 */ s16 unk102;
-    /* 0x104 */ s16 unk104;
-    /* 0x106 */ s16 unk106;
-    /* 0x108 */ f32 unk108;
-    /* 0x10C */ f32 unk10C;
-    /* 0x110 */ f32 unk110;
-    /* 0x114 */ f32 unk114;
-    /* 0x118 */ f32 unk118;
-    /* 0x11c */ f32 unk11C;
+    /* 0x0FC */ u8 vertexBufferIndex;
+    /* 0x0FD */ u8 verticalMoveTimer;
+    /* 0x0FE */ s16 pathPhase;
+    /* 0x100 */ s16 pathSpeed;
+    /* 0x102 */ s16 unused102; // best guess
+    /* 0x104 */ s16 pathAngle;
+    /* 0x106 */ s16 tailWavePhase;
+    /* 0x108 */ f32 homeX;
+    /* 0x10C */ f32 homeY;
+    /* 0x110 */ f32 homeZ;
+    /* 0x114 */ f32 pathRadius;
+    /* 0x118 */ f32 verticalRange;
+    /* 0x11c */ f32 unused11C;
 } Object_Fish;
 
 typedef struct Object_Boost_Inner {
     Vec3f position;
-    f32 unkC;
-    f32 unk10;
-    f32 unk14;
-    f32 unk18;
-    f32 unk1C;
-    f32 unk20;
+    f32 spriteScaleBase;
+    f32 spriteScalePulse;
+    f32 fanRadiusBase;
+    f32 fanRadiusPulse;
+    f32 fanLengthBase;
+    f32 fanLengthPulse;
 } Object_Boost_Inner;
 
 typedef struct Object_Boost {
@@ -1035,11 +1011,11 @@ typedef struct Object_Boost {
     /* 0x48 */ Object_Boost_Inner flyingBoostData;
     /* 0x6C */ s16 spriteId;
     /* 0x6E */ s16 textureId;
-    /* 0x70 */ u8 unk70;
-    /* 0x71 */ u8 unk71;
-    /* 0x72 */ u8 unk72;
-    /* 0x73 */ s8 unk73;
-    /* 0x74 */ f32 unk74;
+    /* 0x70 */ u8 effectState;
+    /* 0x71 */ u8 unused71;
+    /* 0x72 */ u8 pulseTimer;
+    /* 0x73 */ s8 lingerTimer;
+    /* 0x74 */ f32 effectScale;
     /* 0x78 */ Sprite *sprite;
     /* 0x7C */ TextureHeader *tex;
 } Object_Boost;
@@ -1059,11 +1035,11 @@ typedef struct CharacterFlagModel {
 } CharacterFlagModel;
 
 typedef struct Object_AudioLine {
-    /* 0x00 */ u8 unk0;
+    /* 0x00 */ u8 lineType;
     /* 0x01 */ u8 pad1;
     /* 0x02 */ u16 soundID;
-    /* 0x04 */ u16 unk4;
-    /* 0x06 */ u16 unk6;
+    /* 0x04 */ u16 range;
+    /* 0x06 */ u16 unused6;
     /* 0x08 */ union {
         struct {
             u8 unk8;
@@ -1074,12 +1050,12 @@ typedef struct Object_AudioLine {
         s32 unk8_word;
     } unk_union;
     /* 0x0C */ u8 lineID;
-    /* 0x0D */ u8 unkD;
-    /* 0x0E */ u8 unkE;
-    /* 0x0F */ u8 unkF;
-    /* 0x10 */ u8 unk10;
-    /* 0x11 */ u8 unk11;
-    /* 0x12 */ u8 unk12;
+    /* 0x0D */ u8 vertexIndex;
+    /* 0x0E */ u8 volume;
+    /* 0x0F */ u8 minVolume;
+    /* 0x10 */ u8 pitch;
+    /* 0x11 */ u8 fastFalloff;
+    /* 0x12 */ u8 priority;
 } Object_AudioLine;
 
 typedef struct Object_AudioReverb {
@@ -1092,10 +1068,10 @@ typedef struct Object_AudioReverb {
 typedef struct Object_TexScroll {
     /* 0x0 */ s16 textureIndex;
     /* 0x2 */ s16 pad2;
-    /* 0x4 */ s16 unk4;
-    /* 0x6 */ s16 unk6;
-    /* 0x8 */ s16 unk8;
-    /* 0xA */ s16 unkA;
+    /* 0x4 */ s16 scrollSpeedU;
+    /* 0x6 */ s16 scrollSpeedV;
+    /* 0x8 */ s16 scrollAccumU;
+    /* 0xA */ s16 scrollAccumV;
 } Object_TexScroll;
 
 typedef struct Object_Frog {
@@ -1138,7 +1114,7 @@ typedef struct Object_Racer {
     /* 0x000 */ s16 playerIndex; // -1 = AI Controlled, 0 to 3 = Object controlled
     /* 0x002 */ s8 racerIndex;   // Unique ID for each racer object.
     /* 0x003 */ s8 characterId;  // Affects minimap color, horn, voice, etc.
-    /* 0x004 */ s32 unk4;
+    /* 0x004 */ s32 unused4;
     /* 0x008 */ f32 forwardVel;
     /* 0x00C */ f32 animationSpeed;
     /* 0x010 */ SoundHandle slideSoundHandle;    // SOUND_CAR_SLIDE while drifting
@@ -1148,7 +1124,7 @@ typedef struct Object_Racer {
     /* 0x020 */ SoundHandle splatSoundHandle;    // SOUND_SPLAT on a hit
     /* 0x024 */ struct AudioPoint *soundMask;
     /* 0x028 */ u16 lastSoundID;
-    /* 0x02A */ u16 unk2A;
+    /* 0x02A */ u16 lastVoiceSoundID;
     /* 0x02C */ f32 velocity;
     /* 0x030 */ f32 lateral_velocity;
     /* 0x034 */ f32 vehiclePitch; // Vehicle pitch.
@@ -1167,7 +1143,7 @@ typedef struct Object_Racer {
     /* 0x068 */ f32 checkpointPosX; // xPos
     /* 0x06C */ f32 checkpointPosY; // yPos
     /* 0x070 */ f32 checkpointPosZ; // zPos
-    /* 0x074 */ f32 unk74;
+    /* 0x074 */ f32 cameraYDamping;
     /* 0x078 */ f32 carBobX;
     /* 0x07C */ f32 carBobY;
     /* 0x080 */ f32 carBobZ;
@@ -1176,67 +1152,67 @@ typedef struct Object_Racer {
     /* 0x08C */ f32 stretch_height;
     /* 0x090 */ f32 stretch_height_cap;
     /* 0x094 */ f32 camera_zoom;
-    /* 0x098 */ f32 unk98;
+    /* 0x098 */ f32 unused98;
     /* 0x09C */ f32 pitch;
     /* 0x0A0 */ f32 roll;
     /* 0x0A4 */ f32 yaw;
     /* 0x0A8 */ f32 checkpoint_distance;
-    /* 0x0AC */ f32 unkAC;
-    /* 0x0B0 */ f32 unkB0;
+    /* 0x0AC */ f32 aiSplineStep;
+    /* 0x0B0 */ f32 wheelAnimAccum;
     /* 0x0B4 */ f32 throttle;
     /* 0x0B8 */ f32 brake;
-    /* 0x0BC */ f32 unkBC;
+    /* 0x0BC */ f32 unusedBC;
     /* 0x0C0 */ f32 buoyancy;
-    /* 0x0C4 */ f32 unkC4;
-    /* 0x0C8 */ f32 unkC8;
-    /* 0x0CC */ f32 unkCC;
-    /* 0x0D0 */ f32 unkD0;
-    /* 0x0D4 */ f32 unkD4;
-    /* 0x0D8 */ f32 unkD8[12];
+    /* 0x0C4 */ f32 waterBobScale;
+    /* 0x0C8 */ f32 cameraLateralOffset;
+    /* 0x0CC */ f32 unusedCC;
+    /* 0x0D0 */ f32 bodyOffsetY; // best guess
+    /* 0x0D4 */ f32 fallImpact;  // best guess
+    /* 0x0D8 */ f32 wheelCollisionPos[12];
     /* 0x108 */ struct Object *exitObj;
     /* 0x10C */ s32 driftHeadingOffset; // Added to the car's heading for its velocity; eases to drift_direction << 13.
-    /* 0x110 */ s32 unk110;
-    /* 0x114 */ s32 unk114;
+    /* 0x110 */ s32 savedCarSteerVel;
+    /* 0x114 */ s32 unused114;
     /* 0x118 */ struct VehicleSoundData *vehicleSound;
     /* 0x11C */ f32 bumpVelX; // extra velocity while bumpTimer runs, from hitting a solid object
     /* 0x120 */ f32 bumpVelZ;
     /* 0x124 */ f32 aiTargetSpeed;
     /* 0x128 */ s32 lap_times[5]; // mode_init_taj_race implies there should be at least 5 lap times.
-    /* 0x13C */ s32 unk13C;
+    /* 0x13C */ s32 unused13C;
     /* 0x140 */ struct Object *magnetTargetObj;
     /* 0x144 */ struct Object *held_obj;
     /* 0x148 */ struct Object *approachTarget;
     /* 0x14C */ struct Object *zipperObj;
-    /* 0x150 */ struct Object *unk150;
+    /* 0x150 */ struct Object *posArrowObj;
     /* 0x154 */ struct Object *aiNodeObj;
     /* 0x158 */ struct Object *nodeCurrent;
     /* 0x15C */ struct Object *challengeMarker;
     /* 0x160 */ s16 y_rotation_offset;
     /* 0x162 */ s16 x_rotation_offset;
     /* 0x164 */ s16 z_rotation_offset;
-    /* 0x166 */ s16
-        unk166; // I don't know exactly what these are, but this one in particular seems to cause a Y position offset.
-    /* 0x168 */ s16 unk168;
+    /* 0x166 */ s16 xRotationOffsetTarget; // I don't know exactly what these are, but this one in particular seems to
+                                           // cause a Y position offset.
+    /* 0x168 */ s16 velocityHeading;
     /* 0x16A */ s16 headAngle;
     /* 0x166 */ s16 headAngleTarget;
     /* 0x16E */ s16 driftCounterSteerTimer; // frames the stick has been held against the drift; a spin-out past 80
-    /* 0x170 */ s16 unk170;
+    /* 0x170 */ s16 weaponDisplayLock;      // best guess
     /* 0x172 */ s8 balloon_type;
     /* 0x173 */ s8 balloon_quantity;
     /* 0x174 */ s8 balloon_level;
     /* 0x175 */ s8 magnetTimer;
-    /* 0x176 */ s16 unk176;
+    /* 0x176 */ s16 unused176;
     /* 0x178 */ SoundHandle magnetSoundMask;
     /* 0x17C */ struct AudioPoint *shieldSoundMask;
     /* 0x180 */ struct AudioPoint *bananaSoundMask;
     /* 0x184 */ s8 magnetModelID;
     /* 0x185 */ s8 bananas;
-    /* 0x186 */ u8 unk186;
+    /* 0x186 */ u8 unused186;
     /* 0x187 */ s8 attackType;
-    /* 0x188 */ s8 unk188;
+    /* 0x188 */ s8 pendingBananaDrop;
     /* 0x189 */ s8 shieldType;
-    /* 0x18A */ s16 unk18A;
-    /* 0x18C */ s16 unk18C;
+    /* 0x18A */ s16 steerWobbleTimer;
+    /* 0x18C */ s16 hitRecoveryTimer;
     /* 0x18E */ s16 shieldTimer;
     /* 0x190 */ s16 courseCheckpoint;
     /* 0x192 */ s8 nextCheckpoint;
@@ -1244,10 +1220,10 @@ typedef struct Object_Racer {
     /* 0x194 */ s8 countLap;
     /* 0x195 */ s8 magnetLevel3;
     /* 0x196 */ s16 cameraYaw;
-    /* 0x198 */ s16 unk198;
-    /* 0x19A */ s16 unk19A;
-    /* 0x19C */ s16 unk19C;
-    /* 0x19E */ s16 unk19E;
+    /* 0x198 */ s16 loopEntryYaw;
+    /* 0x19A */ s16 loopDeLoopTimer;
+    /* 0x19C */ s16 bumpTiltAngle; // best guess
+    /* 0x19E */ s16 cameraYawOffset;
     /* 0x1A0 */ s16 steerVisualRotation;
     /* 0x1A2 */ s16 y_rotation_vel;
     /* 0x1A4 */ s16 x_rotation_vel;
@@ -1258,64 +1234,64 @@ typedef struct Object_Racer {
     /* 0x1AE */ s16 racePosition; // Current decided race position.
     /* 0x1B0 */ s16 positionStableTimer; // frames the race order has not changed; the HUD position only updates after 2
     /* 0x1B2 */ s16 positionChangeTimer; // counts down from 10 after the displayed position changes
-    /* 0x1B4 */ s32 unk1B4;
-    /* 0x1B8 */ s16 unk1B8;
-    /* 0x1BA */ s16 unk1BA;
-    /* 0x1BC */ s16 unk1BC;
-    /* 0x1BE */ s16 unk1BE;
-    /* 0x1C0 */ s16 unk1C0;
-    /* 0x1C2 */ s16 unk1C2;
-    /* 0x1C4 */ s16 unk1C4;
-    /* 0x1C6 */ s16 unk1C6;
+    /* 0x1B4 */ s32 unused1B4;
+    /* 0x1B8 */ s16 unused1B8;
+    /* 0x1BA */ s16 trackOffsetX;
+    /* 0x1BC */ s16 trackOffsetY;
+    /* 0x1BE */ s16 aiTargetYaw;
+    /* 0x1C0 */ s16 aiTargetPitch;
+    /* 0x1C2 */ s16 aiTargetYawPrev;
+    /* 0x1C4 */ s16 aiTargetPitchPrev;
+    /* 0x1C6 */ s16 aiBehaviourTimer;
     /* 0x1C8 */ u8 isOnAlternateRoute;
-    /* 0x1C9 */ u8 unk1C9;
+    /* 0x1C9 */ u8 aiBehaviour;
     /* 0x1CA */ s8 aiLane;
-    /* 0x1CB */ s8 unk1CB;
+    /* 0x1CB */ s8 startVehicleID;
     /* 0x1CC */ s8 aiSkill;
     /* 0x1CD */ u8 currentAnimId;
     /* 0x1CE */ u8 aiNodeId;
     /* 0x1CF */ s8 eggHudCounter;
     /* 0x1D0 */ s8 spectateCamID;
-    /* 0x1D1 */ s8 unk1D1;
+    /* 0x1D1 */ s8 steerJitter;
     /* 0x1D2 */ s8 bumpTimer;
     /* 0x1D3 */ s8 boostTimer;
-    /* 0x1D4 */ s8 unk1D4;
-    /* 0x1D5 */ s8 unk1D5;
+    /* 0x1D4 */ s8 spinDirection;
+    /* 0x1D5 */ s8 spinRecoverTimer; // best guess
     /* 0x1D6 */ s8 vehicleID;
     /* 0x1D7 */ s8 vehicleIDPrev;
     /* 0x1D8 */ s8 raceFinished;
-    /* 0x1D9 */ s8 unk1D9;
-    /* 0x1DA */ u8 unk1DA;
+    /* 0x1D9 */ s8 finishedTimer;
+    /* 0x1DA */ u8 unused1DA;
     /* 0x1DB */ s8 spinout_timer;
     /* 0x1DC */ u8 wheel_surfaces[4];
     /* 0x1E0 */ s8 trickType; // This depends on which vehicle you're using, but this name fits the most for now.
     /* 0x1E1 */ s8 steerAngle;
     /* 0x1E2 */ s8 groundedWheels;
-    /* 0x1E3 */ s8 unk1E3;
-    /* 0x1E4 */ s8 unk1E4;
+    /* 0x1E3 */ s8 wheelContactFlags;
+    /* 0x1E4 */ s8 objectContactFlags;
     /* 0x1E5 */ s8 waterTimer; // Set to a value, then counts down when leaving water.
     /* 0x1E6 */ s8 drift_direction;
     /* 0x1E7 */ s8 miscAnimCounter;
     /* 0x1E8 */ s8 smoothedStickY;
-    /* 0x1E9 */ s8 unk1E9;
-    /* 0x1EA */ s8 unk1EA;
+    /* 0x1E9 */ s8 unused1E9;
+    /* 0x1EA */ s8 unused1EA;
     /* 0x1EB */ s8 tapTimerR;
     /* 0x1EC */ s8 tappedR;
     /* 0x1ED */ s8 squish_timer;
-    /* 0x1EE */ u8 unk1EE;
+    /* 0x1EE */ u8 slideFrames;
     /* 0x1EF */ u8 boost_sound;
-    /* 0x1F0 */ u8 unk1F0;
-    /* 0x1F1 */ u8 unk1F1;
+    /* 0x1F0 */ u8 waterEscapeActive;
+    /* 0x1F1 */ u8 launchedState;
     /* 0x1F2 */ u8 driveAnimState;
     /* 0x1F3 */ u8 driveAnimFlags;
     /* 0x1F4 */ u8 startInput;
     /* 0x1F5 */ u8 zipperDirCorrection;
-    /* 0x1F6 */ s8 unk1F6;
+    /* 0x1F6 */ s8 crashSoundCooldown;
     /* 0x1F7 */ u8 transparency;
     /* 0x290 */ u8 indicator_type;
     /* 0x291 */ s8 indicator_timer;
     /* 0x1FA */ s8 drifting;
-    /* 0x1FB */ s8 unk1FB;
+    /* 0x1FB */ s8 wheelspinTimer;
     /* 0x1FC */ u8 wrongWayCounter;
     /* 0x1FD */ s8 cameraIndex;
     /* 0x1FE */ u8 effectBoxType;
@@ -1325,26 +1301,26 @@ typedef struct Object_Racer {
     /* 0x202 */ s8 silverCoinCount;
     /* 0x203 */ s8 boostType;
     /* 0x204 */ s16 bubbleTrapTimer;
-    /* 0x206 */ s16 unk206;
-    /* 0x208 */ s8 unk208;
-    /* 0x209 */ u8 unk209;
+    /* 0x206 */ s16 stunTimer; // best guess
+    /* 0x208 */ s8 unused208;
+    /* 0x209 */ u8 aiFlags;
     /* 0x20A */ u8 lightFlags;
-    /* 0x20B */ u8 unk20B;
+    /* 0x20B */ u8 prevRaceOrder;
     /* 0x20C */ u8 throttleReleased;
-    /* 0x20D */ u8 unk20D;
+    /* 0x20D */ u8 unused20D;
     /* 0x20E */ u16 delaySoundID;
     /* 0x210 */ u8 delaySoundTimer;
-    /* 0x211 */ s8 unk211;
+    /* 0x211 */ s8 eggDropZLock;
     /* 0x212 */ s8 elevation; // Some maps like Icicle Pyramid have elevation levels
                               // that are communicated on the minimap.
-    /* 0x213 */ s8 unk213;
-    /* 0x214 */ s8 unk214;
-    /* 0x215 */ s8 unk215;
-    /* 0x216 */ u8 unk216;
-    /* 0x217 */ u8 unk217;
+    /* 0x213 */ s8 aiStuckTimer;
+    /* 0x214 */ s8 aiReverseTimer;
+    /* 0x215 */ s8 aiStuckCooldown;
+    /* 0x216 */ u8 unused216;
+    /* 0x217 */ u8 unused217;
     /* 0x218 */ SoundHandle weaponSoundMask;
-    /* 0x21C */ SoundHandle unk21C;
-    /* 0x220 */ SoundHandle unk220;
+    /* 0x21C */ SoundHandle landingSoundHandle;
+    /* 0x220 */ SoundHandle crashSoundHandle;
 } Object_Racer;
 
 typedef struct Object_Door {
@@ -1433,16 +1409,16 @@ typedef struct Object_MidiChannelSet {
 } Object_MidiChannelSet;
 
 typedef struct Object_Banana {
-    /* 0x0 */ s32 unk0;
+    /* 0x0 */ s32 pickupIgnoreObj; // best guess
     /* 0x4 */ struct Object *spawner;
-    /* 0x8 */ s8 unk8;
+    /* 0x8 */ s8 pickupIgnoreTimer; // best guess
     /* 0x9 */ s8 droppedVehicleID;
 } Object_Banana;
 
 typedef struct Object_NPC {
-    /* 0x00 */ f32 unk0;
+    /* 0x00 */ f32 splineProgress;
     /* 0x04 */ f32 animFrameF;
-    /* 0x08 */ f32 unk8;
+    /* 0x08 */ f32 splineStep;
     union {
         /* 0x0C */ u8 nodeData[5];
         struct {
@@ -1457,18 +1433,18 @@ typedef struct Object_NPC {
     /* 0x12 */ u8 fogG;
     /* 0x13 */ u8 fogB;
     /* 0x14 */ f32 forwardVel;
-    /* 0x18 */ f32 unk18;
-    /* 0x1C */ s16 unk1C;
-    /* 0x1E */ s16 unk1E;
+    /* 0x18 */ f32 unused18; // best guess
+    /* 0x1C */ s16 faceRacerTimer;
+    /* 0x1E */ s16 faceRacerAngle;
     /* 0x20 */ s16 fogNear;
     /* 0x22 */ s16 fogFar;
-    /* 0x24 */ s32 unk24;
-    /* 0x28 */ s16 unk28;
-    /* 0x2A */ s16 unk2A;
-    /* 0x2C */ s32 unk2C;
-    /* 0x30 */ s32 unk30;
+    /* 0x24 */ s32 unused24;
+    /* 0x28 */ s16 prevMusicChannelMask; // best guess
+    /* 0x2A */ s16 unused2A;
+    /* 0x2C */ s32 musicLayerTimer;
+    /* 0x30 */ s32 musicLayerDelay;
     /* 0x34 */ u16 musicFade;
-    /* 0x36 */ s8 unk36;
+    /* 0x36 */ s8 musicLayerState;
 } Object_NPC;
 
 typedef struct Object_Bridge_WhaleRamp {
@@ -1477,15 +1453,15 @@ typedef struct Object_Bridge_WhaleRamp {
 } Object_Bridge_WhaleRamp;
 
 typedef struct Object_Log {
-    /* 0x00 */ s16 unk0;
-    /* 0x02 */ u8 unk2;
-    /* 0x04 */ u8 unk3;
-    /* 0x04 */ u16 unk4;
-    /* 0x06 */ u16 unk6;
-    /* 0x08 */ u16 unk8;
-    /* 0x0A */ u16 unkA;
+    /* 0x00 */ s16 baseHeight;
+    /* 0x02 */ u8 sampleShift;
+    /* 0x04 */ u8 unused3; // best guess
+    /* 0x04 */ u16 phase;
+    /* 0x06 */ u16 phaseCount;
+    /* 0x08 */ u16 tileX;
+    /* 0x0A */ u16 tileZ;
     /* 0x0C */ u16 blockID;
-    /* 0x0E */ s8 unkE[2];
+    /* 0x0E */ s8 heightSamples[2];
 } Object_Log;
 
 /** An actor driven along a cutscene path of animation nodes (see anim_object_follow_path). */
@@ -1512,7 +1488,7 @@ typedef struct Object_AnimatedObject {
     /* 0x32 */ s8 rollSpinSpeed;
     /* 0x33 */ s8 pitchSpinSpeed;
     /* 0x34 */ u8 skipButtons; // bit 0 A, bit 1 B, bit 2 Start: any of these starts a waiting actor
-    /* 0x35 */ u8 unk35;
+    /* 0x35 */ u8 unused35;
     /* 0x36 */ s16 pauseCounter;
     /* 0x38 */ s8 soundID;
     /* 0x39 */ s8 musicSequence; // >0 sequence to start, -2 started this frame, -1 none
@@ -1526,7 +1502,7 @@ typedef struct Object_AnimatedObject {
     /* 0x41 */ s8 fadeOptions; // bit 0 fade the actor out, bit 1 start from fully in/out
     /* 0x42 */ u8 opacity;
     /* 0x43 */ s8 musicFadeVolume;
-    /* 0x44 */ u8 unk44;
+    /* 0x44 */ u8 cameraStage;
     /* 0x45 */ s8 started;
 } Object_AnimatedObject;
 
@@ -1556,12 +1532,12 @@ typedef struct Object {
     /* 0x001C */ f32 x_velocity;
     /* 0x0020 */ f32 y_velocity;
     /* 0x0024 */ f32 z_velocity;
-    /* 0x0028 */ f32 unk28;
+    /* 0x0028 */ f32 unused28;
     /* 0x002C */ s16 headerType;
     /* 0x002E */ s16 segmentID;
     /* 0x0030 */ f32 distanceToCamera;
-    /* 0x0034 */ f32 unk34;
-    /* 0x0038 */ s8 unk38;
+    /* 0x0034 */ f32 cullRadius;
+    /* 0x0038 */ s8 unused38;
     /* 0x0039 */ u8 opacity;
     /* 0x003A */ s8 modelIndex;
     /* 0x003B */ s8 animationID;
@@ -1628,26 +1604,12 @@ typedef struct Object {
     /* 0x0078 */ ObjProperties properties;
 } Object;
 
-typedef struct unk800B2260_C {
-    s32 unk0;
-    s32 unk4;
-    u8 pad8[0x24];
-    s16 unk2C;
-    u8 pad2E[0xC];
-    s16 unk3A;
-    u8 pad3C[0x8];
-    void *unk44;
-    u8 pad48[0x28];
-    void *unk70;
-    u8 unk74;
-} unk800B2260_C;
-
 typedef struct SegmentPropertiesObject {
-    /* 0x002C */ s16 unk2C;
+    /* 0x002C */ s16 headerType;
     /* 0x002E */ s16 segmentID;
     /* 0x0030 */ f32 distanceToCamera;
-    /* 0x0034 */ f32 unk34;
-    /* 0x0038 */ s8 unk38;
+    /* 0x0034 */ f32 cullRadius;
+    /* 0x0038 */ s8 unused38;
     /* 0x0039 */ u8 opacity;
     /* 0x003A */ s8 modelIndex;
     /* 0x003B */ s8 animationID;
@@ -1667,36 +1629,6 @@ typedef struct ObjectSegment {
     /* 0x0040 */ ObjectHeader *header;
 } ObjectSegment;
 
-typedef struct Object_LightData_UnkC_Unk44 {
-    u8 pad0[8];
-    Vertex *unk8;
-} Object_LightData_UnkC_Unk44;
-
-typedef struct Object_LightData_UnkC {
-    /* 0x00 */ ObjectTransform trans;
-    /* 0x18 */ u8 pad18[0x22];
-    /* 0x3A */ s16 unk3A;
-    /* 0x3C */ u8 pad3C[0x8];
-    /* 0x44 */ Object_LightData_UnkC_Unk44 *unk44;
-    /* 0x48 */ u8 pad48[0x14];
-    /* 0x5C */ s16 unk5C;
-    /* 0x5E */ u8 pad5E[0xE];
-    /* 0x6C */ u8 unk6C;
-    /* 0x6D */ u8 unk6D;
-    /* 0x6E */ u8 unk6E;
-    /* 0x6F */ u8 pad6F[0x6];
-    /* 0x75 */ u8 unk75;
-    /* 0x76 */ u8 pad76;
-    /* 0x77 */ s8 unk77;
-} Object_LightData_UnkC;
-
-typedef struct Object_LightData {
-    /* 0x00 */ u8 pad0[6];
-    /* 0x06 */ u8 unk6;
-    /* 0x07 */ u8 pad7[5];
-    /* 0x0C */ Object_LightData_UnkC **unkC;
-} Object_LightData;
-
 // Unused
 typedef struct GhostHeaderUnk0 {
     u8 levelID;
@@ -1712,14 +1644,14 @@ typedef struct GhostHeader {
     union {
         struct {
             u8 characterID; // 9 = T.T.
-            u8 unk3;
+            u8 unused3;
         };
         s16 unk2;
     };
     union {
         struct {
-            u8 unk4;
-            s8 unk5;
+            u8 unused4;
+            s8 unused5;
         };
         s16 time; // In frames, where 60 frames = 1 second.
     };

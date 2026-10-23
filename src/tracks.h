@@ -35,11 +35,11 @@ typedef struct unk8011B330 {
     /* 0x00 */ f32 x;
     /* 0x04 */ f32 y;
     /* 0x08 */ f32 z;
-    /* 0x0C */ unk8011C8B8 *unkC;
-    /* 0x10 */ f32 unk10;
-    /* 0x14 */ f32 unk14;
-    /* 0x18 */ f32 unk18;
-    /* 0x1C */ f32 unk1C;
+    /* 0x0C */ unk8011C8B8 *plane;
+    /* 0x10 */ f32 edgeStartX;
+    /* 0x14 */ f32 edgeStartZ;
+    /* 0x18 */ f32 edgeEndX;
+    /* 0x1C */ f32 edgeEndZ;
 } unk8011B330;
 
 /* Size: 0x10 bytes */
@@ -49,19 +49,19 @@ typedef struct VoidMesh {
 } VoidMesh;
 
 typedef struct unk8011C238 {
-    u8 unk0;
-    u8 unk1;
-    u8 unk2[8];
-    s16 unkA;
+    u8 vertexCount;
+    u8 bucketVertexMask;
+    u8 vertexIndices[8];
+    s16 lightLevel;
 } unk8011C238;
 
 /* Size: 0x8 bytes */
 typedef struct unk8011D478 {
-    s16 unk0;
-    s16 unk2;
-    s16 unk4;
-    s8 unk6;
-    s8 unk7;
+    s16 sideOffset;
+    s16 height;
+    s16 unused4;
+    s8 flags;
+    s8 pairIndex;
 } unk8011D478;
 
 /* Size: 0x14 bytes */

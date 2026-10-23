@@ -48,7 +48,7 @@ void obj_init_stopwatchman(Object *obj, UNUSED LevelObjectEntry *levelEntry, UNU
     obj->interactObj->pushForce = 0;
     tt = obj->npc;
     tt->nodeCurrent = 0xFF;
-    tt->unk0 = 0.0f;
+    tt->splineProgress = 0.0f;
     gTTSoundMask = NULL;
 }
 

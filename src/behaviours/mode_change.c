@@ -114,9 +114,9 @@ void obj_loop_modechange(Object *obj, UNUSED s32 updateRate) {
                                 racer->nodeCurrent = NULL;
                             }
                             racer->challengeMarker = NULL;
-                            racer->unk19A = 0;
+                            racer->loopDeLoopTimer = 0;
                         }
-                        racer->unk198 = obj->trans.rotation.y_rotation;
+                        racer->loopEntryYaw = obj->trans.rotation.y_rotation;
                     }
                 }
             }

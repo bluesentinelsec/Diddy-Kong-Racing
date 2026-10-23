@@ -10,8 +10,8 @@ typedef struct LevelGlobalData {
     s8 world;
     s8 raceType;
     s8 vehicles; // Upper half: available vehicle, Lower half: default vehicle.
-    s8 unk3; // Unused.
-    s16 unk4; // Unused.
+    s8 unused3;  // Unused.
+    s16 unused4; // Unused.
 } LevelGlobalData;
 
 enum NumberOfPlayers {

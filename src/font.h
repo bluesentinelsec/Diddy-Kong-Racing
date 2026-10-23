@@ -22,14 +22,6 @@ enum DialogueFlags {
     DIALOGUE_BOX_OPEN      = 0x8000
 };
 
-typedef struct unk800C54E8 {
-    u8 pad0[0xC];
-    s16 unkC;
-    s16 unkE;
-    u8 pad10[9];
-    u8 unk19;
-} unk800C54E8;
-
 /* Size: 8 bytes */
 typedef struct FontCharData {
     u8 textureID; // Texture Pointer Index?
@@ -82,27 +74,27 @@ typedef struct DialogueBox {
 
 /* Size: 0x20 bytes */
 typedef struct DialogueTextElement {
-/* 0x00 */ u8 unk0;
-/* 0x01 */ u8 number;
-/* 0x02 */ u8 unk2;
-/* 0x03 */ u8 unk3;
-/* 0x04 */ char *text; // Pointer to the text array
-/* 0x08 */ s16 posX;
-/* 0x0A */ s16 posY;
-/* 0x0C */ s16 offsetX;
-/* 0x0E */ s16 offsetY;
-/* 0x10 */ u8 textColourR;
-/* 0x11 */ u8 textColourG;
-/* 0x12 */ u8 textColourB;
-/* 0x13 */ u8 textColourA;
-/* 0x14 */ u8 textBGColourR;
-/* 0x15 */ u8 textBGColourG;
-/* 0x16 */ u8 textBGColourB;
-/* 0x17 */ u8 textBGColourA;
-/* 0x18 */ u8 opacity;
-/* 0x19 */ u8 font;
-/* 0x1A */ u16 flags;
-/* 0x1C */ DialogueBox *nextBox;
+    /* 0x00 */ u8 unused0;
+    /* 0x01 */ u8 number;
+    /* 0x02 */ u8 unused2;
+    /* 0x03 */ u8 unused3;
+    /* 0x04 */ char *text; // Pointer to the text array
+    /* 0x08 */ s16 posX;
+    /* 0x0A */ s16 posY;
+    /* 0x0C */ s16 offsetX;
+    /* 0x0E */ s16 offsetY;
+    /* 0x10 */ u8 textColourR;
+    /* 0x11 */ u8 textColourG;
+    /* 0x12 */ u8 textColourB;
+    /* 0x13 */ u8 textColourA;
+    /* 0x14 */ u8 textBGColourR;
+    /* 0x15 */ u8 textBGColourG;
+    /* 0x16 */ u8 textBGColourB;
+    /* 0x17 */ u8 textBGColourA;
+    /* 0x18 */ u8 opacity;
+    /* 0x19 */ u8 font;
+    /* 0x1A */ u16 flags;
+    /* 0x1C */ DialogueBox *nextBox;
 } DialogueTextElement;
 
 /* Size: 0x28 bytes */
@@ -138,9 +130,9 @@ typedef struct DialogueBoxBackground {
 } DialogueBoxBackground;
 
 typedef struct Asset46 {
-    s32 unk0;
-    s32 unk4;
-    u8 unk8;
+    s32 textureData;
+    s32 maskTextureData;
+    u8 textureFormat;
 } Asset46;
 
 #define DIALOGUEBOXBACKGROUND_COUNT 8

@@ -1093,7 +1093,7 @@ void calc_and_alloc_heap_for_settings(void) {
     gSettingsPtr->courseTimesPtr[0] = (u16 *) ((u8 *) gSettingsPtr + sizes[11]);
     gSettingsPtr->courseTimesPtr[1] = (u16 *) ((u8 *) gSettingsPtr + sizes[12]);
     gSettingsPtr->courseTimesPtr[2] = (u16 *) ((u8 *) gSettingsPtr + sizes[13]);
-    gSettingsPtr->unk4C = (Settings4C *) &gLevelSettings;
+    gSettingsPtr->levelTransition = (Settings4C *) &gLevelSettings;
     gSaveDataFlags = // Set bits 0/1/2/8 and wipe out all others
         SAVE_DATA_FLAG_READ_FLAP_TIMES | SAVE_DATA_FLAG_READ_COURSE_TIMES | SAVE_DATA_FLAG_READ_SAVE_DATA |
         SAVE_DATA_FLAG_READ_EEPROM_SETTINGS;
@@ -1126,8 +1126,8 @@ void init_racer_headers(void) {
         }
     }
     gSettingsPtr->timeTrialRacer = 0;
-    gSettingsPtr->unk115[0] = 0;
-    gSettingsPtr->unk115[1] = 0;
+    gSettingsPtr->bestLapRacerAndLap[0] = 0;
+    gSettingsPtr->bestLapRacerAndLap[1] = 0;
     gSettingsPtr->display_times = 0;
     gSettingsPtr->worldId = 0;
     gSettingsPtr->courseId = 0;
@@ -1178,7 +1178,7 @@ void clear_game_progress(Settings *settings) {
     }
 
     settings->keys = 0;
-    settings->unkA = 0;
+    settings->unusedA = 0;
     settings->bosses = 0;
     settings->trophies = 0;
     settings->cutsceneFlags = CUTSCENE_NONE;

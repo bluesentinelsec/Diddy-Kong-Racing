@@ -51,7 +51,7 @@ void obj_loop_posarrow(Object *obj, UNUSED s32 updateRate) {
         racer = racerObj->racer;
         if (racer->playerIndex == PLAYER_COMPUTER) {
             obj->trans.flags &= ~OBJ_FLAGS_INVISIBLE;
-            racer->unk150 = obj;
+            racer->posArrowObj = obj;
         }
         obj->animFrame = obj->properties.posArrow.playerID * 127;
     }

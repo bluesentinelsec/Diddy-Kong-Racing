@@ -36,10 +36,10 @@
 static const PcField sLevelHeaderFields[] = {
     PCU_FIELD(LevelHeader, world, 0x00, 8, PCU_BYTES),
     PCU_FIELD(LevelHeader, course_height, 0x08, 1, PCU_U32),
-    PCU_FIELD(LevelHeader, unkC, 0x0C, 20, PCU_BYTES),
+    PCU_FIELD(LevelHeader, aiSkillByCharacter, 0x0C, 20, PCU_BYTES),
     PCU_FIELD(LevelHeader, AILevelTable, 0x20, 20, PCU_BYTES),
     PCU_FIELD(LevelHeader, geometry, 0x34, 8, PCU_U16),
-    PCU_FIELD(LevelHeader, unk44, 0x44, 16, PCU_BYTES),
+    PCU_FIELD(LevelHeader, unused44, 0x44, 16, PCU_BYTES),
     PCU_FIELD(LevelHeader, instruments, 0x54, 1, PCU_U16),
     PCU_FIELD(LevelHeader, waveSubdivisons, 0x56, 4, PCU_BYTES),
     PCU_FIELD(LevelHeader, waveSineHeight0, 0x5A, 1, PCU_U16),
@@ -48,18 +48,18 @@ static const PcField sLevelHeaderFields[] = {
     PCU_FIELD(LevelHeader, waveUVScaleX, 0x6A, 4, PCU_BYTES),
     PCU_FIELD(LevelHeader, waveViewDist, 0x6E, 1, PCU_U16),
     PCU_FIELD(LevelHeader, wavesXlu, 0x70, 4, PCU_BYTES),
-    PCU_FIELD(LevelHeader, unk74, 0x74, 7, PCU_SPTR),
+    PCU_FIELD(LevelHeader, colourCycles, 0x74, 7, PCU_SPTR),
     PCU_FIELD(LevelHeader, weatherEnable, 0x90, 2, PCU_U16),
     PCU_FIELD(LevelHeader, weatherIntensity, 0x94, 2, PCU_BYTES),
     PCU_FIELD(LevelHeader, weatherVelX, 0x96, 3, PCU_U16),
     PCU_FIELD(LevelHeader, cameraFOV, 0x9C, 8, PCU_BYTES),
-    PCU_FIELD(LevelHeader, unkA4, 0xA4, 1, PCU_SPTR),
-    PCU_FIELD(LevelHeader, unkA8, 0xA8, 2, PCU_U16),
+    PCU_FIELD(LevelHeader, skyTexture, 0xA4, 1, PCU_SPTR),
+    PCU_FIELD(LevelHeader, skyTexScrollU, 0xA8, 2, PCU_U16),
     PCU_FIELD(LevelHeader, pulseLightData, 0xAC, 1, PCU_SPTR),
-    PCU_FIELD(LevelHeader, unkB0, 0xB0, 1, PCU_U16),
-    PCU_FIELD(LevelHeader, unkB2, 0xB2, 8, PCU_BYTES),
-    PCU_FIELD(LevelHeader, unkBA, 0xBA, 1, PCU_U16),
-    PCU_FIELD(LevelHeader, unkBC, 0xBC, 8, PCU_BYTES),
+    PCU_FIELD(LevelHeader, unusedB0, 0xB0, 1, PCU_U16),
+    PCU_FIELD(LevelHeader, unusedB2, 0xB2, 8, PCU_BYTES),
+    PCU_FIELD(LevelHeader, objectMapId, 0xBA, 1, PCU_U16),
+    PCU_FIELD(LevelHeader, hudFlags, 0xBC, 8, PCU_BYTES),
     PCU_END,
 };
 
@@ -144,8 +144,8 @@ void level_global_init(void) {
         gGlobalLevelTable[i].raceType = gCurrentLevelHeader->race_type;
         gGlobalLevelTable[i].vehicles = ((u16) gCurrentLevelHeader->available_vehicles) << 4;
         gGlobalLevelTable[i].vehicles |= gCurrentLevelHeader->vehicle & 0xF;
-        gGlobalLevelTable[i].unk3 = 1;
-        gGlobalLevelTable[i].unk4 = gCurrentLevelHeader->unkB0;
+        gGlobalLevelTable[i].unused3 = 1;
+        gGlobalLevelTable[i].unused4 = gCurrentLevelHeader->unusedB0;
     }
     gNumberOfWorlds++;
     gWorldBossLevelIds = mempool_alloc_safe(gNumberOfWorlds, COLOUR_TAG_YELLOW);
@@ -507,15 +507,15 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     object_ids_clear();
     gMapId = levelId;
     for (var_s0 = 0; var_s0 < 7; var_s0++) {
-        if ((s32) gCurrentLevelHeader->unk74[var_s0] != -1) {
-            gCurrentLevelHeader->unk74[var_s0] =
-                (LevelHeader_70 *) get_misc_asset((s32) gCurrentLevelHeader->unk74[var_s0]);
+        if ((s32) gCurrentLevelHeader->colourCycles[var_s0] != -1) {
+            gCurrentLevelHeader->colourCycles[var_s0] =
+                (LevelHeader_70 *) get_misc_asset((s32) gCurrentLevelHeader->colourCycles[var_s0]);
             // The colour loop is a big-endian misc asset. Only the subset shared
             // with a particle behaviour is swapped in init_particle_assets; swap
             // the rest here (shared swap-once table, so no double-swap) or
             // pulse_light_reset's count below reads big-endian and walks off the pool.
-            pc_swap_colour_loop_shared(gCurrentLevelHeader->unk74[var_s0]);
-            pulse_light_reset((LevelHeader_70 *) gCurrentLevelHeader->unk74[var_s0]);
+            pc_swap_colour_loop_shared(gCurrentLevelHeader->colourCycles[var_s0]);
+            pulse_light_reset((LevelHeader_70 *) gCurrentLevelHeader->colourCycles[var_s0]);
         }
     }
 
@@ -543,7 +543,7 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     lights_init(32);
     var_s0 = VEHICLE_CAR;
     if (vehicleId >= VEHICLE_CAR && vehicleId < NUMBER_OF_PLAYER_VEHICLES) {
-        var_s0 = gCurrentLevelHeader->unk4F[vehicleId];
+        var_s0 = gCurrentLevelHeader->tajChallengeByVehicle[vehicleId];
     }
     set_taj_challenge_type(var_s0);
     var_s0 = settings->worldId;
@@ -606,7 +606,7 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     cutscene_id_set(cutsceneId);
     stubbed_printf("pre init_track\n");
     init_track(gCurrentLevelHeader->geometry, gCurrentLevelHeader->skybox, numberOfPlayers, vehicleId, entranceId,
-               gCurrentLevelHeader->collectables, gCurrentLevelHeader->unkBA);
+               gCurrentLevelHeader->collectables, gCurrentLevelHeader->objectMapId);
     stubbed_printf("post init_track\n");
     if (gCurrentLevelHeader->fogNear == 0 && gCurrentLevelHeader->fogFar == 0 && gCurrentLevelHeader->fogR == 0 &&
         gCurrentLevelHeader->fogG == 0 && gCurrentLevelHeader->fogB == 0) {
@@ -632,9 +632,9 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
         weather_clip_planes(-1, -512);
     }
     if (gCurrentLevelHeader->skyDome == -1) {
-        gCurrentLevelHeader->unkA4 = load_texture((s32) gCurrentLevelHeader->unkA4);
-        gCurrentLevelHeader->unkA8 = 0;
-        gCurrentLevelHeader->unkAA = 0;
+        gCurrentLevelHeader->skyTexture = load_texture((s32) gCurrentLevelHeader->skyTexture);
+        gCurrentLevelHeader->skyTexScrollU = 0;
+        gCurrentLevelHeader->skyTexScrollV = 0;
     }
     if ((s32) gCurrentLevelHeader->pulseLightData != -1) {
         gCurrentLevelHeader->pulseLightData =
@@ -645,7 +645,7 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     bgdraw_primcolour(gCurrentLevelHeader->bgColorRed, gCurrentLevelHeader->bgColorGreen,
                       gCurrentLevelHeader->bgColorBlue);
     video_delta_reset();
-    vi_set_max_update_rate(gCurrentLevelHeader->unk4[numberOfPlayers]);
+    vi_set_max_update_rate(gCurrentLevelHeader->maxUpdateRateByPlayers[numberOfPlayers]);
     stubbed_printf("level_load body end\n");
 }
 
@@ -749,7 +749,7 @@ void level_free(void) {
     }
     //! @bug this will never be true because skyDome is signed.
     if (gCurrentLevelHeader->skyDome == 0xFF) {
-        tex_free(gCurrentLevelHeader->unkA4);
+        tex_free(gCurrentLevelHeader->skyTexture);
     }
 }
 

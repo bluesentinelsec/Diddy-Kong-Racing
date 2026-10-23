@@ -285,8 +285,8 @@ void homing_rocket_prevent_overshoot(Object *obj, s32 updateRate, Object_Weapon 
     if (rocket->target != NULL) {
         targetObj = rocket->target;
         racer = targetObj->racer;
-        rocket->unk14 = racer->unk1BA >> 1;
-        rocket->unk16 = racer->unk1BC >> 1;
+        rocket->targetTrackOffsetX = racer->trackOffsetX >> 1;
+        rocket->targetTrackOffsetY = racer->trackOffsetY >> 1;
         diffX = targetObj->trans.x_position - obj->trans.x_position;
         diffY = targetObj->trans.y_position - obj->trans.y_position;
         diffZ = targetObj->trans.z_position - obj->trans.z_position;
@@ -298,8 +298,8 @@ void homing_rocket_prevent_overshoot(Object *obj, s32 updateRate, Object_Weapon 
         }
         dist = sqrtf(dist + distY);
         if (dist > 300.0f && rocket->checkpoint != -1 && rocket->hitObj == NULL) {
-            sp58 = homing_rocket_get_next_direction(obj, rocket->checkpoint, racer->isOnAlternateRoute, rocket->unk14,
-                                                    rocket->unk16, rocket->checkpointDist, &diffX, &diffY, &diffZ);
+            sp58 = homing_rocket_get_next_direction(obj, rocket->checkpoint, racer->isOnAlternateRoute, rocket->targetTrackOffsetX,
+                                                    rocket->targetTrackOffsetY, rocket->checkpointDist, &diffX, &diffY, &diffZ);
             sineY = arctan2_f(diffY, 500.0f) & 0xFFFF;
             shift = 3;
         } else {
@@ -620,7 +620,7 @@ void obj_spawn_effect(f32 x, f32 y, f32 z, s32 objectID, s32 soundID, f32 scale,
     spawnObj.common.z = z;
     spawnObj.common.size = 10;
     spawnObj.common.objectID = objectID;
-    spawnObj.unk9 = arg6;
+    spawnObj.explosionRepeats = arg6;
     newObj = spawn_object((LevelObjectEntryCommon *) &spawnObj, OBJECT_SPAWN_UNK01);
     if (newObj != NULL) {
         newObj->level_entry = NULL;

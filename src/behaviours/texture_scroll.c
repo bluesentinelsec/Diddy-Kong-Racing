@@ -51,11 +51,11 @@ void obj_init_texscroll(Object *obj, LevelObjectEntry *levelEntry, s32 arg2) {
     if (texscroll->textureIndex >= numberOfTexturesInLevel) {
         texscroll->textureIndex = numberOfTexturesInLevel - 1;
     }
-    texscroll->unk4 = entry->unkA;
-    texscroll->unk6 = entry->unkB;
+    texscroll->scrollSpeedU = entry->scrollSpeedU;
+    texscroll->scrollSpeedV = entry->scrollSpeedV;
     if (arg2 == 0) {
-        texscroll->unk8 = 0;
-        texscroll->unkA = 0;
+        texscroll->scrollAccumU = 0;
+        texscroll->scrollAccumV = 0;
     }
 }
 
@@ -87,8 +87,8 @@ void obj_loop_texscroll(Object *obj, s32 updateRate) {
     texScroll = obj->tex_scroll;
     levelModel = get_current_level_model();
 
-    t0 = texScroll->unk4;
-    t1 = texScroll->unk6;
+    t0 = texScroll->scrollSpeedU;
+    t1 = texScroll->scrollSpeedV;
 
     tex = levelModel->textures[texScroll->textureIndex].texture;
 
@@ -100,14 +100,14 @@ void obj_loop_texscroll(Object *obj, s32 updateRate) {
     t0 *= updateRate;
     t1 *= updateRate;
 
-    texScroll->unk8 += t0;
-    texScroll->unkA += t1;
+    texScroll->scrollAccumU += t0;
+    texScroll->scrollAccumV += t1;
 
-    t0 = texScroll->unk8;
-    t1 = texScroll->unkA;
+    t0 = texScroll->scrollAccumU;
+    t1 = texScroll->scrollAccumV;
 
-    texScroll->unk8 &= 3;
-    texScroll->unkA &= 3;
+    texScroll->scrollAccumU &= 3;
+    texScroll->scrollAccumV &= 3;
 
     t0 = t0 >> 2;
     t1 = ((t1 >> 2) & 0xFFFFFFFFFFFFFFFF); // fake

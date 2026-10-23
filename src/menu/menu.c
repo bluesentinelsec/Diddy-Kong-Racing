@@ -2289,10 +2289,10 @@ void menu_image_load(s32 imageID) {
     gMenuImages[imageID].trans.z_position = sMenuImageProperties[imageID].trans.z_position;
     gMenuImages[imageID].trans.scale = sMenuImageProperties[imageID].trans.scale;
     gMenuImages[imageID].spriteOffset = sMenuImageProperties[imageID].spriteOffset;
-    gMenuImages[imageID].unk1A = rand_range(0, 0xFFFF);
-    gMenuImages[imageID].unk1B = rand_range(0, 0xFFFF);
-    gMenuImages[imageID].unk1C = rand_range(0, 0xFFFF);
-    gMenuImages[imageID].unk1D = sMenuImageProperties[imageID].unk1D;
+    gMenuImages[imageID].randomSeedA = rand_range(0, 0xFFFF);
+    gMenuImages[imageID].randomSeedB = rand_range(0, 0xFFFF);
+    gMenuImages[imageID].randomSeedC = rand_range(0, 0xFFFF);
+    gMenuImages[imageID].animFrame = sMenuImageProperties[imageID].animFrame;
 }
 
 /**
@@ -2326,7 +2326,7 @@ void menu_element_render(s32 elementID) {
                 object->trans.z_position = asset->trans.z_position;
                 object->trans.scale = asset->trans.scale;
                 if (gMenuDisableObjAnim == FALSE) {
-                    object->animFrame = asset->unk1D;
+                    object->animFrame = asset->animFrame;
                     object->modelIndex = asset->spriteOffset;
                 }
                 object->opacity = sMenuGuiOpacity;

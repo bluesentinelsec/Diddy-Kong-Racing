@@ -128,11 +128,11 @@ void obj_loop_banana(Object *obj, s32 updateRate) {
             free_object(obj);
         }
     } else {
-        if (banana->unk8 > 0) {
-            banana->unk8 -= updateRate;
+        if (banana->pickupIgnoreTimer > 0) {
+            banana->pickupIgnoreTimer -= updateRate;
         } else {
-            banana->unk8 = 0;
-            banana->unk0 = 0;
+            banana->pickupIgnoreTimer = 0;
+            banana->pickupIgnoreObj = 0;
         }
         if (properties->status == BANANA_DROPPED) {
             targetPos.f[0] = obj->trans.x_position + (obj->x_velocity * updateRateF);

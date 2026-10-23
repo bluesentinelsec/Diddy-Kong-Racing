@@ -11,7 +11,7 @@ typedef enum AnimType {
 
 /* 8 Bytes */
 typedef struct unk8011D624 {
-    s32 unk0;
+    s32 modelId;
     ObjectModel *model;
 } unk8011D624;
 

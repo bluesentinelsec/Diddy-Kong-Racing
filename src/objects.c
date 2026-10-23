@@ -366,12 +366,12 @@ void racerfx_alloc(s32 numberOfVertices, s32 numberOfTriangles) {
         if (gBoostEffectObjects[i] != NULL) {
             gBoostEffectObjects[i]->properties.common.unk0 = 0;
             gBoostEffectObjects[i]->properties.common.unk4 = 0;
-            boostObj[i].unk70 = 0;
-            boostObj[i].unk74 = 0.0f;
+            boostObj[i].effectState = 0;
+            boostObj[i].effectScale = 0.0f;
             boostObj[i].sprite = tex_load_sprite(boostObj[i].spriteId, 0);
             boostObj[i].tex = load_texture(boostObj[i].textureId);
-            boostObj[i].unk72 = rand_range(0, 255);
-            boostObj[i].unk73 = 0;
+            boostObj[i].pulseTimer = rand_range(0, 255);
+            boostObj[i].lingerTimer = 0;
             // This is for shields, not boosts.
             gShieldSineTime[i] = rand_range(0, 255);
         }
@@ -385,10 +385,10 @@ void racerfx_alloc(s32 numberOfVertices, s32 numberOfTriangles) {
     objEntry.common.z = 0;
     gShieldEffectObject = spawn_object(&objEntry.common, OBJECT_SPAWN_NONE);
     for (i = 0; i < NUMBER_OF_CHARACTERS; i++) {
-        gRacerFXData[i].unk0 = 0;
-        gRacerFXData[i].unk1 = rand_range(0, 255);
-        gRacerFXData[i].unk2 = rand_range(0, 255);
-        gRacerFXData[i].unk3 = 0;
+        gRacerFXData[i].unused0 = 0;
+        gRacerFXData[i].magnetPulseTimer = rand_range(0, 255);
+        gRacerFXData[i].magnetSpinTimer = rand_range(0, 255);
+        gRacerFXData[i].magnetFade = 0;
     }
     objEntry.common.objectID = ASSET_OBJECT_ID_AINODE;
     objEntry.common.size = sizeof(LevelObjectEntry_Boost2) + 0x80; // Not sure where this 0x80 comes from.
@@ -540,10 +540,10 @@ void racer_set_boost_effect(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev,
             if (boostData != NULL) {
                 gBoostVehicleIds[racerIndex] = vehicleIDPrev;
                 gBoostTypes[racerIndex] = boostType;
-                if (objBoostRacer->unk70 == 2) {
-                    temp_f0 = coss_f(objBoostRacer->unk72 << 12);
-                    var_f2 = (boostData->unk14 + (temp_f0 * boostData->unk18)) * objBoostRacer->unk74;
-                    temp_f0 = (boostData->unk1C + (temp_f0 * boostData->unk20)) * objBoostRacer->unk74;
+                if (objBoostRacer->effectState == 2) {
+                    temp_f0 = coss_f(objBoostRacer->pulseTimer << 12);
+                    var_f2 = (boostData->fanRadiusBase + (temp_f0 * boostData->fanRadiusPulse)) * objBoostRacer->effectScale;
+                    temp_f0 = (boostData->fanLengthBase + (temp_f0 * boostData->fanLengthPulse)) * objBoostRacer->effectScale;
                     if ((boostType & 3) == BOOST_MEDIUM) {
                         var_f2 *= 1.09f;
                         temp_f0 *= 1.09f;
@@ -561,7 +561,7 @@ void racer_set_boost_effect(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev,
                     objTrans.rotation.z_rotation = 0;
                     boost_build_fan_mesh(&gBoostVerts[gBoostVertFlip][gNumOfBoostVerts],
                                   &gBoostTris[gBoostVertFlip][gNumOfBoostTris], &objTrans, var_f2, temp_f0,
-                                  objBoostRacer->unk72 << 12, objBoostType->tex);
+                                  objBoostRacer->pulseTimer << 12, objBoostType->tex);
                     gBoostEffectObjects[racerIndex]->properties.boost.indexes =
                         (racerIndex << 28) | (gNumOfBoostVerts << 14) | gNumOfBoostTris;
                     gNumOfBoostVerts += BOOST_VERT_COUNT;
@@ -619,71 +619,71 @@ void racerfx_update(s32 updateRate) {
         if (racer->shieldTimer != 0) {
             gShieldSineTime[racer->racerIndex] += updateRate;
         }
-        boostObj->unk72 += updateRate;
+        boostObj->pulseTimer += updateRate;
         if (racer->boostTimer != 0) {
-            boostObj->unk73 = 20;
-            if (boostObj->unk70 == 0) {
-                boostObj->unk74 += updateRateF * 0.25f;
+            boostObj->lingerTimer = 20;
+            if (boostObj->effectState == 0) {
+                boostObj->effectScale += updateRateF * 0.25f;
                 updateRateF = 0.0f;
-                if (boostObj->unk74 > 2.4f) {
-                    boostObj->unk74 = 4.8f - boostObj->unk74;
-                    boostObj->unk70 = 1;
+                if (boostObj->effectScale > 2.4f) {
+                    boostObj->effectScale = 4.8f - boostObj->effectScale;
+                    boostObj->effectState = 1;
                 }
             }
-            if (boostObj->unk70 == 1) {
-                boostObj->unk74 -= updateRateF * 0.25f;
+            if (boostObj->effectState == 1) {
+                boostObj->effectScale -= updateRateF * 0.25f;
                 updateRateF = 0.0f;
-                if (boostObj->unk74 < 1.0f) {
-                    boostObj->unk70 = 2;
-                    boostObj->unk74 = 1.0f - boostObj->unk74;
+                if (boostObj->effectScale < 1.0f) {
+                    boostObj->effectState = 2;
+                    boostObj->effectScale = 1.0f - boostObj->effectScale;
                 }
             }
-            if (boostObj->unk70 == 2) {
-                if (boostObj->unk74 < 1.0f) {
-                    boostObj->unk74 += updateRateF * 0.125f;
-                    if (boostObj->unk74 > 1.0f) {
-                        boostObj->unk74 = 1.0f;
+            if (boostObj->effectState == 2) {
+                if (boostObj->effectScale < 1.0f) {
+                    boostObj->effectScale += updateRateF * 0.125f;
+                    if (boostObj->effectScale > 1.0f) {
+                        boostObj->effectScale = 1.0f;
                     }
                 }
             }
         } else {
-            if (boostObj->unk73 > 0) {
-                boostObj->unk73 -= updateRate;
+            if (boostObj->lingerTimer > 0) {
+                boostObj->lingerTimer -= updateRate;
             } else {
-                if (boostObj->unk70 == 2) {
-                    boostObj->unk74 -= updateRateF * 0.05f;
+                if (boostObj->effectState == 2) {
+                    boostObj->effectScale -= updateRateF * 0.05f;
                     updateRateF = 0.0f;
-                    if (boostObj->unk74 < 0.0f) {
-                        boostObj->unk70 = 0;
-                        boostObj->unk74 += 1.0f;
+                    if (boostObj->effectScale < 0.0f) {
+                        boostObj->effectState = 0;
+                        boostObj->effectScale += 1.0f;
                     }
                 }
-                if (boostObj->unk70 < 2) {
-                    boostObj->unk74 -= (updateRateF * 0.1f);
-                    if (boostObj->unk74 < 0.0f) {
-                        boostObj->unk74 = 0.0f;
+                if (boostObj->effectState < 2) {
+                    boostObj->effectScale -= (updateRateF * 0.1f);
+                    if (boostObj->effectScale < 0.0f) {
+                        boostObj->effectScale = 0.0f;
                     }
-                    boostObj->unk70 = 0;
+                    boostObj->effectState = 0;
                 }
             }
         }
-        if ((boostObj->unk70 > 0) || (boostObj->unk74 > 0.0f)) {
+        if ((boostObj->effectState > 0) || (boostObj->effectScale > 0.0f)) {
             racer_set_boost_effect((*gRacers)[i], racer->racerIndex, racer->vehicleIDPrev, racer->boostType, 0);
         }
         temp = racer->racerIndex;
-        gRacerFXData[temp].unk1 += updateRate;
-        gRacerFXData[temp].unk2 += updateRate;
+        gRacerFXData[temp].magnetPulseTimer += updateRate;
+        gRacerFXData[temp].magnetSpinTimer += updateRate;
         if (racer->magnetTimer != 0) {
-            if (gRacerFXData[temp].unk3 + (updateRate << 2) < 32) {
-                gRacerFXData[temp].unk3 += (updateRate << 2);
+            if (gRacerFXData[temp].magnetFade + (updateRate << 2) < 32) {
+                gRacerFXData[temp].magnetFade += (updateRate << 2);
             } else {
-                gRacerFXData[temp].unk3 = 32;
+                gRacerFXData[temp].magnetFade = 32;
             }
         } else {
-            if (gRacerFXData[temp].unk3 - updateRate > 0) {
-                gRacerFXData[temp].unk3 -= updateRate;
+            if (gRacerFXData[temp].magnetFade - updateRate > 0) {
+                gRacerFXData[temp].magnetFade -= updateRate;
             } else {
-                gRacerFXData[temp].unk3 = 0;
+                gRacerFXData[temp].magnetFade = 0;
             }
         }
     }
@@ -772,8 +772,8 @@ void allocate_object_pools(void) {
             static const PcField sBoostFields[] = {
                 PCU_FIELD(Object_Boost, carBoostData, 0x00, 27, PCU_U32),
                 PCU_FIELD(Object_Boost, spriteId, 0x6C, 2, PCU_U16),
-                PCU_FIELD(Object_Boost, unk70, 0x70, 4, PCU_BYTES),
-                PCU_FIELD(Object_Boost, unk74, 0x74, 1, PCU_U32),
+                PCU_FIELD(Object_Boost, effectState, 0x70, 4, PCU_BYTES),
+                PCU_FIELD(Object_Boost, effectScale, 0x74, 1, PCU_U32),
                 PCU_FIELD(Object_Boost, sprite, 0x78, 2, PCU_PTR),
                 PCU_END,
             };
@@ -917,7 +917,7 @@ void clear_object_pointers(void) {
         (*gDrawbridgeTimers)[i] = 0;
     }
     for (i = 0; i < 16; i++) {
-        gCollisionPairs[i].unk0 = 0;
+        gCollisionPairs[i].ttl = 0;
     }
 
     gAINodeTail[0] = 0xFF;
@@ -979,17 +979,17 @@ void free_all_objects(void) {
 #define OBJECT_HEADER_PC_DELTA (sizeof(ObjectHeader) - OBJECT_HEADER_DISK_SIZE)
 
 static const PcField sObjectHeaderFields[] = {
-    PCU_FIELD(ObjectHeader, unk0, 0x00, 4, PCU_U32),      // unk0, shadowScale, unk8, scale
+    PCU_FIELD(ObjectHeader, waterEffectAnimSpeed, 0x00, 4, PCU_U32),      // waterEffectAnimSpeed, shadowScale, waterEffectScale, scale
     PCU_FIELD(ObjectHeader, modelIds, 0x10, 4, PCU_PTR),  // modelIds..objectParticles
     PCU_FIELD(ObjectHeader, pad20, 0x20, 1, PCU_U32),
-    PCU_FIELD(ObjectHeader, unk24, 0x24, 1, PCU_PTR),
+    PCU_FIELD(ObjectHeader, lightSources, 0x24, 1, PCU_PTR),
     PCU_FIELD(ObjectHeader, shadeAmbient, 0x28, 2, PCU_U32),
     PCU_FIELD(ObjectHeader, flags, 0x30, 5, PCU_U16),       // flags..unk38
-    PCU_FIELD(ObjectHeader, unk3A, 0x3A, 4, PCU_BYTES),
+    PCU_FIELD(ObjectHeader, shadeLightR, 0x3A, 4, PCU_BYTES),
     PCU_FIELD(ObjectHeader, shadeAngleY, 0x3E, 10, PCU_U16), // shadeAngleY..unk50
-    PCU_FIELD(ObjectHeader, unk52, 0x52, 14, PCU_BYTES),     // unk52..pad5E
+    PCU_FIELD(ObjectHeader, instanceCount, 0x52, 14, PCU_BYTES),     // instanceCount..pad5E
     PCU_FIELD(ObjectHeader, internalName, 0x60, 16, PCU_BYTES),
-    PCU_FIELD(ObjectHeader, unk70, 0x70, 8, PCU_BYTES),
+    PCU_FIELD(ObjectHeader, unused70, 0x70, 8, PCU_BYTES),
     PCU_END,
 };
 
@@ -1004,7 +1004,7 @@ static void pc_unpack_object_header(ObjectHeader *header) {
     header->vehiclePartIds = (s32 *) ((uintptr_t) header->vehiclePartIds + OBJECT_HEADER_PC_DELTA);
     header->vehiclePartIndices = (s8 *) ((uintptr_t) header->vehiclePartIndices + OBJECT_HEADER_PC_DELTA);
     header->objectParticles = (ObjHeaderParticleEntry *) ((uintptr_t) header->objectParticles + OBJECT_HEADER_PC_DELTA);
-    header->unk24 = (ObjectHeader24 *) ((uintptr_t) header->unk24 + OBJECT_HEADER_PC_DELTA);
+    header->lightSources = (ObjectHeader24 *) ((uintptr_t) header->lightSources + OBJECT_HEADER_PC_DELTA);
 
     // Pointed-to arrays, still offsets here — swap via the header base.
     pc_swap32_buf((u8 *) header + (uintptr_t) header->modelIds, header->numberOfModelIds * 4);
@@ -1012,8 +1012,8 @@ static void pc_unpack_object_header(ObjectHeader *header) {
     pc_swap32_buf((u8 *) header + (uintptr_t) header->objectParticles,
                   header->particleCount * sizeof(ObjHeaderParticleEntry));
     for (i = 0; i < header->numLightSources; i++) {
-        ObjectHeader24 *light = &((ObjectHeader24 *) ((u8 *) header + (uintptr_t) header->unk24))[i];
-        PC_SWAP16_AT(light, unk6, 2);
+        ObjectHeader24 *light = &((ObjectHeader24 *) ((u8 *) header + (uintptr_t) header->lightSources))[i];
+        PC_SWAP16_AT(light, colourAnimAssetId, 2);
         PC_SWAP16_AT(light, homeX, 12); // homeX/Y/Z, radius, unk14, unk16
     }
 }
@@ -1038,7 +1038,7 @@ ObjectHeader *load_object_header(s32 index) {
     if (address != NULL) {
         asset_load(ASSET_OBJECTS, (uintptr_t) address + OBJECT_HEADER_PC_DELTA, assetOffset, size);
         pc_unpack_object_header(address);
-        address->unk24 = (ObjectHeader24 *) ((uintptr_t) address + (uintptr_t) address->unk24);
+        address->lightSources = (ObjectHeader24 *) ((uintptr_t) address + (uintptr_t) address->lightSources);
         address->objectParticles =
             (ObjHeaderParticleEntry *) ((uintptr_t) address + (uintptr_t) address->objectParticles);
         address->vehiclePartIds = (s32 *) ((uintptr_t) address + (uintptr_t) address->vehiclePartIds);
@@ -1106,7 +1106,7 @@ static void pc_swap_spawn_entry_fields(u8 *entryBytes) {
             PC_SWAP16_AT(entry, racer.angleZ, 8); // angleZ/X/Y, playerIndex
             break;
         case BHV_FISH:
-            PC_SWAP16_AT(entry, fish.unk8, 2);
+            PC_SWAP16_AT(entry, fish.pathRadius, 2);
             break;
         case BHV_AUDIO:
             PC_SWAP16_AT(entry, audio.soundId, 4); // soundId, range
@@ -1114,7 +1114,7 @@ static void pc_swap_spawn_entry_fields(u8 *entryBytes) {
         case BHV_AUDIO_LINE:
         case BHV_AUDIO_LINE_2:
             PC_SWAP16_AT(entry, audioLine.soundID, 2);
-            PC_SWAP16_AT(entry, audioLine.unkE, 2);
+            PC_SWAP16_AT(entry, audioLine.range, 2);
             break;
         case BHV_FOG_CHANGER:
             PC_SWAP16_AT(entry, fogChanger.near, 6); // near, far, switchTimer
@@ -1127,7 +1127,7 @@ static void pc_swap_spawn_entry_fields(u8 *entryBytes) {
             break;
         case BHV_WEATHER:
             PC_SWAP16_AT(entry, weather.radius, 8); // radius..unkE
-            PC_SWAP16_AT(entry, weather.unk12, 2);
+            PC_SWAP16_AT(entry, weather.transitionTime, 2);
             break;
         case BHV_LENS_FLARE:
             PC_SWAP16_AT(entry, lensFlare.angleX, 4); // angleX, angleY
@@ -1149,13 +1149,13 @@ static void pc_swap_spawn_entry_fields(u8 *entryBytes) {
             PC_SWAP16_AT(entry, wavePower.radius, 6); // radius, power, divisor
             break;
         case BHV_BUTTERFLY:
-            PC_SWAP16_AT(entry, butterfly.unk8, 2);
+            PC_SWAP16_AT(entry, butterfly.homeRadius, 2);
             break;
         case BHV_MIDI_FADE_POINT:
-            PC_SWAP16_AT(entry, midiFadePoint.unk8, 4); // unk8, unkA
+            PC_SWAP16_AT(entry, midiFadePoint.innerRadius, 4); // innerRadius, outerRadius
             break;
         case BHV_MIDI_CHANNEL_SET:
-            PC_SWAP16_AT(entry, midichset.unk8, 2);
+            PC_SWAP16_AT(entry, midichset.channelMask, 2);
             break;
         case BHV_BUBBLER:
             PC_SWAP16_AT(entry, bubbler.particleDensity, 2);
@@ -1479,9 +1479,9 @@ static void racer_init_fields(Object *racerObj, Settings *settings, s32 slot, s3
         racer->vehicleID == VEHICLE_PTERODACTYL) {
         gIsNonCarRacers = TRUE;
     }
-    racer->unk1CB = vehicle;
-    if (racer->unk1CB < VEHICLE_CAR || racer->unk1CB > VEHICLE_PLANE) {
-        racer->unk1CB = 0;
+    racer->startVehicleID = vehicle;
+    if (racer->startVehicleID < VEHICLE_CAR || racer->startVehicleID > VEHICLE_PLANE) {
+        racer->startVehicleID = 0;
     }
     racer->racerIndex = port;
     if (gBossRaceMode == 2) {
@@ -1968,7 +1968,7 @@ void transform_player_vehicle(void) {
         return;
     }
     settings = get_settings();
-    spawnObj.unkE = 0;
+    spawnObj.playerIndex = 0;
     spawnObj.common.size = 16;
     if (gOverworldVehicle < VEHICLE_BOSSES) {
         objectID =
@@ -1978,13 +1978,13 @@ void transform_player_vehicle(void) {
     }
     set_level_default_vehicle(gOverworldVehicle);
     spawnObj.common.size |= (objectID & 0x100) >> 1;
-    spawnObj.unkA = 0;
-    spawnObj.unk8 = 0;
+    spawnObj.angleX = 0;
+    spawnObj.angleZ = 0;
     spawnObj.common.objectID = objectID;
     spawnObj.common.x = gTransformPosX;
     spawnObj.common.y = gTransformPosY;
     spawnObj.common.z = gTransformPosZ;
-    spawnObj.unkC = gTransformAngleY;
+    spawnObj.angleY = gTransformAngleY;
     set_taj_status(TAJ_DIALOGUE);
     player = spawn_object(&spawnObj.common, OBJECT_SPAWN_NO_LODS | OBJECT_SPAWN_UNK01);
     gNumRacers = 1;
@@ -2464,10 +2464,10 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
     curObj->objectID = objType;
     readout_log_push(objType);
     curObj->trans.scale = curObj->header->scale;
-    curObj->unk34 = curObj->header->unk50 * curObj->trans.scale;
+    curObj->cullRadius = curObj->header->cullRadius * curObj->trans.scale;
     curObj->opacity = 255;
     behaviourFlags = obj_init_property_flags(curObj->header->behaviorId);
-    curObj->header->unk52++;
+    curObj->header->instanceCount++;
 
     assetCount = curObj->header->numberOfModelIds;
     objType = curObj->header->modelType;
@@ -2565,7 +2565,7 @@ void objFreeAssets(Object *obj, s32 count, s32 objType) {
 void light_setup_light_sources(Object *obj) {
     s32 i;
     for (i = 0; i < obj->header->numLightSources; i++) {
-        obj->lightData[i] = light_add_from_object_header(obj, &obj->header->unk24[i]);
+        obj->lightData[i] = light_add_from_object_header(obj, &obj->header->lightSources[i]);
     }
 }
 
@@ -2584,9 +2584,9 @@ s32 init_object_shading(Object *obj, ShadeProperties *shadeData) {
             set_shading_properties(obj->shading, obj->header->shadeAmbient, obj->header->shadeDiffuse, 0,
                                    obj->header->shadeAngleY, obj->header->shadeAngleZ);
             if (obj->header->shadeIntensityy != 0) {
-                obj->shading->lightR = obj->header->unk3A;
-                obj->shading->lightG = obj->header->unk3B;
-                obj->shading->lightB = obj->header->unk3C;
+                obj->shading->lightR = obj->header->shadeLightR;
+                obj->shading->lightG = obj->header->shadeLightG;
+                obj->shading->lightB = obj->header->shadeLightB;
                 obj->shading->lightIntensity = obj->header->shadeIntensityy;
                 obj->shading->lightDirX = -(obj->shading->shadowDirX >> 1);
                 obj->shading->lightDirY = -(obj->shading->shadowDirY >> 1);
@@ -2595,7 +2595,7 @@ s32 init_object_shading(Object *obj, ShadeProperties *shadeData) {
             returnSize = sizeof(ShadeProperties);
         }
     } else if (obj->header->modelType == OBJECT_MODEL_TYPE_SPRITE_BILLBOARD) {
-        obj->shading->unk0 = 1.0f;
+        obj->shading->brightness = 1.0f;
         shadeData->lightR = 255;
         shadeData->lightG = 255;
         shadeData->lightB = 255;
@@ -2669,7 +2669,7 @@ s32 init_object_shadow(Object *obj, ShadowData *shadow) {
     shadow->texture = NULL;
     objHeader = obj->header;
     if (objHeader->shadowGroup) {
-        shadow->texture = load_texture(objHeader->unk34);
+        shadow->texture = load_texture(objHeader->shadowTextureId);
         objHeader = obj->header;
     }
     shadow->scale = objHeader->shadowScale;
@@ -2687,12 +2687,12 @@ s32 init_object_shadow(Object *obj, ShadowData *shadow) {
  */
 s32 init_object_water_effect(Object *obj, WaterEffect *waterEffect) {
     obj->waterEffect = waterEffect;
-    waterEffect->scale = obj->header->unk8;
+    waterEffect->scale = obj->header->waterEffectScale;
     waterEffect->textureFrame = 0;
-    waterEffect->animationSpeed = obj->header->unk0 >> 8;
+    waterEffect->animationSpeed = obj->header->waterEffectAnimSpeed >> 8;
     waterEffect->texture = NULL;
     if (obj->header->waterEffectGroup) {
-        waterEffect->texture = load_texture(obj->header->unk38);
+        waterEffect->texture = load_texture(obj->header->waterEffectTextureId);
     }
     waterEffect->meshStart = -1;
     gLastObjectTextureB = waterEffect->texture;
@@ -2987,7 +2987,7 @@ static void obj_update_scenery(s32 updateRate, s32 objectCount) {
                     modInst->objModel->texOffsetUpdateRate = updateRate;
                 }
             }
-            if (obj->header->unk72 != 0xFF) {
+            if (obj->header->texScrollTextureIndex != 0xFF) {
                 object_scroll_texture(obj, updateRate);
             }
         }
@@ -3466,7 +3466,7 @@ void render_3d_billboard(Object *obj) {
     if (obj->shading != NULL) {
         hasPrimCol = TRUE;
         hasEnvCol = TRUE;
-        intensity = obj->shading->unk0 * 255.0f;
+        intensity = obj->shading->brightness * 255.0f;
     }
 
     if (obj->behaviorId == BHV_BOMB_EXPLOSION) {
@@ -3673,7 +3673,7 @@ static void model_render_held_object(Object *obj, ObjectModel *objModel, Object_
     if (held == NULL) {
         return;
     }
-    index = obj->header->unk58;
+    index = obj->header->heldItemAttachPoint;
     if (index < 0 || index >= objModel->numberOfAttachPoints) {
         return;
     }
@@ -3717,7 +3717,7 @@ void render_3d_model(Object *obj) {
     hasLighting = FALSE;
     intensity = 255;
     if (obj->shading != NULL) {
-        intensity = (s32) (obj->shading->unk0 * 255.0f * gCurrentLightIntensity);
+        intensity = (s32) (obj->shading->brightness * 255.0f * gCurrentLightIntensity);
         hasOpacity = TRUE;
         hasLighting = TRUE;
     }
@@ -3886,11 +3886,11 @@ void object_do_player_tumble(Object *this) {
 
             offsetY = coss_f(sp_20->z_rotation_offset);
             tmp_f2 = offsetY;
-            tmp_f0 = coss_f(sp_20->x_rotation_offset - sp_20->unk166) * tmp_f2;
+            tmp_f0 = coss_f(sp_20->x_rotation_offset - sp_20->xRotationOffsetTarget) * tmp_f2;
 
             tmp_f0 = (tmp_f0 < 0.0f) ? 0.0f : tmp_f0 * tmp_f0;
 
-            temp = (1.0f - tmp_f0) * 24.0f + sp_20->unkD0;
+            temp = (1.0f - tmp_f0) * 24.0f + sp_20->bodyOffsetY;
             if (0) {} // Fakematch
             offsetY = temp;
         }
@@ -3935,8 +3935,8 @@ void set_temp_model_transforms(Object *obj) {
         if (obj->header->behaviorId == BHV_RACER) {
             objRacer = obj->racer;
             objRacer->aiPhysicsTimer = 30;
-            if (objRacer->unk206 > 0) {
-                ret2 = 1.0f - (objRacer->unk206 * 0.05f);
+            if (objRacer->stunTimer > 0) {
+                ret2 = 1.0f - (objRacer->stunTimer * 0.05f);
                 if (ret2 < 0.2f) {
                     ret2 = 0.2f;
                 }
@@ -4020,7 +4020,7 @@ void set_temp_model_transforms(Object *obj) {
                 modelIndex = numberOfModels;
             }
             obj->modelIndex = modelIndex;
-            if ((obj->shading != NULL) && (obj->shading->unk0 < 0.6f)) {
+            if ((obj->shading != NULL) && (obj->shading->brightness < 0.6f)) {
                 objRacer->lightFlags |= RACER_LIGHT_NIGHT;
             } else {
                 objRacer->lightFlags &= ~RACER_LIGHT_NIGHT;
@@ -4125,9 +4125,9 @@ void render_boost_effect(Object *boostObj) {
     objTransform.trans.x_position = boostData->position.x;
     objTransform.trans.y_position = boostData->position.y;
     objTransform.trans.z_position = boostData->position.z;
-    objTransform.trans.scale = boostData->unkC + (boostData->unk10 * coss_f(boost->unk72 << 12));
-    if (boost->unk70 < 2) {
-        objTransform.trans.scale *= boost->unk74;
+    objTransform.trans.scale = boostData->spriteScaleBase + (boostData->spriteScalePulse * coss_f(boost->pulseTimer << 12));
+    if (boost->effectState < 2) {
+        objTransform.trans.scale *= boost->effectScale;
     }
     if (gBoostTypes[racerIndex] != 0) {
         objTransform.trans.scale *= 1.15f;
@@ -4141,7 +4141,7 @@ void render_boost_effect(Object *boostObj) {
     render_sprite_billboard(&gObjectCurrDisplayList, &gObjectCurrMatrix, &gObjectCurrVertexList,
                             (Object *) &objTransform, asset->sprite,
                             (RENDER_Z_COMPARE | RENDER_FOG_ACTIVE | RENDER_Z_UPDATE));
-    if (boost->unk70 == 2) {
+    if (boost->effectState == 2) {
         material_set(&gObjectCurrDisplayList, asset->tex,
                      (RENDER_Z_COMPARE | RENDER_SEMI_TRANSPARENT | RENDER_FOG_ACTIVE), 0);
         if (asset->tex != NULL) {
@@ -4278,7 +4278,7 @@ void render_racer_magnet(Gfx **dList, Mtx **mtx, Vertex **vtxList, Object *obj) 
 
     racer = obj->racer;
     racerIndex = racer->racerIndex;
-    if (gRacerFXData[racerIndex].unk3 != 0) {
+    if (gRacerFXData[racerIndex].magnetFade != 0) {
         if (gMagnetEffectObject != NULL) {
             gObjectCurrDisplayList = *dList;
             gObjectCurrMatrix = *mtx;
@@ -4297,17 +4297,17 @@ void render_racer_magnet(Gfx **dList, Mtx **mtx, Vertex **vtxList, Object *obj) 
             gMagnetEffectObject->trans.y_position = magnet[1];
             gMagnetEffectObject->trans.z_position = magnet[2];
             magnet += 3;
-            shear = (coss_f((gRacerFXData[racerIndex].unk1 * 0x400)) * 0.02f) + 0.98f;
+            shear = (coss_f((gRacerFXData[racerIndex].magnetPulseTimer * 0x400)) * 0.02f) + 0.98f;
             gMagnetEffectObject->trans.scale = magnet[0] * shear;
             magnet += 1;
             shear = magnet[0] * shear;
-            gMagnetEffectObject->trans.rotation.y_rotation = gRacerFXData[racerIndex].unk2 * 0x1000;
+            gMagnetEffectObject->trans.rotation.y_rotation = gRacerFXData[racerIndex].magnetSpinTimer * 0x1000;
             gMagnetEffectObject->trans.rotation.x_rotation = 0;
             gMagnetEffectObject->trans.rotation.z_rotation = 0;
             modInst = gMagnetEffectObject->modelInstances[0];
             mdl = modInst->objModel;
             gMagnetEffectObject->curVertData = modInst->vertices[modInst->animationTaskNum];
-            opacity = ((gRacerFXData[racerIndex].unk1 * 8) & 0x7F) + 0x80;
+            opacity = ((gRacerFXData[racerIndex].magnetPulseTimer * 8) & 0x7F) + 0x80;
             gfx_init_basic_xlu(&gObjectCurrDisplayList, DRAW_BASIC_2CYCLE, COLOUR_RGBA32(255, 255, 255, opacity),
                                gMagnetColours[racer->magnetModelID]);
             mtx_shear_push(&gObjectCurrDisplayList, &gObjectCurrMatrix, gMagnetEffectObject, obj, shear);
@@ -4347,10 +4347,10 @@ void object_scroll_texture(Object *obj, s32 arg1) {
     s16 newV2;
 
     objHeader = obj->header;
-    objHeader73 = objHeader->unk73;
-    objHeader72 = objHeader->unk72;
-    temp = (s16) (objHeader->unk74 * arg1);
-    temp2 = (s16) (objHeader->unk75 * arg1);
+    objHeader73 = objHeader->texScrollModelIndex;
+    objHeader72 = objHeader->texScrollTextureIndex;
+    temp = (s16) (objHeader->texScrollSpeedU * arg1);
+    temp2 = (s16) (objHeader->texScrollSpeedV * arg1);
     if ((objHeader73 == 0xFF) || (objHeader73 < objHeader->numberOfModelIds)) {
         if (objHeader73 == 0xFF) {
             end = objHeader->numberOfModelIds;
@@ -5015,11 +5015,11 @@ void racer_update_local_velocity(Object *obj, Object_Racer *racer) {
         if (volume > 127) {
             volume = 127;
         }
-        if (racer->unk1F6 == 0) {
-            sound_play(SOUND_CRASH_CHARACTER, &racer->unk220);
-            sound_volume_set_relative(SOUND_CRASH_CHARACTER, racer->unk220, volume);
+        if (racer->crashSoundCooldown == 0) {
+            sound_play(SOUND_CRASH_CHARACTER, &racer->crashSoundHandle);
+            sound_volume_set_relative(SOUND_CRASH_CHARACTER, racer->crashSoundHandle, volume);
         }
-        if (racer->unk1F6 == 0 && volume > 55) {
+        if (racer->crashSoundCooldown == 0 && volume > 55) {
             if (!racer->raceFinished) {
                 rumble_set(racer->playerIndex, RUMBLE_TYPE_18);
             }
@@ -5035,7 +5035,7 @@ void racer_update_local_velocity(Object *obj, Object_Racer *racer) {
         if (shakeMagnitude > 3) {
             shakeMagnitude = 3;
         }
-        racer->unk1F6 = 30;
+        racer->crashSoundCooldown = 30;
         set_active_camera(racer->playerIndex);
         cam_get_active_camera()->shakeMagnitude = shakeMagnitude;
     }
@@ -5071,7 +5071,7 @@ void object_collide_with_object(Object *obj0, Object *obj1) {
         xDiff = obj0->trans.x_position - obj1->trans.x_position;
         yDiff = obj0->trans.y_position - obj1->trans.y_position;
         zDiff = obj0->trans.z_position - obj1->trans.z_position;
-        if (!((objModel->unk3C + 50.0) < sqrtf((xDiff * xDiff) + (yDiff * yDiff) + (zDiff * zDiff)))) {
+        if (!((objModel->boundingRadius + 50.0) < sqrtf((xDiff * xDiff) + (yDiff * yDiff) + (zDiff * zDiff)))) {
             obj0Interact = obj0->interactObj;
             obj1Interact = obj1->interactObj;
             mtxf_from_transform((MtxF *) obj1TransformMtx, &obj1->trans);
@@ -5332,7 +5332,7 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
             sp158->interactObj->obj = obj;
         }
 
-        if (dist - 25.0f < sp154->unk3C * sp158->trans.scale) {
+        if (dist - 25.0f < sp154->boundingRadius * sp158->trans.scale) {
             spB4[sp160] = sp170;
             sp8C[sp160] = dist;
 
@@ -5367,9 +5367,9 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
         sp14C = collision_pair_take(obj, sp158);
         if (sp14C != NULL) {
             for (i = 0, j = 0; j < arg1; j++, i += 3) {
-                sp13C[j] = sp14C->unk0C[i + 0];
-                sp12C[j] = sp14C->unk0C[i + 1];
-                sp11C[j] = sp14C->unk0C[i + 2];
+                sp13C[j] = sp14C->prevLocalPoints[i + 0];
+                sp12C[j] = sp14C->prevLocalPoints[i + 1];
+                sp11C[j] = sp14C->prevLocalPoints[i + 2];
                 mtxf_transform_point(*spDC, arg4[i], arg4[i + 1], arg4[i + 2], &sp100[j], &spF0[j], &spE0[j]);
             }
         } else {
@@ -5409,9 +5409,9 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
         sp16C = 1;
         for (i = 0, j = 0; j < arg1; j++, i += 3, sp16C <<= 1) {
             if (sp14C != NULL) {
-                sp14C->unk0C[i + 0] = sp100[j];
-                sp14C->unk0C[i + 1] = spF0[j];
-                sp14C->unk0C[i + 2] = spE0[j];
+                sp14C->prevLocalPoints[i + 0] = sp100[j];
+                sp14C->prevLocalPoints[i + 1] = spF0[j];
+                sp14C->prevLocalPoints[i + 2] = spE0[j];
             }
             if (tempv0 & sp16C) {
                 mtxf_transform_point(*spDC, sp100[j], spF0[j], spE0[j], &arg4[i + 0], &arg4[i + 1], &arg4[i + 2]);
@@ -5439,8 +5439,8 @@ unk800179D0 *collision_pair_take(Object *arg0, Object *arg1) {
 
     for (i = 0; i < 16; i++) {
         entry = &gCollisionPairs[i];
-        if (entry->unk0 != 0 && entry->unk04 == arg0 && entry->unk08 == arg1) {
-            entry->unk0 = 0;
+        if (entry->ttl != 0 && entry->objA == arg0 && entry->objB == arg1) {
+            entry->ttl = 0;
             return entry;
         }
     }
@@ -5453,10 +5453,10 @@ unk800179D0 *collision_pair_add(Object *obj1, Object *obj2) {
 
     for (i = 0; i < 16; i++) {
         entry = &gCollisionPairs[i];
-        if (entry->unk0 == 0) {
-            entry->unk04 = obj1;
-            entry->unk08 = obj2;
-            entry->unk0 = 2;
+        if (entry->ttl == 0) {
+            entry->objA = obj1;
+            entry->objB = obj2;
+            entry->ttl = 2;
             return entry;
         }
     }
@@ -5467,8 +5467,8 @@ u32 collision_pairs_tick(void) {
     s16 i = 0;
     while (i < 16) {
         unk800179D0 *temp = &gCollisionPairs[i];
-        if (temp->unk0 != 0) {
-            temp->unk0--;
+        if (temp->ttl != 0) {
+            temp->ttl--;
         }
         i++;
     }
@@ -5763,19 +5763,19 @@ static void checkpoint_init_node(s32 i) {
         checkpoint->altDistance = checkpoint->distance;
     }
 
-    checkpoint->unk2E[0] = checkpointEntry->unkB;
-    checkpoint->unk32[0] = checkpointEntry->unkF;
-    checkpoint->unk36[0] = checkpointEntry->unk13;
-    checkpoint->unk2E[1] = checkpointEntry->unkC;
-    checkpoint->unk32[1] = checkpointEntry->unk10;
-    checkpoint->unk36[1] = checkpointEntry->unk14;
-    checkpoint->unk2E[2] = checkpointEntry->unkD;
-    checkpoint->unk32[2] = checkpointEntry->unk11;
-    checkpoint->unk36[2] = checkpointEntry->unk15;
-    checkpoint->unk2E[3] = checkpointEntry->unkE;
-    checkpoint->unk32[3] = checkpointEntry->unk12;
-    checkpoint->unk36[3] = checkpointEntry->unk16;
-    checkpoint->indicatorType = checkpointEntry->unk19;
+    checkpoint->laneOffsetX[0] = checkpointEntry->lane0OffsetX;
+    checkpoint->laneOffsetY[0] = checkpointEntry->lane0OffsetY;
+    checkpoint->laneAction[0] = checkpointEntry->lane0Action;
+    checkpoint->laneOffsetX[1] = checkpointEntry->lane1OffsetX;
+    checkpoint->laneOffsetY[1] = checkpointEntry->lane1OffsetY;
+    checkpoint->laneAction[1] = checkpointEntry->lane1Action;
+    checkpoint->laneOffsetX[2] = checkpointEntry->lane2OffsetX;
+    checkpoint->laneOffsetY[2] = checkpointEntry->lane2OffsetY;
+    checkpoint->laneAction[2] = checkpointEntry->lane2Action;
+    checkpoint->laneOffsetX[3] = checkpointEntry->lane3OffsetX;
+    checkpoint->laneOffsetY[3] = checkpointEntry->lane3OffsetY;
+    checkpoint->laneAction[3] = checkpointEntry->lane3Action;
+    checkpoint->indicatorType = checkpointEntry->indicatorType;
 }
 
 /**
@@ -6919,8 +6919,8 @@ void race_finish_time_trial(void) {
     levelHeader = level_header();
     settings = get_settings();
     settings->timeTrialRacer = 0;
-    settings->unk115[1] = 0;
-    settings->unk115[0] = 0;
+    settings->bestLapRacerAndLap[1] = 0;
+    settings->bestLapRacerAndLap[0] = 0;
     bestCourseTime = 36001;
     bestRacerTime = 36001;
     bestRacer = gRacersByPosition[0]->racer;
@@ -6937,8 +6937,8 @@ void race_finish_time_trial(void) {
                         curRacerLapTime = curRacer->lap_times[j];
                         courseTime += curRacerLapTime;
                         if (curRacerLapTime < bestRacerTime) {
-                            settings->unk115[1] = j;
-                            settings->unk115[0] = curRacer->racerIndex;
+                            settings->bestLapRacerAndLap[1] = j;
+                            settings->bestLapRacerAndLap[0] = curRacer->racerIndex;
                             bestRacerTime = curRacerLapTime;
                         }
                     }
@@ -6959,11 +6959,11 @@ void race_finish_time_trial(void) {
             vehicleID = VEHICLE_CAR;
         }
         settings->display_times = TRUE;
-        if (settings->unk115[0] == 0) {
+        if (settings->bestLapRacerAndLap[0] == 0) {
             if ((settings->flapTimesPtr[vehicleID][settings->courseId] == NULL) ||
                 (bestRacerTime < settings->flapTimesPtr[vehicleID][settings->courseId])) {
                 settings->flapTimesPtr[vehicleID][settings->courseId] = bestRacerTime;
-                settings->racers[settings->unk115[0]].best_times |= 1 << settings->unk115[1];
+                settings->racers[settings->bestLapRacerAndLap[0]].best_times |= 1 << settings->bestLapRacerAndLap[1];
             }
         }
         if (settings->timeTrialRacer == 0) {
@@ -7727,16 +7727,16 @@ f32 npc_follow_ai_nodes(Object_NPC *npc, Object *npcParentObj, f32 updateRateF, 
         zPositions[i] = aiNode->trans.z_position;
     }
 
-    xDiff2 = catmull_rom_interpolation(xPositions, 0, npc->unk0);
-    yDiff2 = catmull_rom_interpolation(yPositions, 0, npc->unk0);
-    zDiff2 = catmull_rom_interpolation(zPositions, 0, npc->unk0);
+    xDiff2 = catmull_rom_interpolation(xPositions, 0, npc->splineProgress);
+    yDiff2 = catmull_rom_interpolation(yPositions, 0, npc->splineProgress);
+    zDiff2 = catmull_rom_interpolation(zPositions, 0, npc->splineProgress);
     someBool = FALSE;
-    if (npc->unk8 == 0.0f) {
-        npc->unk8 = 0.01f;
+    if (npc->splineStep == 0.0f) {
+        npc->splineStep = 0.01f;
     }
 
     for (var_s0 = 0; var_s0 != 2; var_s0++) {
-        var_f20_2 = npc->unk0 + (npc->unk8 * updateRateF);
+        var_f20_2 = npc->splineProgress + (npc->splineStep * updateRateF);
         if (var_f20_2 >= 1.0) {
             someBool = TRUE;
             var_f20_2 -= 1.0;
@@ -7751,11 +7751,11 @@ f32 npc_follow_ai_nodes(Object_NPC *npc, Object *npcParentObj, f32 updateRateF, 
             someBool = FALSE;
             dist = sqrtf((xDiff * xDiff) + (yDiff * yDiff) + (zDiff * zDiff)) / updateRateF;
             if (dist != 0.0f) {
-                npc->unk8 *= (speedF / dist);
+                npc->splineStep *= (speedF / dist);
             }
         }
     }
-    npc->unk0 = var_f20_2;
+    npc->splineProgress = var_f20_2;
     xDiff2 = xDiff + xDiff2;
     tempYDiff = yDiff2 = yDiff + yDiff2;
     zDiff2 = zDiff + zDiff2;
@@ -8043,12 +8043,12 @@ UNUSED void add_shading_properties(Object *obj, f32 ambientChange, f32 diffuseCh
             obj->shading->diffuse = 1.99f;
         }
         set_shading_properties(obj->shading, obj->shading->ambient, obj->shading->diffuse,
-                               (obj->shading->unk22 + angleX), (obj->shading->unk24 + angleY),
-                               (obj->shading->unk26 + angleZ));
+                               (obj->shading->shadeAngleX + angleX), (obj->shading->shadeAngleY + angleY),
+                               (obj->shading->shadeAngleZ + angleZ));
         if (obj->header->shadeIntensityy != 0) {
-            obj->shading->lightR = obj->header->unk3A;
-            obj->shading->lightG = obj->header->unk3B;
-            obj->shading->lightB = obj->header->unk3C;
+            obj->shading->lightR = obj->header->shadeLightR;
+            obj->shading->lightG = obj->header->shadeLightG;
+            obj->shading->lightB = obj->header->shadeLightB;
             obj->shading->lightIntensity = obj->header->shadeIntensityy;
             obj->shading->lightDirX = -(obj->shading->shadowDirX >> 1);
             obj->shading->lightDirY = -(obj->shading->shadowDirY >> 1);
@@ -8061,12 +8061,12 @@ void set_shading_properties(ShadeProperties *arg0, f32 ambient, f32 diffuse, s16
     Vec3s angle;
     Vec3f velocityPos;
 
-    arg0->unk22 = angleX;
+    arg0->shadeAngleX = angleX;
     arg0->ambient = ambient;
     arg0->diffuse = diffuse;
-    arg0->unk0 = 1.0f;
-    arg0->unk24 = angleY;
-    arg0->unk26 = angleZ;
+    arg0->brightness = 1.0f;
+    arg0->shadeAngleY = angleY;
+    arg0->shadeAngleZ = angleZ;
     angle.z_rotation = angleX;
     angle.y_rotation = angleZ;
     angle.x_rotation = angleY;
@@ -8194,8 +8194,8 @@ void calc_dynamic_lighting_for_object_1(Object *object, ObjectModel *model, s16 
     shadowDirY = direction.y;
     shadowDirZ = direction.z;
 
-    ambientFactor = object->shading->ambient * object->shading->unk0 * 255.0f * intensity;
-    diffuseFactor = object->shading->diffuse * object->shading->unk0 * 255.0f * intensity;
+    ambientFactor = object->shading->ambient * object->shading->brightness * 255.0f * intensity;
+    diffuseFactor = object->shading->diffuse * object->shading->brightness * 255.0f * intensity;
 
     for (i = 0; i < model->numberOfBatches; i++) {
         if (model->batches[i].miscData != BATCH_VTX_COL) { // 0xFF means use vertex colors
@@ -8765,13 +8765,13 @@ void obj_init_animobject(Object *animationObj, Object *animatedObj) {
     }
     scale /= 64;
     animatedObj->trans.scale = animatedObj->header->scale * scale;
-    animatedObj->properties.animatedObj.unk0 = 0;
-    animatedObj->properties.animatedObj.unk4 = 0;
-    if (animEntry->unk22 >= 2 && animEntry->unk22 < 10) {
-        animatedObj->properties.animatedObj.unk0 = animEntry->unk22 - 1;
+    animatedObj->properties.animatedObj.attachRacerID = 0;
+    animatedObj->properties.animatedObj.pathIdle = 0;
+    if (animEntry->attachMode >= 2 && animEntry->attachMode < 10) {
+        animatedObj->properties.animatedObj.attachRacerID = animEntry->attachMode - 1;
     }
-    if (animEntry->unk22 >= 10 && animEntry->unk22 < 18) {
-        animatedObj->properties.animatedObj.unk0 = animEntry->unk22 - 9;
+    if (animEntry->attachMode >= 10 && animEntry->attachMode < 18) {
+        animatedObj->properties.animatedObj.attachRacerID = animEntry->attachMode - 9;
     }
     animatedObj->trans.x_position = animationObj->trans.x_position;
     animatedObj->trans.y_position = animationObj->trans.y_position;
@@ -8785,29 +8785,29 @@ void obj_init_animobject(Object *animationObj, Object *animatedObj) {
     anim->speed = (f32) animEntry->nodeSpeed * 0.1;
     anim->startDelay = normalise_time(animEntry->animationStartDelay);
     animatedObj->animationID = animEntry->objAnimIndex;
-    animatedObj->animFrame = animEntry->unk16;
+    animatedObj->animFrame = animEntry->animStartFrame;
     anim->z = animEntry->objAnimSpeed;
     anim->y = 0;
     anim->loopType = animEntry->objAnimLoopType;
     anim->rotateType = animEntry->rotateType;
     anim->targetActorIndex = animEntry->nextAnim;
-    anim->linearInterp = animEntry->unk2D;
+    anim->linearInterp = animEntry->linearInterp;
     anim->yawSpinSpeed = animEntry->yawSpinSpeed;
     anim->rollSpinSpeed = animEntry->rollSpinSpeed;
     anim->pitchSpinSpeed = animEntry->pitchSpinSpeed;
-    anim->skipButtons = animEntry->unk20;
+    anim->skipButtons = animEntry->skipButtons;
     anim->modelReversing = 0;
     anim->segmentStep = 0;
     anim->segmentProgress = 0;
     animationObj->particleEmitter = NULL;
     anim->pauseCounter = normalise_time(animEntry->pauseFrameCount);
     anim->specialHide = animEntry->specialHide;
-    if (animEntry->unk13 >= 0) {
-        anim->emitterMask = animEntry->unk13;
+    if (animEntry->emitterMask >= 0) {
+        anim->emitterMask = animEntry->emitterMask;
     }
-    anim->musicSequence = animEntry->unk1F;
-    anim->soundID = animEntry->unk1E;
-    anim->fadeType = animEntry->unk29;
+    anim->musicSequence = animEntry->musicSequence;
+    anim->soundID = animEntry->soundID;
+    anim->fadeType = animEntry->fadeType;
     anim->fadeColourIndex = animEntry->soundEffect;
     anim->fadeOptions = animEntry->fadeOptions;
     anim->fadeLength = animEntry->fadeAlpha;
@@ -8816,7 +8816,7 @@ void obj_init_animobject(Object *animationObj, Object *animatedObj) {
         sndp_stop(anim->soundHandle);
     }
     anim->soundHandle = NULL;
-    anim->musicFadeVolume = animEntry->unk30;
+    anim->musicFadeVolume = animEntry->musicFadeVolume;
     anim->animator = animationObj;
     anim->started = 0;
 }
@@ -8845,7 +8845,7 @@ void anim_object_spawn_target(Object *obj, LevelObjectEntry_Animation *animEntry
         obj_init_animobject(obj, newObj);
         if (newObj->header->behaviorId == BHV_CAMERA_ANIMATION) {
             camera = newObj->animatedObject;
-            camera->unk44 = gAnimCameraCount;
+            camera->cameraStage = gAnimCameraCount;
             viewportCount = cam_get_viewport_layout();
             if (race_is_adventure_2P()) {
                 viewportCount = VIEWPORT_LAYOUT_2_PLAYERS;
@@ -8858,7 +8858,7 @@ void anim_object_spawn_target(Object *obj, LevelObjectEntry_Animation *animEntry
                     camera = newObj->animatedObject;
                     i++;
                     camera->cameraID = i;
-                    camera->unk44 = gAnimCameraCount;
+                    camera->cameraStage = gAnimCameraCount;
                 }
             }
             gAnimCameraCount++;
@@ -8980,7 +8980,7 @@ static void anim_path_control_points(s32 first, s32 count, s32 loopNode, s32 nod
                 node = count - 1;
                 q = first + node;
                 entry = &gAnimObjects[q]->level_entry->animation;
-                if (entry->unk22 == 1) {
+                if (entry->attachMode == 1) {
                     set_active_camera(cameraID);
                     trans = &cam_get_active_camera_no_cutscenes()->trans;
                 } else {
@@ -9006,7 +9006,7 @@ static void anim_path_control_points(s32 first, s32 count, s32 loopNode, s32 nod
         } else {
             q = node + first;
             entry = &gAnimObjects[q]->level_entry->animation;
-            if (entry->unk22 == 1) {
+            if (entry->attachMode == 1) {
                 set_active_camera(cameraID);
                 trans = &cam_get_active_camera_no_cutscenes()->trans;
             } else {
@@ -9018,7 +9018,7 @@ static void anim_path_control_points(s32 first, s32 count, s32 loopNode, s32 nod
             pts->pitch[j] = trans->rotation.x_rotation;
             pts->roll[j] = trans->rotation.z_rotation;
             pts->yaw[j] = gAnimObjects[q]->trans.rotation.y_rotation;
-            if (entry->unk22 == 1) {
+            if (entry->attachMode == 1) {
                 pts->pitch[j] = -pts->pitch[j];
             }
             pts->scale[j] = gAnimObjects[q]->trans.scale;
@@ -9579,10 +9579,10 @@ void anim_actor_init(Object *obj, Object_AnimatedObject *animObj, LevelObjectEnt
 
     animObjTrans = &animObj->animator->trans;
     if (obj->behaviorId == BHV_CAMERA_ANIMATION) {
-        animObj->unk44 = gAnimCameraCount;
+        animObj->cameraStage = gAnimCameraCount;
         gAnimCameraCount++;
     }
-    if (entry->unk22 == 18) {
+    if (entry->attachMode == 18) {
         set_active_camera(animObj->cameraID);
         camera = cam_get_active_camera_no_cutscenes();
         animObjTrans->x_position = camera->trans.x_position;
@@ -9592,8 +9592,8 @@ void anim_actor_init(Object *obj, Object_AnimatedObject *animObj, LevelObjectEnt
         animObjTrans->rotation.x_rotation = -camera->trans.rotation.x_rotation;
         animObjTrans->rotation.z_rotation = camera->trans.rotation.z_rotation;
     }
-    if ((entry->unk22 >= 10) && (entry->unk22 < 18)) {
-        Object *seg = (*gRacers)[entry->unk22 - 10];
+    if ((entry->attachMode >= 10) && (entry->attachMode < 18)) {
+        Object *seg = (*gRacers)[entry->attachMode - 10];
         if (seg != NULL) {
             animObjTrans->x_position = seg->trans.x_position;
             animObjTrans->y_position = seg->trans.y_position;
@@ -9611,36 +9611,36 @@ void anim_actor_apply_entry(Object *obj, LevelObjectEntry_Animation *entry, Obje
     initialAnimFrame = entry->objAnimIndex;
     if (initialAnimFrame >= 0) {
         if (initialAnimFrame != obj->animationID) {
-            obj->animFrame = entry->unk16;
+            obj->animFrame = entry->animStartFrame;
         }
         obj->animationID = entry->objAnimIndex;
         animObj->z = entry->objAnimSpeed;
         animObj->loopType = entry->objAnimLoopType;
     }
-    if (entry->unk13 >= 0) {
-        animObj->emitterMask = entry->unk13;
+    if (entry->emitterMask >= 0) {
+        animObj->emitterMask = entry->emitterMask;
     }
     animObj->pauseCounter = normalise_time(entry->pauseFrameCount);
-    animObj->linearInterp = entry->unk2D;
+    animObj->linearInterp = entry->linearInterp;
     animObj->specialHide = entry->specialHide;
-    animObj->musicSequence = entry->unk1F;
-    animObj->musicFadeVolume = entry->unk30;
-    animObj->soundID = entry->unk1E;
-    animObj->fadeType = entry->unk29;
+    animObj->musicSequence = entry->musicSequence;
+    animObj->musicFadeVolume = entry->musicFadeVolume;
+    animObj->soundID = entry->soundID;
+    animObj->fadeType = entry->fadeType;
     animObj->fadeColourIndex = entry->soundEffect;
     animObj->fadeOptions = entry->fadeOptions;
     animObj->fadeLength = entry->fadeAlpha;
     if (entry->messageId != 255) {
         set_current_text(entry->messageId);
     }
-    if (entry->unk2A >= 0) {
-        cutscene_set(entry->unk2A);
+    if (entry->cutsceneID >= 0) {
+        cutscene_set(entry->cutsceneID);
         return;
     }
-    if (entry->unk15 >= 0) {
-        anim_actor_trigger(entry->unk15);
+    if (entry->triggerActorIndex >= 0) {
+        anim_actor_trigger(entry->triggerActorIndex);
     }
-    if (entry->unk28 >= 0) {
+    if (entry->signalCutsceneEnd >= 0) {
         gAnimFrameState[gAnimFrameParity]++;
     }
 }
@@ -9835,7 +9835,7 @@ void init_racer_for_challenge(s32 vehicleID) {
     racer->courseCheckpoint = 0;
     racer->nextCheckpoint = 0;
     racer->lap = 0;
-    racer->unk1BA = 0;
+    racer->trackOffsetX = 0;
     set_taj_challenge_type(vehicleID);
     set_pause_lockout_timer(10);
 }
@@ -9878,7 +9878,7 @@ void mode_init_taj_race(void) {
         racer->lap_times[0] = 0;
         racer->lap_times[1] = 0;
         racer->lap_times[2] = 0;
-        racer->unk1BA = 0;
+        racer->trackOffsetX = 0;
         settings = get_settings();
         gEventCountdown = 80;
         gRaceFinishTriggered = FALSE;
@@ -10079,18 +10079,18 @@ CheckpointNode *racer_find_start_node(Object *obj, Object_Racer *racer) {
     racer->nextCheckpoint = 0;
     racer->courseCheckpoint = racer->lap * gNumberOfMainCheckpoints;
     obj->trans.rotation.y_rotation = racer->steerVisualRotation;
-    racer->unkD8[0] = obj->trans.x_position;
-    racer->unkD8[1] = obj->trans.y_position + 15.0f;
-    racer->unkD8[2] = obj->trans.z_position;
-    racer->unkD8[3] = obj->trans.x_position;
-    racer->unkD8[4] = obj->trans.y_position + 15.0f;
-    racer->unkD8[5] = obj->trans.z_position;
-    racer->unkD8[6] = obj->trans.x_position;
-    racer->unkD8[7] = obj->trans.y_position + 15.0f;
-    racer->unkD8[8] = obj->trans.z_position;
-    racer->unkD8[9] = obj->trans.x_position;
-    racer->unkD8[10] = obj->trans.y_position + 15.0f;
-    racer->unkD8[11] = obj->trans.z_position;
+    racer->wheelCollisionPos[0] = obj->trans.x_position;
+    racer->wheelCollisionPos[1] = obj->trans.y_position + 15.0f;
+    racer->wheelCollisionPos[2] = obj->trans.z_position;
+    racer->wheelCollisionPos[3] = obj->trans.x_position;
+    racer->wheelCollisionPos[4] = obj->trans.y_position + 15.0f;
+    racer->wheelCollisionPos[5] = obj->trans.z_position;
+    racer->wheelCollisionPos[6] = obj->trans.x_position;
+    racer->wheelCollisionPos[7] = obj->trans.y_position + 15.0f;
+    racer->wheelCollisionPos[8] = obj->trans.z_position;
+    racer->wheelCollisionPos[9] = obj->trans.x_position;
+    racer->wheelCollisionPos[10] = obj->trans.y_position + 15.0f;
+    racer->wheelCollisionPos[11] = obj->trans.z_position;
     obj->interactObj->x_position = obj->trans.x_position;
     obj->interactObj->y_position = obj->trans.y_position;
     obj->interactObj->z_position = obj->trans.z_position;

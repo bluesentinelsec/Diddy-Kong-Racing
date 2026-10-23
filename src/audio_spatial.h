@@ -35,10 +35,10 @@ typedef struct AudioLine {
     /* 0x004 */ f32 coords[30 * 3];
     /* 0x16C */ s32 soundBite;
     /* 0x170 */ s32 range;
-    /* 0x174 */ u8 unk174;
+    /* 0x174 */ u8 volume;
     /* 0x175 */ u8 maxVolume;
-    /* 0x176 */ u8 unk176;
-    /* 0x177 */ u8 unk177;
+    /* 0x176 */ u8 pitch;
+    /* 0x177 */ u8 unused177;
     /* 0x178 */ SoundHandle soundHandle;
     /* 0x17C */ s8 numSegments;
     /* 0x17D */ u8 fastFalloff;

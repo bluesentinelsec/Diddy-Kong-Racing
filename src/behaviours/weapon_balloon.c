@@ -168,7 +168,7 @@ void obj_loop_weaponballoon(Object *weaponBalloonObj, s32 updateRate) {
                     powerupTable = (s8 *) get_misc_asset(ASSET_MISC_BALLOON_DATA);
                     prevBalloonQuantity = racer->balloon_quantity;
                     racer->balloon_quantity = powerupTable[(racer->balloon_type * 10) + (racer->balloon_level * 2) + 1];
-                    racer->unk209 |= 1;
+                    racer->aiFlags |= 1;
                     if (get_number_of_active_players() < THREE_PLAYERS) {
                         weaponBalloonObj->properties.weaponBalloon.particleTimer = 16;
                     }
