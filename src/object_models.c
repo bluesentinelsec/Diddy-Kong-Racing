@@ -116,8 +116,15 @@ static s32 sPcModelDiskSize;
 
 // Inflate model `assetOffset` (compressed size `compSize`) into host scratch.
 static void pc_object_model_inflate(s32 assetOffset, s32 compSize) {
-    u8 *comp = pc_alloc(compSize);
+    u8 *comp;
 
+    if (asset_image_inflated()) {
+        sPcModelDiskSize = compSize;
+        sPcModelDisk = pc_alloc(sPcModelDiskSize + 16);
+        asset_load(ASSET_OBJECT_MODELS, (uintptr_t) sPcModelDisk, assetOffset, compSize);
+        return;
+    }
+    comp = pc_alloc(compSize);
     sPcModelDiskSize = gzip_size_uncompressed(ASSET_OBJECT_MODELS, assetOffset);
     sPcModelDisk = pc_alloc(sPcModelDiskSize + 16);
     asset_load(ASSET_OBJECT_MODELS, (uintptr_t) comp, assetOffset, compSize);
@@ -1043,7 +1050,11 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
         assetOffset = gObjectAnimationTable[start];
         animAddress = gObjectAnimationTable[start + 1] - assetOffset;
         assetSize = animAddress;
-        size = gzip_size_uncompressed(ASSET_OBJECT_ANIMATIONS, assetOffset) + 0x80;
+        if (asset_image_inflated()) {
+            size = assetSize + 0x80;
+        } else {
+            size = gzip_size_uncompressed(ASSET_OBJECT_ANIMATIONS, assetOffset) + 0x80;
+        }
         model->animations[i].animData = (u8 *) mempool_alloc(size, COLOUR_TAG_RED);
         if (model->animations[i].animData == NULL) {
             for (j = 0; j < i2; j++) {
@@ -1053,9 +1064,13 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
             model->animations = NULL;
             return 1;
         }
-        animAddress = (uintptr_t) (model->animations[i].animData + size) - assetSize;
-        asset_load(ASSET_OBJECT_ANIMATIONS, animAddress, assetOffset, assetSize);
-        gzip_inflate((u8 *) animAddress, (u8 *) model->animations[i].anim);
+        if (asset_image_inflated()) {
+            asset_load(ASSET_OBJECT_ANIMATIONS, (uintptr_t) model->animations[i].anim, assetOffset, assetSize);
+        } else {
+            animAddress = (uintptr_t) (model->animations[i].animData + size) - assetSize;
+            asset_load(ASSET_OBJECT_ANIMATIONS, animAddress, assetOffset, assetSize);
+            gzip_inflate((u8 *) animAddress, (u8 *) model->animations[i].anim);
+        }
         temp = model->animations[i].anim;
         // Big-endian length word.
         pc_swap32_buf(temp, 4);

@@ -63,8 +63,8 @@ Explorer. You can invoke the extraction script directly from PowerShell and
 optionally give it an explicit ROM path:
 
 ```
-python tools\extract-assets.py
-python tools\extract-assets.py C:\path\to\rom.z64
+python tools\assets.py build
+python tools\assets.py build C:\path\to\rom.z64
 ```
 
 ## Run

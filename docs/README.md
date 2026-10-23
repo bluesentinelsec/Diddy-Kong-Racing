@@ -32,11 +32,11 @@ cp /path/to/your/rom.z64 baseroms/
 make assets
 ```
 
-The two files are byte ranges of the ROM, so `make assets` (which runs
-`tools/extract-assets.py`, Python 3 only) verifies the ROM by SHA-1 and copies
-them out; `.v64` and `.n64` dumps are converted first. The output is the same
-on every platform,
-so produce it once and copy `assets/` wherever you need it:
+`make assets` (which runs `tools/assets.py build`, Python 3 only) verifies
+the ROM by SHA-1, unpacks it into `assets/tree/` (one native file per asset)
+and packs that tree into the two files; `.v64` and `.n64` dumps are converted
+first. The output is the same on every platform, so produce it once and copy
+`assets/` wherever you need it:
 
 - **Desktop:** the executable embeds the files when they exist at build time;
   otherwise it looks for `assets/` in the working directory and next to itself.

@@ -47,7 +47,7 @@ exit /b %RUN_RESULT%
 
 :assets
 shift
-python "%ROOT%\tools\extract-assets.py" %*
+python "%ROOT%\tools\assets.py" build %*
 exit /b %ERRORLEVEL%
 
 :help
