@@ -1,7 +1,7 @@
-# frames 2400
+# frames 4400
 # Magic Codes from Options: the code list, then WHODIDTHIS typed on the letter grid and
-# submitted, then Exit. (With issue #52 the build matches it to the wrong cheat, so this
-# returns to Options instead of rolling the credits; re-record when #52 is fixed.)
+# submitted, then Exit, which rolls the credits (from about frame 2200; until issue #52 was
+# fixed the build matched the code to the wrong cheat and returned to Options instead).
 # Format: <frame> <buttons> <stickX> <stickY>, held until the next line (DKR_INPUT_SCRIPT).
 900 A 0 0
 903 - 0 0

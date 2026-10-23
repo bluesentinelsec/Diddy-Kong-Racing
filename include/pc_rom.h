@@ -14,10 +14,10 @@
  * and assets).
  */
 
-#if defined(VERSION_US_V80)
+#if defined(VERSION_us_v80)
 #define PC_ASSETS_LUT_ROM_START 0xED0E0u
 #define PC_ASSETS_LUT_ROM_END 0xED1B0u
-#elif defined(VERSION_US_V77)
+#elif defined(VERSION_us_v77)
 #define PC_ASSETS_LUT_ROM_START 0xECB60u
 #define PC_ASSETS_LUT_ROM_END 0xECC30u
 #else

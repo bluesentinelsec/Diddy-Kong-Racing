@@ -58,9 +58,9 @@ option(DKR_BUILD_TESTS "Build the unit tests (run with ctest)" OFF)
 set(DKR_MAIN_POOL_MB 16 CACHE STRING "Size of the game's main memory pool, in MiB")
 
 if(DKR_VERSION STREQUAL "us_v77")
-    set(DKR_VERSION_DEFINE VERSION_US_V77)
+    set(DKR_VERSION_DEFINE VERSION_us_v77) # spelled as include/common.h tests it
 elseif(DKR_VERSION STREQUAL "us_v80")
-    set(DKR_VERSION_DEFINE VERSION_US_V80)
+    set(DKR_VERSION_DEFINE VERSION_us_v80)
 else()
     message(FATAL_ERROR "Unsupported DKR_VERSION '${DKR_VERSION}'")
 endif()
