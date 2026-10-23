@@ -4892,297 +4892,361 @@ void set_racer_tail_lights(Object_Racer *racer) {
 }
 
 /**
- * Car vehicle logic, used by human players, computer players and the car bosses.
- * Computer players, and human players who have finished the race, are handed off to update_onscreen_AI_racer.
- * Everyone else gets the full ground or air velocity update, then collision.
+ * Counter-steering against a drift for long enough spins the car out. While drifting the
+ * stick is squashed and biased towards the drift so the car keeps sliding.
+ */
+static void car_update_drift_countersteer(Object *obj, Object_Racer *racer, s32 updateRate) {
+    f32 held;
+
+    if (racer->drift_direction == 0) {
+        racer->driftCounterSteerTimer = 0;
+        return;
+    }
+    if (racer->drift_direction < 0 && gCurrentStickX >= 26) {
+        racer->driftCounterSteerTimer += updateRate;
+        if (racer->driftCounterSteerTimer < 0) {
+            racer->driftCounterSteerTimer = 0;
+        }
+    } else if (racer->drift_direction > 0 && gCurrentStickX <= -26) {
+        racer->driftCounterSteerTimer -= updateRate;
+        if (racer->driftCounterSteerTimer > 0) {
+            racer->driftCounterSteerTimer = 0;
+        }
+    } else {
+        racer->driftCounterSteerTimer = 0;
+    }
+    held = racer->driftCounterSteerTimer;
+    if (held < 0.0f) {
+        held = -held;
+    }
+    if (held > 80.0f) {
+        racer_play_sound(obj, SOUND_CAR_BRAKE);
+        racer->spinout_timer = -racer->drift_direction;
+        racer->drift_direction = 0;
+    }
+    if (gCurrentStickX > 50) {
+        gCurrentStickX = 50;
+    }
+    if (gCurrentStickX < -50) {
+        gCurrentStickX = -50;
+    }
+    if ((gCurrentStickX > 0 && racer->drift_direction > 0) || (gCurrentStickX < 0 && racer->drift_direction < 0)) {
+        gCurrentStickX >>= 2;
+    }
+    gCurrentStickX += (racer->drift_direction * 60);
+}
+
+/**
+ * On deep water, or frozen water, the car is carried along the checkpoint path and lifted
+ * out (unk1F0 marks the car as being carried).
+ */
+static void car_follow_path_on_water(Object *obj, Object_Racer *racer) {
+    f32 goalX;
+    f32 goalY;
+    f32 goalZ;
+    f32 length;
+
+    if (racer->unk1F0 != 0) {
+        racer->checkpoint_distance -= 0.3;
+    } else {
+        racer->checkpoint_distance -= 0.1;
+    }
+    set_position_goal_from_path(obj, racer, &goalX, &goalY, &goalZ);
+    if (racer->unk1F0 != 0) {
+        racer->checkpoint_distance += 0.3;
+    } else {
+        racer->checkpoint_distance += 0.1;
+    }
+    goalX -= obj->trans.x_position;
+    goalZ -= obj->trans.z_position;
+    length = sqrtf((goalX * goalX) + (goalZ * goalZ));
+    goalX /= length;
+    goalZ /= length;
+    obj->x_velocity = goalX * 4.0f;
+    obj->z_velocity = goalZ * 4.0f;
+    obj->y_velocity = 9.5f;
+    racer->unk1F0 = 1;
+}
+
+/**
+ * Ease the visible heading towards the steering, limited per frame, and the roll towards
+ * the target roll.
+ */
+static void car_update_heading(Object *obj, Object_Racer *racer, s32 updateRate) {
+    s32 diff;
+
+    diff = gCurrentCarSteerVel - (racer->y_rotation_vel & 0xFFFF);
+    if (diff > 0x8000) {
+        diff -= 0xFFFF;
+    }
+    if (diff < -0x8000) {
+        diff += 0xFFFF;
+    }
+    diff >>= 2;
+    if (diff > 0x2EE) {
+        diff = 0x2EE;
+    }
+    if (diff < -0x2EE) {
+        diff = -0x2EE;
+    }
+    racer->y_rotation_vel += (diff * updateRate);
+    obj->trans.rotation.s[0] = racer->steerVisualRotation + racer->y_rotation_vel;
+    racer->z_rotation_vel += (((gRacerTargetRoll - racer->z_rotation_vel) * updateRate) >> 4);
+    obj->trans.rotation.s[2] = racer->x_rotation_vel + racer->z_rotation_vel;
+}
+
+/**
+ * A landing sound requested by the ground physics, with a squash of the character scaled
+ * by how hard the landing was.
+ */
+static void car_update_surface_sound(Object *obj, Object_Racer *racer) {
+    if (gRacerSurfaceSoundId == 0) {
+        return;
+    }
+    if (gCurrentPlayerIndex != PLAYER_COMPUTER && gRacerSurfaceSoundId != SOUND_STOMP5) {
+        sound_play_spatial(gRacerSurfaceSoundId, obj->trans.x_position, obj->trans.y_position, obj->trans.z_position,
+                           &racer->unk21C);
+        sound_volume_set_relative(gRacerSurfaceSoundId, racer->unk21C, gRacerSurfaceSoundVolume);
+    }
+    racer->stretch_height_cap = (1.0 - ((f32) (gRacerSurfaceSoundVolume - 40) * 0.004));
+    racer->trickType = 0;
+}
+
+/**
+ * Turn the forward and lateral velocity into a world velocity along the heading (plus the
+ * drift offset).
+ */
+static void car_local_velocity_to_world(Object *obj, Object_Racer *racer) {
+    MtxF mtx;
+    f32 unusedY;
+
+    gCurrentRacerTransform.rotation.s[0] = racer->steerVisualRotation + racer->driftHeadingOffset;
+    gCurrentRacerTransform.rotation.s[1] = 0;
+    gCurrentRacerTransform.rotation.s[2] = 0;
+    gCurrentRacerTransform.x_position = 0.0f;
+    gCurrentRacerTransform.y_position = 0.0f;
+    gCurrentRacerTransform.z_position = 0.0f;
+    gCurrentRacerTransform.scale = 1.0f;
+    mtxf_from_inverse_transform(&mtx, &gCurrentRacerTransform);
+    mtxf_transform_point(mtx, racer->lateral_velocity, 0.0f, racer->velocity, &obj->x_velocity, &unusedY,
+                         &obj->z_velocity);
+}
+
+/**
+ * Move the car by its velocity plus any bump and push, or draw it towards the object it is
+ * approaching. Blocked input damps everything. Returns TRUE when a human player's car moved.
+ */
+static s32 car_move(Object *obj, Object_Racer *racer, f32 updateRateF) {
+    f32 velX;
+    f32 velZ;
+
+    if (racer->approachTarget != NULL) {
+        racer_approach_object(obj, racer, updateRateF);
+        return FALSE;
+    }
+    velX = obj->x_velocity;
+    velZ = obj->z_velocity;
+    if (racer->bumpTimer != 0) {
+        velX += racer->bumpVelX;
+        velZ += racer->bumpVelZ;
+    }
+    if (gRacerInputBlocked != 0) {
+        velX *= 0.65;
+        velZ *= 0.65;
+        if (racer->velocity < -0.5 || racer->velocity > 0.5) {
+            racer->velocity *= 0.65;
+        } else {
+            racer->velocity = 0.0f;
+        }
+        if (racer->lateral_velocity < -0.5 || racer->lateral_velocity > 0.5) {
+            racer->lateral_velocity *= 0.65;
+        } else {
+            racer->lateral_velocity = 0.0f;
+        }
+    } else {
+        velX += racer->pushVelX;
+        velZ += racer->pushVelZ;
+    }
+    return move_object(obj, velX * updateRateF, obj->y_velocity * updateRateF, velZ * updateRateF) &&
+           gCurrentPlayerIndex != PLAYER_COMPUTER;
+}
+
+/**
+ * After collision, measure how the car actually moved in its own frame and pull the
+ * forward and lateral velocity towards it, allowing half a unit of slack. A bumped car
+ * keeps its velocity.
+ */
+static void car_reconcile_velocity(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF, f32 xPos,
+                                   f32 yPos, f32 zPos) {
+    MtxF mtx;
+    f32 invRate;
+    f32 movedX;
+    f32 movedZ;
+    f32 movedLateral;
+    f32 movedUp;
+    f32 movedForward;
+    f32 diff;
+
+    invRate = 1.0f / updateRateF;
+    movedX = (((obj->trans.x_position - xPos) - gRacerExternalShiftX) * invRate) - racer->pushVelX;
+    obj->y_velocity = (obj->trans.y_position - yPos) * invRate;
+    movedZ = (((obj->trans.z_position - zPos) - gRacerExternalShiftZ) * invRate) - racer->pushVelZ;
+    gCurrentRacerTransform.rotation.s[0] = -(racer->steerVisualRotation + racer->driftHeadingOffset);
+    gCurrentRacerTransform.rotation.s[1] = -obj->trans.rotation.s[1];
+    gCurrentRacerTransform.rotation.s[2] = -obj->trans.rotation.s[2];
+    gCurrentRacerTransform.x_position = 0.0f;
+    gCurrentRacerTransform.y_position = 0.0f;
+    gCurrentRacerTransform.z_position = 0.0f;
+    gCurrentRacerTransform.scale = 1.0f;
+    mtxf_from_inverse_transform(&mtx, &gCurrentRacerTransform);
+    mtxf_transform_point(mtx, movedX, 0.0f, movedZ, &movedLateral, &movedUp, &movedForward);
+    if (racer->bumpTimer != 0) {
+        racer->bumpTimer -= updateRate;
+        if (racer->bumpTimer < 0) {
+            racer->bumpTimer = 0;
+        }
+        return;
+    }
+    diff = racer->velocity - movedForward;
+    if (diff > 0.5) {
+        racer->velocity -= diff - 0.5;
+    }
+    if (diff < -0.5) {
+        racer->velocity -= diff + 0.5;
+    }
+    diff = racer->lateral_velocity - movedLateral;
+    if (diff > 0.5) {
+        racer->lateral_velocity -= diff - 0.5;
+    }
+    if (diff < -0.5) {
+        racer->lateral_velocity -= diff + 0.5;
+    }
+}
+
+/**
+ * Boost flames, splashes and bubbles in water, then the particle update itself.
+ */
+static void car_update_particles(Object *obj, Object_Racer *racer, s32 updateRate) {
+    if (racer->boostTimer == 0 && gNumViewports < 2) {
+        racer_enable_boost_emitter(obj, racer, 0x10);
+    }
+    if (gCurrentPlayerIndex != PLAYER_COMPUTER && gNumViewports < 2) {
+        if (racer->buoyancy > 14.0f) {
+            if (rand_range(0, 1) != 0) {
+                obj->particleEmittersEnabled |= PARTICLE_RANDOM_COLOUR_RED | PARTICLE_RANDOM_COLOUR_GREEN;
+            }
+        } else if (racer->buoyancy < 6.0f) {
+            if (racer->velocity > -3.0 && racer->velocity < 0.5 && rand_range(0, 1) != 0) {
+                obj->particleEmittersEnabled |= PARTICLE_RANDOM_SCALE_VELOCITY | PARTICLE_RANDOM_MOVEMENT_PARAM;
+            }
+        }
+    }
+    if (racer->vehicleID < VEHICLE_BOSSES) {
+        update_vehicle_particles(obj, updateRate);
+    }
+}
+
+/**
+ * One frame of car physics for a human player (AI cars take the cheaper path): read the
+ * controls, steer, run the ground or air velocity model, convert to a world velocity, move,
+ * collide and reconcile.
  */
 void update_car(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer *racer) {
-    f32 spBC;
-    f32 spB8;
-    f32 spB4;
-    f32 spB0;
-    f32 spAC;
-    f32 spA8;
-    f32 spA4;
-    f32 spA0;
-    MtxF sp60;
     LevelHeader *currentLevelHeader;
-    Object_Boost *asset20;
-    s32 var_v1;
-    s8 playerObjectHasMoved;
-    s32 objectMoved;
+    f32 lift;
+    f32 xPos;
+    f32 yPos;
+    f32 zPos;
+    s32 driftRoll;
+    s32 playerMoved;
 
-    playerObjectHasMoved = FALSE;
     if (racer->bumpTimer != 0) {
         gCurrentRacerInput &= ~A_BUTTON;
     }
     if (gCurrentPlayerIndex == PLAYER_COMPUTER || racer->raceFinished) {
         update_onscreen_AI_racer(racerObj, racer, updateRate, updateRateF);
+        return;
+    }
+    // A spin-out from counter-steering (unk1D4) decays while it blocks hopping and sliding.
+    if (racer->unk1D4 != 0) {
+        gCurrentButtonsPressed &= ~(Z_TRIG | R_TRIG);
+        if (racer->unk1D4 > 0) {
+            racer->unk1D4 -= 4;
+        } else {
+            racer->unk1D4 += 4;
+        }
+    }
+    if (gCurrentRacerInput & B_BUTTON && racer->drift_direction != 0) {
+        driftRoll = racer->drift_direction * 3640;
     } else {
-        if (racer->unk1D4 != 0) {
-            gCurrentButtonsPressed &= ~(Z_TRIG | R_TRIG);
-            if (racer->unk1D4 > 0) {
-                racer->unk1D4 -= 4;
-            } else {
-                racer->unk1D4 += 4;
-            }
-        }
-        if (gCurrentRacerInput & B_BUTTON && racer->drift_direction != 0) {
-            var_v1 = racer->drift_direction * 3640;
-        } else {
-            var_v1 = 0;
-        }
-        if (racer->effectBoxType == 0) {
-            racerObj->particleEmittersEnabled |= PARTICLE_RANDOM_VELOCITY_Z;
-        }
-        apply_vehicle_rotation_offset(racer, updateRate, 0, 0, var_v1);
-        update_car_wheels(racerObj, racer, updateRateF);
-        handle_racer_head_turning(racerObj, racer, updateRate);
-        gRacerSurfaceSoundId = 0;
-        gCurrentCarSteerVel = 0;
-        gRacerTargetRoll = 0;
-        spA8 = racerObj->trans.x_position;
-        spA4 = racerObj->trans.y_position;
-        spA0 = racerObj->trans.z_position;
-        if (racer->drift_direction != 0) {
-            if (racer->drift_direction < 0 && gCurrentStickX >= 26) {
-                racer->driftCounterSteerTimer += updateRate;
-                if (racer->driftCounterSteerTimer < 0) {
-                    racer->driftCounterSteerTimer = 0;
-                }
-            } else if (racer->drift_direction > 0 && gCurrentStickX <= -26) {
-                racer->driftCounterSteerTimer -= updateRate;
-                if (racer->driftCounterSteerTimer > 0) {
-                    racer->driftCounterSteerTimer = 0;
-                }
-            } else {
-                racer->driftCounterSteerTimer = 0;
-            }
-            spB8 = racer->driftCounterSteerTimer;
-            if (spB8 < 0.0f) {
-                spB8 = -spB8;
-            }
-            if (spB8 > 80.0f) {
-                racer_play_sound(racerObj, SOUND_CAR_BRAKE);
-                racer->spinout_timer = -racer->drift_direction;
-                racer->drift_direction = 0;
-            }
-            if (gCurrentStickX > 50) {
-                gCurrentStickX = 50;
-            }
-            if (gCurrentStickX < -50) {
-                gCurrentStickX = -50;
-            }
-            if ((gCurrentStickX > 0 && racer->drift_direction > 0) ||
-                (gCurrentStickX < 0 && racer->drift_direction < 0)) {
-                gCurrentStickX >>= 2;
-            }
-            gCurrentStickX += (racer->drift_direction * 60);
-        } else {
-            racer->driftCounterSteerTimer = 0;
-        }
-        handle_base_steering(racer, 0, updateRateF);
-        racer_update_basis_vectors(racerObj, racer);
-        racer_update_tilt_vector(racerObj, racer);
-        handle_car_velocity_control(racer);
-        handle_racer_items(racerObj, racer, updateRate);
-        racer_attack_handler_car(racerObj, racer, updateRate);
-        if (racer->spinout_timer != 0) {
-            racer_spinout_car(racerObj, racer, updateRate, updateRateF);
-        } else if (racer->groundedWheels > 0) {
-            update_player_car_velocity_ground(racerObj, racer, updateRate, updateRateF);
-        } else {
-            update_car_velocity_offground(racerObj, racer, updateRate, updateRateF);
-        }
-        if (racer->unusedSoundHandle1C != 0) {
-            sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle1C); // type cast required to match
-            racer->unusedSoundHandle1C = 0;
-        }
-        if (racer->buoyancy != 0.0f && racer->vehicleIDPrev != VEHICLE_BUBBLER) {
-            spB8 = racer->buoyancy - 10.0;
-            racerObj->y_velocity += spB8 * 0.065 * updateRateF;
-        }
-        currentLevelHeader = level_header();
-        if ((racer->buoyancy != 0.0 && currentLevelHeader->unk2 != 0) || gCurrentSurfaceType == SURFACE_FROZEN_WATER) {
-            if (racer->unk1F0 != 0) {
-                racer->checkpoint_distance -= 0.3;
-            } else {
-                racer->checkpoint_distance -= 0.1;
-            }
-            set_position_goal_from_path(racerObj, racer, &spB8, &spB0, &spB4);
-            if (racer->unk1F0 != 0) {
-                racer->checkpoint_distance += 0.3;
-            } else {
-                racer->checkpoint_distance += 0.1;
-            }
-            spB8 -= racerObj->trans.x_position;
-            spB4 -= racerObj->trans.z_position;
-            spB0 = sqrtf((spB8 * spB8) + (spB4 * spB4));
-            spB8 /= spB0;
-            spB4 /= spB0;
-            racerObj->x_velocity = spB8 * 4.0f;
-            racerObj->z_velocity = spB4 * 4.0f;
-            racerObj->y_velocity = 9.5f;
-            racer->unk1F0 = 1;
-        } else if (racer->groundedWheels >= 3) {
-            racer->unk1F0 = 0;
-        }
-        if (racer->approachTarget == NULL) {
-            update_car_drive_animation(racerObj, racer, updateRate);
-        }
-
-        var_v1 = gCurrentCarSteerVel - (racer->y_rotation_vel & 0xFFFF);
-        if (var_v1 > 0x8000) {
-            var_v1 -= 0xFFFF;
-        }
-        if (var_v1 < -0x8000) {
-            var_v1 += 0xFFFF;
-        }
-        var_v1 >>= 2;
-        if (var_v1 > 0x2EE) {
-            var_v1 = 0x2EE;
-        }
-        if (var_v1 < -0x2EE) {
-            var_v1 = -0x2EE;
-        }
-        racer->y_rotation_vel += (var_v1 * updateRate);
-        racerObj->trans.rotation.s[0] = racer->steerVisualRotation + racer->y_rotation_vel;
-        racer->z_rotation_vel += (((gRacerTargetRoll - racer->z_rotation_vel) * updateRate) >> 4);
-        racerObj->trans.rotation.s[2] = racer->x_rotation_vel + racer->z_rotation_vel;
-        if (gRacerSurfaceSoundId) {
-            if (gCurrentPlayerIndex != PLAYER_COMPUTER && gRacerSurfaceSoundId != SOUND_STOMP5) {
-                sound_play_spatial(gRacerSurfaceSoundId, racerObj->trans.x_position, racerObj->trans.y_position,
-                                   racerObj->trans.z_position, &racer->unk21C);
-                sound_volume_set_relative(gRacerSurfaceSoundId, racer->unk21C, gRacerSurfaceSoundVolume);
-            }
-            racer->stretch_height_cap = (1.0 - ((f32) (gRacerSurfaceSoundVolume - 40) * 0.004));
-            racer->trickType = 0;
-        }
-        if (racer->unk1F0 == 0) {
-            gCurrentRacerTransform.rotation.s[0] = racer->steerVisualRotation + racer->driftHeadingOffset;
-            gCurrentRacerTransform.rotation.s[1] = 0;
-            gCurrentRacerTransform.rotation.s[2] = 0;
-            gCurrentRacerTransform.x_position = 0.0f;
-            gCurrentRacerTransform.y_position = 0.0f;
-            gCurrentRacerTransform.z_position = 0.0f;
-            gCurrentRacerTransform.scale = 1.0f;
-            mtxf_from_inverse_transform(&sp60, &gCurrentRacerTransform);
-            mtxf_transform_point(sp60, racer->lateral_velocity, 0.0f, racer->velocity, &racerObj->x_velocity, &spBC,
-                                 &racerObj->z_velocity);
-        }
-        if (racer->magnetTimer != 0) {
-            racerObj->x_velocity = gRacerMagnetVelX;
-            racerObj->z_velocity = gRacerMagnetVelZ;
-        }
-        if (racer->approachTarget == NULL) {
-            spB8 = racerObj->x_velocity;
-            spB4 = racerObj->z_velocity;
-            if (racer->bumpTimer != 0) {
-                spB8 += racer->bumpVelX;
-                spB4 += racer->bumpVelZ;
-            }
-            if (gRacerInputBlocked != 0) {
-                spB8 *= 0.65;
-                spB4 *= 0.65;
-                if (racer->velocity < -0.5 || racer->velocity > 0.5) {
-                    racer->velocity *= 0.65;
-                } else {
-                    racer->velocity = 0.0f;
-                }
-                if (racer->lateral_velocity < -0.5 || racer->lateral_velocity > 0.5) {
-                    racer->lateral_velocity *= 0.65;
-                } else {
-                    racer->lateral_velocity = 0.0f;
-                }
-            } else {
-                spB8 += racer->pushVelX;
-                spB4 += racer->pushVelZ;
-            }
-            objectMoved =
-                move_object(racerObj, spB8 * updateRateF, racerObj->y_velocity * updateRateF, spB4 * updateRateF);
-            if (objectMoved && gCurrentPlayerIndex != PLAYER_COMPUTER) {
-                playerObjectHasMoved = TRUE;
-            }
-        } else {
-            racer_approach_object(racerObj, racer, updateRateF);
-        }
-        if (gCurrentPlayerIndex == PLAYER_COMPUTER) {
-            onscreen_ai_racer_physics(racerObj, racer, updateRate);
-        } else {
-            update_racer_collision(racerObj, racer, updateRate);
-        }
-        spBC = 1.0f / updateRateF;
-        spB8 = (((racerObj->trans.x_position - spA8) - gRacerExternalShiftX) * spBC) - racer->pushVelX;
-        racerObj->y_velocity = (racerObj->trans.y_position - spA4) * spBC;
-        spB4 = (((racerObj->trans.z_position - spA0) - gRacerExternalShiftZ) * spBC) - racer->pushVelZ;
-        gCurrentRacerTransform.rotation.s[0] = -(racer->steerVisualRotation + racer->driftHeadingOffset);
-        gCurrentRacerTransform.rotation.s[1] = -racerObj->trans.rotation.s[1];
-        gCurrentRacerTransform.rotation.s[2] = -racerObj->trans.rotation.s[2];
-        gCurrentRacerTransform.x_position = 0.0f;
-        gCurrentRacerTransform.y_position = 0.0f;
-        gCurrentRacerTransform.z_position = 0.0f;
-        gCurrentRacerTransform.scale = 1.0f;
-        mtxf_from_inverse_transform(&sp60, &gCurrentRacerTransform);
-        mtxf_transform_point(sp60, spB8, 0.0f, spB4, &spAC, &spBC, &spB0);
-        if (racer->bumpTimer != 0) {
-            racer->bumpTimer -= updateRate;
-            if (racer->bumpTimer < 0) {
-                racer->bumpTimer = 0;
-            }
-        } else {
-            spBC = racer->velocity - spB0;
-            if (spBC > 0.5) {
-                racer->velocity -= spBC - 0.5;
-            }
-            if (spBC < -0.5) {
-                racer->velocity -= spBC + 0.5;
-            }
-            spBC = racer->lateral_velocity - spAC;
-            if (spBC > 0.5) {
-                racer->lateral_velocity -= spBC - 0.5;
-            }
-            if (spBC < -0.5) {
-                racer->lateral_velocity -= spBC + 0.5;
-            }
-        }
-        if (racer->boostTimer == 0 && gNumViewports < 2) {
-            asset20 = (Object_Boost *) get_misc_asset(ASSET_MISC_20);
-            asset20 = &asset20[racer->racerIndex];
-            var_v1 = ((racer->boostType & EMPOWER_BOOST) >> 2) + 0x10;
-            if (var_v1 > 0x10) {
-                if (asset20->unk70 > 0 || asset20->unk74 > 0.0) {
-                    racerObj->particleEmittersEnabled |= 1 << var_v1;
-                }
-            } else {
-                if (asset20->unk70 == 2 && asset20->unk74 < 0.5) {
-                    racerObj->particleEmittersEnabled |= 1 << var_v1;
-                } else if (asset20->unk70 < 2 && asset20->unk74 > 0.0f) {
-                    racerObj->particleEmittersEnabled |= 1 << var_v1;
-                }
-            }
-        }
-        if (gCurrentPlayerIndex != PLAYER_COMPUTER && gNumViewports < 2) {
-            if (racer->buoyancy > 14.0f) {
-                if (rand_range(0, 1) != 0) {
-                    racerObj->particleEmittersEnabled |= PARTICLE_RANDOM_COLOUR_RED | PARTICLE_RANDOM_COLOUR_GREEN;
-                }
-            } else if (racer->buoyancy < 6.0f) {
-                if (racer->velocity > -3.0 && racer->velocity < 0.5 && rand_range(0, 1) != 0) {
-                    racerObj->particleEmittersEnabled |=
-                        PARTICLE_RANDOM_SCALE_VELOCITY | PARTICLE_RANDOM_MOVEMENT_PARAM;
-                }
-            }
-        }
-        if (racer->vehicleID < VEHICLE_BOSSES) {
-            update_vehicle_particles(racerObj, updateRate);
-        }
-        second_racer_camera_update(racerObj, racer, CAMERA_CAR, updateRateF);
-        if (gNumViewports == 1 && racer->velocity > -3.0 && get_settings()->courseId != ASSET_LEVEL_WIZPIG1) {
-            set_anti_aliasing(TRUE);
-        }
-        if (playerObjectHasMoved) {
-            racer_find_start_node(racerObj, racer);
-        }
+        driftRoll = 0;
+    }
+    if (racer->effectBoxType == 0) {
+        racerObj->particleEmittersEnabled |= PARTICLE_RANDOM_VELOCITY_Z;
+    }
+    apply_vehicle_rotation_offset(racer, updateRate, 0, 0, driftRoll);
+    update_car_wheels(racerObj, racer, updateRateF);
+    handle_racer_head_turning(racerObj, racer, updateRate);
+    gRacerSurfaceSoundId = 0;
+    gCurrentCarSteerVel = 0;
+    gRacerTargetRoll = 0;
+    xPos = racerObj->trans.x_position;
+    yPos = racerObj->trans.y_position;
+    zPos = racerObj->trans.z_position;
+    car_update_drift_countersteer(racerObj, racer, updateRate);
+    handle_base_steering(racer, 0, updateRateF);
+    racer_update_basis_vectors(racerObj, racer);
+    racer_update_tilt_vector(racerObj, racer);
+    handle_car_velocity_control(racer);
+    handle_racer_items(racerObj, racer, updateRate);
+    racer_attack_handler_car(racerObj, racer, updateRate);
+    if (racer->spinout_timer != 0) {
+        racer_spinout_car(racerObj, racer, updateRate, updateRateF);
+    } else if (racer->groundedWheels > 0) {
+        update_player_car_velocity_ground(racerObj, racer, updateRate, updateRateF);
+    } else {
+        update_car_velocity_offground(racerObj, racer, updateRate, updateRateF);
+    }
+    if (racer->unusedSoundHandle1C != 0) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle1C);
+        racer->unusedSoundHandle1C = 0;
+    }
+    if (racer->buoyancy != 0.0f && racer->vehicleIDPrev != VEHICLE_BUBBLER) {
+        lift = racer->buoyancy - 10.0;
+        racerObj->y_velocity += lift * 0.065 * updateRateF;
+    }
+    currentLevelHeader = level_header();
+    if ((racer->buoyancy != 0.0 && currentLevelHeader->unk2 != 0) || gCurrentSurfaceType == SURFACE_FROZEN_WATER) {
+        car_follow_path_on_water(racerObj, racer);
+    } else if (racer->groundedWheels >= 3) {
+        racer->unk1F0 = 0;
+    }
+    if (racer->approachTarget == NULL) {
+        update_car_drive_animation(racerObj, racer, updateRate);
+    }
+    car_update_heading(racerObj, racer, updateRate);
+    car_update_surface_sound(racerObj, racer);
+    if (racer->unk1F0 == 0) {
+        car_local_velocity_to_world(racerObj, racer);
+    }
+    if (racer->magnetTimer != 0) {
+        racerObj->x_velocity = gRacerMagnetVelX;
+        racerObj->z_velocity = gRacerMagnetVelZ;
+    }
+    playerMoved = car_move(racerObj, racer, updateRateF);
+    if (gCurrentPlayerIndex == PLAYER_COMPUTER) {
+        onscreen_ai_racer_physics(racerObj, racer, updateRate);
+    } else {
+        update_racer_collision(racerObj, racer, updateRate);
+    }
+    car_reconcile_velocity(racerObj, racer, updateRate, updateRateF, xPos, yPos, zPos);
+    car_update_particles(racerObj, racer, updateRate);
+    second_racer_camera_update(racerObj, racer, CAMERA_CAR, updateRateF);
+    if (gNumViewports == 1 && racer->velocity > -3.0 && get_settings()->courseId != ASSET_LEVEL_WIZPIG1) {
+        set_anti_aliasing(TRUE);
+    }
+    if (playerMoved) {
+        racer_find_start_node(racerObj, racer);
     }
 }
 
@@ -5273,61 +5337,41 @@ void apply_vehicle_rotation_offset(Object_Racer *obj, s32 max, s16 yRotation, s1
 }
 
 /**
- * Human player counterpart of update_car_velocity_ground.
- * Applies surface drag, thrust from the character's acceleration curve, steering and lateral slip while at least one
- * wheel is on the ground.
+ * Bob the body (and anything attached) with the wobble table, unless a dialogue camera
+ * is holding the car still.
  */
-void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF) {
-    UNUSED s32 pad0;
-    s32 i;
-    s32 temp_2;
-    s32 sp68;
-    s32 surfaceType;
-    s32 sp60;
-    f32 tempVel;
-    s32 sp58;
-    s8 stoneWheels;
-    s8 steerAngle;
-    f32 velSquare;
-    s32 temp;
-    f32 velocityDiff;
-    f32 traction;
-    f32 surfaceTraction;
-    f32 *miscAsset;
+static void car_update_bob(Object *obj, Object_Racer *racer) {
     ObjectTransform *attachmentTrans;
-    f32 topSpeed;
-    UNUSED s32 pad1;
-    UNUSED s32 pad2;
+    f32 wobble;
+    f32 invScale;
+    s32 i;
 
-    sp58 = FALSE;
-    // Set the square value of the current forward velocity
-    velSquare = racer->velocity * racer->velocity;
-    if (racer->velocity < 0.0f) {
-        velSquare = -velSquare;
-    }
-    racer->pushVelX = 0.0f;
-    racer->pushVelZ = 0.0f;
-    // Apply bobbing if there's no dialogue camera rotation active.
-    if (gDialogueCameraAngle == 0) {
-        tempVel = (f32) gRacerWobbleTable[0][racer->miscAnimCounter & 0x1F] * 0.024999999999999998;
-        racer->carBobX = -racer->roll * tempVel;
-        racer->carBobY = -racer->yaw * tempVel;
-        racer->carBobZ = -racer->pitch * tempVel;
-        if (obj->attachPoints != NULL) {
-            for (i = 0; i < obj->attachPoints->count; i++) {
-                tempVel = 1.0f / obj->trans.scale;
-                attachmentTrans = &obj->attachPoints->obj[i]->trans;
-                attachmentTrans->x_position = (f32) (-racer->carBobX * tempVel);
-                attachmentTrans->y_position = (f32) (-racer->carBobY * tempVel);
-                attachmentTrans->z_position = (f32) (-racer->carBobZ * tempVel);
-            }
-        }
-    } else {
+    if (gDialogueCameraAngle != 0) {
         racer->carBobX = 0.0f;
         racer->carBobY = 0.0f;
         racer->carBobZ = 0.0f;
+        return;
     }
-    // If moving forward, active throttle will set this var to 60, otherwise it's stuck at 0
+    wobble = (f32) gRacerWobbleTable[0][racer->miscAnimCounter & 0x1F] * 0.024999999999999998;
+    racer->carBobX = -racer->roll * wobble;
+    racer->carBobY = -racer->yaw * wobble;
+    racer->carBobZ = -racer->pitch * wobble;
+    if (obj->attachPoints != NULL) {
+        for (i = 0; i < obj->attachPoints->count; i++) {
+            invScale = 1.0f / obj->trans.scale;
+            attachmentTrans = &obj->attachPoints->obj[i]->trans;
+            attachmentTrans->x_position = (f32) (-racer->carBobX * invScale);
+            attachmentTrans->y_position = (f32) (-racer->carBobY * invScale);
+            attachmentTrans->z_position = (f32) (-racer->carBobZ * invScale);
+        }
+    }
+}
+
+/**
+ * unk1FB holds 60 while the throttle is held from a standstill or in reverse, and counts
+ * down after; it marks wheelspin for the sound and smoke.
+ */
+static void car_update_wheelspin(Object_Racer *racer, s32 updateRate) {
     if (racer->velocity > -0.5) {
         if (gCurrentRacerInput & A_BUTTON) {
             racer->unk1FB = 60;
@@ -5342,32 +5386,47 @@ void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 upd
     } else {
         racer->unk1FB = 0;
     }
-    sp60 = FALSE;
-    // If currently braking, do something idk
-    if (racer->brake > 0.4) {
-        if (racer->velocity < -2.0 && racer->raceFinished == FALSE) {
-            rumble_set(racer->playerIndex, RUMBLE_TYPE_1);
-        }
-        sp60 = TRUE;
-        if (gCurrentPlayerIndex >= PLAYER_ONE) {
-            if (gNumViewports < FOUR_PLAYERS) {
-                if (racer->drift_direction > 0) {
-                    obj->particleEmittersEnabled |= 0x1000 | 0x400;
-                } else if (racer->drift_direction < 0) {
-                    obj->particleEmittersEnabled |= 0x2000 | 0x800;
-                } else {
-                    obj->particleEmittersEnabled |= 0x2000 | 0x1000;
-                }
-            } else {
-                sp58 = 1;
-            }
-        }
-        if ((racer->miscAnimCounter & 7) < 2) {
-            racer->unk1D1 = rand_range(-25, 25);
-        }
-        gCurrentStickX += racer->unk1D1;
+}
+
+/**
+ * Hard braking rumbles, smokes the tyres and jitters the steering. Returns TRUE while
+ * braking; *fourPlayerSmoke asks for the cheaper four-player smoke instead of emitters.
+ */
+static s32 car_update_brake(Object *obj, Object_Racer *racer, s32 *fourPlayerSmoke) {
+    if (!(racer->brake > 0.4)) {
+        return FALSE;
     }
-    // If moving fast enough, enable drifting if the R button is held
+    if (racer->velocity < -2.0 && racer->raceFinished == FALSE) {
+        rumble_set(racer->playerIndex, RUMBLE_TYPE_1);
+    }
+    if (gCurrentPlayerIndex >= PLAYER_ONE) {
+        if (gNumViewports < FOUR_PLAYERS) {
+            if (racer->drift_direction > 0) {
+                obj->particleEmittersEnabled |= 0x1000 | 0x400;
+            } else if (racer->drift_direction < 0) {
+                obj->particleEmittersEnabled |= 0x2000 | 0x800;
+            } else {
+                obj->particleEmittersEnabled |= 0x2000 | 0x1000;
+            }
+        } else {
+            *fourPlayerSmoke = 1;
+        }
+    }
+    if ((racer->miscAnimCounter & 7) < 2) {
+        racer->unk1D1 = rand_range(-25, 25);
+    }
+    gCurrentStickX += racer->unk1D1;
+    return TRUE;
+}
+
+/**
+ * A handbrake turn (racer->drifting): holding R with the stick hard over while rolling
+ * backwards swings the car round a half turn, then it carries on facing the other way.
+ */
+static void car_update_handbrake_turn(Object *obj, Object_Racer *racer, s32 updateRate, s32 *sliding,
+                                      s32 *fourPlayerSmoke) {
+    s32 prevVel;
+
     if (racer->drifting == 0 && racer->velocity > 2.0 && gCurrentRacerInput & R_TRIG &&
         (gCurrentStickX > 50 || gCurrentStickX < -50)) {
         if (gCurrentStickX > 0) {
@@ -5376,36 +5435,45 @@ void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 upd
             racer->drifting = -1;
         }
     }
-    // Handle drifting
-    if (racer->drifting) {
-        gCurrentRacerInput &= ~A_BUTTON;
-        gCurrentRacerInput |= B_BUTTON;
-        gCurrentStickY = -70;
-        sp60 = TRUE;
-        if (gNumViewports < FOUR_PLAYERS) {
-            obj->particleEmittersEnabled |= 0x2000 | 0x1000 | 0x800 | 0x400;
-        } else {
-            sp58 = TRUE;
-        }
-        i = racer->y_rotation_vel;
-        racer->y_rotation_vel += updateRate * 0x600 * racer->drifting;
-        if (racer->drifting > 0) {
-            if (racer->y_rotation_vel < 0 && i >= 0) {
-                racer->drifting = 0;
-                racer->y_rotation_vel = 0x7FFF;
-            }
-        } else if (racer->y_rotation_vel > 0 && i <= 0) {
-            racer->drifting = 0;
-            racer->y_rotation_vel = -0x8000;
-        }
-        if (racer->drifting == 0) {
-            racer->steerVisualRotation += racer->y_rotation_vel;
-            racer->unk19E = racer->y_rotation_vel;
-            racer->y_rotation_vel = 0;
-            racer->velocity = -racer->velocity;
-        }
+    if (racer->drifting == 0) {
+        return;
     }
-    // Apply some flags when drifting
+    gCurrentRacerInput &= ~A_BUTTON;
+    gCurrentRacerInput |= B_BUTTON;
+    gCurrentStickY = -70;
+    *sliding = TRUE;
+    if (gNumViewports < FOUR_PLAYERS) {
+        obj->particleEmittersEnabled |= 0x2000 | 0x1000 | 0x800 | 0x400;
+    } else {
+        *fourPlayerSmoke = TRUE;
+    }
+    prevVel = racer->y_rotation_vel;
+    racer->y_rotation_vel += updateRate * 0x600 * racer->drifting;
+    if (racer->drifting > 0) {
+        if (racer->y_rotation_vel < 0 && prevVel >= 0) {
+            racer->drifting = 0;
+            racer->y_rotation_vel = 0x7FFF;
+        }
+    } else if (racer->y_rotation_vel > 0 && prevVel <= 0) {
+        racer->drifting = 0;
+        racer->y_rotation_vel = -0x8000;
+    }
+    if (racer->drifting == 0) {
+        racer->steerVisualRotation += racer->y_rotation_vel;
+        racer->unk19E = racer->y_rotation_vel;
+        racer->y_rotation_vel = 0;
+        racer->velocity = -racer->velocity;
+    }
+}
+
+/**
+ * Power-sliding (drift_direction): started by R with the stick over at speed, ended when
+ * R is released or the car slows. It smokes the tyres, adds a little top speed, and the
+ * heading offset leans into it. Returns the top speed multiplier.
+ */
+static f32 car_update_drift(Object *obj, Object_Racer *racer, s32 updateRate, s32 *fourPlayerSmoke) {
+    f32 topSpeed;
+
     if (racer->drift_direction != 0 && gCurrentPlayerIndex >= PLAYER_ONE) {
         if (gNumViewports < FOUR_PLAYERS) {
             if (racer->drift_direction > 0) {
@@ -5414,10 +5482,9 @@ void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 upd
                 obj->particleEmittersEnabled |= 0x2000 | 0x800;
             }
         } else {
-            sp58 = TRUE;
+            *fourPlayerSmoke = TRUE;
         }
     }
-    // Decide which way to drift when the R button is held
     if (racer->drift_direction == 0 && gCurrentRacerInput & R_TRIG && racer->velocity < -3.0 &&
         (gCurrentStickX > 15 || gCurrentStickX < -15)) {
         if (gCurrentStickX < 0) {
@@ -5427,158 +5494,171 @@ void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 upd
             racer->drift_direction = 1;
         }
     }
-    // Disable drifting if going too slow
     if (racer->velocity > -2.0) {
         racer->drift_direction = 0;
     }
-    // Get top speed value
     topSpeed = handle_racer_top_speed(obj, racer);
-    // If currently drifting, apply a minor speed multiplier and tilt the natural steering towards the drift direction
     if (gCurrentRacerInput & R_TRIG && racer->drift_direction != 0) {
         topSpeed *= 1.1;
-        // Unused code?
-        temp = (gCurrentStickX >> 1) + (racer->drift_direction * 30);
-        if (temp > 75) {
-            temp = 75;
-        }
-        if (temp < -75) {}
     } else {
         racer->drift_direction = 0;
     }
     racer->driftHeadingOffset -= ((racer->driftHeadingOffset - (racer->drift_direction << 13)) * updateRate) >> 4;
-    // sounds for drifting and sliding
-    if (!(racer->y_rotation_vel <= 0x1800 && racer->y_rotation_vel >= -0x1800 && racer->drift_direction == 0 &&
-          racer->drifting == 0 && racer->unk1FB == 0)) {
-        sp60 = TRUE;
-        if (racer->unk1FB != 0 && racer->raceFinished == FALSE) {
-            rumble_set(racer->playerIndex, RUMBLE_TYPE_0);
+    return topSpeed;
+}
+
+/**
+ * The tyre-squeal loop plays while sliding, drifting or spinning the wheels; otherwise it
+ * stops. Returns TRUE while the car is sliding sideways.
+ */
+static s32 car_update_slide_sounds(Object *obj, Object_Racer *racer) {
+    if (racer->y_rotation_vel <= 0x1800 && racer->y_rotation_vel >= -0x1800 && racer->drift_direction == 0 &&
+        racer->drifting == 0 && racer->unk1FB == 0) {
+        if (racer->slideSoundHandle) {
+            sndp_stop((SoundHandle) (uintptr_t) racer->slideSoundHandle);
         }
-        if (racer->y_rotation_vel < 0) {
-            obj->particleEmittersEnabled |= 0x1000 | 0x400;
-        } else {
-            obj->particleEmittersEnabled |= 0x2000 | 0x800;
+        if (racer->unusedSoundHandle14) {
+            sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle14);
         }
-        if (racer->drift_direction != 0 || racer->drifting != 0 || racer->unk1FB != 0) {
-            if (racer->slideSoundHandle == 0) {
-                sound_play_spatial(SOUND_CAR_SLIDE, obj->trans.x_position, obj->trans.y_position, obj->trans.z_position,
-                                   &racer->slideSoundHandle);
-            } else {
-                audspat_calculate_echo((SoundHandle) (uintptr_t) racer->slideSoundHandle, obj->trans.x_position, obj->trans.y_position,
-                                       obj->trans.z_position); // type cast required to match
-            }
-            if (racer->unusedSoundHandle14) {
-                sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle14); // type cast required to match
-            }
+        return FALSE;
+    }
+    if (racer->unk1FB != 0 && racer->raceFinished == FALSE) {
+        rumble_set(racer->playerIndex, RUMBLE_TYPE_0);
+    }
+    if (racer->y_rotation_vel < 0) {
+        obj->particleEmittersEnabled |= 0x1000 | 0x400;
+    } else {
+        obj->particleEmittersEnabled |= 0x2000 | 0x800;
+    }
+    if (racer->drift_direction != 0 || racer->drifting != 0 || racer->unk1FB != 0) {
+        if (racer->slideSoundHandle == 0) {
+            sound_play_spatial(SOUND_CAR_SLIDE, obj->trans.x_position, obj->trans.y_position, obj->trans.z_position,
+                               &racer->slideSoundHandle);
         } else {
-            if (racer->slideSoundHandle) {
-                sndp_stop((SoundHandle) (uintptr_t) racer->slideSoundHandle); // type cast required to match
-            }
+            audspat_calculate_echo((SoundHandle) (uintptr_t) racer->slideSoundHandle, obj->trans.x_position,
+                                   obj->trans.y_position, obj->trans.z_position);
+        }
+        if (racer->unusedSoundHandle14) {
+            sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle14);
         }
     } else {
         if (racer->slideSoundHandle) {
-            sndp_stop((SoundHandle) (uintptr_t) racer->slideSoundHandle); // type cast required to match
-        }
-        if (racer->unusedSoundHandle14) {
-            sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle14); // type cast required to match
+            sndp_stop((SoundHandle) (uintptr_t) racer->slideSoundHandle);
         }
     }
-    // Velocity of steering input
+    return TRUE;
+}
+
+/**
+ * Turn the car: the steer angle turns it faster under braking and faster still when
+ * drifting, scaled by the character's handling. Reversing fast wobbles the steering.
+ */
+static void car_update_steering(Object_Racer *racer, s32 updateRate) {
+    s8 steerAngle;
+    s32 rate;
+    s32 turn;
+    s32 scaled;
+    s32 wobble;
+
     steerAngle = racer->steerAngle;
-    i = 6;
-    // Turn twice as fast under braking (because that's totally how cars work)
+    rate = 6;
     if (gCurrentRacerInput & B_BUTTON) {
-        i = 12;
+        rate = 12;
     }
-    // Turn thrice as fast when drifting and braking.
     if (gCurrentRacerInput & B_BUTTON && racer->drift_direction != 0) {
-        i = 18;
+        rate = 18;
     }
-    // Multiply steering velocity with angle
-    temp = 0;
+    turn = 0;
     if (racer->velocity < -0.3) {
-        temp = steerAngle * i;
+        turn = steerAngle * rate;
     }
     if (racer->velocity > 0.3) {
-        temp = -steerAngle * i;
+        turn = -steerAngle * rate;
     }
-    // Set final turn velocity by taking the steering velocity and multiplying it by the handling stat of the character.
-    temp = ((temp * updateRate) >> 1);
-    temp_2 = temp * gCurrentRacerHandlingStat;
-    racer->steerVisualRotation -= temp_2 & 0xFFFF;
-    // Now steer the car.
+    turn = ((turn * updateRate) >> 1);
+    scaled = turn * gCurrentRacerHandlingStat;
+    racer->steerVisualRotation -= scaled & 0xFFFF;
     handle_car_steering(racer);
-    // Set base grip level to 0.
-    surfaceType = SURFACE_DEFAULT;
-    // If reversing, flip the steering
     if (racer->velocity < -4.0) {
         if (gCurrentCarSteerVel > 0x1400 || (racer->drift_direction != 0 && gCurrentCarSteerVel > 0)) {
-            i = racer->miscAnimCounter & 7;
-            if (i >= 4) {
-                i = 7 - i;
+            wobble = racer->miscAnimCounter & 7;
+            if (wobble >= 4) {
+                wobble = 7 - wobble;
             }
-            gCurrentCarSteerVel += i * 0x190;
+            gCurrentCarSteerVel += wobble * 0x190;
         } else if (gCurrentCarSteerVel < -0x1400 || (racer->drift_direction != 0 && gCurrentCarSteerVel < 0)) {
-            i = racer->miscAnimCounter & 7;
-            if (i >= 4) {
-                i = 7 - i;
+            wobble = racer->miscAnimCounter & 7;
+            if (wobble >= 4) {
+                wobble = 7 - wobble;
             }
-            gCurrentCarSteerVel -= i * 0x190;
+            gCurrentCarSteerVel -= wobble * 0x190;
         }
     }
+}
 
-    traction = 0.0f;
-    surfaceTraction = 0.0f;
-    velocityDiff = 0.0f;
-    sp68 = 0;        // Number of wheels contacting grass or sand
-    stoneWheels = 0; // Number of wheels contacting the stone surface type
-    // Iterate through each wheel and find which surface they're on.
-    i = 0;
-    while (i < 4) {
+/**
+ * Average the traction, slide and bobbing of the surfaces under the wheels. Returns the
+ * most significant surface; *stoneWheels counts wheels on stone.
+ */
+static s32 car_read_surfaces(Object_Racer *racer, f32 *traction, f32 *slide, s32 *bobbing, s32 *stoneWheels) {
+    f32 wheels;
+    s32 surfaceType;
+    s32 i;
+
+    *traction = 0.0f;
+    *slide = 0.0f;
+    wheels = 0.0f;
+    *bobbing = 0;
+    *stoneWheels = 0;
+    surfaceType = SURFACE_DEFAULT;
+    for (i = 0; i < 4; i++) {
         if (racer->wheel_surfaces[i] != SURFACE_NONE) {
             if (get_filtered_cheats() & CHEAT_FOUR_WHEEL_DRIVER) {
-                traction += gSurfaceTractionTable[0];
+                *traction += gSurfaceTractionTable[0];
             } else {
-                traction += gSurfaceTractionTable[racer->wheel_surfaces[i]];
+                *traction += gSurfaceTractionTable[racer->wheel_surfaces[i]];
             }
-            surfaceTraction += gSurfaceSlideTable[racer->wheel_surfaces[i]];
-            sp68 += gSurfaceBobbingTable[racer->wheel_surfaces[i]];
+            *slide += gSurfaceSlideTable[racer->wheel_surfaces[i]];
+            *bobbing += gSurfaceBobbingTable[racer->wheel_surfaces[i]];
             if (surfaceType < racer->wheel_surfaces[i]) {
                 surfaceType = racer->wheel_surfaces[i];
             }
             if (racer->wheel_surfaces[i] == SURFACE_STONE) {
-                stoneWheels++;
+                (*stoneWheels)++;
             }
-            velocityDiff += 1.0f;
+            wheels += 1.0f;
         }
-        i++;
-    };
-
-    // Probably fake but required for match
-    for (i = 0; i < 4; i++) {}
-
-    // With multiple contact patches, average the surface properties across.
-    if (velocityDiff > 1.0f) {
-        traction /= velocityDiff;
-        surfaceTraction /= velocityDiff;
     }
-    // If on the Taj pad and the horn is honked, summon Taj
-    if (racer->playerIndex == PLAYER_ONE && racer->groundedWheels && surfaceType == SURFACE_TAJ_PAD &&
-        gCurrentButtonsPressed & Z_TRIG) {
-        gTajInteractStatus = TAJ_TELEPORT;
+    if (wheels > 1.0f) {
+        *traction /= wheels;
+        *slide /= wheels;
     }
-    // Set grip levels to basically zero when floating on water.
+    return surfaceType;
+}
+
+/**
+ * Apply the surface to the car: water removes grip, steering feeds the lateral velocity
+ * (less for characters that slide less), slow cars straighten up, lateral velocity decays
+ * by the slide value and the pitch, stone slows and ice bounces, a zip pad boosts, and
+ * drag takes its share of the forward velocity.
+ */
+static void car_apply_grip(Object *obj, Object_Racer *racer, s32 surfaceType, f32 traction, f32 slide, s32 stoneWheels,
+                           f32 *topSpeed, f32 velSquare) {
+    f32 *miscAsset;
+    f32 blend;
+    f32 pitchGrip;
+
+    racer_check_taj_pad(racer, surfaceType);
     if (racer->buoyancy != 0.0) {
         traction = 0.02f;
-        surfaceTraction = 0.0f;
+        slide = 0.0f;
     }
-    // no clue :)
     if (surfaceType == SURFACE_SAND && racer->velocity < -2.0 && racer->raceFinished == FALSE) {
         rumble_set(racer->playerIndex, RUMBLE_TYPE_0);
     }
     // Per-character stat, indexed by character ID. Steering adds to lateral velocity divided by this value,
     // so a higher value means the character slides less.
     miscAsset = (f32 *) get_misc_asset(ASSET_MISC_8);
-    // Degrade lateral velocity
     if (gCurrentPlayerIndex != PLAYER_COMPUTER) {
         if (!(racer->velocity > -2.0) && racer->drift_direction == 0 && !racer->raceFinished) {
             racer->lateral_velocity += (racer->velocity * gCurrentStickX) / miscAsset[racer->characterId]; //!@Delta
@@ -5588,32 +5668,29 @@ void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 upd
         }
     }
     if (racer->velocity > -3.0) {
-        tempVel = -(racer->velocity + 2.0);
-        if (tempVel < 0.0) {
-            tempVel = 0.0f;
+        blend = -(racer->velocity + 2.0);
+        if (blend < 0.0) {
+            blend = 0.0f;
         }
-        gCurrentCarSteerVel *= tempVel;
-        surfaceTraction = ((1.0 - tempVel) * 0.7) + (surfaceTraction * tempVel);
+        gCurrentCarSteerVel *= blend;
+        slide = ((1.0 - blend) * 0.7) + (slide * blend);
     }
-    // Multiply current velocity by the surface grip levels.
-    racer->lateral_velocity *= surfaceTraction;
-    velocityDiff = coss_f(racer->x_rotation_vel);
-    if (velocityDiff < 0.0f) {
-        velocityDiff = -velocityDiff;
+    racer->lateral_velocity *= slide;
+    pitchGrip = coss_f(racer->x_rotation_vel);
+    if (pitchGrip < 0.0f) {
+        pitchGrip = -pitchGrip;
     }
-    // Multiply lateral velocity by pitch
-    racer->lateral_velocity *= velocityDiff;
+    racer->lateral_velocity *= pitchGrip;
     gCurrentSurfaceType = surfaceType;
     if (stoneWheels != 0) {
         miscAsset = (f32 *) get_misc_asset(ASSET_MISC_32);
-        topSpeed *= miscAsset[stoneWheels];
+        *topSpeed *= miscAsset[stoneWheels];
         racer->magnetTimer = 0;
         racer->lateral_velocity = 0.0f;
     } else if (surfaceType == SURFACE_FROZEN_WATER) {
         racer->boost_sound |= BOOST_SOUND_UNK4;
         racer_play_sound(obj, SOUND_BOUNCE2);
     }
-    // If driving over a zip pad, apply a boost.
     if (racer->boostTimer == 0 && surfaceType == SURFACE_ZIP_PAD) {
         racer->boostTimer = normalise_time(45);
         racer->boostType = BOOST_LARGE;
@@ -5623,74 +5700,91 @@ void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 upd
             rumble_set(racer->playerIndex, RUMBLE_TYPE_8);
         }
     }
-    // Slow down gradually when not acellerating and almost at a standstill
     if (velSquare < 1.0f && !(gCurrentRacerInput & A_BUTTON)) {
         racer->velocity -= racer->velocity * traction * 8.0f; //!@Delta
     } else {
         racer->velocity -= velSquare * traction; //!@Delta
     }
-    if (sp60) {
+}
+
+/**
+ * Smoke and skid marks for the rear wheels by surface; unk1EE counts frames of sliding.
+ */
+static void car_update_skid_emitters(Object *obj, Object_Racer *racer, s32 sliding, s32 fourPlayerSmoke) {
+    if (sliding) {
         if (racer->unk1EE <= 15) {
             racer->unk1EE++;
         }
     } else {
         racer->unk1EE = 0;
     }
-    if (cam_get_viewport_layout() < THREE_PLAYERS) {
-        if ((sp60 != 0 && racer->velocity < -2.0) || sp58 != 0 || racer->unk1FB != 0) {
-            if (racer->wheel_surfaces[2] < SURFACE_NONE) {
-                obj->particleEmittersEnabled |= gSurfaceFlagTable[racer->wheel_surfaces[2]];
-            }
-            if (racer->wheel_surfaces[3] < SURFACE_NONE) {
-                obj->particleEmittersEnabled |= gSurfaceFlagTable[racer->wheel_surfaces[3]] * 2;
-            }
+    if (cam_get_viewport_layout() >= THREE_PLAYERS) {
+        return;
+    }
+    if ((sliding != 0 && racer->velocity < -2.0) || fourPlayerSmoke != 0 || racer->unk1FB != 0) {
+        if (racer->wheel_surfaces[2] < SURFACE_NONE) {
+            obj->particleEmittersEnabled |= gSurfaceFlagTable[racer->wheel_surfaces[2]];
         }
-        if (racer->velocity < -2.0) {
-            if (racer->wheel_surfaces[2] < SURFACE_NONE) {
-                obj->particleEmittersEnabled |= gSurfaceFlagTable4P[racer->wheel_surfaces[2]];
-            }
-            if (racer->wheel_surfaces[3] < SURFACE_NONE) {
-                obj->particleEmittersEnabled |= gSurfaceFlagTable4P[racer->wheel_surfaces[3]] * 2;
-            }
+        if (racer->wheel_surfaces[3] < SURFACE_NONE) {
+            obj->particleEmittersEnabled |= gSurfaceFlagTable[racer->wheel_surfaces[3]] * 2;
         }
     }
-    // Play a sound on grass and sand when landing on it
-    surfaceType = gSurfaceSoundTable[surfaceType];
-    if (racer->surfaceSoundHandle == 0 && surfaceType != SOUND_NONE && racer->velocity < -2.0) {
-        sound_play(surfaceType, &racer->surfaceSoundHandle);
+    if (racer->velocity < -2.0) {
+        if (racer->wheel_surfaces[2] < SURFACE_NONE) {
+            obj->particleEmittersEnabled |= gSurfaceFlagTable4P[racer->wheel_surfaces[2]];
+        }
+        if (racer->wheel_surfaces[3] < SURFACE_NONE) {
+            obj->particleEmittersEnabled |= gSurfaceFlagTable4P[racer->wheel_surfaces[3]] * 2;
+        }
     }
-    if (racer->surfaceSoundHandle != 0 && (surfaceType == SOUND_NONE || racer->velocity > -2.0)) {
-        sndp_stop((SoundHandle) (uintptr_t) racer->surfaceSoundHandle); // type cast required to match
-    }
-    // Apply a bobbing effect when on grass and sand.
-    if (racer->velocity < -2.0 && sp68 >= 4) {
-        tempVel = (f32) (racer->miscAnimCounter & 1) * 0.5;
-        racer->carBobX -= racer->roll * tempVel;
-        racer->carBobY -= racer->yaw * tempVel;
-        racer->carBobZ -= racer->pitch * tempVel;
-    }
-    traction = racer->velocity;
-    // Keep velocity positive and keep it below 12
-    if (racer->velocity < 0.0f) {
-        traction = -traction;
-    }
+}
 
-    if (traction > 12.0f) {
-        traction = 12.0f;
+/**
+ * The rolling-surface loop (grass, sand) plays while moving on it, and rough surfaces add
+ * a bob to the body.
+ */
+static void car_update_surface_audio(Object_Racer *racer, s32 surfaceSound, s32 bobbing) {
+    f32 bob;
+
+    if (racer->surfaceSoundHandle == 0 && surfaceSound != SOUND_NONE && racer->velocity < -2.0) {
+        sound_play(surfaceSound, &racer->surfaceSoundHandle);
     }
-    // Convert the velocity value to an int
-    temp = (s32) traction;
-    // Calculate the velocity multiplier based on current velocity
-    traction = ((gCurrentRacerMiscAssetPtr[temp + 1] * (traction - temp)) +
-                (gCurrentRacerMiscAssetPtr[temp] * (1.0 - (traction - temp))));
-    traction *= 1.7;
-    traction *= topSpeed;
-    // Force the throttle wide open if boosting
+    if (racer->surfaceSoundHandle != 0 && (surfaceSound == SOUND_NONE || racer->velocity > -2.0)) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->surfaceSoundHandle);
+    }
+    if (racer->velocity < -2.0 && bobbing >= 4) {
+        bob = (f32) (racer->miscAnimCounter & 1) * 0.5;
+        racer->carBobX -= racer->roll * bob;
+        racer->carBobY -= racer->yaw * bob;
+        racer->carBobZ -= racer->pitch * bob;
+    }
+}
+
+/**
+ * Throttle and brake: acceleration comes from the speed curve and top speed (a boost pins
+ * it), a stopped car can reverse with the brake, and the brake bleeds speed off.
+ */
+static void car_apply_throttle(Object_Racer *racer, s32 updateRate, f32 topSpeed, s32 surfaceSound) {
+    f32 speed;
+    f32 accel;
+    f32 reverse;
+    f32 braking;
+
+    speed = racer->velocity;
+    if (racer->velocity < 0.0f) {
+        speed = -speed;
+    }
+    if (speed > 12.0f) {
+        speed = 12.0f;
+    }
+    accel = racer_speed_curve(speed);
+    accel *= 1.7;
+    accel *= topSpeed;
     if (racer->boostTimer > 0) {
         if (gRaceStartTimer == 0) {
             racer->throttle = 1.0f;
-            if (traction != 0.0) {
-                traction = 2.0f;
+            if (accel != 0.0) {
+                accel = 2.0f;
             }
             racer->boostTimer -= updateRate;
         }
@@ -5699,56 +5793,107 @@ void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 upd
     }
     if (racer->velocity > -2.0 && racer->velocity < 3.0 &&
         (racer->playerIndex != PLAYER_COMPUTER || racer->unk214 != 0)) {
-        tempVel = (3.0 - racer->velocity) * 0.15;
-        if (surfaceType == 4) {
-            tempVel *= 0.25;
+        reverse = (3.0 - racer->velocity) * 0.15;
+        if (surfaceSound == 4) {
+            reverse *= 0.25;
         }
         if ((gCurrentStickY < -25) && !(gCurrentRacerInput & A_BUTTON) && (gCurrentRacerInput & B_BUTTON)) {
             if (racer->vehicleIDPrev >= 5) {
-                tempVel *= 0.3;
+                reverse *= 0.3;
             }
-            racer->velocity += tempVel; //!@Delta
+            racer->velocity += reverse; //!@Delta
             racer->brake = 0.0f;
         }
     }
-    tempVel = (racer->brake * traction) * 0.32;
-    racer->velocity -= traction * racer->throttle;
+    braking = (racer->brake * accel) * 0.32;
+    racer->velocity -= accel * racer->throttle;
     if (racer->velocity > -0.04 && racer->velocity < 0.04) {
         racer->velocity = 0.0f;
     }
     if (racer->velocity < 0.0f) {
-        racer->velocity += tempVel;
+        racer->velocity += braking;
         if (racer->velocity > 0.0f) {
             racer->velocity = 0.0f;
         }
     } else {
-        racer->velocity -= tempVel;
+        racer->velocity -= braking;
         if (racer->velocity < 0.0f) {
             racer->velocity = 0.0f;
         }
     }
-    traction = gCurrentRacerWeightStat;
-    obj->y_velocity -= traction * updateRateF;
+}
+
+/**
+ * Gravity, and the slope: a car not braking rolls down the way it is pitched, more
+ * steeply on a steep slope.
+ */
+static void car_apply_slope(Object *obj, Object_Racer *racer, f32 updateRateF) {
+    f32 weight;
+    f32 steepness;
+
+    weight = gCurrentRacerWeightStat;
+    obj->y_velocity -= weight * updateRateF;
     if (gDialogueCameraAngle != 0) {
-        traction = 0.0f;
+        weight = 0.0f;
     }
     if (racer->brake < 0.9 && racer->vehicleIDPrev < VEHICLE_BOSSES && gRaceStartTimer == 0) {
-        velocityDiff = racer->pitch;
-        if (velocityDiff < 0.0) {
-            velocityDiff = -velocityDiff;
-            velocityDiff -= 0.3;
-            if (velocityDiff < 0.0) {
-                velocityDiff = 0.0f;
+        steepness = racer->pitch;
+        if (steepness < 0.0) {
+            steepness = -steepness;
+            steepness -= 0.3;
+            if (steepness < 0.0) {
+                steepness = 0.0f;
             }
-            if (velocityDiff > 0.1) {
-                velocityDiff = 0.1f;
+            if (steepness > 0.1) {
+                steepness = 0.1f;
             }
-            velocityDiff *= 35.0f;
+            steepness *= 35.0f;
         } else {
-            velocityDiff = 0.0f;
+            steepness = 0.0f;
         }
-        racer->velocity += traction * (racer->pitch / (4.0f - velocityDiff)) * updateRateF;
+        racer->velocity += weight * (racer->pitch / (4.0f - steepness)) * updateRateF;
     }
+}
+
+/**
+ * The forward and lateral velocity of a car on the ground: steering, sliding, drifting,
+ * surface grip, throttle, brake and slope, with the sounds and smoke that go with them.
+ */
+void update_player_car_velocity_ground(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF) {
+    f32 velSquare;
+    f32 traction;
+    f32 slide;
+    f32 topSpeed;
+    s32 surfaceType;
+    s32 surfaceSound;
+    s32 bobbing;
+    s32 stoneWheels;
+    s32 sliding;
+    s32 fourPlayerSmoke;
+
+    fourPlayerSmoke = FALSE;
+    velSquare = racer->velocity * racer->velocity;
+    if (racer->velocity < 0.0f) {
+        velSquare = -velSquare;
+    }
+    racer->pushVelX = 0.0f;
+    racer->pushVelZ = 0.0f;
+    car_update_bob(obj, racer);
+    car_update_wheelspin(racer, updateRate);
+    sliding = car_update_brake(obj, racer, &fourPlayerSmoke);
+    car_update_handbrake_turn(obj, racer, updateRate, &sliding, &fourPlayerSmoke);
+    topSpeed = car_update_drift(obj, racer, updateRate, &fourPlayerSmoke);
+    if (car_update_slide_sounds(obj, racer)) {
+        sliding = TRUE;
+    }
+    car_update_steering(racer, updateRate);
+    surfaceType = car_read_surfaces(racer, &traction, &slide, &bobbing, &stoneWheels);
+    car_apply_grip(obj, racer, surfaceType, traction, slide, stoneWheels, &topSpeed, velSquare);
+    car_update_skid_emitters(obj, racer, sliding, fourPlayerSmoke);
+    surfaceSound = gSurfaceSoundTable[surfaceType];
+    car_update_surface_audio(racer, surfaceSound, bobbing);
+    car_apply_throttle(racer, updateRate, topSpeed, surfaceSound);
+    car_apply_slope(obj, racer, updateRateF);
     racer->forwardVel -= (racer->forwardVel + (racer->velocity * 0.05)) * 0.125; //!@Delta
     racer->smoothedStickY = racer->steerAngle;
     racer->unk110 = gCurrentCarSteerVel;
