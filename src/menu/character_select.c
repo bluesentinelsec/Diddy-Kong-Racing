@@ -153,13 +153,13 @@ void menu_character_select_init(void) {
     for (i = 0; i < ARRAY_COUNT(gCharselectStatus); i++) {
         gCharselectStatus[i] = CHARSELECT_STATUS_UNCONFIRMED;
     }
-    gNumberOfReadyPlayers = 0;
-    gMenuDelay = 0;
-    gOptionBlinkTimer = 0;
-    for (i = 0; i < ARRAY_COUNT(gActivePlayersArray) && !breakTheLoop; i++) {
-        if (gActivePlayersArray[i] != 0) {
+    gRaceSetup.numberOfReadyPlayers = 0;
+    gMenuInput.delay = 0;
+    gMenuFlow.blinkTimer = 0;
+    for (i = 0; i < ARRAY_COUNT(gRaceSetup.activePlayers) && !breakTheLoop; i++) {
+        if (gRaceSetup.activePlayers[i] != 0) {
             breakTheLoop = TRUE;
-            gMenuCurrentCharacter.channelIndex = (*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID;
+            gMenuCurrentCharacter.channelIndex = (*gCurrCharacterSelectData)[gRaceSetup.playerCharacters[i]].voiceID;
             gMenuCurrentCharacter.volume = 0x7F;
             gMenuCurrentCharacter.switchDelay = 1;
         }
@@ -191,25 +191,26 @@ void menu_character_select_init(void) {
  */
 void charselect_render_text(UNUSED s32 updateRate) {
     s32 yPos;
-    if (gMenuDelay > -23 && gMenuDelay < 23) {
+    if (gMenuInput.delay > -23 && gMenuInput.delay < 23) {
         set_text_font(ASSET_FONTS_BIGFONT);
         set_text_background_colour(0, 0, 0, 0);
         set_text_colour(0, 0, 0, 255, 128);
         // Draw "Player Select" text drop shadow
-        draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF + 1, 35, gMenuText[ASSET_MENU_TEXT_PLAYERSELECT],
+        draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 1, 35, gMenuLoaded.text[ASSET_MENU_TEXT_PLAYERSELECT],
                   ALIGN_MIDDLE_CENTER);
         set_text_colour(255, 255, 255, 0, 255);
         // Draw "Player Select" text
-        draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, 32, gMenuText[ASSET_MENU_TEXT_PLAYERSELECT],
+        draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, 32, gMenuLoaded.text[ASSET_MENU_TEXT_PLAYERSELECT],
                   ALIGN_MIDDLE_CENTER);
-        if (gNumberOfReadyPlayers == gNumberOfActivePlayers && gNumberOfActivePlayers > 0) {
+        if (gRaceSetup.numberOfReadyPlayers == gRaceSetup.numberOfActivePlayers &&
+            gRaceSetup.numberOfActivePlayers > 0) {
             yPos = 208;
             if (osTvType == OS_TV_TYPE_PAL) {
                 yPos = 234;
             }
-            draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, yPos, "OK?", ALIGN_MIDDLE_CENTER);
+            draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, yPos, "OK?", ALIGN_MIDDLE_CENTER);
         }
-        rendermode_reset(&sMenuCurrDisplayList);
+        rendermode_reset(&gMenuFrame.displayList);
         cam_set_fov(40.0f);
     }
 }
@@ -225,22 +226,23 @@ void charselect_new_player(void) {
     s32 var_a2;
 
     for (i = 0; i < MAXCONTROLLERS; i++) {
-        if (!gActivePlayersArray[i]) {
+        if (!gRaceSetup.activePlayers[i]) {
             var_a2 = -1;
-            if (gMenuButtons[i] & (A_BUTTON | START_BUTTON)) {
+            if (gMenuInput.buttons[i] & (A_BUTTON | START_BUTTON)) {
                 do {
                     var_a2++;
                     takenChar = TRUE;
-                    for (j = 0; (j < ARRAY_COUNT(gActivePlayersArray)) && takenChar; j++) {
-                        if (gActivePlayersArray[j] && var_a2 == gPlayersCharacterArray[j]) {
+                    for (j = 0; (j < ARRAY_COUNT(gRaceSetup.activePlayers)) && takenChar; j++) {
+                        if (gRaceSetup.activePlayers[j] && var_a2 == gRaceSetup.playerCharacters[j]) {
                             takenChar = FALSE;
                         }
                     }
                 } while (takenChar == FALSE);
-                gPlayersCharacterArray[i] = var_a2;
-                gActivePlayersArray[i] = TRUE;
-                gNumberOfActivePlayers++;
-                gMenuCurrentCharacter.channelIndex = (*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID;
+                gRaceSetup.playerCharacters[i] = var_a2;
+                gRaceSetup.activePlayers[i] = TRUE;
+                gRaceSetup.numberOfActivePlayers++;
+                gMenuCurrentCharacter.channelIndex =
+                    (*gCurrCharacterSelectData)[gRaceSetup.playerCharacters[i]].voiceID;
                 gMenuCurrentCharacter.volume = 0;
                 gMenuCurrentCharacter.switchDelay = 20;
                 sound_play(SOUND_SELECT2, NULL);
@@ -259,46 +261,46 @@ void charselect_pick(void) {
     s32 buttonsPressedAllPlayers;
 
     buttonsPressedAllPlayers = 0;
-    for (i = 0; i < ARRAY_COUNT(gActivePlayersArray); i++) {
-        if (gActivePlayersArray[i]) {
-            buttonsPressedAllPlayers |= gMenuButtons[i];
+    for (i = 0; i < ARRAY_COUNT(gRaceSetup.activePlayers); i++) {
+        if (gRaceSetup.activePlayers[i]) {
+            buttonsPressedAllPlayers |= gMenuInput.buttons[i];
         }
     }
 
     if (buttonsPressedAllPlayers & (A_BUTTON | START_BUTTON)) {
         // Character Selected
-        gMenuDelay = 1;
+        gMenuInput.delay = 1;
         mark_read_all_save_files();
         transition_begin(&sMenuTransitionFadeIn);
         characterSelected = -1;
         //!@bug: This loop condition is doing a bitwise & instead of a boolean &&
         for (i = 0; (i < MAXCONTROLLERS) & (characterSelected < 0); i++) {
-            if (gMenuButtons[i] & (A_BUTTON | START_BUTTON)) {
+            if (gMenuInput.buttons[i] & (A_BUTTON | START_BUTTON)) {
                 characterSelected = i;
             }
         }
         if (gMenuSoundMasks[characterSelected] != 0) {
             sndp_stop(gMenuSoundMasks[characterSelected]);
         }
-        sound_play((*gCurrCharacterSelectData)[gPlayersCharacterArray[characterSelected]].voiceID +
+        sound_play((*gCurrCharacterSelectData)[gRaceSetup.playerCharacters[characterSelected]].voiceID +
                        SOUND_VOICE_CHARACTER_SELECTED,
                    &gMenuSoundMasks[characterSelected]);
-        if (gNumberOfActivePlayers > 2 ||
-            (gNumberOfActivePlayers > 1 && !(gActiveMagicCodes & CHEAT_TWO_PLAYER_ADVENTURE)) ||
+        if (gRaceSetup.numberOfActivePlayers > 2 ||
+            (gRaceSetup.numberOfActivePlayers > 1 && !(gRaceSetup.activeMagicCodes & CHEAT_TWO_PLAYER_ADVENTURE)) ||
             gEnteredCharSelectFrom == 1) {
             music_fade(-128);
         }
     } else {
         // Character Deselected
-        for (i = 0; i < ARRAY_COUNT(gActivePlayersArray); i++) {
-            if (gActivePlayersArray[i] && gCharselectStatus[i] != CHARSELECT_STATUS_UNCONFIRMED) {
-                if (gMenuButtons[i] & B_BUTTON) {
+        for (i = 0; i < ARRAY_COUNT(gRaceSetup.activePlayers); i++) {
+            if (gRaceSetup.activePlayers[i] && gCharselectStatus[i] != CHARSELECT_STATUS_UNCONFIRMED) {
+                if (gMenuInput.buttons[i] & B_BUTTON) {
                     gCharselectStatus[i] = CHARSELECT_STATUS_UNCONFIRMED;
-                    gNumberOfReadyPlayers--;
+                    gRaceSetup.numberOfReadyPlayers--;
                     if (gMenuSoundMasks[i] != 0) {
                         sndp_stop(gMenuSoundMasks[i]);
                     }
-                    sound_play(((*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID +
+                    sound_play(((*gCurrCharacterSelectData)[gRaceSetup.playerCharacters[i]].voiceID +
                                 SOUND_VOICE_CHARACTER_DESELECTED),
                                &gMenuSoundMasks[i]);
                 }
@@ -321,29 +323,29 @@ void charselect_input(s8 *activePlayers) {
     for (i = 0; i < MAXCONTROLLERS; i++) {
         if (activePlayers[i] != 0) {
             if (gCharselectStatus[i] != CHARSELECT_STATUS_UNCONFIRMED) {
-                if (gMenuButtons[i] & B_BUTTON) {
+                if (gMenuInput.buttons[i] & B_BUTTON) {
                     gCharselectStatus[i] = CHARSELECT_STATUS_UNCONFIRMED;
-                    gNumberOfReadyPlayers -= 1;
+                    gRaceSetup.numberOfReadyPlayers -= 1;
                     if (gMenuSoundMasks[i] != 0) {
                         sndp_stop(gMenuSoundMasks[i]);
                     }
-                    sound_play(((*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID +
+                    sound_play(((*gCurrCharacterSelectData)[gRaceSetup.playerCharacters[i]].voiceID +
                                 SOUND_VOICE_CHARACTER_DESELECTED),
                                &gMenuSoundMasks[i]);
                 }
             } else {
-                if (gMenuButtons[i] & B_BUTTON) {
-                    gNumberOfActivePlayers--;
-                    gActivePlayersArray[i] = 0;
-                    if (gNumberOfActivePlayers > 0) {
+                if (gMenuInput.buttons[i] & B_BUTTON) {
+                    gRaceSetup.numberOfActivePlayers--;
+                    gRaceSetup.activePlayers[i] = 0;
+                    if (gRaceSetup.numberOfActivePlayers > 0) {
                         if (gMenuSelectedCharacter.channelIndex ==
-                            (*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID) {
+                            (*gCurrCharacterSelectData)[gRaceSetup.playerCharacters[i]].voiceID) {
                             if (gMenuCurrentCharacter.switchDelay <= 0) {
-                                for (found = FALSE, j = 0; j < ARRAY_COUNT(gActivePlayersArray) && !found; j++) {
-                                    if (gActivePlayersArray[j]) {
+                                for (found = FALSE, j = 0; j < ARRAY_COUNT(gRaceSetup.activePlayers) && !found; j++) {
+                                    if (gRaceSetup.activePlayers[j]) {
                                         found = TRUE;
                                         gMenuCurrentCharacter.channelIndex =
-                                            (*gCurrCharacterSelectData)[gPlayersCharacterArray[j]].voiceID;
+                                            (*gCurrCharacterSelectData)[gRaceSetup.playerCharacters[j]].voiceID;
                                         gMenuCurrentCharacter.volume = 0;
                                         gMenuCurrentCharacter.switchDelay = 20;
                                     }
@@ -351,38 +353,39 @@ void charselect_input(s8 *activePlayers) {
                             }
                         }
                     }
-                    gPlayersCharacterArray[i] = -1;
-                    if (gNumberOfActivePlayers <= 0) {
-                        gMenuDelay = -1;
+                    gRaceSetup.playerCharacters[i] = -1;
+                    if (gRaceSetup.numberOfActivePlayers <= 0) {
+                        gMenuInput.delay = -1;
                         transition_begin(&sMenuTransitionFadeIn);
                     }
-                } else if (gMenuButtons[i] & (A_BUTTON | START_BUTTON)) {
+                } else if (gMenuInput.buttons[i] & (A_BUTTON | START_BUTTON)) {
                     gCharselectStatus[i] = CHARSELECT_STATUS_CONFIRMED;
-                    gNumberOfReadyPlayers++;
+                    gRaceSetup.numberOfReadyPlayers++;
                     if (gMenuSoundMasks[i] != 0) {
                         sndp_stop(gMenuSoundMasks[i]);
                     }
-                    sound_play(
-                        ((*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID + SOUND_VOICE_CHARACTER_SELECT),
-                        &gMenuSoundMasks[i]);
+                    sound_play(((*gCurrCharacterSelectData)[gRaceSetup.playerCharacters[i]].voiceID +
+                                SOUND_VOICE_CHARACTER_SELECT),
+                               &gMenuSoundMasks[i]);
                 } else {
-                    charSelectData = (*gCurrCharacterSelectData) + gPlayersCharacterArray[i];
-                    if (gMenuStickY[i] > 0) {
+                    charSelectData = (*gCurrCharacterSelectData) + gRaceSetup.playerCharacters[i];
+                    if (gMenuInput.stickY[i] > 0) {
                         charselect_move(i, charSelectData->upInput, ARRAY_COUNT(charSelectData->upInput),
                                         SOUND_MENU_PICK3, SOUND_HORN_DRUMSTICK);
-                    } else if (gMenuStickY[i] < 0) {
+                    } else if (gMenuInput.stickY[i] < 0) {
                         charselect_move(i, charSelectData->downInput, ARRAY_COUNT(charSelectData->downInput),
                                         SOUND_MENU_PICK3, SOUND_HORN_DRUMSTICK);
-                    } else if (gMenuStickX[i] < 0) {
+                    } else if (gMenuInput.stickX[i] < 0) {
                         charselect_move(i, charSelectData->rightInput, ARRAY_COUNT(charSelectData->rightInput),
                                         SOUND_MENU_PICK3, SOUND_HORN_DRUMSTICK);
-                    } else if (gMenuStickX[i] > 0) {
+                    } else if (gMenuInput.stickX[i] > 0) {
                         charselect_move(i, charSelectData->leftInput, ARRAY_COUNT(charSelectData->leftInput),
                                         SOUND_MENU_PICK3, SOUND_HORN_DRUMSTICK);
                     }
-                    if (charSelectData->voiceID != (*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID) {
+                    if (charSelectData->voiceID !=
+                        (*gCurrCharacterSelectData)[gRaceSetup.playerCharacters[i]].voiceID) {
                         gMenuCurrentCharacter.channelIndex =
-                            (*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID;
+                            (*gCurrCharacterSelectData)[gRaceSetup.playerCharacters[i]].voiceID;
                         gMenuCurrentCharacter.volume = 0;
                         gMenuCurrentCharacter.switchDelay = 20;
                     }
@@ -457,48 +460,48 @@ s32 menu_character_select_loop(s32 updateRate) {
             gCharselectStatus[i] = CHARSELECT_STATUS_READY;
         }
     }
-    gIgnorePlayerInputTime = 0;
-    if (gMenuDelay == 0) {
+    gMenuInput.ignoreInputTime = 0;
+    if (gMenuInput.delay == 0) {
         // clang-format off
         // THIS MUST BE ON ONE LINE!
-        for (i = 0; i < ARRAY_COUNT(gActivePlayersArray); i++) { activePlayers[i] = gActivePlayersArray[i]; }
+        for (i = 0; i < ARRAY_COUNT(gRaceSetup.activePlayers); i++) { activePlayers[i] = gRaceSetup.activePlayers[i]; }
         // clang-format on
         charselect_new_player();
-        if (gNumberOfReadyPlayers == gNumberOfActivePlayers) {
+        if (gRaceSetup.numberOfReadyPlayers == gRaceSetup.numberOfActivePlayers) {
             charselect_pick(); // Cancel/Confirm selected character?
         } else {
             charselect_input(activePlayers); // Move and select characters?
         }
         return MENU_RESULT_CONTINUE; // This return needs to be here.
-    } else if (gMenuDelay > 0) {
-        gMenuDelay += updateRate;
-        if (gMenuDelay > 30) {
+    } else if (gMenuInput.delay > 0) {
+        gMenuInput.delay += updateRate;
+        if (gMenuInput.delay > 30) {
             // This offset will determine whether or not the game goes straight into the tracks menu.
             confirmOffset = 0;
             if (gEnteredCharSelectFrom == 0) {
                 confirmOffset++;
-                if (gActiveMagicCodes & CHEAT_TWO_PLAYER_ADVENTURE) {
+                if (gRaceSetup.activeMagicCodes & CHEAT_TWO_PLAYER_ADVENTURE) {
                     confirmOffset++;
                 }
             }
             charselect_free();
 
             charSlot = 0;
-            for (j = 0; j < ARRAY_COUNT(gActivePlayersArray); j++) {
-                if (gActivePlayersArray[j]) {
-                    gCharacterIdSlots[charSlot] = (*gCurrCharacterSelectData)[gPlayersCharacterArray[j]].voiceID;
+            for (j = 0; j < ARRAY_COUNT(gRaceSetup.activePlayers); j++) {
+                if (gRaceSetup.activePlayers[j]) {
+                    gCharacterIdSlots[charSlot] = (*gCurrCharacterSelectData)[gRaceSetup.playerCharacters[j]].voiceID;
                     charSlot++;
                 }
             }
 
             charselect_assign_ai(charSlot);
-            charselect_assign_players(gActivePlayersArray);
+            charselect_assign_players(gRaceSetup.activePlayers);
 
-            gIsInTracksMode = TRUE;
-            if (confirmOffset >= gNumberOfActivePlayers) {
+            gRaceSetup.isInTracksMode = TRUE;
+            if (confirmOffset >= gRaceSetup.numberOfActivePlayers) {
                 music_change_off();
                 load_level_for_menu(ASSET_LEVEL_OPTIONSBACKGROUND, -1, 0);
-                if (gNumberOfActivePlayers == 1 && !gPlayerHasSeenCautionMenu) {
+                if (gRaceSetup.numberOfActivePlayers == 1 && !gRaceSetup.hasSeenCautionMenu) {
                     menu_init(MENU_CAUTION);
                 } else {
                     menu_init(MENU_GAME_SELECT);
@@ -510,12 +513,12 @@ s32 menu_character_select_loop(s32 updateRate) {
                 menu_init(MENU_TRACK_SELECT);
             }
         }
-    } else if (gMenuDelay < 0) {
-        gMenuDelay -= updateRate;
-        if (gMenuDelay < -30) {
+    } else if (gMenuInput.delay < 0) {
+        gMenuInput.delay -= updateRate;
+        if (gMenuInput.delay < -30) {
             music_change_on();
             charselect_free();
-            gNumberOfActivePlayers = 1;
+            gRaceSetup.numberOfActivePlayers = 1;
             menu_init(MENU_TITLE);
         }
     }
@@ -539,7 +542,7 @@ void charselect_move(s32 playerID, s8 *direction, s32 bounds, u16 menuPickSoundI
         // Run this block if the DOUBLEVISION cheat isn't active.
         if (!(get_filtered_cheats() & CHEAT_SELECT_SAME_PLAYER)) {
             for (i = 0; i < MAXCONTROLLERS && !sameCharSelected; i++) {
-                if (i != playerID && gPlayersCharacterArray[i] == direction[j]) {
+                if (i != playerID && gRaceSetup.playerCharacters[i] == direction[j]) {
                     sameCharSelected = TRUE;
                 }
             }
@@ -549,7 +552,7 @@ void charselect_move(s32 playerID, s8 *direction, s32 bounds, u16 menuPickSoundI
         }
     }
     if (!sameCharSelected) {
-        gPlayersCharacterArray[playerID] = direction[j];
+        gRaceSetup.playerCharacters[playerID] = direction[j];
         // menuPickSoundId seems to always be passed SOUND_MENU_PICK3?
         sound_play(menuPickSoundId, NULL);
     } else {
@@ -623,7 +626,7 @@ void charselect_music_channels(s32 updateRate) {
  */
 void reset_character_id_slots(void) {
     s32 i;
-    gTrackSelectRow = 1; // 1 = Dino Domain
+    gTrackSelect.row = 1; // 1 = Dino Domain
     for (i = 0; i < 8; i++) {
         gCharacterIdSlots[i] = i;
     }
@@ -658,8 +661,8 @@ s8 get_player_character(s32 controllerIndex) {
     if (controllerIndex < 0 || controllerIndex >= MAXCONTROLLERS) {
         return -1;
     }
-    if (!gActivePlayersArray[controllerIndex]) {
+    if (!gRaceSetup.activePlayers[controllerIndex]) {
         return -1;
     }
-    return gPlayersCharacterArray[controllerIndex];
+    return gRaceSetup.playerCharacters[controllerIndex];
 }

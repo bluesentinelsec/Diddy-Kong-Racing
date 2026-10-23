@@ -36,10 +36,10 @@ void menu_magic_codes_init(void) {
     sUnused_80126470 = 0;
     gNewCheatID = -1;
     gCheatInput[0] = '\0';
-    gOptionBlinkTimer = 0;
-    gMenuDelay = 0;
-    gOpacityDecayTimer = 0;
-    gMenuStage = CHEATMENU_CHOOSE;
+    gMenuFlow.blinkTimer = 0;
+    gMenuInput.delay = 0;
+    gMenuFlow.opacityDecayTimer = 0;
+    gMenuFlow.stage = CHEATMENU_CHOOSE;
     transition_begin(&sMenuTransitionFadeOut);
     set_current_dialogue_box_coords(7, 50, 50, 270, 132);
     set_current_dialogue_background_colour(7, 0, 0, 0, 128);
@@ -62,13 +62,13 @@ void cheatmenu_render(UNUSED s32 updateRate) {
     s32 offsetY;
 
     set_text_background_colour(0, 0, 0, 0);
-    render_dialogue_box(&sMenuCurrDisplayList, NULL, NULL, 7);
+    render_dialogue_box(&gMenuFrame.displayList, NULL, NULL, 7);
     set_text_font(ASSET_FONTS_BIGFONT);
     set_text_colour(0, 0, 0, 255, 128);
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF + 1, 35, gMenuText[ASSET_MENU_TEXT_MAGICCODES],
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 1, 35, gMenuLoaded.text[ASSET_MENU_TEXT_MAGICCODES],
               ALIGN_MIDDLE_CENTER); // "MAGIC CODES"
     set_text_colour(255, 255, 255, 0, 255);
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, 32, gMenuText[ASSET_MENU_TEXT_MAGICCODES],
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, 32, gMenuLoaded.text[ASSET_MENU_TEXT_MAGICCODES],
               ALIGN_MIDDLE_CENTER); // "MAGIC CODES"
     chr = 'A';
     set_text_font(ASSET_FONTS_FUNFONT);
@@ -77,7 +77,7 @@ void cheatmenu_render(UNUSED s32 updateRate) {
     for (i = 0, yPos = 60; i < 4; i++, yPos += 22) {
         for (j = 0, xPos = 64; j < 7; j++, xPos += 32) {
             if (gOptionsMenuItemIndex == 5 && j == gCheatInputCurrentColumn && i == gCheatInputCurrentRow) {
-                highlight = gOptionBlinkTimer * 8;
+                highlight = gMenuFlow.blinkTimer * 8;
                 if (highlight >= 256) {
                     highlight = 511 - highlight;
                 }
@@ -88,11 +88,11 @@ void cheatmenu_render(UNUSED s32 updateRate) {
             if (chr <= 'Z') {
                 displayChar[0] = chr;
                 displayChar[1] = '\0';
-                draw_text(&sMenuCurrDisplayList, xPos, yPos, displayChar, ALIGN_MIDDLE_CENTER); // Draw the character
+                draw_text(&gMenuFrame.displayList, xPos, yPos, displayChar, ALIGN_MIDDLE_CENTER); // Draw the character
             } else if (j == 5) {
-                draw_text(&sMenuCurrDisplayList, xPos, yPos, "DEL", ALIGN_MIDDLE_CENTER);
+                draw_text(&gMenuFrame.displayList, xPos, yPos, "DEL", ALIGN_MIDDLE_CENTER);
             } else {
-                draw_text(&sMenuCurrDisplayList, xPos, yPos, "OK", ALIGN_MIDDLE_CENTER);
+                draw_text(&gMenuFrame.displayList, xPos, yPos, "OK", ALIGN_MIDDLE_CENTER);
             }
             if ((5 == gOptionsMenuItemIndex) && (j == gCheatInputCurrentColumn) && (i == gCheatInputCurrentRow)) {
                 set_text_colour(255, 255, 255, 0, 255);
@@ -101,7 +101,7 @@ void cheatmenu_render(UNUSED s32 updateRate) {
         }
     }
 
-    highlight = gOptionBlinkTimer * 8;
+    highlight = gMenuFlow.blinkTimer * 8;
     if (highlight > 255) {
         highlight = 511 - highlight;
     }
@@ -116,11 +116,11 @@ void cheatmenu_render(UNUSED s32 updateRate) {
 
     while (gMagicCodeMenuStrings[i] != NULL) {
         highlight2 = 0;
-        if (i == gOptionsMenuItemIndex && gMenuStage == CHEATMENU_CHOOSE) {
+        if (i == gOptionsMenuItemIndex && gMenuFlow.stage == CHEATMENU_CHOOSE) {
             highlight2 = highlight;
         }
         set_text_colour(255, 255, 255, highlight2, 255);
-        draw_text(&sMenuCurrDisplayList, POS_CENTRED, offsetY, gMagicCodeMenuStrings[i], ALIGN_MIDDLE_CENTER);
+        draw_text(&gMenuFrame.displayList, POS_CENTRED, offsetY, gMagicCodeMenuStrings[i], ALIGN_MIDDLE_CENTER);
         i++;
         offsetY += yPos;
     }
@@ -129,21 +129,21 @@ void cheatmenu_render(UNUSED s32 updateRate) {
     set_text_background_colour(0, 0, 128, 128);
     if (gOptionsMenuItemIndex == 4) {
         if (gNewCheatID == -1) {
-            draw_text(&sMenuCurrDisplayList, POS_CENTRED, 144, gMenuText[ASSET_MENU_TEXT_BADCODE],
+            draw_text(&gMenuFrame.displayList, POS_CENTRED, 144, gMenuLoaded.text[ASSET_MENU_TEXT_BADCODE],
                       ALIGN_MIDDLE_CENTER); //"Sorry, the code was incorrect"
         } else {
             // Draw cheat code name.
             cheatData = (*gCheatsAssetData) + 1;
-            draw_text(&sMenuCurrDisplayList, POS_CENTRED, 144,
+            draw_text(&gMenuFrame.displayList, POS_CENTRED, 144,
                       &((char *) (*gCheatsAssetData))[cheatData[gNewCheatID + 1]], ALIGN_MIDDLE_CENTER);
         }
     } else if (5 == gOptionsMenuItemIndex) {
-        draw_text(&sMenuCurrDisplayList, POS_CENTRED, 144, gCheatInput, ALIGN_MIDDLE_CENTER);
+        draw_text(&gMenuFrame.displayList, POS_CENTRED, 144, gCheatInput, ALIGN_MIDDLE_CENTER);
     } else if (gOptionsMenuItemIndex == 6) {
-        draw_text(&sMenuCurrDisplayList, POS_CENTRED, 144, gMenuText[ASSET_MENU_TEXT_ALLCODESDELETED],
+        draw_text(&gMenuFrame.displayList, POS_CENTRED, 144, gMenuLoaded.text[ASSET_MENU_TEXT_ALLCODESDELETED],
                   ALIGN_MIDDLE_CENTER); //"All cheats have been deleted"
     }
-    if (gMenuStage != CHEATMENU_CHOOSE) {
+    if (gMenuFlow.stage != CHEATMENU_CHOOSE) {
         if (osTvType == OS_TV_TYPE_PAL) {
             offsetY = SCREEN_HEIGHT_HALF + 14;
         } else {
@@ -160,12 +160,12 @@ void cheatmenu_render(UNUSED s32 updateRate) {
             if (i == 0) {
                 green = 0;
                 highlight2 = 64;
-            } else if (i == gMenuStage) {
+            } else if (i == gMenuFlow.stage) {
                 highlight2 = highlight;
             }
             set_current_text_colour(6, 255, green, 255, highlight2, 255);
-            // gMenuText[148] = "CLEAR ALL CODES?", [149] = "OK", [150] = "CANCEL"
-            render_dialogue_text(6, POS_CENTRED, offsetY, gMenuText[148 + i], 1, HORZ_ALIGN_CENTER);
+            // gMenuLoaded.text[148] = "CLEAR ALL CODES?", [149] = "OK", [150] = "CANCEL"
+            render_dialogue_text(6, POS_CENTRED, offsetY, gMenuLoaded.text[148 + i], 1, HORZ_ALIGN_CENTER);
 
             if (i != 0) {
                 offsetY += 16;
@@ -173,7 +173,7 @@ void cheatmenu_render(UNUSED s32 updateRate) {
                 offsetY += 20;
             }
         }
-        render_dialogue_box(&sMenuCurrDisplayList, NULL, NULL, 6);
+        render_dialogue_box(&gMenuFrame.displayList, NULL, NULL, 6);
     }
     if (get_filtered_cheats() & CHEAT_ROM_CHECKSUM) {
         cheatmenu_checksum();
@@ -209,36 +209,36 @@ s32 menu_magic_codes_loop(s32 updateRate) {
     playBackSound = FALSE;
     playSelectSound = FALSE;
     playPickSound = FALSE;
-    if (gOpacityDecayTimer != 0) {
-        gOpacityDecayTimer -= updateRate;
-        if (gOpacityDecayTimer < 0) {
-            gOpacityDecayTimer = 0;
+    if (gMenuFlow.opacityDecayTimer != 0) {
+        gMenuFlow.opacityDecayTimer -= updateRate;
+        if (gMenuFlow.opacityDecayTimer < 0) {
+            gMenuFlow.opacityDecayTimer = 0;
         }
     }
-    if (gMenuDelay != 0) {
-        if (gMenuDelay > 0) {
-            gMenuDelay += updateRate;
+    if (gMenuInput.delay != 0) {
+        if (gMenuInput.delay > 0) {
+            gMenuInput.delay += updateRate;
         } else {
-            gMenuDelay -= updateRate;
+            gMenuInput.delay -= updateRate;
         }
     }
-    gOptionBlinkTimer = (gOptionBlinkTimer + updateRate) & 0x3F;
-    if (gMenuDelay > -20 && gMenuDelay < 20) {
+    gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
+    if (gMenuInput.delay > -20 && gMenuInput.delay < 20) {
         foundCheat = FALSE;
         cheatmenu_render(updateRate);
     }
     buttonsPressed = 0;
     xDir = 0;
     yDir = 0;
-    if (gIgnorePlayerInputTime == 0 && gMenuDelay == 0) {
+    if (gMenuInput.ignoreInputTime == 0 && gMenuInput.delay == 0) {
         for (i = 0; i < MAXCONTROLLERS; i++) {
             buttonsPressed |= input_pressed(i);
-            xDir += gControllersXAxisDirection[i];
-            yDir += gControllersYAxisDirection[i];
+            xDir += gMenuInput.xAxisDirection[i];
+            yDir += gMenuInput.yAxisDirection[i];
         }
     }
     if (gOptionsMenuItemIndex == 4) {
-        if (gOpacityDecayTimer == 0 || buttonsPressed & (A_BUTTON | START_BUTTON)) {
+        if (gMenuFlow.opacityDecayTimer == 0 || buttonsPressed & (A_BUTTON | START_BUTTON)) {
             gOptionsMenuItemIndex = 0;
         }
     } else if (gOptionsMenuItemIndex == 5) {
@@ -308,11 +308,11 @@ s32 menu_magic_codes_loop(s32 updateRate) {
                 cheatDataEntries = &(*gCheatsAssetData)[1];
                 gNewCheatID = 0; // Index into the gCheatsAssetData cheatsTable
 #if VERSION >= VERSION_79
-                while (gNewCheatID < gNumberOfCheats && foundCheat == FALSE) {
+                while (gNewCheatID < gRaceSetup.numberOfCheats && foundCheat == FALSE) {
                     foundCheat = TRUE;
                     cheatCodeText = ((char *) (*gCheatsAssetData)) + cheatDataEntries[gNewCheatID * 3];
 #else
-                while (gNewCheatID < gNumberOfCheats * 2 && foundCheat == FALSE) {
+                while (gNewCheatID < gRaceSetup.numberOfCheats * 2 && foundCheat == FALSE) {
                     foundCheat = TRUE;
                     cheatCodeText = ((char *) (*gCheatsAssetData)) + cheatDataEntries[gNewCheatID];
 #endif
@@ -344,43 +344,43 @@ s32 menu_magic_codes_loop(s32 updateRate) {
                     gNewCheatID = -1;
                 } else {
 #if VERSION >= VERSION_79
-                    gUnlockedMagicCodes |= 1 << gNewCheatID;
-                    gActiveMagicCodes |= 1 << gNewCheatID;
+                    gRaceSetup.unlockedMagicCodes |= 1 << gNewCheatID;
+                    gRaceSetup.activeMagicCodes |= 1 << gNewCheatID;
                     gNewCheatID *= 3;
 #else
-                    gUnlockedMagicCodes |= 1 << (gNewCheatID >> 1);
-                    gActiveMagicCodes |= 1 << (gNewCheatID >> 1);
+                    gRaceSetup.unlockedMagicCodes |= 1 << (gNewCheatID >> 1);
+                    gRaceSetup.activeMagicCodes |= 1 << (gNewCheatID >> 1);
 #endif
                 }
                 gOptionsMenuItemIndex = 4;
-                gOpacityDecayTimer = 240;
+                gMenuFlow.opacityDecayTimer = 240;
             }
         }
     } else if (gOptionsMenuItemIndex == 6) {
-        if (gOpacityDecayTimer == 0 || buttonsPressed & (A_BUTTON | START_BUTTON)) {
+        if (gMenuFlow.opacityDecayTimer == 0 || buttonsPressed & (A_BUTTON | START_BUTTON)) {
             gOptionsMenuItemIndex = 1;
         }
-    } else if (gMenuStage != CHEATMENU_CHOOSE) {
+    } else if (gMenuFlow.stage != CHEATMENU_CHOOSE) {
         if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
-            if (gMenuStage == CHEATMENU_KEYBOARD) {
-                gActiveMagicCodes = 0;
+            if (gMenuFlow.stage == CHEATMENU_KEYBOARD) {
+                gRaceSetup.activeMagicCodes = 0;
                 gOptionsMenuItemIndex = 6;
                 playSelectSound = TRUE;
-                gUnlockedMagicCodes &= CHEAT_CONTROL_TT | CHEAT_CONTROL_DRUMSTICK;
-                gOpacityDecayTimer = 240;
+                gRaceSetup.unlockedMagicCodes &= CHEAT_CONTROL_TT | CHEAT_CONTROL_DRUMSTICK;
+                gMenuFlow.opacityDecayTimer = 240;
             } else {
                 playBackSound = TRUE;
             }
-            gMenuStage = CHEATMENU_CHOOSE;
+            gMenuFlow.stage = CHEATMENU_CHOOSE;
         } else if (buttonsPressed & B_BUTTON) {
             playBackSound = TRUE;
-            gMenuStage = CHEATMENU_CHOOSE;
-        } else if (yDir < 0 && gMenuStage == 1) {
+            gMenuFlow.stage = CHEATMENU_CHOOSE;
+        } else if (yDir < 0 && gMenuFlow.stage == 1) {
             playPickSound = TRUE;
-            gMenuStage = CHEATMENU_MESSAGE;
-        } else if (yDir > 0 && gMenuStage == CHEATMENU_MESSAGE) {
+            gMenuFlow.stage = CHEATMENU_MESSAGE;
+        } else if (yDir > 0 && gMenuFlow.stage == CHEATMENU_MESSAGE) {
             playPickSound = TRUE;
-            gMenuStage = CHEATMENU_KEYBOARD;
+            gMenuFlow.stage = CHEATMENU_KEYBOARD;
         }
     } else {
         prevValue = gOptionsMenuItemIndex;
@@ -410,7 +410,7 @@ s32 menu_magic_codes_loop(s32 updateRate) {
                 gCheatInput[0] = '\0';
                 gOptionsMenuItemIndex = 5;
             } else if (gOptionsMenuItemIndex == 1) {
-                gMenuStage = CHEATMENU_MESSAGE;
+                gMenuFlow.stage = CHEATMENU_MESSAGE;
             } else if (gOptionsMenuItemIndex == 2) {
                 menuDelay = 1;
             }
@@ -422,7 +422,7 @@ s32 menu_magic_codes_loop(s32 updateRate) {
             if (menuDelay < 0) {
                 playBackSound = TRUE;
             }
-            gMenuDelay = menuDelay;
+            gMenuInput.delay = menuDelay;
             transition_begin(&sMenuTransitionFadeIn);
         }
     }
@@ -434,15 +434,15 @@ s32 menu_magic_codes_loop(s32 updateRate) {
         sound_play(SOUND_MENU_PICK2, NULL);
     }
 
-    gIgnorePlayerInputTime = 0;
-    if (gMenuDelay < -30 || gMenuDelay > 30) {
+    gMenuInput.ignoreInputTime = 0;
+    if (gMenuInput.delay < -30 || gMenuInput.delay > 30) {
         cheatmenu_free();
-        if (gMenuDelay < 0) {
-            if (gActiveMagicCodes & CHEAT_DISPLAY_CREDITS) {
+        if (gMenuInput.delay < 0) {
+            if (gRaceSetup.activeMagicCodes & CHEAT_DISPLAY_CREDITS) {
                 music_change_on();
-                gViewingCreditsFromCheat = TRUE;
+                gRaceSetup.viewingCreditsFromCheat = TRUE;
                 menu_init(MENU_CREDITS);
-                gActiveMagicCodes &= ~CHEAT_DISPLAY_CREDITS;
+                gRaceSetup.activeMagicCodes &= ~CHEAT_DISPLAY_CREDITS;
             } else {
                 menu_init(MENU_OPTIONS);
             }
@@ -465,9 +465,9 @@ void cheatmenu_free(void) {
  * Sets the max list height based on region, and loads the arrows for scrolling.
  */
 void menu_magic_codes_list_init(void) {
-    gOptionBlinkTimer = 0;
-    gMenuDelay = 0;
-    gMenuStage = 0;
+    gMenuFlow.blinkTimer = 0;
+    gMenuInput.delay = 0;
+    gMenuFlow.stage = 0;
     gOptionsMenuItemIndex = 0;
     load_font(ASSET_FONTS_BIGFONT);
     menu_asset_load(63);
@@ -495,31 +495,31 @@ void cheatlist_render(UNUSED s32 updateRate) {
     set_text_background_colour(0, 0, 0, 0);
     set_text_font(ASSET_FONTS_BIGFONT);
     set_text_colour(0, 0, 0, 255, 128);
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF + 1, 35, gMenuText[ASSET_MENU_TEXT_MAGICCODESLIST],
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 1, 35, gMenuLoaded.text[ASSET_MENU_TEXT_MAGICCODESLIST],
               ALIGN_MIDDLE_CENTER); // MAGIC CODES LIST
     set_text_colour(255, 255, 255, 0, 255);
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, 32, gMenuText[ASSET_MENU_TEXT_MAGICCODESLIST],
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, 32, gMenuLoaded.text[ASSET_MENU_TEXT_MAGICCODESLIST],
               ALIGN_MIDDLE_CENTER); // MAGIC CODES LIST
 
     for (i = 0, code = 1, numOfUnlockedCheats = 0; i < 32; i++, code <<= 1) {
-        if (code & gUnlockedMagicCodes) {
+        if (code & gRaceSetup.unlockedMagicCodes) {
             gUnlockedCheatIDs[numOfUnlockedCheats] = i;
             numOfUnlockedCheats += 1;
         }
     }
     yPos = 54;
-    alpha = gOptionBlinkTimer * 8;
+    alpha = gMenuFlow.blinkTimer * 8;
     if (alpha >= 256) {
         alpha = 511 - alpha;
     }
     set_text_font(ASSET_FONTS_FUNFONT);
     set_text_colour(255, 255, 255, 0, 255);
-    for (i = gMenuStage, cheatData = (*gCheatsAssetData) + 1;
-         (i < gMenuStage + gNumOnscreenMagicCodes) && (i < numOfUnlockedCheats); i++, yPos += 16) {
+    for (i = gMenuFlow.stage, cheatData = (*gCheatsAssetData) + 1;
+         (i < gMenuFlow.stage + gNumOnscreenMagicCodes) && (i < numOfUnlockedCheats); i++, yPos += 16) {
         if (i == gOptionsMenuItemIndex) {
             set_text_colour(255, 255, 255, alpha, 255);
         }
-        draw_text(&sMenuCurrDisplayList, 48, yPos,
+        draw_text(&gMenuFrame.displayList, 48, yPos,
 #if VERSION == VERSION_79
                   (char *) (*gCheatsAssetData) + cheatData[(gUnlockedCheatIDs[i] * 3) + 2], ALIGN_TOP_LEFT);
 #elif VERSION == VERSION_80
@@ -527,25 +527,25 @@ void cheatlist_render(UNUSED s32 updateRate) {
 #else
                   (char *) (*gCheatsAssetData) + cheatData[(gUnlockedCheatIDs[i] * 2) + 1], ALIGN_TOP_LEFT);
 #endif
-        if ((1 << gUnlockedCheatIDs[i]) & gActiveMagicCodes) {
-            draw_text(&sMenuCurrDisplayList, 256, yPos, gMenuText[ASSET_MENU_TEXT_ON], ALIGN_TOP_LEFT); // ON
+        if ((1 << gUnlockedCheatIDs[i]) & gRaceSetup.activeMagicCodes) {
+            draw_text(&gMenuFrame.displayList, 256, yPos, gMenuLoaded.text[ASSET_MENU_TEXT_ON], ALIGN_TOP_LEFT); // ON
         } else {
-            draw_text(&sMenuCurrDisplayList, 256, yPos, gMenuText[ASSET_MENU_TEXT_OFF], ALIGN_TOP_LEFT); // OFF
+            draw_text(&gMenuFrame.displayList, 256, yPos, gMenuLoaded.text[ASSET_MENU_TEXT_OFF], ALIGN_TOP_LEFT); // OFF
         }
         if (i == gOptionsMenuItemIndex) {
             set_text_colour(255, 255, 255, 0, 255);
         }
     }
-    if (i < gMenuStage + gNumOnscreenMagicCodes) {
+    if (i < gMenuFlow.stage + gNumOnscreenMagicCodes) {
         if (numOfUnlockedCheats == gOptionsMenuItemIndex) {
             set_text_colour(255, 255, 255, alpha, 255);
         }
-        draw_text(&sMenuCurrDisplayList, POS_CENTRED, yPos, gMenuText[ASSET_MENU_TEXT_RETURN],
+        draw_text(&gMenuFrame.displayList, POS_CENTRED, yPos, gMenuLoaded.text[ASSET_MENU_TEXT_RETURN],
                   ALIGN_TOP_CENTER); // RETURN
         return;
     }
-    if (gOptionBlinkTimer & 8) {
-        texrect_draw(&sMenuCurrDisplayList, gMenuSelectionArrowDown, SCREEN_WIDTH_HALF, yPos + 8, 255, 255, 255, 255);
+    if (gMenuFlow.blinkTimer & 8) {
+        texrect_draw(&gMenuFrame.displayList, gMenuSelectionArrowDown, SCREEN_WIDTH_HALF, yPos + 8, 255, 255, 255, 255);
     }
 }
 
@@ -554,8 +554,8 @@ void cheatlist_render(UNUSED s32 updateRate) {
  * This ensures incompatable cheats do not stay enabled.
  */
 void cheatlist_exclusive(s32 code, s32 cheatA, s32 cheatB) {
-    if ((code & cheatA) && (code & gActiveMagicCodes)) {
-        gActiveMagicCodes &= ~cheatB;
+    if ((code & cheatA) && (code & gRaceSetup.activeMagicCodes)) {
+        gRaceSetup.activeMagicCodes &= ~cheatB;
     }
 }
 
@@ -574,31 +574,31 @@ s32 menu_magic_codes_list_loop(s32 updateRate) {
     s32 code;
 
     delay = 0;
-    if (gMenuDelay != 0) {
-        if (gMenuDelay > 0) {
-            gMenuDelay += updateRate;
+    if (gMenuInput.delay != 0) {
+        if (gMenuInput.delay > 0) {
+            gMenuInput.delay += updateRate;
         } else {
-            gMenuDelay -= updateRate;
+            gMenuInput.delay -= updateRate;
         }
     }
-    gOptionBlinkTimer = (gOptionBlinkTimer + updateRate) & 0x3F;
-    if (gMenuDelay > -20 && gMenuDelay < 20) {
+    gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
+    if (gMenuInput.delay > -20 && gMenuInput.delay < 20) {
         cheatlist_render(updateRate);
     }
 
     buttonsPressed = 0;
     xAxis = 0;
     yAxis = 0;
-    if (gIgnorePlayerInputTime == 0 && gMenuDelay == 0) {
+    if (gMenuInput.ignoreInputTime == 0 && gMenuInput.delay == 0) {
         for (i = 0; i < MAXCONTROLLERS; i++) {
             buttonsPressed |= input_pressed(i);
-            xAxis += gControllersXAxisDirection[i];
-            yAxis += gControllersYAxisDirection[i];
+            xAxis += gMenuInput.xAxisDirection[i];
+            yAxis += gMenuInput.yAxisDirection[i];
         }
     }
 
     for (i = 0, code = 1, numUnlockedCodes = 0; i < MAX_CHEATS; i++) {
-        if (code & gUnlockedMagicCodes) {
+        if (code & gRaceSetup.unlockedMagicCodes) {
             gUnlockedCheatIDs[numUnlockedCodes] = i;
             numUnlockedCodes++;
         }
@@ -608,7 +608,7 @@ s32 menu_magic_codes_list_loop(s32 updateRate) {
     if ((xAxis < 0 || xAxis > 0) && numUnlockedCodes != gOptionsMenuItemIndex) {
         sound_play(SOUND_SELECT2, NULL);
         code = 1 << gUnlockedCheatIDs[gOptionsMenuItemIndex];
-        gActiveMagicCodes ^= code;                                               // Toggle active cheats?
+        gRaceSetup.activeMagicCodes ^= code;                                     // Toggle active cheats?
         cheatlist_exclusive(code, CHEAT_BIG_CHARACTERS, CHEAT_SMALL_CHARACTERS); // cheatlist_exclusive() = Clear flags?
         cheatlist_exclusive(code, CHEAT_SMALL_CHARACTERS, CHEAT_BIG_CHARACTERS);
         cheatlist_exclusive(code, CHEAT_DISABLE_BANANAS,
@@ -655,10 +655,10 @@ s32 menu_magic_codes_list_loop(s32 updateRate) {
         }
     }
 
-    if (gOptionsMenuItemIndex < gMenuStage) {
-        gMenuStage = gOptionsMenuItemIndex;
-    } else if (gOptionsMenuItemIndex >= (gMenuStage + gNumOnscreenMagicCodes)) {
-        gMenuStage = (gOptionsMenuItemIndex - gNumOnscreenMagicCodes) + 1;
+    if (gOptionsMenuItemIndex < gMenuFlow.stage) {
+        gMenuFlow.stage = gOptionsMenuItemIndex;
+    } else if (gOptionsMenuItemIndex >= (gMenuFlow.stage + gNumOnscreenMagicCodes)) {
+        gMenuFlow.stage = (gOptionsMenuItemIndex - gNumOnscreenMagicCodes) + 1;
     }
 
     if (gOptionsMenuItemIndex != previousMenuItemIndex) {
@@ -672,16 +672,16 @@ s32 menu_magic_codes_list_loop(s32 updateRate) {
         delay = -1;
     }
     if (delay != 0) {
-        gMenuDelay = delay;
+        gMenuInput.delay = delay;
         transition_begin(&sMenuTransitionFadeIn);
         sound_play(SOUND_MENU_BACK3, NULL);
     }
-    if (gMenuDelay < -30) {
+    if (gMenuInput.delay < -30) {
         cheatlist_free();
         menu_init(MENU_MAGIC_CODES);
         return MENU_RESULT_CONTINUE;
     }
-    gIgnorePlayerInputTime = 0;
+    gMenuInput.ignoreInputTime = 0;
     return MENU_RESULT_CONTINUE;
 }
 
@@ -742,16 +742,16 @@ void cheatmenu_checksum(void) {
  * Sets the active & unlocked magic code flags.
  */
 void set_magic_code_flags(s32 flags) {
-    gActiveMagicCodes |= flags;
-    gUnlockedMagicCodes |= flags;
+    gRaceSetup.activeMagicCodes |= flags;
+    gRaceSetup.unlockedMagicCodes |= flags;
 }
 
 /**
  * Filters active cheats based on different conditions. Also enables mirroring for Adventure 2.
  */
 s32 get_filtered_cheats(void) {
-    s32 cheats = gActiveMagicCodes;
-    if (!gIsInTracksMode || is_time_trial_enabled()) {
+    s32 cheats = gRaceSetup.activeMagicCodes;
+    if (!gRaceSetup.isInTracksMode || is_time_trial_enabled()) {
         cheats &= CHEATS_ALLOWED_IN_ADVENTURE_AND_TIME_TRIAL;
     }
     if (!level_is_race()) {
@@ -760,7 +760,7 @@ s32 get_filtered_cheats(void) {
     if (leveltable_type(get_settings()->courseId) & RACETYPE_CHALLENGE) {
         cheats &= CHEATS_ALLOWED_IN_CHALLENGES;
     }
-    if (gIsInAdventureTwo && level_is_race()) {
+    if (gRaceSetup.isInAdventureTwo && level_is_race()) {
         cheats |= CHEAT_MIRRORED_TRACKS; // Enable mirroring
     }
     return cheats;

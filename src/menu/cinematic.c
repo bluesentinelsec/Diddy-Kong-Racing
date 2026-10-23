@@ -53,8 +53,8 @@ void menu_cinematic_init(void) {
     }
     load_level_for_menu(gCinematicParams[CINEMATIC_LEVELID], gCinematicParams[CINEMATIC_PLAYERS],
                         gCinematicParams[CINEMATIC_CUTSCENE]);
-    gMenuDelay = 0;
-    gMenuStage = 0;
+    gMenuInput.delay = 0;
+    gMenuFlow.stage = 0;
 }
 
 /**
@@ -66,8 +66,8 @@ s32 menu_cinematic_loop(UNUSED s32 updateRate) {
     s32 buttonsPressed;
 
     buttonsPressed = 0;
-    if (gIgnorePlayerInputTime == 0) {
-        for (i = 0; i < gNumberOfActivePlayers; i++) {
+    if (gMenuInput.ignoreInputTime == 0) {
+        for (i = 0; i < gRaceSetup.numberOfActivePlayers; i++) {
             buttonsPressed |= input_pressed(i);
         }
     }
@@ -94,11 +94,11 @@ s32 menu_cinematic_loop(UNUSED s32 updateRate) {
     }
     if (gCinematicPortraits != NULL) {
         for (i = 0; gCinematicPortraits[i] != -1; i++) {
-            texrect_draw(&sMenuCurrDisplayList, gRacerPortraits[gCinematicPortraits[i]], 24, 16 + (44 * i), 255, 255,
+            texrect_draw(&gMenuFrame.displayList, gRacerPortraits[gCinematicPortraits[i]], 24, 16 + (44 * i), 255, 255,
                          255, 255);
         }
     }
-    gIgnorePlayerInputTime = 0;
+    gMenuInput.ignoreInputTime = 0;
     return MENU_RESULT_CONTINUE;
 }
 

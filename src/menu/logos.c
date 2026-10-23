@@ -13,7 +13,7 @@ static char gRareCopyrightString[24] = "(C) COPYRIGHT RARE 1997";
  * It then sets a 16 second timer that will count down.
  */
 void menu_logos_screen_init(void) {
-    gMenuDelay = 0;
+    gMenuInput.delay = 0;
     sBootScreenTimer = 16.0f;
     bgdraw_fillcolour(0, 0, 0);
     if (osTvType == OS_TV_TYPE_PAL) {
@@ -37,16 +37,16 @@ s32 menu_logo_screen_loop(s32 updateRate) {
 
     if (osTvType == OS_TV_TYPE_PAL) {
         yOffset = 26;
-        if (sBootScreenTimer < 2.6f && gMenuDelay == 0) {
+        if (sBootScreenTimer < 2.6f && gMenuInput.delay == 0) {
             transition_begin(&gFadeLogoToTitleScreen);
-            gMenuDelay = 1;
+            gMenuInput.delay = 1;
         }
         sBootScreenTimer -= updateRate / 50.0f;
     } else {
         yOffset = 0;
-        if (sBootScreenTimer < 2.17f && gMenuDelay == 0) {
+        if (sBootScreenTimer < 2.17f && gMenuInput.delay == 0) {
             transition_begin(&gFadeLogoToTitleScreen);
-            gMenuDelay = 1;
+            gMenuInput.delay = 1;
         }
         sBootScreenTimer -= updateRate / 60.0f;
     }
@@ -71,10 +71,10 @@ s32 menu_logo_screen_loop(s32 updateRate) {
         }
         if (opacity != 0) {
             set_text_colour(255, 255, 0, 255, opacity);
-            draw_text(&sMenuCurrDisplayList, 159, yOffset + 212, gRareCopyrightString, ALIGN_MIDDLE_CENTER);
-            draw_text(&sMenuCurrDisplayList, 161, yOffset + 212, gRareCopyrightString, ALIGN_MIDDLE_CENTER);
-            draw_text(&sMenuCurrDisplayList, POS_CENTRED, yOffset + 211, gRareCopyrightString, ALIGN_MIDDLE_CENTER);
-            draw_text(&sMenuCurrDisplayList, POS_CENTRED, yOffset + 213, gRareCopyrightString, ALIGN_MIDDLE_CENTER);
+            draw_text(&gMenuFrame.displayList, 159, yOffset + 212, gRareCopyrightString, ALIGN_MIDDLE_CENTER);
+            draw_text(&gMenuFrame.displayList, 161, yOffset + 212, gRareCopyrightString, ALIGN_MIDDLE_CENTER);
+            draw_text(&gMenuFrame.displayList, POS_CENTRED, yOffset + 211, gRareCopyrightString, ALIGN_MIDDLE_CENTER);
+            draw_text(&gMenuFrame.displayList, POS_CENTRED, yOffset + 213, gRareCopyrightString, ALIGN_MIDDLE_CENTER);
         }
         yOffsetShadow = yOffset + 212;
         if (sBootScreenTimer > 8.0) {
@@ -83,7 +83,7 @@ s32 menu_logo_screen_loop(s32 updateRate) {
             opacity = 0xFF;
         }
         set_text_colour(0xFF, 0xFF, 0xFF, 0xFF, opacity);
-        draw_text(&sMenuCurrDisplayList, POS_CENTRED, yOffsetShadow, gRareCopyrightString, ALIGN_MIDDLE_CENTER);
+        draw_text(&gMenuFrame.displayList, POS_CENTRED, yOffsetShadow, gRareCopyrightString, ALIGN_MIDDLE_CENTER);
     }
     return MENU_RESULT_CONTINUE;
 }

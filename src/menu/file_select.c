@@ -78,27 +78,28 @@ void init_save_data(void) {
     saveFileSize += sizeof(Settings);
     saveFileSize = (saveFileSize + 3) & ~3; // align to a 4-byte boundary
 
-    *gSavefileData = mempool_alloc_safe(saveFileSize * ARRAY_COUNT(gSavefileData), COLOUR_TAG_WHITE);
+    *gRaceSetup.saveFiles = mempool_alloc_safe(saveFileSize * ARRAY_COUNT(gRaceSetup.saveFiles), COLOUR_TAG_WHITE);
 
-    for (index = 0, offset = 0; index < ARRAY_COUNT(gSavefileData); index++) {
-        gSavefileData[index] = (Settings *) ((u8 *) *gSavefileData + offset);
-        gSavefileData[index]->courseFlagsPtr = (s32 *) ((u8 *) gSavefileData[index] + sizeof(Settings));
-        gSavefileData[index]->balloonsPtr = (s16 *) ((u8 *) gSavefileData[index]->courseFlagsPtr + courseFlagsPtrSize);
+    for (index = 0, offset = 0; index < ARRAY_COUNT(gRaceSetup.saveFiles); index++) {
+        gRaceSetup.saveFiles[index] = (Settings *) ((u8 *) *gRaceSetup.saveFiles + offset);
+        gRaceSetup.saveFiles[index]->courseFlagsPtr = (s32 *) ((u8 *) gRaceSetup.saveFiles[index] + sizeof(Settings));
+        gRaceSetup.saveFiles[index]->balloonsPtr =
+            (s16 *) ((u8 *) gRaceSetup.saveFiles[index]->courseFlagsPtr + courseFlagsPtrSize);
         offset += saveFileSize;
     }
 
     gCheatsAssetData = (u16(*)[30]) get_misc_asset(ASSET_MISC_MAGIC_CODES);
-    gNumberOfCheats = (*gCheatsAssetData)[0];
+    gRaceSetup.numberOfCheats = (*gCheatsAssetData)[0];
 #if VERSION >= VERSION_79
-    gMenuText = mempool_alloc_safe(1280 * sizeof(char *), COLOUR_TAG_WHITE);
+    gMenuLoaded.text = mempool_alloc_safe(1280 * sizeof(char *), COLOUR_TAG_WHITE);
 #else
-    gMenuText = mempool_alloc_safe(1024 * sizeof(char *), COLOUR_TAG_WHITE);
+    gMenuLoaded.text = mempool_alloc_safe(1024 * sizeof(char *), COLOUR_TAG_WHITE);
 #endif
     load_menu_text(LANGUAGE_ENGLISH);
 
     // clang-format off
-    for (i = 0; i < ARRAY_COUNT(gMenuAssets); i++) { \
-        gMenuAssets[i] = NULL;
+    for (i = 0; i < ARRAY_COUNT(gMenuLoaded.assets); i++) { \
+        gMenuLoaded.assets[i] = NULL;
     }
     // clang-format on
 }
@@ -117,14 +118,14 @@ void menu_file_select_init(void) {
     menu_imagegroup_load(gFileSelectImageIndices);
     menu_panels_alloc(6);
     mark_read_all_save_files();
-    gOpacityDecayTimer = 1;
-    gSaveFileIndex = 0;
-    gMenuDelay = 0;
-    gMenuStage = 0;
-    gOptionBlinkTimer = 0;
+    gMenuFlow.opacityDecayTimer = 1;
+    gRaceSetup.saveFileIndex = 0;
+    gMenuInput.delay = 0;
+    gMenuFlow.stage = 0;
+    gMenuFlow.blinkTimer = 0;
     gFileCopy = FALSE;
     gFileErase = FALSE;
-    gFileNew = FALSE;
+    gRaceSetup.fileNew = FALSE;
     transition_begin(&sMenuTransitionFadeOut);
     load_font(ASSET_FONTS_BIGFONT);
     music_play(SEQUENCE_CHOOSE_YOUR_RACER);
@@ -142,25 +143,25 @@ void menu_file_select_init(void) {
  * Render a screen element associated with file select onscreen.
  */
 void fileselect_render_element(s32 imageID, s32 xOffset, s32 yOffset, s32 red, s32 green, s32 blue, s32 opacity) {
-    s32 tempRed = sMenuGuiColourR;
-    s32 tempGreen = sMenuGuiColourG;
-    s32 tempBlue = sMenuGuiColourB;
-    s32 tempOpacity = sMenuGuiOpacity;
+    s32 tempRed = gMenuFrame.guiColourR;
+    s32 tempGreen = gMenuFrame.guiColourG;
+    s32 tempBlue = gMenuFrame.guiColourB;
+    s32 tempOpacity = gMenuFrame.guiOpacity;
     // This first section is the shadow
-    sMenuGuiColourR = red;
-    sMenuGuiColourG = green;
-    sMenuGuiColourB = blue;
-    sMenuGuiOpacity = opacity;
-    gMenuImages[imageID].trans.x_position = xOffset - 159;
-    gMenuImages[imageID].trans.y_position = 119 - yOffset;
+    gMenuFrame.guiColourR = red;
+    gMenuFrame.guiColourG = green;
+    gMenuFrame.guiColourB = blue;
+    gMenuFrame.guiOpacity = opacity;
+    gMenuLoaded.images[imageID].trans.x_position = xOffset - 159;
+    gMenuLoaded.images[imageID].trans.y_position = 119 - yOffset;
     menu_element_render(imageID);
     // And this then draws it again, with colour
-    sMenuGuiColourR = tempRed;
-    sMenuGuiColourG = tempGreen;
-    sMenuGuiColourB = tempBlue;
-    sMenuGuiOpacity = tempOpacity;
-    gMenuImages[imageID].trans.x_position = xOffset - 161;
-    gMenuImages[imageID].trans.y_position = 121 - yOffset;
+    gMenuFrame.guiColourR = tempRed;
+    gMenuFrame.guiColourG = tempGreen;
+    gMenuFrame.guiColourB = tempBlue;
+    gMenuFrame.guiOpacity = tempOpacity;
+    gMenuLoaded.images[imageID].trans.x_position = xOffset - 161;
+    gMenuLoaded.images[imageID].trans.y_position = 121 - yOffset;
     menu_element_render(imageID);
 }
 
@@ -187,19 +188,20 @@ void fileselect_render(UNUSED s32 updateRate) {
     }
 
     menu_camera_centre();
-    mtx_ortho(&sMenuCurrDisplayList, &sMenuCurrHudMat);
+    mtx_ortho(&gMenuFrame.displayList, &gMenuFrame.hudMat);
     for (i = 0; i < NUMBER_OF_SAVE_FILES; i++) {
-        if (gSavefileInfo[i].isAdventure2 == gIsInAdventureTwo || gSavefileInfo[i].isStarted == FALSE) {
+        if (gSavefileInfo[i].isAdventure2 == gRaceSetup.isInAdventureTwo || gSavefileInfo[i].isStarted == FALSE) {
             colour = COLOUR_RGBA32(176, 224, 192, 255);
         } else {
             colour = COLOUR_RGBA32(106, 144, 115, 255);
         }
-        menu_panel_draw_textured(NULL, gFileSelectButtons[i].x - SCREEN_WIDTH_HALF, SCREEN_HEIGHT_HALF - gFileSelectButtons[i].y,
-                      gFileSelectButtons[i].width, gFileSelectButtons[i].height, gFileSelectButtons[i].borderWidth,
-                      gFileSelectButtons[i].borderHeight, colour, gMenuAssets[TEXTURE_SURFACE_BUTTON_WOOD]);
+        menu_panel_draw_textured(
+            NULL, gFileSelectButtons[i].x - SCREEN_WIDTH_HALF, SCREEN_HEIGHT_HALF - gFileSelectButtons[i].y,
+            gFileSelectButtons[i].width, gFileSelectButtons[i].height, gFileSelectButtons[i].borderWidth,
+            gFileSelectButtons[i].borderHeight, colour, gMenuLoaded.assets[TEXTURE_SURFACE_BUTTON_WOOD]);
     }
-    menu_panels_render(&sMenuCurrDisplayList);
-    if (gOpacityDecayTimer == 0) {
+    menu_panels_render(&gMenuFrame.displayList);
+    if (gMenuFlow.opacityDecayTimer == 0) {
         set_text_font(ASSET_FONTS_BIGFONT);
         set_text_background_colour(0, 0, 0, 0);
         for (i = 0; i < NUMBER_OF_SAVE_FILES; i++) {
@@ -212,29 +214,29 @@ void fileselect_render(UNUSED s32 updateRate) {
                 fileselect_render_element(var_s2, gFileSelectButtons[i].x + gFileSelectElementPos[2],
                                           gFileSelectButtons[i].y + gFileSelectElementPos[3], 0, 0, 0, 128);
                 cam_set_sprite_anim_mode(SPRITE_ANIM_FRAME_INDEX);
-                gMenuImages->spriteOffset = gSavefileInfo[i].balloonCount / 10;
+                gMenuLoaded.images->spriteOffset = gSavefileInfo[i].balloonCount / 10;
                 fileselect_render_element(0, gFileSelectButtons[i].x + gFileSelectElementPos[6] - 6,
                                           gFileSelectButtons[i].y + gFileSelectElementPos[7], 0, 0, 0, 128);
-                gMenuImages->spriteOffset = gSavefileInfo[i].balloonCount % 10;
+                gMenuLoaded.images->spriteOffset = gSavefileInfo[i].balloonCount % 10;
                 fileselect_render_element(0, gFileSelectButtons[i].x + gFileSelectElementPos[6] + 6,
                                           gFileSelectButtons[i].y + gFileSelectElementPos[7], 0, 0, 0, 128);
                 cam_set_sprite_anim_mode(SPRITE_ANIM_NORMALIZED);
-                sMenuGuiColourG = 64;
-                sMenuGuiColourB = 64;
+                gMenuFrame.guiColourG = 64;
+                gMenuFrame.guiColourB = 64;
                 fileselect_render_element(10, gFileSelectButtons[i].x + gFileSelectElementPos[8],
                                           gFileSelectButtons[i].y + gFileSelectElementPos[9], 0, 0, 0, 128);
-                sMenuGuiColourG = 255;
-                sMenuGuiColourB = 255;
+                gMenuFrame.guiColourG = 255;
+                gMenuFrame.guiColourB = 255;
                 sprite_opaque(TRUE);
             } else {
                 set_text_colour(255, 255, 255, 64, 255);
-                draw_text(&sMenuCurrDisplayList, gFileSelectButtons[i].x + gFileSelectElementPos[4],
-                          gFileSelectButtons[i].y + gFileSelectElementPos[5] + yPos, gMenuText[ASSET_MENU_TEXT_NEW],
-                          ALIGN_MIDDLE_CENTER);
+                draw_text(&gMenuFrame.displayList, gFileSelectButtons[i].x + gFileSelectElementPos[4],
+                          gFileSelectButtons[i].y + gFileSelectElementPos[5] + yPos,
+                          gMenuLoaded.text[ASSET_MENU_TEXT_NEW], ALIGN_MIDDLE_CENTER);
             }
         }
     }
-    glow = gOptionBlinkTimer * 8;
+    glow = gMenuFlow.blinkTimer * 8;
     if (glow > 255) {
         glow = 511 - glow;
     }
@@ -253,23 +255,24 @@ void fileselect_render(UNUSED s32 updateRate) {
             if (i == gSaveFileIndex3) {
                 var_s2 = TRUE;
             }
-        } else if (gMenuStage == 0 && i == gSaveFileIndex) {
+        } else if (gMenuFlow.stage == 0 && i == gRaceSetup.saveFileIndex) {
             var_s2 = TRUE;
         }
         if (var_s2) {
             colour = glow | ~0xFF;
-            menu_panel_draw_bordered(&sMenuCurrDisplayList, gFileSelectButtons[i].x, gFileSelectButtons[i].y + yPos,
-                          gFileSelectButtons[i].width, gFileSelectButtons[i].height, gFileSelectButtons[i].borderWidth,
-                          gFileSelectButtons[i].borderHeight, colour, colour, colour, colour);
+            menu_panel_draw_bordered(&gMenuFrame.displayList, gFileSelectButtons[i].x, gFileSelectButtons[i].y + yPos,
+                                     gFileSelectButtons[i].width, gFileSelectButtons[i].height,
+                                     gFileSelectButtons[i].borderWidth, gFileSelectButtons[i].borderHeight, colour,
+                                     colour, colour, colour);
         }
-        if (!gFileNew || i != gSaveFileIndex) {
+        if (!gRaceSetup.fileNew || i != gRaceSetup.saveFileIndex) {
             filename_trim(gSavefileInfo[i].name, trimmedFilename);
             if (!gSavefileInfo[i].isStarted) {
                 filename_trim(gFilenames[i], trimmedFilename);
             }
             //!@Bug: Doesn't index the array, so always true.
             if (trimmedFilename) {
-                draw_text(&sMenuCurrDisplayList, gFileSelectButtons[i].x + gFileSelectElementPos[0],
+                draw_text(&gMenuFrame.displayList, gFileSelectButtons[i].x + gFileSelectElementPos[0],
                           gFileSelectButtons[i].y + gFileSelectElementPos[1] + yPos, trimmedFilename,
                           ALIGN_MIDDLE_CENTER);
             }
@@ -279,53 +282,54 @@ void fileselect_render(UNUSED s32 updateRate) {
     set_text_colour(0, 0, 0, 255, 128);
 #if VERSION >= VERSION_79
     // Did the enum for ASSET_MENU_TEXT_GAMESELECT change?
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF + 1, 19, gMenuText[ASSET_MENU_TEXT_GAMESELECT + 112],
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 1, 19, gMenuLoaded.text[ASSET_MENU_TEXT_GAMESELECT + 112],
               ALIGN_TOP_CENTER);
 #else
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF + 1, 19, gMenuText[ASSET_MENU_TEXT_GAMESELECT],
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 1, 19, gMenuLoaded.text[ASSET_MENU_TEXT_GAMESELECT],
               ALIGN_TOP_CENTER);
 #endif
     set_text_colour(255, 255, 255, 0, 255);
 #if VERSION >= VERSION_79
     // Did the enum for ASSET_MENU_TEXT_GAMESELECT change?
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, 16, gMenuText[ASSET_MENU_TEXT_GAMESELECT + 112],
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, 16, gMenuLoaded.text[ASSET_MENU_TEXT_GAMESELECT + 112],
               ALIGN_TOP_CENTER);
 #else
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, 16, gMenuText[ASSET_MENU_TEXT_GAMESELECT], ALIGN_TOP_CENTER);
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, 16, gMenuLoaded.text[ASSET_MENU_TEXT_GAMESELECT],
+              ALIGN_TOP_CENTER);
 #endif
     set_text_colour(255, 255, 255, 0, 255);
     yPos += 187;
     if (gFileCopy) {
         if (gFileConfirm == FALSE) {
             set_text_font(ASSET_FONTS_FUNFONT);
-            draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, yPos, gMenuText[ASSET_MENU_TEXT_GAMETOCOPY],
+            draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, yPos, gMenuLoaded.text[ASSET_MENU_TEXT_GAMETOCOPY],
                       ALIGN_MIDDLE_CENTER);
         } else if (gFileConfirm == 1) {
             set_text_font(ASSET_FONTS_FUNFONT);
-            draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, yPos, gMenuText[ASSET_MENU_TEXT_GAMETOCOPYTO],
+            draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, yPos, gMenuLoaded.text[ASSET_MENU_TEXT_GAMETOCOPYTO],
                       ALIGN_MIDDLE_CENTER);
         } else {
-            draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, yPos, "OK?", ALIGN_MIDDLE_CENTER);
+            draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, yPos, "OK?", ALIGN_MIDDLE_CENTER);
         }
     } else if (gFileErase) {
         if (gFileConfirm == FALSE) {
             set_text_font(ASSET_FONTS_FUNFONT);
-            draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, yPos, gMenuText[ASSET_MENU_TEXT_GAMETOERASE],
+            draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, yPos, gMenuLoaded.text[ASSET_MENU_TEXT_GAMETOERASE],
                       ALIGN_MIDDLE_CENTER);
         } else {
-            draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, yPos, "OK?", ALIGN_MIDDLE_CENTER);
+            draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, yPos, "OK?", ALIGN_MIDDLE_CENTER);
         }
-    } else if (gFileNew == FALSE) {
-        if (gMenuStage == 1) {
+    } else if (gRaceSetup.fileNew == FALSE) {
+        if (gMenuFlow.stage == 1) {
             set_text_colour(255, 255, 255, glow, 255);
         }
-        draw_text(&sMenuCurrDisplayList, 90, yPos, gMenuText[ASSET_MENU_TEXT_COPY], ALIGN_MIDDLE_CENTER);
-        if (gMenuStage == 2) {
+        draw_text(&gMenuFrame.displayList, 90, yPos, gMenuLoaded.text[ASSET_MENU_TEXT_COPY], ALIGN_MIDDLE_CENTER);
+        if (gMenuFlow.stage == 2) {
             set_text_colour(255, 255, 255, glow, 255);
         } else {
             set_text_colour(255, 255, 255, 0, 255);
         }
-        draw_text(&sMenuCurrDisplayList, 230, yPos, gMenuText[ASSET_MENU_TEXT_ERASE], ALIGN_MIDDLE_CENTER);
+        draw_text(&gMenuFrame.displayList, 230, yPos, gMenuLoaded.text[ASSET_MENU_TEXT_ERASE], ALIGN_MIDDLE_CENTER);
     }
 }
 
@@ -341,19 +345,19 @@ s32 fileselect_input_root(UNUSED s32 updateRate) {
     u32 buttonsPressedPlayer2;
 
     buttonsPressed = input_pressed(PLAYER_ONE);
-    xAxisDirection = gControllersXAxisDirection[PLAYER_ONE];
-    yAxisDirection = gControllersYAxisDirection[PLAYER_ONE];
-    if (gNumberOfActivePlayers == 2) {
+    xAxisDirection = gMenuInput.xAxisDirection[PLAYER_ONE];
+    yAxisDirection = gMenuInput.yAxisDirection[PLAYER_ONE];
+    if (gRaceSetup.numberOfActivePlayers == 2) {
         buttonsPressedPlayer2 = input_pressed(PLAYER_TWO);
         buttonsPressed |= buttonsPressedPlayer2;
-        xAxisDirection += gControllersXAxisDirection[PLAYER_TWO];
-        yAxisDirection += gControllersYAxisDirection[PLAYER_TWO];
+        xAxisDirection += gMenuInput.xAxisDirection[PLAYER_TWO];
+        yAxisDirection += gMenuInput.yAxisDirection[PLAYER_TWO];
     }
     if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
-        switch (gMenuStage) {
+        switch (gMenuFlow.stage) {
             case 0:
-                if (gSavefileInfo[gSaveFileIndex].isStarted) {
-                    if (gIsInAdventureTwo != gSavefileInfo[gSaveFileIndex].isAdventure2) {
+                if (gSavefileInfo[gRaceSetup.saveFileIndex].isStarted) {
+                    if (gRaceSetup.isInAdventureTwo != gSavefileInfo[gRaceSetup.saveFileIndex].isAdventure2) {
                         sound_play(SOUND_HORN_DRUMSTICK, NULL);
                         break;
                     }
@@ -362,13 +366,13 @@ s32 fileselect_input_root(UNUSED s32 updateRate) {
                 return 1;
             case 1:
                 sound_play(SOUND_SELECT2, NULL);
-                gSaveFileIndex3 = gSaveFileIndex;
+                gSaveFileIndex3 = gRaceSetup.saveFileIndex;
                 gFileCopy = TRUE;
                 gFileConfirm = FALSE;
                 return 0;
             case 2:
                 sound_play(SOUND_SELECT2, NULL);
-                gSaveFileIndex3 = gSaveFileIndex;
+                gSaveFileIndex3 = gRaceSetup.saveFileIndex;
                 gFileErase = TRUE;
                 gFileConfirm = FALSE;
                 return 0;
@@ -377,45 +381,45 @@ s32 fileselect_input_root(UNUSED s32 updateRate) {
         return -1;
     }
 
-    prevOption = (gMenuStage << 8) | gSaveFileIndex;
-    if (gMenuStage == 0) {
+    prevOption = (gMenuFlow.stage << 8) | gRaceSetup.saveFileIndex;
+    if (gMenuFlow.stage == 0) {
         // Left
-        if (xAxisDirection < 0 && gSaveFileIndex > 0) {
-            gSaveFileIndex--;
+        if (xAxisDirection < 0 && gRaceSetup.saveFileIndex > 0) {
+            gRaceSetup.saveFileIndex--;
         }
         // Right
-        if (xAxisDirection > 0 && (gSaveFileIndex < 2)) {
-            gSaveFileIndex++;
+        if (xAxisDirection > 0 && (gRaceSetup.saveFileIndex < 2)) {
+            gRaceSetup.saveFileIndex++;
         }
         // Down
         if (yAxisDirection < 0) {
-            if (gSaveFileIndex >= 2) {
-                gMenuStage = 2;
+            if (gRaceSetup.saveFileIndex >= 2) {
+                gMenuFlow.stage = 2;
             } else {
-                gMenuStage = 1;
+                gMenuFlow.stage = 1;
             }
         }
     } else {
         // Left
-        if (xAxisDirection < 0 && gMenuStage == 2) {
-            gMenuStage = 1;
+        if (xAxisDirection < 0 && gMenuFlow.stage == 2) {
+            gMenuFlow.stage = 1;
         }
         // Right
-        if (xAxisDirection > 0 && gMenuStage == 1) {
-            gMenuStage = 2;
+        if (xAxisDirection > 0 && gMenuFlow.stage == 1) {
+            gMenuFlow.stage = 2;
         }
         // Up
         if (yAxisDirection > 0) {
-            if (gMenuStage == 1 && gSaveFileIndex >= 2) {
-                gSaveFileIndex = 0;
+            if (gMenuFlow.stage == 1 && gRaceSetup.saveFileIndex >= 2) {
+                gRaceSetup.saveFileIndex = 0;
             }
-            if (gMenuStage == 2 && gSaveFileIndex <= 0) {
-                gSaveFileIndex = 2;
+            if (gMenuFlow.stage == 2 && gRaceSetup.saveFileIndex <= 0) {
+                gRaceSetup.saveFileIndex = 2;
             }
-            gMenuStage = 0;
+            gMenuFlow.stage = 0;
         }
     }
-    if (prevOption != ((gMenuStage << 8) | gSaveFileIndex)) {
+    if (prevOption != ((gMenuFlow.stage << 8) | gRaceSetup.saveFileIndex)) {
         sound_play(SOUND_MENU_PICK2, NULL);
     }
     return 0;
@@ -435,11 +439,11 @@ void fileselect_input_copy(UNUSED s32 updateRate) {
 
     settings = get_settings();
     buttonsPressed = input_pressed(PLAYER_ONE);
-    xAxisDirection = gControllersXAxisDirection[PLAYER_ONE];
-    if (gNumberOfActivePlayers == 2) {
+    xAxisDirection = gMenuInput.xAxisDirection[PLAYER_ONE];
+    if (gRaceSetup.numberOfActivePlayers == 2) {
         buttonsPressedPlayerTwo = input_pressed(PLAYER_TWO);
         buttonsPressed |= buttonsPressedPlayerTwo;
-        xAxisDirection += gControllersXAxisDirection[PLAYER_TWO];
+        xAxisDirection += gMenuInput.xAxisDirection[PLAYER_TWO];
     }
     if (gFileConfirm == 0) {
         if (buttonsPressed & (B_BUTTON)) {
@@ -508,8 +512,8 @@ void fileselect_input_copy(UNUSED s32 updateRate) {
                 gSavefileInfo[gSaveFileIndex2].name[i] = gSavefileInfo[gSaveFileIndex3].name[i];
             }
             gSavefileInfo[gSaveFileIndex2].name[i] = '\0';
-            gSaveFileIndex = gSaveFileIndex2;
-            gMenuStage = 0;
+            gRaceSetup.saveFileIndex = gSaveFileIndex2;
+            gMenuFlow.stage = 0;
             gFileCopy = FALSE;
         } else if (buttonsPressed & B_BUTTON) {
             sound_play(SOUND_MENU_BACK3, NULL);
@@ -528,11 +532,11 @@ void fileselect_input_erase(UNUSED s32 updateRate) {
     s32 prevOption;
 
     buttonsPressed = input_pressed(PLAYER_ONE);
-    controllerXAxisDirection = gControllersXAxisDirection[0];
+    controllerXAxisDirection = gMenuInput.xAxisDirection[0];
 
-    if (gNumberOfActivePlayers == 2) {
+    if (gRaceSetup.numberOfActivePlayers == 2) {
         buttonsPressed |= input_pressed(PLAYER_TWO);
-        controllerXAxisDirection += gControllersXAxisDirection[1];
+        controllerXAxisDirection += gMenuInput.xAxisDirection[1];
     }
 
     if (gFileConfirm == 0) {
@@ -580,8 +584,8 @@ void fileselect_input_erase(UNUSED s32 updateRate) {
             gSavefileInfo[gSaveFileIndex3].name[1] = 'K';
             gSavefileInfo[gSaveFileIndex3].name[2] = 'R';
             gSavefileInfo[gSaveFileIndex3].name[3] = '\0';
-            gSaveFileIndex = gSaveFileIndex3;
-            gMenuStage = 0;
+            gRaceSetup.saveFileIndex = gSaveFileIndex3;
+            gMenuFlow.stage = 0;
             gFileErase = FALSE;
         } else if (buttonsPressed & B_BUTTON) {
             sound_play(SOUND_MENU_BACK3, NULL);
@@ -608,13 +612,13 @@ s32 menu_file_select_loop(s32 updateRate) {
 
     settings = get_settings();
     charselect_music_channels(updateRate);
-    if (gOpacityDecayTimer) {
-        gOpacityDecayTimer++;
+    if (gMenuFlow.opacityDecayTimer) {
+        gMenuFlow.opacityDecayTimer++;
 
-        if (gOpacityDecayTimer >= 3) {
+        if (gMenuFlow.opacityDecayTimer >= 3) {
             for (i = 0; i < NUMBER_OF_SAVE_FILES; i++) {
                 gSavefileInfo[i].isAdventure2 = 0;
-                if (gSavefileData[i]->newGame) {
+                if (gRaceSetup.saveFiles[i]->newGame) {
                     gSavefileInfo[i].isStarted = 0;
                     gSavefileInfo[i].balloonCount = 0;
                     gSavefileInfo[i].name[0] = 'D';
@@ -622,117 +626,119 @@ s32 menu_file_select_loop(s32 updateRate) {
                     gSavefileInfo[i].name[2] = 'R';
                     gSavefileInfo[i].name[3] = '\0';
                 } else {
-                    if (gSavefileData[i]->cutsceneFlags & CUTSCENE_ADVENTURE_TWO) {
+                    if (gRaceSetup.saveFiles[i]->cutsceneFlags & CUTSCENE_ADVENTURE_TWO) {
                         gSavefileInfo[i].isAdventure2 = TRUE;
                     }
                     gSavefileInfo[i].isStarted = TRUE;
-                    gSavefileInfo[i].balloonCount = *gSavefileData[i]->balloonsPtr;
-                    filename_decompress(gSavefileData[i]->filename, gSavefileInfo[i].name, MAX_INITIALS_LENGTH);
+                    gSavefileInfo[i].balloonCount = *gRaceSetup.saveFiles[i]->balloonsPtr;
+                    filename_decompress(gRaceSetup.saveFiles[i]->filename, gSavefileInfo[i].name, MAX_INITIALS_LENGTH);
                 }
             }
-            gOpacityDecayTimer = 0;
+            gMenuFlow.opacityDecayTimer = 0;
         }
     }
-    gOptionBlinkTimer = (gOptionBlinkTimer + updateRate) & 0x3f;
-    if (gMenuDelay != 0) {
-        if (gMenuDelay > 0) {
-            gMenuDelay += updateRate;
+    gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3f;
+    if (gMenuInput.delay != 0) {
+        if (gMenuInput.delay > 0) {
+            gMenuInput.delay += updateRate;
         } else {
-            gMenuDelay -= updateRate;
+            gMenuInput.delay -= updateRate;
         }
     }
-    if (gMenuDelay >= -20 && gMenuDelay <= 20) {
+    if (gMenuInput.delay >= -20 && gMenuInput.delay <= 20) {
         fileselect_render(updateRate);
     }
-    if (gMenuDelay == 0 && gOpacityDecayTimer == 0) {
+    if (gMenuInput.delay == 0 && gMenuFlow.opacityDecayTimer == 0) {
         if (gFileCopy) {
             fileselect_input_copy(updateRate);
         } else if (gFileErase) {
             fileselect_input_erase(updateRate);
-        } else if (gFileNew) {
+        } else if (gRaceSetup.fileNew) {
             buttonsPressed = input_pressed(PLAYER_ONE);
             if (buttonsPressed & B_BUTTON && gNameEntryLength == 0) {
                 menu_unload_bigfont();
-                gFileNew = FALSE;
+                gRaceSetup.fileNew = FALSE;
                 gSavefileInfo[i].name[0] = 'D';
                 gSavefileInfo[i].name[1] = 'K';
                 gSavefileInfo[i].name[2] = 'R';
                 gSavefileInfo[i].name[3] = '\0';
             } else if (filename_enter(updateRate)) {
                 menu_unload_bigfont();
-                gFileNew = FALSE;
-                gSavefileInfo[gSaveFileIndex].isAdventure2 = 0;
-                if (gIsInAdventureTwo) {
-                    gSavefileInfo[gSaveFileIndex].isAdventure2 = 1;
+                gRaceSetup.fileNew = FALSE;
+                gSavefileInfo[gRaceSetup.saveFileIndex].isAdventure2 = 0;
+                if (gRaceSetup.isInAdventureTwo) {
+                    gSavefileInfo[gRaceSetup.saveFileIndex].isAdventure2 = 1;
                 }
-                gSavefileInfo[gSaveFileIndex].isStarted = 1;
-                gSavefileInfo[gSaveFileIndex].balloonCount = 0;
-                settings->filename = filename_compress(gSavefileInfo[gSaveFileIndex].name, 3);
-                mark_read_save_file(gSaveFileIndex);
+                gSavefileInfo[gRaceSetup.saveFileIndex].isStarted = 1;
+                gSavefileInfo[gRaceSetup.saveFileIndex].balloonCount = 0;
+                settings->filename = filename_compress(gSavefileInfo[gRaceSetup.saveFileIndex].name, 3);
+                mark_read_save_file(gRaceSetup.saveFileIndex);
                 music_fade(-128);
                 transition_begin(&sMenuTransitionFadeIn);
-                gMenuDelay = 1;
+                gMenuInput.delay = 1;
             }
         } else {
             currentMenuDelay = fileselect_input_root(updateRate);
             if (currentMenuDelay != 0) {
                 if (currentMenuDelay > 0) {
-                    if (gSavefileInfo[gSaveFileIndex].isStarted != 0) {
+                    if (gSavefileInfo[gRaceSetup.saveFileIndex].isStarted != 0) {
                         sound_play(SOUND_SELECT2, NULL);
-                        mark_read_save_file(gSaveFileIndex);
+                        mark_read_save_file(gRaceSetup.saveFileIndex);
                         music_fade(-128);
                     } else {
-                        gFileNew = TRUE;
+                        gRaceSetup.fileNew = TRUE;
                         gIndexOfCurInputCharacter = 0;
                         i = 0;
                         if (osTvType == OS_TV_TYPE_PAL) {
                             i = 12;
                         }
-                        filename_init(i + 187, gFileSelectButtons[gSaveFileIndex].x + gFileSelectElementPos[0],
-                                      gFileSelectButtons[gSaveFileIndex].y + gFileSelectElementPos[1] + i, 0,
-                                      &gIndexOfCurInputCharacter, gSavefileInfo[gSaveFileIndex].name, 3);
+                        filename_init(i + 187,
+                                      gFileSelectButtons[gRaceSetup.saveFileIndex].x + gFileSelectElementPos[0],
+                                      gFileSelectButtons[gRaceSetup.saveFileIndex].y + gFileSelectElementPos[1] + i, 0,
+                                      &gIndexOfCurInputCharacter, gSavefileInfo[gRaceSetup.saveFileIndex].name, 3);
                         currentMenuDelay = 0;
                     }
                 }
                 if (currentMenuDelay != 0) {
                     transition_begin(&sMenuTransitionFadeIn);
-                    gMenuDelay = currentMenuDelay;
+                    gMenuInput.delay = currentMenuDelay;
                 }
             }
         }
     }
-    if (gMenuDelay > 35) {
-        if (gActiveMagicCodes & CHEAT_FREE_BALLOON) {
-            gActiveMagicCodes &= ~CHEAT_FREE_BALLOON;
-            gUnlockedMagicCodes &= ~CHEAT_FREE_BALLOON;
+    if (gMenuInput.delay > 35) {
+        if (gRaceSetup.activeMagicCodes & CHEAT_FREE_BALLOON) {
+            gRaceSetup.activeMagicCodes &= ~CHEAT_FREE_BALLOON;
+            gRaceSetup.unlockedMagicCodes &= ~CHEAT_FREE_BALLOON;
             (*settings->balloonsPtr)++;
         }
-        gIsInTwoPlayerAdventure = (gNumberOfActivePlayers == 2);
-        if (gIsInTwoPlayerAdventure) {
+        gRaceSetup.isInTwoPlayerAdventure = (gRaceSetup.numberOfActivePlayers == 2);
+        if (gRaceSetup.isInTwoPlayerAdventure) {
             reset_lead_player_index();
         }
-        gNumberOfActivePlayers = 1;
-        sFilenameEntryPending = TRUE;
+        gRaceSetup.numberOfActivePlayers = 1;
+        gResults.filenameEntryPending = TRUE;
         fileselect_free();
         music_change_on();
         init_racer_headers();
-        gTrophyRaceWorldId = 0;
+        gRaceSetup.trophyRaceWorldId = 0;
         if (settings->newGame) {
-            if (gIsInAdventureTwo) {
+            if (gRaceSetup.isInAdventureTwo) {
                 settings->cutsceneFlags |= CUTSCENE_ADVENTURE_TWO;
             }
-            cinematic_start((s8 *) get_misc_asset(ASSET_MISC_CINEMATIC_RACE), 0, gNumberOfActivePlayers, 0, 0, NULL);
+            cinematic_start((s8 *) get_misc_asset(ASSET_MISC_CINEMATIC_RACE), 0, gRaceSetup.numberOfActivePlayers, 0, 0,
+                            NULL);
             menu_init(MENU_NEWGAME_CINEMATIC);
             return MENU_RESULT_CONTINUE;
         }
         if (settings->cutsceneFlags & CUTSCENE_ADVENTURE_TWO) {
-            gIsInAdventureTwo = TRUE;
+            gRaceSetup.isInAdventureTwo = TRUE;
         } else {
-            gIsInAdventureTwo = FALSE;
+            gRaceSetup.isInAdventureTwo = FALSE;
         }
-        return gNumberOfActivePlayers;
+        return gRaceSetup.numberOfActivePlayers;
     }
-    if (gMenuDelay < -35) {
+    if (gMenuInput.delay < -35) {
         fileselect_free();
         menu_init(MENU_GAME_SELECT);
         return MENU_RESULT_CONTINUE;
@@ -894,13 +900,13 @@ void filename_render(UNUSED s32 updateRate) {
 
     // Draw "Enter Initials" shadow
     set_text_colour(0, 0, 0, 255, 128);
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF + 2, gEnterInitalsY - 22,
-              gMenuText[ASSET_MENU_TEXT_ENTERINITIALS], ALIGN_MIDDLE_CENTER);
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 2, gEnterInitalsY - 22,
+              gMenuLoaded.text[ASSET_MENU_TEXT_ENTERINITIALS], ALIGN_MIDDLE_CENTER);
 
     // Draw "Enter Initials" text
     set_text_colour(255, 128, 255, 96, 255);
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, gEnterInitalsY - 24, gMenuText[ASSET_MENU_TEXT_ENTERINITIALS],
-              ALIGN_MIDDLE_CENTER);
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, gEnterInitalsY - 24,
+              gMenuLoaded.text[ASSET_MENU_TEXT_ENTERINITIALS], ALIGN_MIDDLE_CENTER);
 
     y = gEnterInitalsY;
 
@@ -933,15 +939,15 @@ void filename_render(UNUSED s32 updateRate) {
             if (charIndex < 28) {
                 set_text_font(ASSET_FONTS_BIGFONT);
                 gCurFilenameCharBeingDrawn = gFileNameValidChars[charIndex];
-                draw_text(&sMenuCurrDisplayList, x, y, &gCurFilenameCharBeingDrawn, ALIGN_MIDDLE_CENTER);
+                draw_text(&gMenuFrame.displayList, x, y, &gCurFilenameCharBeingDrawn, ALIGN_MIDDLE_CENTER);
             } else {
                 set_text_font(ASSET_FONTS_FUNFONT);
                 if (charIndex == 28) {
-                    draw_text(&sMenuCurrDisplayList, x, y, "SP", ALIGN_MIDDLE_CENTER);
+                    draw_text(&gMenuFrame.displayList, x, y, "SP", ALIGN_MIDDLE_CENTER);
                 } else if (charIndex == 29) {
-                    draw_text(&sMenuCurrDisplayList, x, y, "DEL", ALIGN_MIDDLE_CENTER);
+                    draw_text(&gMenuFrame.displayList, x, y, "DEL", ALIGN_MIDDLE_CENTER);
                 } else {
-                    draw_text(&sMenuCurrDisplayList, x, y, "OK", ALIGN_MIDDLE_CENTER);
+                    draw_text(&gMenuFrame.displayList, x, y, "OK", ALIGN_MIDDLE_CENTER);
                 }
             }
             x += xIncrement;
@@ -955,9 +961,9 @@ void filename_render(UNUSED s32 updateRate) {
     if (trimmedTextPtr != NULL) {
         set_text_font(gFilenameFont);
         set_text_colour(0, 0, 0, 255, 128);
-        draw_text(&sMenuCurrDisplayList, gFilenameX + 1, gFilenameY + 3, trimmedTextBuffer, ALIGN_MIDDLE_CENTER);
+        draw_text(&gMenuFrame.displayList, gFilenameX + 1, gFilenameY + 3, trimmedTextBuffer, ALIGN_MIDDLE_CENTER);
         set_text_colour(255, 255, 255, 0, 255);
-        draw_text(&sMenuCurrDisplayList, gFilenameX, gFilenameY, trimmedTextBuffer, ALIGN_MIDDLE_CENTER);
+        draw_text(&gMenuFrame.displayList, gFilenameX, gFilenameY, trimmedTextBuffer, ALIGN_MIDDLE_CENTER);
     }
 }
 
@@ -1102,15 +1108,15 @@ s32 filename_enter(s32 updateRate) {
 }
 
 /**
- * Returns the value from gSaveFileIndex
+ * Returns the value from gRaceSetup.saveFileIndex
  */
 s32 get_save_file_index(void) {
-    return gSaveFileIndex;
+    return gRaceSetup.saveFileIndex;
 }
 
 /**
  * Return the start of the save file data.
  */
 Settings **get_all_save_files_ptr(void) {
-    return (Settings **) gSavefileData;
+    return (Settings **) gRaceSetup.saveFiles;
 }

@@ -269,12 +269,12 @@ void menu_credits_init(void) {
     Settings *settings;
 
     settings = get_settings();
-    gMenuDelay = 0;
+    gMenuInput.delay = 0;
     gCreditsControlDataIndex = 0;
     sCreditsPage = 0;
-    gMenuStage = 0;
-    gOpacityDecayTimer = 40;
-    gMenuCurIndex = 0;
+    gMenuFlow.stage = 0;
+    gMenuFlow.opacityDecayTimer = 40;
+    gMenuFlow.curIndex = 0;
     sCreditsSkipped = 0;
     sCreditsFinished = 0;
     bgdraw_fillcolour(0, 0, 0);
@@ -293,12 +293,12 @@ void menu_credits_init(void) {
     load_font(ASSET_FONTS_BIGFONT);
     music_voicelimit_set(24);
     gCreditsControlData[130] = CREDITS_END; // DONT show developer times
-    if (gViewingCreditsFromCheat) {
+    if (gRaceSetup.viewingCreditsFromCheat) {
         music_play(SEQUENCE_DARKMOON_CAVERNS);
         gCreditsArray[84] = gCreditsLastMessageArray[2]; // "THE END"
         gCreditsArray[85] = gCreditsLastMessageArray[3]; // "NO CHEAT"
         gCreditsArray[86] = gCreditsLastMessageArray[4]; // "THIS TIME."
-        gViewingCreditsFromCheat = FALSE;
+        gRaceSetup.viewingCreditsFromCheat = FALSE;
     } else {
         if (settings->bosses & 0x20) { // WIZPIG 2
             music_play(SEQUENCE_CRESCENT_ISLAND);
@@ -350,14 +350,14 @@ void credits_fade(s32 x1, s32 y1, s32 x2, s32 y2, s32 a) {
         a = 0;
     }
 
-    gSPDisplayList(sMenuCurrDisplayList++, dCreditsFade);
-    gDPSetPrimColor(sMenuCurrDisplayList++, 0, 0, 0, 0, 0, a);
-    gDPSetCombineMode(sMenuCurrDisplayList++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
-    gDPFillRectangle(sMenuCurrDisplayList++, x1, y1, x1 + x2, y1 + y2);
-    gDPPipeSync(sMenuCurrDisplayList++);
-    gDPSetPrimColor(sMenuCurrDisplayList++, 0, 0, 255, 255, 255, 255);
+    gSPDisplayList(gMenuFrame.displayList++, dCreditsFade);
+    gDPSetPrimColor(gMenuFrame.displayList++, 0, 0, 0, 0, 0, a);
+    gDPSetCombineMode(gMenuFrame.displayList++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
+    gDPFillRectangle(gMenuFrame.displayList++, x1, y1, x1 + x2, y1 + y2);
+    gDPPipeSync(gMenuFrame.displayList++);
+    gDPSetPrimColor(gMenuFrame.displayList++, 0, 0, 255, 255, 255, 255);
 
-    rendermode_reset(&sMenuCurrDisplayList);
+    rendermode_reset(&gMenuFrame.displayList);
 }
 
 /**
@@ -388,38 +388,38 @@ s32 menu_credits_loop(s32 updateRate) {
     mainTrackIds = (s8 *) get_misc_asset(ASSET_MISC_MAIN_TRACKS_IDS);
     creditsBackgroundLevelData = (CreditsBackgroundLevelData *) get_misc_asset(ASSET_MISC_69);
     bgload_tick();
-    if (gMenuDelay == 0) {
+    if (gMenuInput.delay == 0) {
         disable_new_screen_transitions();
         transition_begin(NULL);
         enable_new_screen_transitions();
     }
 
     if (osTvType == OS_TV_TYPE_PAL) {
-        credits_fade(0, 38, SCREEN_WIDTH, 186, gOpacityDecayTimer * 8);
+        credits_fade(0, 38, SCREEN_WIDTH, 186, gMenuFlow.opacityDecayTimer * 8);
     } else {
-        credits_fade(0, 40, SCREEN_WIDTH, 156, gOpacityDecayTimer * 8);
+        credits_fade(0, 40, SCREEN_WIDTH, 156, gMenuFlow.opacityDecayTimer * 8);
     }
 
-    if (gOpacityDecayTimer > 0) {
-        gMenuCurIndex += updateRate << 8;
-        if (gOpacityDecayTimer >= 40) {
+    if (gMenuFlow.opacityDecayTimer > 0) {
+        gMenuFlow.curIndex += updateRate << 8;
+        if (gMenuFlow.opacityDecayTimer >= 40) {
             var_s4 = 0;
         } else {
-            var_s4 = 40 - gOpacityDecayTimer;
+            var_s4 = 40 - gMenuFlow.opacityDecayTimer;
         }
         var_s4 = (var_s4 * 5) + 72;
 
-        var_s5 = gMenuCurIndex;
+        var_s5 = gMenuFlow.curIndex;
         halvedFbSize = fb_size();
         halvedFbSize >>= 17;
         halvedFbSize &= 0x7FFF;
         textPos = halvedFbSize;
         for (nextIndex = 0; nextIndex < ARRAY_COUNT(gRacerPortraits); nextIndex++) {
-            texrect_draw(&sMenuCurrDisplayList, gRacerPortraits[nextIndex], ((sins_s16(var_s5) * var_s4) >> 16) + 140,
+            texrect_draw(&gMenuFrame.displayList, gRacerPortraits[nextIndex], ((sins_s16(var_s5) * var_s4) >> 16) + 140,
                          (((coss_s16(var_s5) * var_s4) >> 16) + textPos) - 20, 255, 255, 255, 255);
             var_s5 += 0x1999;
         }
-        rendermode_reset(&sMenuCurrDisplayList);
+        rendermode_reset(&gMenuFrame.displayList);
     }
 
     if (sCreditsFinished != FALSE) {
@@ -437,7 +437,7 @@ s32 menu_credits_loop(s32 updateRate) {
                 case CREDITS_END_FLAG:
                     gCreditsControlDataIndex = 0;
                     isCreditsEnd = TRUE;
-                    gIgnorePlayerInputTime = 0;
+                    gMenuInput.ignoreInputTime = 0;
                     break;
 
                 case CREDITS_BEST_RACE_TIMES_FLAG: /* fallthrough */
@@ -581,56 +581,56 @@ s32 menu_credits_loop(s32 updateRate) {
 
     // collect all pressed buttons of all players
     buttonsPressedAllPlayers = 0;
-    if (gIgnorePlayerInputTime == 0 && gMenuDelay == 0) {
+    if (gMenuInput.ignoreInputTime == 0 && gMenuInput.delay == 0) {
         for (nextIndex = 0; nextIndex < MAXCONTROLLERS; nextIndex++) {
             buttonsPressedAllPlayers |= input_pressed(nextIndex);
         }
     }
 
     // handles the animations (if any) between levels in the credits
-    switch (gMenuStage) {
+    switch (gMenuFlow.stage) {
         case 0:
             tempBackgroundLevelData = &creditsBackgroundLevelData[sCreditsPage];
             bgload_start(tempBackgroundLevelData->levelId, tempBackgroundLevelData->cutsceneId);
-            gMenuStage = 1;
-            gOpacityDecayTimer = 40;
+            gMenuFlow.stage = 1;
+            gMenuFlow.opacityDecayTimer = 40;
             break;
         case 1:
             if (bgload_active() == FALSE) {
-                gMenuStage = 2;
-                gOptionBlinkTimer = 40;
+                gMenuFlow.stage = 2;
+                gMenuFlow.blinkTimer = 40;
                 sCreditsSkipped = FALSE;
             }
             break;
         case 2:
-            gOptionBlinkTimer -= updateRate;
-            gOpacityDecayTimer -= updateRate;
-            if (gOptionBlinkTimer <= 0) {
-                gOptionBlinkTimer += 600;
-                gMenuStage = 3;
+            gMenuFlow.blinkTimer -= updateRate;
+            gMenuFlow.opacityDecayTimer -= updateRate;
+            if (gMenuFlow.blinkTimer <= 0) {
+                gMenuFlow.blinkTimer += 600;
+                gMenuFlow.stage = 3;
             }
             break;
         case 3:
-            gOptionBlinkTimer -= updateRate;
-            if (gOpacityDecayTimer > 0) {
-                gOpacityDecayTimer -= updateRate;
+            gMenuFlow.blinkTimer -= updateRate;
+            if (gMenuFlow.opacityDecayTimer > 0) {
+                gMenuFlow.opacityDecayTimer -= updateRate;
             } else {
-                gOpacityDecayTimer = 0;
+                gMenuFlow.opacityDecayTimer = 0;
             }
-            if (gOptionBlinkTimer <= 0) {
-                gOptionBlinkTimer = 40;
-                gMenuStage = 4;
+            if (gMenuFlow.blinkTimer <= 0) {
+                gMenuFlow.blinkTimer = 40;
+                gMenuFlow.stage = 4;
             }
             break;
         case 4:
-            gOptionBlinkTimer -= updateRate;
-            gOpacityDecayTimer += updateRate;
-            if (gOptionBlinkTimer <= 0) {
-                gMenuStage = 0;
+            gMenuFlow.blinkTimer -= updateRate;
+            gMenuFlow.opacityDecayTimer += updateRate;
+            if (gMenuFlow.blinkTimer <= 0) {
+                gMenuFlow.stage = 0;
                 sCreditsPage++;
                 if ((sCreditsPage + creditsBackgroundLevelData)->levelId < 0) {
                     sCreditsPage = 0;
-                    gIgnorePlayerInputTime = 0;
+                    gMenuInput.ignoreInputTime = 0;
                 }
             }
             break;
@@ -639,15 +639,15 @@ s32 menu_credits_loop(s32 updateRate) {
     // check if the credits should end
     if ((buttonsPressedAllPlayers & (A_BUTTON | START_BUTTON)) || (buttonsPressedAllPlayers & B_BUTTON) ||
         isCreditsEnd) {
-        gMenuDelay = 1;
+        gMenuInput.delay = 1;
         disable_new_screen_transitions();
         transition_begin(&sMenuTransitionFadeIn);
         enable_new_screen_transitions();
         music_fade(-128);
     }
-    if (gMenuDelay > 0) {
-        gMenuDelay += updateRate;
-        if (bgload_active() == FALSE && gMenuDelay > 30) {
+    if (gMenuInput.delay > 0) {
+        gMenuInput.delay += updateRate;
+        if (bgload_active() == FALSE && gMenuInput.delay > 30) {
             music_change_on();
             credits_free();
             load_level_for_menu(ASSET_LEVEL_FRONTEND, ZERO_PLAYERS, CUTSCENE_NONE);
