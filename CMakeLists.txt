@@ -53,6 +53,7 @@ set(DKR_VERSION "us_v80" CACHE STRING "ROM version the assets were extracted fro
 set_property(CACHE DKR_VERSION PROPERTY STRINGS us_v77 us_v80)
 option(DKR_EEPROM_PRESET_100 "Seed a fresh save file with a 100%-completion image instead of an erased one" OFF)
 option(DKR_SANITIZE "Build with AddressSanitizer" OFF)
+option(DKR_COVERAGE "Build with clang source-based coverage (make coverage)" OFF)
 option(DKR_BUILD_TESTS "Build the unit tests (run with ctest)" OFF)
 set(DKR_MAIN_POOL_MB 16 CACHE STRING "Size of the game's main memory pool, in MiB")
 
@@ -224,6 +225,10 @@ set(DKR_C_FLAGS
 if(DKR_SANITIZE)
     list(APPEND DKR_C_FLAGS -fsanitize=address -fno-omit-frame-pointer)
     set(DKR_LINK_FLAGS -fsanitize=address)
+endif()
+if(DKR_COVERAGE)
+    list(APPEND DKR_C_FLAGS -fprofile-instr-generate -fcoverage-mapping)
+    list(APPEND DKR_LINK_FLAGS -fprofile-instr-generate)
 endif()
 
 # Include paths shared by the game, libultra and the platform layer. The game

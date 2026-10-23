@@ -98,6 +98,14 @@ int pc_trace_players(void) {
     return n < 1 ? 1 : (n > 4 ? 4 : n);
 }
 
+// "# adventure" in a scene script (DKR_TRACE_ADVENTURE): the level request starts the level in
+// adventure mode instead of tracks mode, so a race ends the way it does from a hub door.
+int pc_trace_adventure(void) {
+    const char *env = getenv("DKR_TRACE_ADVENTURE");
+
+    return env != NULL && env[0] != '\0' && env[0] != '0';
+}
+
 int pc_trace_active(void) {
     return sActive;
 }

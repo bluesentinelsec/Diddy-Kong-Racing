@@ -88,5 +88,6 @@ s32 pc_motor_stop(void *pfs);
 int pc_trace_autopilot(void);
 int pc_trace_level_request(unsigned int frame);
 int pc_trace_players(void);
+int pc_trace_adventure(void);
 
 #endif

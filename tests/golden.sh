@@ -35,6 +35,8 @@ if [ -n "$input" ]; then
     # linux/trace.c), "# players N" with N human players (DKR_TRACE_PLAYERS).
     level=$(sed -n 's/^# level \([0-9]*\).*/\1/p' "$input" | head -n 1)
     players=$(sed -n 's/^# players \([0-9]*\).*/\1/p' "$input" | head -n 1)
+    # "# adventure" starts that level in adventure mode (DKR_TRACE_ADVENTURE).
+    if grep -q '^# adventure' "$input"; then export DKR_TRACE_ADVENTURE=1; else unset DKR_TRACE_ADVENTURE; fi
     if [ -n "$level" ]; then export DKR_TRACE_LEVEL=$level; else unset DKR_TRACE_LEVEL; fi
     if [ -n "$players" ]; then export DKR_TRACE_PLAYERS=$players; else unset DKR_TRACE_PLAYERS; fi
     if [ -n "$save" ]; then
@@ -47,6 +49,7 @@ else
     unset DKR_TRACE_SAVE
     unset DKR_TRACE_LEVEL
     unset DKR_TRACE_PLAYERS
+    unset DKR_TRACE_ADVENTURE
 fi
 
 if [ "$update" = 1 ]; then

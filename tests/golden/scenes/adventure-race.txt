@@ -1,0 +1,9 @@
+# frames 6000
+# save 100
+# level 5
+# adventure
+# Adventure-mode race on Ancient Lake (# adventure, DKR_TRACE_ADVENTURE: as if entered from a
+# hub door rather than the Tracks menu) on the 100% save, driven by the autopilot to the
+# finish: the adventure race end, its save writes and HUD.
+# Format: <frame> <buttons> <stickX> <stickY> [p<N>], held until the next line (DKR_INPUT_SCRIPT).
+150 AUTO 0 0
