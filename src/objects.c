@@ -1221,11 +1221,16 @@ void track_spawn_objects(s32 mapID, s32 index) {
     assetSize = objMapTable[mapID + 1] - assetOffset;
 
     if (assetSize != 0) {
-        compressedAsset = (u8 *) mem;
-        compressedAsset =
-            ((compressedAsset + gzip_size_uncompressed(ASSET_LEVEL_OBJECT_MAPS, assetOffset)) - (0, assetSize)) + 0x20;
-        asset_load(ASSET_LEVEL_OBJECT_MAPS, (uintptr_t) compressedAsset, assetOffset, assetSize);
-        gzip_inflate(compressedAsset, (u8 *) mem);
+        if (asset_image_inflated()) {
+            asset_load(ASSET_LEVEL_OBJECT_MAPS, (uintptr_t) mem, assetOffset, assetSize);
+        } else {
+            compressedAsset = (u8 *) mem;
+            compressedAsset =
+                ((compressedAsset + gzip_size_uncompressed(ASSET_LEVEL_OBJECT_MAPS, assetOffset)) - (0, assetSize)) +
+                0x20;
+            asset_load(ASSET_LEVEL_OBJECT_MAPS, (uintptr_t) compressedAsset, assetOffset, assetSize);
+            gzip_inflate(compressedAsset, (u8 *) mem);
+        }
         {
             // Inflated object map is big-endian: a u32 spawn-list byte length,
             // then variable-size entries whose common header holds three s16

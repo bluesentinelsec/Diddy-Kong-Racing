@@ -1,7 +1,7 @@
 # Diddy Kong Racing PC port - developer Makefile.
 #
 # This wraps the CMake build in the targets people expect; `make assets`
-# produces the game data from your ROM (tools/extract-assets.py).
+# produces the game data from your ROM (tools/assets.py).
 #
 #   make            debug build        -> build/debug/dkracing
 #   make release    optimized build    -> build/release/dkracing
@@ -33,7 +33,7 @@ RELEASE_DIR := build/release
 # keep their upstream formatting so merges stay easy.
 FORMAT_SOURCES := $(wildcard linux/*.c linux/*.h ios/*.c include/pc_asset.h include/pc_gfx.h tests/*.c tests/*.h)
 
-.PHONY: golden golden-update all debug release run run-debugger test fmt doc assets clean web web-image run-web ios run-ios package windows-package linux-package macos-package web-package android-package ios-package
+.PHONY: golden golden-update all debug release run run-debugger test fmt doc assets assets-unpack clean web web-image run-web ios run-ios package windows-package linux-package macos-package web-package android-package ios-package
 
 all: debug
 
@@ -97,16 +97,21 @@ doc:
 	doxygen Doxyfile
 	@echo "Documentation written to docs/html/index.html"
 
-# The game data: assets/assets.bin and assets/assets.lut.bin are byte ranges
-# of the ROM, so tools/extract-assets.py verifies the ROM in baseroms/ (any
-# file name; it is identified by SHA-1) and copies them out. Python 3 only.
+# The game data. tools/assets.py verifies the ROM in baseroms/ (any file
+# name; it is identified by SHA-1), unpacks it into assets/tree/ (one native
+# file per asset, deflated ones inflated) and packs that tree into the image
+# the game loads, assets/assets.bin + assets/assets.lut.bin. Python 3 only.
+# `make assets-unpack` redoes the tree from the ROM; `make assets` alone
+# repacks an existing tree, so edits to it reach the game.
 ifeq ($(OS),Windows_NT)
-assets:
-	python tools/extract-assets.py
+PYTHON ?= python
 else
-assets:
-	python3 tools/extract-assets.py
+PYTHON ?= python3
 endif
+assets:
+	$(PYTHON) tools/assets.py build
+assets-unpack:
+	$(PYTHON) tools/assets.py unpack
 
 # Browser build. The Emscripten toolchain lives in a Docker image
 # (docker/web.Dockerfile) so nothing has to be installed on the host; the

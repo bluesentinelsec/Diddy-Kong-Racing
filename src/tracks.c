@@ -2890,17 +2890,24 @@ static const PcField sLevelSegmentFields[] = {
 // heap-relative offset, exactly what LOCAL_OFFSET_TO_RAM_ADDRESS expects.
 static void pc_load_level_model(LevelModel *heap, s32 assetOffset, s32 compSize) {
     u8 *image = (u8 *) heap + LEVEL_MODEL_PC_DELTA;
-    u8 *comp = pc_alloc(compSize);
-    s32 diskSize = gzip_size_uncompressed(ASSET_LEVEL_MODELS, assetOffset);
+    u8 *comp;
+    s32 diskSize;
     LevelModelSegment *segs;
     TextureInfo *texInfo;
     u32 segOff, texOff, bbOff, bspOff;
     u32 end;
     s32 k;
 
-    asset_load(ASSET_LEVEL_MODELS, (uintptr_t) comp, assetOffset, compSize);
-    gzip_inflate(comp, image);
-    pc_free(comp);
+    if (asset_image_inflated()) {
+        diskSize = compSize;
+        asset_load(ASSET_LEVEL_MODELS, (uintptr_t) image, assetOffset, compSize);
+    } else {
+        diskSize = gzip_size_uncompressed(ASSET_LEVEL_MODELS, assetOffset);
+        comp = pc_alloc(compSize);
+        asset_load(ASSET_LEVEL_MODELS, (uintptr_t) comp, assetOffset, compSize);
+        gzip_inflate(comp, image);
+        pc_free(comp);
+    }
 
     pc_unpack(heap, sizeof(LevelModel), image, LEVEL_MODEL_DISK_SIZE, sLevelModelFields);
     texOff = (u32) (uintptr_t) heap->textures;

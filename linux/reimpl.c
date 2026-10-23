@@ -59,6 +59,13 @@ static u8 *sAssetLut = NULL;
 static u32 sAssetLutSize = 0;
 static u8 *sAssetsBin = NULL;
 static u32 sAssetsBinSize = 0;
+static s32 sAssetsInflated = 0;
+
+// An image packed by tools/assets.py ends its lookup table with this trailer
+// (magic, trailer version, flags): its deflated entries (object models,
+// animations, level models, level object maps, textures) are stored inflated.
+// An image sliced straight from a ROM has no trailer and is read as before.
+static const u8 sAssetLutTrailer[16] = { 'D', 'K', 'R', 'A', 'S', 'S', 'E', 'T', 0, 0, 0, 1, 0, 0, 0, 1 };
 
 // Opens `path` relative to the working directory, or failing that relative to
 // the directory holding the executable, so a build can be launched by double-
@@ -163,6 +170,14 @@ static void pc_assets_init(void) {
     }
     sAssetLut = pc_load_file("assets/assets.lut.bin", &sAssetLutSize);
     sAssetsBin = pc_load_file("assets/assets.bin", &sAssetsBinSize);
+    sAssetsInflated =
+        sAssetLutSize >= sizeof(sAssetLutTrailer) &&
+        memcmp(sAssetLut + sAssetLutSize - sizeof(sAssetLutTrailer), sAssetLutTrailer, sizeof(sAssetLutTrailer)) == 0;
+    if (sAssetsInflated) {
+        // A folder of replacement files laid over the image (linux/pc_asset_override.c).
+        extern s32 pc_asset_apply_overrides(u8 * *lutIo, u32 * lutSizeIo, u8 * *binIo, u32 * binSizeIo);
+        pc_asset_apply_overrides(&sAssetLut, &sAssetLutSize, &sAssetsBin, &sAssetsBinSize);
+    }
 
     // LUT: entry count followed by offsets, all big-endian u32 — swap in place.
     for (i = 0; i + 3 < sAssetLutSize; i += 4) {
@@ -173,12 +188,19 @@ static void pc_assets_init(void) {
         p[2] = t1;
         p[3] = t0;
     }
-    printf("ASSETS: lut %u bytes, data %u bytes\n", sAssetLutSize, sAssetsBinSize);
+    printf("ASSETS: lut %u bytes, data %u bytes%s\n", sAssetLutSize, sAssetsBinSize,
+           sAssetsInflated ? " (inflated entries)" : "");
 }
 
 u32 pc_asset_lut_size(void) {
     pc_assets_init();
     return sAssetLutSize;
+}
+
+// TRUE when the loaded image stores its deflated entries inflated (see the trailer above).
+s32 pc_asset_image_inflated(void) {
+    pc_assets_init();
+    return sAssetsInflated;
 }
 
 // Byteswap helpers (pc_swap16_buf / pc_swap32_buf) live in linux/pc_asset.c.

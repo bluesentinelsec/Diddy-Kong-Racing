@@ -31,6 +31,16 @@ u32 *gAssetsLookupTable;
 // linux/reimpl.c: assets served from assets/assets{,.lut}.bin on disk.
 extern u32 pc_asset_lut_size(void);
 extern void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes);
+extern s32 pc_asset_image_inflated(void);
+
+/**
+ * TRUE when the asset image was packed by tools/assets.py and so stores the
+ * entries the ROM keeps deflated (object models, animations, level models and
+ * level object maps) already inflated. Those loaders then read them as they are.
+ */
+s32 asset_image_inflated(void) {
+    return pc_asset_image_inflated();
+}
 
 /**
  * Set up the peripheral interface message queues and scheduling.

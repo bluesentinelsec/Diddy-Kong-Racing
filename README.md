@@ -140,15 +140,24 @@ and pull request.
 
 ## Assets
 
-The game needs two files, `assets/assets.bin` and `assets/assets.lut.bin`.
-Desktop builds embed them in the executable when they exist at build time
-(otherwise the executable looks for `assets/` in the working directory or
-beside itself); mobile and web builds pack them in. They are byte ranges of
-the ROM, so producing them is a copy:
+The game data comes from your own ROM and is never part of the repository.
+`make assets` turns it into two things:
+
+- `assets/tree/`: one file per asset in the game's own format (big-endian,
+  the ROM's structures, untouched except that assets the ROM keeps deflated
+  are stored inflated). Sections with an offset table become a folder of
+  `NNNN.bin` files; the rest are single files. `manifest.json` records the
+  section order. This is the tree to edit or replace files in.
+- `assets/assets.bin` and `assets/assets.lut.bin`: the tree packed into the
+  one image the game loads. Desktop builds embed it in the executable when it
+  exists at build time (otherwise the executable looks for `assets/` in the
+  working directory or beside itself); mobile and web builds pack it in.
 
 ```
 cp /path/to/your/rom.z64 baseroms/
-make assets        # python3 tools/extract-assets.py
+make assets          # python3 tools/assets.py build: unpack the ROM into assets/tree/, then pack
+make assets          # again, after editing the tree: repack only
+make assets-unpack   # redo the tree from the ROM
 ```
 
 The ROM is identified by SHA-1, never modified, and never copied anywhere
@@ -156,7 +165,19 @@ else; `.v64` and `.n64` dumps are converted on the fly. US 1.1 (SHA-1
 `6d96743d46f8c0cd0edb0ec5600b003c89b93755`) is the revision the port is built
 and tested for; US 1.0 is also recognised (build with `-DDKR_VERSION=us_v77`).
 On Windows, `build-windows.bat assets [ROM]` does the same with the system
-Python.
+Python. `python3 tools/assets.py verify` checks that the tree survives a pack
+and unpack unchanged.
+
+### Overrides
+
+A game can also take replacement files at start-up without a rebuild: put
+them in `assets/overrides/` (next to the working directory or the executable,
+or the folder named by `DKR_ASSET_OVERRIDES`) with the same layout as
+`assets/tree/`, for example `assets/overrides/textures_2d/0042.bin`. Only the
+files present are replaced; a section's offset table is rebuilt around them,
+and numbered files past the last existing entry are appended. Overrides apply
+to an image produced by `make assets` (an image sliced straight from a ROM,
+as older builds made, still loads but takes no overrides).
 
 ## Correctness
 
@@ -380,8 +401,9 @@ additive, so a real gamepad still works too.
 - `ios/` - the iOS app's own source, Info.plist template, asset catalog (app
   icon, launch colour) and device helper; the app itself is generated into
   `build/ios` by CMake's Xcode generator.
-- `tools/extract-assets.py` - produces `assets/` from your ROM (`make assets`);
-  `tools/make-icons.py` regenerates the app icons (the PNGs are committed).
+- `tools/assets.py` - unpacks your ROM into `assets/tree/` and packs the tree
+  into the image the game loads (`make assets`); `tools/make-icons.py`
+  regenerates the app icons (the PNGs are committed).
 - `tests/` - the golden traces and the unit tests (`make golden`, `make test`).
 - `docs/` - the per-platform build guides and the asset format reference
   (`docs/asset-format.md`).

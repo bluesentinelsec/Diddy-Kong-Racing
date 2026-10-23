@@ -560,3 +560,21 @@ Note: Only Textboxes are properly supported.
 
 * **2.0** - Created spec
 
+
+## The asset tree (`tools/assets.py`)
+
+`make assets` unpacks the ROM's asset image into `assets/tree/`, one file per
+asset in the formats described above, big-endian and unconverted. The one
+difference from the ROM is compression: object models, object animations,
+level models, level object maps and the textures whose header byte `0x1D` is
+set are deflated in the ROM (a 4-byte little-endian size, one level byte, then
+a raw deflate stream) and are stored inflated in the tree, with that header
+byte cleared. Sections that have an offset table become a folder of `NNNN.bin`
+files (the table is rebuilt on pack); every other section is one `<name>.bin`.
+`manifest.json` lists the sections in the order of `include/asset_enums.h`
+with each table's trailing words, so a pack reproduces the ROM's table layout.
+
+The packed image's lookup table ends with a 16-byte trailer (`DKRASSET`,
+version 1, flags 1) that tells the game its entries are inflated. The same
+layout is accepted at run time from `assets/overrides/`, which replaces single
+files without a rebuild.

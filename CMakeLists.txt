@@ -134,6 +134,7 @@ set(DKR_PLATFORM_SOURCES
     linux/vcontrols.c
     linux/reimpl.c
     linux/pc_asset.c
+    linux/pc_asset_override.c
     linux/trace.c
     linux/crash.c
     linux/android_compat.c
