@@ -603,7 +603,7 @@ void charselect_music_channels(s32 updateRate) {
         }
         music_channel_fade_set(gCharacterVolumes[gMenuSelectedCharacter.channelIndex][0], gMenuSelectedCharacter.volume);
         music_channel_fade_set(gCharacterVolumes[0][gMenuSelectedCharacter.channelIndex * 2 + 1],
-                               gMenuSelectedCharacter.volumeLowByte);
+                               gMenuSelectedCharacter.volume);
     }
     if (sSoundOptionsState.channelIndex >= 0) {
         sSoundOptionsState.volume -= updateRate * 4;
@@ -613,7 +613,7 @@ void charselect_music_channels(s32 updateRate) {
                 music_channel_off(gCharacterVolumes[0][sSoundOptionsState.channelIndex * 2 + 1]);
             } else {
                 music_channel_fade_set(gCharacterVolumes[sSoundOptionsState.channelIndex][0], sSoundOptionsState.volume);
-                music_channel_fade_set(gCharacterVolumes[0][sSoundOptionsState.channelIndex * 2 + 1], sSoundOptionsState.volumeLowByte);
+                music_channel_fade_set(gCharacterVolumes[0][sSoundOptionsState.channelIndex * 2 + 1], sSoundOptionsState.volume);
             }
         }
         if (sSoundOptionsState.volume < 0) {

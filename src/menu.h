@@ -344,13 +344,7 @@ typedef struct unk80126460 {
 typedef struct CharacterVoiceChannel {
     s8 channelIndex;
     s8 switchDelay;
-    union {
-        struct {
-            s8 unused2a;
-            s8 volumeLowByte;
-        };
-        s16 volume;
-    };
+    s16 volume; // fade volume of both channels of the character's theme, 0..127
 } CharacterVoiceChannel;
 
 typedef struct PostRaceLoadState {
