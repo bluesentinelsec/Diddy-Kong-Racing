@@ -1,0 +1,17 @@
+# frames 1800
+# Character select: the cursor moves onto Diddy, whose theme is the only one with a second
+# music layer (channel 7), sits there while it fades in, moves one further right so it fades out,
+# comes back, and picks him. Guards issue #44 (the second layer was muted on little-endian).
+# Format: <frame> <buttons> <stickX> <stickY>, held until the next line (DKR_INPUT_SCRIPT).
+900 A 0 0
+903 - 0 0
+960 A 0 0
+963 - 0 0
+1000 - 70 0
+1004 - 0 0
+1300 - 70 0
+1304 - 0 0
+1450 - -70 0
+1454 - 0 0
+1650 A 0 0
+1653 - 0 0
