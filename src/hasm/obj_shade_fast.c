@@ -37,7 +37,7 @@ void obj_shade_fast(ObjectModel *model, Object *obj, f32 intensity) {
     dirX = shading->shadowDirX;
     dirY = shading->shadowDirY;
     dirZ = shading->shadowDirZ;
-    base = shading->unk0 * intensity * 160.0f;
+    base = shading->brightness * intensity * 160.0f;
     vertices = obj->curVertData;
     normals = model->normals;
     normIdx = 0;
@@ -109,7 +109,7 @@ void calc_dynamic_lighting_for_object_2(Object *obj, ObjectModel *model, s16 arg
     trans.z_position = 0.0f;
     mtxf_from_inverse_transform(&mtx, &trans);
     mtxf_transform_dir(&mtx, &direction, &direction);
-    colourBase = shading->unk0 * intensity * 255.0f;
+    colourBase = shading->brightness * intensity * 255.0f;
     ambientFactor = shading->ambient * colourBase;
     diffuseFactor = shading->diffuse * colourBase;
     dirX = direction.x;

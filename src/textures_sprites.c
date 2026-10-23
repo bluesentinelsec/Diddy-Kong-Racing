@@ -468,9 +468,9 @@ static const PcField sTextureHeaderFields[] = {
     PCU_FIELD(TextureHeader, width, 0x00, 6, PCU_BYTES),
     PCU_FIELD(TextureHeader, flags, 0x06, 3, PCU_U16), // flags, ciPaletteOffset, numberOfCommands
     PCU_FIELD(TextureHeader, cmd, 0x0C, 1, PCU_PTR),
-    PCU_FIELD(TextureHeader, unk10, 0x10, 2, PCU_BYTES),
+    PCU_FIELD(TextureHeader, unused10, 0x10, 2, PCU_BYTES),
     PCU_FIELD(TextureHeader, numOfTextures, 0x12, 3, PCU_U16), // numOfTextures, frameAdvanceDelay, textureSize
-    PCU_FIELD(TextureHeader, unk18, 0x18, 8, PCU_BYTES),
+    PCU_FIELD(TextureHeader, unused18, 0x18, 8, PCU_BYTES),
     PCU_END,
 };
 

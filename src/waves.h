@@ -14,12 +14,12 @@ typedef struct {
     s16 originX; // something with x
     s16 originY; // something with y AND used as playerIndex
     s16 originZ; // something with z
-    u8 unkA; // some sort of x ratio
-    u8 unkB; // some sort of z ratio / index of gWaveVisibilityGrid
-    u32 unkC; // indexes gWaveBlockCells
-    s16 unk10;
-    s16 unk12;
-    LevelModelSubArray unk14[2];
+    u8 tileX;    // some sort of x ratio
+    u8 tileZ;    // some sort of z ratio / index of gWaveVisibilityGrid
+    u32 tileIndex; // indexes gWaveBlockCells
+    s16 waveTileOffsetZ;
+    s16 waveTileOffsetX;
+    LevelModelSubArray viewportFade[2];
 } LevelModel_Alternate;
 
 /* Size: 0x40 bytes */
@@ -31,16 +31,16 @@ typedef struct WaveGen {
   /* 0x10 */ f32 radius;
   /* 0x14 */ f32 radiusSq;
   /* 0x18 */ u16 index;
-  /* 0x1A */ u16 unk1A;
-  /* 0x1C */ u32 unk1C;
-  /* 0x20 */ f32 unk20;
-  /* 0x24 */ f32 unk24;
-  /* 0x28 */ f32 unk28;
-  /* 0x2C */ f32 unk2C;
-  /* 0x30 */ u8 unk30;
-  /* 0x31 */ u8 unk31;
-  /* 0x32 */ u8 unk32;
-  /* 0x33 */ u8 unk33;
+  /* 0x1A */ u16 phase;
+  /* 0x1C */ u32 phaseSpeed;
+  /* 0x20 */ f32 phasePerUnit;
+  /* 0x24 */ f32 amplitude;
+  /* 0x28 */ f32 speed;
+  /* 0x2C */ f32 wavelength;
+  /* 0x30 */ u8 isLinearX;
+  /* 0x31 */ u8 isLinearZ;
+  /* 0x32 */ u8 unused32;
+  /* 0x33 */ u8 unused33;
   u32 pad34[3];
 } WaveGen;
 

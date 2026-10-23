@@ -311,8 +311,8 @@ void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 upd
     }
     shadow_update(SHADOW_ACTORS, SHADOW_ACTORS, updateRate);
     for (i = 0; i < 7; i++) {
-        if ((s32) gCurrentLevelHeader2->unk74[i] != -1) {
-            update_colour_cycle(gCurrentLevelHeader2->unk74[i], tempUpdateRate);
+        if ((s32) gCurrentLevelHeader2->colourCycles[i] != -1) {
+            update_colour_cycle(gCurrentLevelHeader2->colourCycles[i], tempUpdateRate);
         }
     }
     if (gCurrentLevelHeader2->pulseLightData != (PulsatingLightData *) -1) {
@@ -323,17 +323,17 @@ void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 upd
         gDrawLevelSegments = FALSE;
         gAntiAliasing = TRUE;
     }
-    if (gCurrentLevelHeader2->race_type == RACETYPE_CUTSCENE_1 || gCurrentLevelHeader2->unkBD) {
+    if (gCurrentLevelHeader2->race_type == RACETYPE_CUTSCENE_1 || gCurrentLevelHeader2->forceAntiAliasing) {
         gAntiAliasing = TRUE;
     }
     if (gCurrentLevelHeader2->skyDome == -1) {
-        i = (gCurrentLevelHeader2->unkA4->width << 9) - 1;
-        gCurrentLevelHeader2->unkA8 =
-            (gCurrentLevelHeader2->unkA8 + (gCurrentLevelHeader2->unkA2 * tempUpdateRate)) & i;
-        i = (gCurrentLevelHeader2->unkA4->height << 9) - 1;
-        gCurrentLevelHeader2->unkAA =
-            (gCurrentLevelHeader2->unkAA + (gCurrentLevelHeader2->unkA3 * tempUpdateRate)) & i;
-        tex_animate_texture(gCurrentLevelHeader2->unkA4, &gTrackTexAnimFlags, &gTrackTexAnimOffset, tempUpdateRate);
+        i = (gCurrentLevelHeader2->skyTexture->width << 9) - 1;
+        gCurrentLevelHeader2->skyTexScrollU =
+            (gCurrentLevelHeader2->skyTexScrollU + (gCurrentLevelHeader2->skyTexScrollSpeedU * tempUpdateRate)) & i;
+        i = (gCurrentLevelHeader2->skyTexture->height << 9) - 1;
+        gCurrentLevelHeader2->skyTexScrollV =
+            (gCurrentLevelHeader2->skyTexScrollV + (gCurrentLevelHeader2->skyTexScrollSpeedV * tempUpdateRate)) & i;
+        tex_animate_texture(gCurrentLevelHeader2->skyTexture, &gTrackTexAnimFlags, &gTrackTexAnimOffset, tempUpdateRate);
     }
     flip = FALSE;
     if (get_filtered_cheats() & CHEAT_MIRRORED_TRACKS) {
@@ -568,7 +568,7 @@ void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex) {
         breakLoop += yCameraSins * bbox->x2 + yCameraCoss * bbox->z2 + temp_f22 <= 0.0;
         if (breakLoop & 3) {
             void_check_add_segment_edges(&gCurrentLevelModel->segments[segmentIds[i]], yCameraSins, yCameraCoss, temp_f22);
-            if (gCurrentLevelModel->segments[segmentIds[i]].unk3C & 2) {
+            if (gCurrentLevelModel->segments[segmentIds[i]].segmentFlags & 2) {
                 void_check_add_bbox_edges(bbox, yCameraSins, yCameraCoss, temp_f22);
             }
         }
@@ -587,7 +587,7 @@ void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex) {
         breakLoop = TRUE;
         ptr2 = (s32 *) gVoidCheckPoints;
         for (i = 0; i < gVoidCheckPointCount - 1; i++, ptr2 += 2) {
-            if (gVoidCheckPoints[i + 1].unk0 < gVoidCheckPoints[i].unk0) {
+            if (gVoidCheckPoints[i + 1].sideOffset < gVoidCheckPoints[i].sideOffset) {
                 s32 tmp;
 
                 tmp = ptr2[0];
@@ -606,15 +606,15 @@ void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex) {
     var_s0 = 0;
 
     for (i = 0; i < gVoidCheckPointCount; i++) {
-        j = gVoidCheckPoints[i].unk7 * 2;
+        j = gVoidCheckPoints[i].pairIndex * 2;
         if (gVoidCheckPairs[j] == -1) {
-            gVoidCheckPoints[i].unk6 |= 2;
+            gVoidCheckPoints[i].flags |= 2;
             gVoidCheckPairs[j] = i;
         } else {
             gVoidCheckPairs[j + 1] = i;
         }
     }
-    var_s4 = temp_s3 = gVoidCheckPoints[0].unk0;
+    var_s4 = temp_s3 = gVoidCheckPoints[0].sideOffset;
 
     vtx = gTrackVtxPtr;
     tri = gTrackTriPtr;
@@ -629,13 +629,13 @@ void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex) {
 
     i = 0;
     while (i < gVoidCheckPointCount) {
-        while (i < gVoidCheckPointCount && var_s4 == gVoidCheckPoints[i].unk0) {
-            if (gVoidCheckPoints[i].unk6 & 2) {
-                sp7C[var_s0] = gVoidCheckPoints[i].unk7;
+        while (i < gVoidCheckPointCount && var_s4 == gVoidCheckPoints[i].sideOffset) {
+            if (gVoidCheckPoints[i].flags & 2) {
+                sp7C[var_s0] = gVoidCheckPoints[i].pairIndex;
                 var_s0++;
             } else {
                 for (j = 0; j < var_s0; j++) {
-                    if (sp7C[j] == gVoidCheckPoints[i].unk7) {
+                    if (sp7C[j] == gVoidCheckPoints[i].pairIndex) {
                         var_s0--;
                         while (j < var_s0) {
                             sp7C[j] = sp7C[j + 1];
@@ -647,7 +647,7 @@ void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex) {
             i++;
         }
         if (i < gVoidCheckPointCount) {
-            temp_s3 = gVoidCheckPoints[i].unk0;
+            temp_s3 = gVoidCheckPoints[i].sideOffset;
             if (var_s4 != temp_s3) {
                 void_check_sort_points(var_s0, sp7C, temp_s3, var_s4);
                 var_s4 = temp_s3;
@@ -882,25 +882,25 @@ void void_check_insert_point(s16 arg0, s16 arg1, s32 arg2) {
 
     if (gVoidCheckPointCount < gVoidCheckMaxPoints) {
         i = 0;
-        while (i < gVoidCheckPointCount && gVoidCheckPoints[i].unk0 < arg0) {
+        while (i < gVoidCheckPointCount && gVoidCheckPoints[i].sideOffset < arg0) {
             i++;
         }
-        while (i < gVoidCheckPointCount && arg0 == gVoidCheckPoints[i].unk0 && gVoidCheckPoints[i].unk2 < arg1) {
+        while (i < gVoidCheckPointCount && arg0 == gVoidCheckPoints[i].sideOffset && gVoidCheckPoints[i].height < arg1) {
             i++;
         }
         j = gVoidCheckPointCount;
         while (i < j) {
-            gVoidCheckPoints[j].unk0 = gVoidCheckPoints[j - 1].unk0;
-            gVoidCheckPoints[j].unk2 = gVoidCheckPoints[j - 1].unk2;
-            gVoidCheckPoints[j].unk7 = gVoidCheckPoints[j - 1].unk7;
-            gVoidCheckPoints[j].unk6 = gVoidCheckPoints[j - 1].unk6;
+            gVoidCheckPoints[j].sideOffset = gVoidCheckPoints[j - 1].sideOffset;
+            gVoidCheckPoints[j].height = gVoidCheckPoints[j - 1].height;
+            gVoidCheckPoints[j].pairIndex = gVoidCheckPoints[j - 1].pairIndex;
+            gVoidCheckPoints[j].flags = gVoidCheckPoints[j - 1].flags;
             j--;
         }
-        gVoidCheckPoints[i].unk0 = arg0;
-        gVoidCheckPoints[i].unk2 = arg1;
-        gVoidCheckPoints[i].unk4 = 0;
-        gVoidCheckPoints[i].unk7 = gVoidCheckPairIndex;
-        gVoidCheckPoints[i].unk6 = arg2;
+        gVoidCheckPoints[i].sideOffset = arg0;
+        gVoidCheckPoints[i].height = arg1;
+        gVoidCheckPoints[i].unused4 = 0;
+        gVoidCheckPoints[i].pairIndex = gVoidCheckPairIndex;
+        gVoidCheckPoints[i].flags = arg2;
         gVoidCheckPairs[gVoidCheckPointCount] = -1;
         if (gVoidCheckPointCount & 1) {
             gVoidCheckPairIndex++;
@@ -941,10 +941,10 @@ void void_check_sort_points(s16 arg0, s8 *arg1, f32 arg2, f32 arg3) {
         temp = arg1[i];
         curr = &gVoidCheckPoints[gVoidCheckPairs[(s16) (temp * 2)]];
         next = &gVoidCheckPoints[gVoidCheckPairs[((s16) (temp * 2)) + 1]];
-        curr_unk0 = (f32) curr->unk0;
-        curr_unk2 = (f32) curr->unk2;
-        next_unk0 = (f32) next->unk0;
-        next_unk2 = (f32) next->unk2;
+        curr_unk0 = (f32) curr->sideOffset;
+        curr_unk2 = (f32) curr->height;
+        next_unk0 = (f32) next->sideOffset;
+        next_unk2 = (f32) next->height;
         if (curr_unk0 == next_unk0) {
             return;
         }
@@ -972,8 +972,8 @@ void void_check_sort_points(s16 arg0, s8 *arg1, f32 arg2, f32 arg3) {
     } while (noSwap == FALSE);
 
     for (i = 0; i < arg0 - 1; i++) {
-        temp0 = gVoidCheckPoints[gVoidCheckPairs[arg1[i] * 2]].unk6 & 1;
-        temp1 = gVoidCheckPoints[gVoidCheckPairs[arg1[i + 1] * 2]].unk6 & 1;
+        temp0 = gVoidCheckPoints[gVoidCheckPairs[arg1[i] * 2]].flags & 1;
+        temp1 = gVoidCheckPoints[gVoidCheckPairs[arg1[i + 1] * 2]].flags & 1;
         if (temp0 && !temp1) {
             temp3 = (sp60[i] * 2);
             temp4 = (sp60[i + 1] * 2);
@@ -1412,7 +1412,7 @@ void trackbg_render_flashy(void) {
     tris = gTrackTriPtr;
 
     camera = cam_get_active_camera();
-    texHeader = gCurrentLevelHeader2->unkA4;
+    texHeader = gCurrentLevelHeader2->skyTexture;
     uCoordMask = (texHeader->width << 5) - 1;
     vCoordMask = (texHeader->height << 5) - 1;
     xSin = sins_f(-camera->trans.rotation.x);
@@ -1444,12 +1444,12 @@ void trackbg_render_flashy(void) {
     scaledXCos = 1280.0f;
     var_f14 = scaledXCos * 0.25f;
 
-    var_a1 = texHeader->width * 16 * gCurrentLevelHeader2->unkA0;
-    var_a2 = texHeader->height * 16 * gCurrentLevelHeader2->unkA1;
+    var_a1 = texHeader->width * 16 * gCurrentLevelHeader2->skyTexScaleU;
+    var_a2 = texHeader->height * 16 * gCurrentLevelHeader2->skyTexScaleV;
 
-    var_v0 = ((s32) (camera->trans.x_position * ((scaledXCos * 0.25f) / var_a1)) + (gCurrentLevelHeader2->unkA8 >> 4)) &
+    var_v0 = ((s32) (camera->trans.x_position * ((scaledXCos * 0.25f) / var_a1)) + (gCurrentLevelHeader2->skyTexScrollU >> 4)) &
              uCoordMask;
-    var_v1 = ((s32) (camera->trans.z_position * ((scaledXCos * 0.25f) / var_a2)) + (gCurrentLevelHeader2->unkAA >> 4)) &
+    var_v1 = ((s32) (camera->trans.z_position * ((scaledXCos * 0.25f) / var_a2)) + (gCurrentLevelHeader2->skyTexScrollV >> 4)) &
              vCoordMask;
 
     var_f14 = var_a1 * xCos;
@@ -1460,7 +1460,7 @@ void trackbg_render_flashy(void) {
     pad_sp108 = var_f16;
 
     // @fake
-    var_a2 = texHeader->height * 16 * gCurrentLevelHeader2->unkA1;
+    var_a2 = texHeader->height * 16 * gCurrentLevelHeader2->skyTexScaleV;
 
     uCoords[0] = (s16) (-var_f14 - pad_sp108) + var_v0;
     vCoords[0] = (s16) (var_f16 - var_f14) + var_v1;
@@ -1485,11 +1485,11 @@ void trackbg_render_flashy(void) {
 
     mtx_world_origin(&gTrackDL, &gTrackMtxPtr);
 
-    var_t2 = *gCurrentLevelHeader2->unk74;
+    var_t2 = *gCurrentLevelHeader2->colourCycles;
     var_a2 = -1;
 
     if ((u32) var_t2 != -1U) {
-        levelHeader = gCurrentLevelHeader2->unk74[1];
+        levelHeader = gCurrentLevelHeader2->colourCycles[1];
         if ((u32) levelHeader == -1U) {
             levelHeader = var_t2;
         }
@@ -1699,7 +1699,7 @@ void initialise_player_viewport_vars(s32 updateRate) {
                            gScenePerspectivePos.z / 65536.0f);
     segmentIndex = gSceneActiveCamera->cameraSegmentID;
     if (segmentIndex > -1 && (segmentIndex < gCurrentLevelModel->numberOfSegments)) {
-        gSceneStartSegment = gCurrentLevelModel->segments[segmentIndex].unk28;
+        gSceneStartSegment = gCurrentLevelModel->segments[segmentIndex].visibilityBitfieldOffset;
     } else {
         gSceneStartSegment = -1;
     }
@@ -1722,7 +1722,7 @@ void initialise_player_viewport_vars(s32 updateRate) {
                              gSceneActiveCamera->trans.z_position, get_current_viewport(), updateRate);
         }
     }
-    level_header()->unk3 = 1;
+    level_header()->levelRendered = 1;
     render_level_geometry_and_objects();
 }
 
@@ -2572,7 +2572,7 @@ s32 get_level_segment_waves(s32 levelSegmentIndex, f32 xIn, f32 zIn, WaterProper
                 currentFaceOffset = nextFaceOffset;
             }
             for (faceNum = currentFaceOffset; faceNum < nextFaceOffset; faceNum++) {
-                if (var_s1 == (currentSegment->unk10[faceNum] & var_s1)) {
+                if (var_s1 == (currentSegment->triangleGridMasks[faceNum] & var_s1)) {
                     tri = &currentSegment->triangles[faceNum];
                     vert = &currentSegment->vertices[tri->verticesArray[1] + currentVerticesOffset];
                     vert1X = vert->x;
@@ -2622,7 +2622,7 @@ s32 get_level_segment_waves(s32 levelSegmentIndex, f32 xIn, f32 zIn, WaterProper
             wave = yOutCount + gWaterSurfaceHits; // fake?
             gWaterSurfaceHits[yOutCount].waveHeight = wave_height_at(levelSegmentIndex, xIn, zIn, &wave->rot);
         } else {
-            gWaterSurfaceHits[yOutCount].waveHeight = currentSegment->unk38;
+            gWaterSurfaceHits[yOutCount].waveHeight = currentSegment->waterHeight;
             gWaterSurfaceHits[yOutCount].rot.x = 0.0f;
             gWaterSurfaceHits[yOutCount].rot.y = 1.0f;
             gWaterSurfaceHits[yOutCount].rot.z = 0.0f;
@@ -2678,7 +2678,7 @@ s32 get_object_water_height(Object *obj, f32 *arg1, Vec3f *arg2, s32 arg3) {
         *arg1 = wave_height_at(obj->segmentID, obj->trans.x_position, obj->trans.z_position, arg2);
         return TRUE;
     } else {
-        *arg1 = seg->unk38;
+        *arg1 = seg->waterHeight;
         return TRUE;
     }
 }
@@ -2769,7 +2769,7 @@ s32 collision_get_y(s32 levelSegmentIndex, f32 xIn, f32 zIn, f32 *yOut, s32 maxY
         nextFaceOffset = currentSegment->batches[batchNum + 1].facesOffset;
         currentVerticesOffset = currentSegment->batches[batchNum].verticesOffset;
         for (faceNum = currentFaceOffset; faceNum < nextFaceOffset; faceNum++) {
-            if (var_s1 == (currentSegment->unk10[faceNum] & var_s1)) {
+            if (var_s1 == (currentSegment->triangleGridMasks[faceNum] & var_s1)) {
                 tri = &currentSegment->triangles[faceNum];
 
                 vert = &currentSegment->vertices[tri->verticesArray[1] + currentVerticesOffset];
@@ -2845,18 +2845,18 @@ static const PcField sLevelModelFields[] = {
 
 static const PcField sLevelSegmentFields[] = {
     PCU_FIELD(LevelModelSegment, vertices, 0x00, 2, PCU_PTR), // vertices, triangles
-    PCU_FIELD(LevelModelSegment, unk8, 0x08, 1, PCU_U32),
+    PCU_FIELD(LevelModelSegment, unused8, 0x08, 1, PCU_U32),
     PCU_FIELD(LevelModelSegment, batches, 0x0C, 4, PCU_PTR), // batches, unk10, collisionFacets, collisionPlanes
     PCU_FIELD(LevelModelSegment, numberOfVertices, 0x1C, 3, PCU_U16),
     PCU_FIELD(LevelModelSegment, pad22, 0x22, 6, PCU_BYTES),
-    PCU_FIELD(LevelModelSegment, unk28, 0x28, 1, PCU_U16),
-    PCU_FIELD(LevelModelSegment, unk2A, 0x2A, 2, PCU_BYTES), // unk2A, hasWaves
-    PCU_FIELD(LevelModelSegment, unk2C, 0x2C, 1, PCU_PTR),
-    PCU_FIELD(LevelModelSegment, unk30, 0x30, 2, PCU_U16),
-    PCU_FIELD(LevelModelSegment, unk34, 0x34, 1, PCU_PTR),
-    PCU_FIELD(LevelModelSegment, unk38, 0x38, 1, PCU_U16),
+    PCU_FIELD(LevelModelSegment, visibilityBitfieldOffset, 0x28, 1, PCU_U16),
+    PCU_FIELD(LevelModelSegment, unused2A, 0x2A, 2, PCU_BYTES), // unused2A, hasWaves
+    PCU_FIELD(LevelModelSegment, unused2C, 0x2C, 1, PCU_PTR),
+    PCU_FIELD(LevelModelSegment, unused30, 0x30, 2, PCU_U16),
+    PCU_FIELD(LevelModelSegment, waterBatchIndices, 0x34, 1, PCU_PTR),
+    PCU_FIELD(LevelModelSegment, waterHeight, 0x38, 1, PCU_U16),
     PCU_FIELD(LevelModelSegment, pad3A, 0x3A, 2, PCU_BYTES),
-    PCU_FIELD(LevelModelSegment, unk3C, 0x3C, 1, PCU_U32),
+    PCU_FIELD(LevelModelSegment, segmentFlags, 0x3C, 1, PCU_U32),
     PCU_FIELD(LevelModelSegment, numberofOpaqueBatches, 0x40, 4, PCU_BYTES),
     PCU_END,
 };
@@ -3011,15 +3011,15 @@ void generate_track(s32 modelId) {
     }
     j = (ptrint_t) gCurrentLevelModel + gCurrentLevelModel->modelSize;
     for (k = 0; k < gCurrentLevelModel->numberOfSegments; k++) {
-        gCurrentLevelModel->segments[k].unk10 = (s16 *) j;
+        gCurrentLevelModel->segments[k].triangleGridMasks = (s16 *) j;
         j = (ptrint_t) align16(((u8 *) (gCurrentLevelModel->segments[k].numberOfTriangles * 2)) + j);
         gCurrentLevelModel->segments[k].collisionPlanes = (f32 *) j;
         j = (ptrint_t) & ((u8 *) j)[track_init_collision(&gCurrentLevelModel->segments[k])];
         segment_compute_triangle_grid_masks(&gCurrentLevelModel->segments[k], &gCurrentLevelModel->segmentsBoundingBoxes[k], k);
-        gCurrentLevelModel->segments[k].unk30 = 0;
-        gCurrentLevelModel->segments[k].unk34 = (s16 *) j;
+        gCurrentLevelModel->segments[k].unused30 = 0;
+        gCurrentLevelModel->segments[k].waterBatchIndices = (s16 *) j;
         segment_find_water_batches(&gCurrentLevelModel->segments[k]);
-        j = (ptrint_t) align16(((u8 *) (gCurrentLevelModel->segments[k].unk32 * 2)) + j);
+        j = (ptrint_t) align16(((u8 *) (gCurrentLevelModel->segments[k].numWaterBatches * 2)) + j);
     }
     temp_s4 = (s32) (j - (ptrint_t) gCurrentLevelModel);
     if (temp_s4 > LEVEL_MODEL_MAX_SIZE) {
@@ -3061,18 +3061,18 @@ void segment_find_water_batches(LevelModelSegment *segment) {
     s32 numVerts;
     s32 i;
 
-    segment->unk38 = -10000;
+    segment->waterHeight = -10000;
     numVerts = 0;
     for (i = 0; i < segment->numberOfBatches; i++) {
         if (segment->batches[i].flags & 0x2000) {
-            segment->unk34[numVerts++] = i;
+            segment->waterBatchIndices[numVerts++] = i;
             curVertY = segment->vertices[segment->batches[i].verticesOffset].y;
-            if (segment->unk38 == -10000 || segment->unk38 < curVertY) {
-                segment->unk38 = curVertY;
+            if (segment->waterHeight == -10000 || segment->waterHeight < curVertY) {
+                segment->waterHeight = curVertY;
             }
         }
     }
-    segment->unk32 = numVerts;
+    segment->numWaterBatches = numVerts;
 }
 
 /**
@@ -3145,7 +3145,7 @@ void segment_compute_triangle_grid_masks(LevelModelSegment *segment, LevelModelS
         vertsOffset = segment->batches[i].verticesOffset;
         for (j = startTri; j < endTri; j++) {
             if (segment->triangles[j].flags & TRI_FLAG_80) {
-                segment->unk10[j] = 0;
+                segment->triangleGridMasks[j] = 0;
             } else {
                 maxX = -32000;
                 maxZ = -32000;
@@ -3194,7 +3194,7 @@ void segment_compute_triangle_grid_masks(LevelModelSegment *segment, LevelModelS
                     boxMin += boxDelta;
                     bit <<= 1;
                 }
-                segment->unk10[j] = val;
+                segment->triangleGridMasks[j] = val;
             }
         }
     }
@@ -3628,8 +3628,8 @@ void shadow_find_surface_under_object(Object *obj) {
     s32 maxYPos;
     s32 j;
 
-    sp94 = (s32) obj->trans.y_position + obj->header->unk44;
-    sp90 = (s32) obj->trans.y_position + obj->header->unk42;
+    sp94 = (s32) obj->trans.y_position + obj->header->shadowTop;
+    sp90 = (s32) obj->trans.y_position + obj->header->shadowBottom;
     blockId = obj->segmentID;
     foundResult = FALSE;
     if (blockId != -1) {
@@ -3642,9 +3642,9 @@ void shadow_find_surface_under_object(Object *obj) {
                 batchFlags = (block->batches[i].flags >> 19) & 7;
                 vertices = &block->vertices[block->batches[i].verticesOffset];
                 for (j = block->batches[i].facesOffset; j < block->batches[i + 1].facesOffset && !foundResult; j++) {
-                    blockId = block->unk10[j] & var_t3;
+                    blockId = block->triangleGridMasks[j] & var_t3;
                     if (blockId) {}
-                    if (((block->unk10[j] & var_t3) & 0xFF) && ((block->unk10[j] & var_t3) & 0xFF00)) {
+                    if (((block->triangleGridMasks[j] & var_t3) & 0xFF) && ((block->triangleGridMasks[j] & var_t3) & 0xFF00)) {
                         triangle = &block->triangles[j];
                         minYPos = vertices[triangle->verticesArray[1]].y;
                         maxYPos = minYPos;
@@ -3661,7 +3661,7 @@ void shadow_find_surface_under_object(Object *obj) {
                                                         (Vec3s *) &vertices[triangle->verticesArray[2]],
                                                         (Vec3s *) &vertices[triangle->verticesArray[3]])) {
                                 foundResult = TRUE;
-                                obj->shading->unk0 += (((1.0f - gShadowLightLevels[batchFlags]) - obj->shading->unk0) * 0.2);
+                                obj->shading->brightness += (((1.0f - gShadowLightLevels[batchFlags]) - obj->shading->brightness) * 0.2);
                             }
                         }
                     }
@@ -3706,8 +3706,8 @@ void shadow_generate(Object *obj, s32 isWater) {
         gShadowWavePlaneCount = 0;
         obj->waterEffect->meshStart = gShadowTail;
         gNewShadowTexture = set_animated_texture_header(obj->waterEffect->texture, obj->waterEffect->textureFrame << 8);
-        gNewShadowY2 = obj->header->shadowTop + yPos;
-        gNewShadowY1 = obj->header->shadowBottom + yPos;
+        gNewShadowY2 = obj->header->waterEffectTop + yPos;
+        gNewShadowY1 = obj->header->waterEffectBottom + yPos;
         if (gWaveBlockCount == 0 || cam_get_viewport_layout() < VIEWPORT_LAYOUT_2_PLAYERS) {
             gShadowYOffset = 0;
         }
@@ -3718,8 +3718,8 @@ void shadow_generate(Object *obj, s32 isWater) {
     } else {
         obj->shadow->meshStart = gShadowTail;
         gNewShadowTexture = obj->shadow->texture;
-        gNewShadowY2 = obj->header->unk44 + yPos;
-        gNewShadowY1 = obj->header->unk42 + yPos;
+        gNewShadowY2 = obj->header->shadowTop + yPos;
+        gNewShadowY1 = obj->header->shadowBottom + yPos;
         if (obj->behaviorId != BHV_RACER) {
             dist = obj->distanceToCamera;
             if (dist < 0.0) {
@@ -3738,7 +3738,7 @@ void shadow_generate(Object *obj, s32 isWater) {
         gNewShadowWidth = gNewShadowScale * 10.0f;
         gNewShadowLength = gNewShadowScale * 10.0f;
         gShadowArea = 4.0f * gNewShadowWidth * gNewShadowLength;
-        gShadowFadeStart = (obj->header->unk42 * 0.125f);
+        gShadowFadeStart = (obj->header->shadowBottom * 0.125f);
         if (gShadowFadeStart < 0.0f) {
             gShadowFadeStart = -gShadowFadeStart;
         }
@@ -3774,7 +3774,7 @@ void shadow_generate(Object *obj, s32 isWater) {
     }
     if (gShadowTriCount > 0) {
         if ((obj->shading != NULL) && isWater == FALSE) {
-            obj->shading->unk0 = shadow_light_level();
+            obj->shading->brightness = shadow_light_level();
         }
         shadow_project_vertices();
         shadow_build_mesh();
@@ -3825,7 +3825,7 @@ void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
             vertices = &arg0->vertices[arg0->batches[spAC].verticesOffset];
             sp88 = (arg0->batches[spAC].flags >> 0x13) & 7;
             for (; curFacesOffset < nextFacesOffset; curFacesOffset++) {
-                if (((arg0->unk10[curFacesOffset] & arg1) & 0xFF) && ((arg0->unk10[curFacesOffset] & arg1) & 0xFF00)) {
+                if (((arg0->triangleGridMasks[curFacesOffset] & arg1) & 0xFF) && ((arg0->triangleGridMasks[curFacesOffset] & arg1) & 0xFF00)) {
                     triangles = &arg0->triangles[curFacesOffset];
                     maxY = minY = vertices[triangles->verticesArray[1]].y;
                     for (i = 1; i < 3; i++) {
@@ -4015,7 +4015,7 @@ void shadow_project_vertices(void) {
         // Bucket stride: the N64 source spells the 32-entry stride as sizeof(unk8011B330),
         // which is 0x20 there but larger on a host with 8-byte pointers.
         for (j = 0, k = i * 0x20; j < gShadowBucketCounts[i]; j++, k++) {
-            var_v0 = gShadowBucketVertices[k].unkC;
+            var_v0 = gShadowBucketVertices[k].plane;
             temp_f16 = gShadowBucketVertices[k].x * var_v0->x;
             temp_f12 = gShadowBucketVertices[k].z * var_v0->z;
             gShadowBucketVertices[k].y = (f32) (-(temp_f16 + temp_f12 + var_v0->unkC_union.w) / var_v0->y);
@@ -4277,15 +4277,15 @@ s32 clip_polygon_to_rect(s32 arg0, unk8011C8B8 *arg1, s32 arg2, Vec2f *arg3) {
                 var_a1 = -1;
                 var_v1_3 = var_v0 << 5;
                 while (var_a0 > 0 && var_a1 < 0) {
-                    if ((gShadowBucketVertices[var_v1_3].unk10 == var_s3[var_t1].x) &&
-                        (gShadowBucketVertices[var_v1_3].unk14 == var_s3[var_t1].z) &&
-                        (gShadowBucketVertices[var_v1_3].unk18 == var_s3[var_v1].x) &&
-                        (gShadowBucketVertices[var_v1_3].unk1C == var_s3[var_v1].z)) {
+                    if ((gShadowBucketVertices[var_v1_3].edgeStartX == var_s3[var_t1].x) &&
+                        (gShadowBucketVertices[var_v1_3].edgeStartZ == var_s3[var_t1].z) &&
+                        (gShadowBucketVertices[var_v1_3].edgeEndX == var_s3[var_v1].x) &&
+                        (gShadowBucketVertices[var_v1_3].edgeEndZ == var_s3[var_v1].z)) {
                         var_a1 = var_v1_3;
-                    } else if ((gShadowBucketVertices[var_v1_3].unk10 == var_s3[var_v1].x) &&
-                               (gShadowBucketVertices[var_v1_3].unk14 == var_s3[var_v1].z) &&
-                               (gShadowBucketVertices[var_v1_3].unk18 == var_s3[var_t1].x) &&
-                               (gShadowBucketVertices[var_v1_3].unk1C == var_s3[var_t1].z)) {
+                    } else if ((gShadowBucketVertices[var_v1_3].edgeStartX == var_s3[var_v1].x) &&
+                               (gShadowBucketVertices[var_v1_3].edgeStartZ == var_s3[var_v1].z) &&
+                               (gShadowBucketVertices[var_v1_3].edgeEndX == var_s3[var_t1].x) &&
+                               (gShadowBucketVertices[var_v1_3].edgeEndZ == var_s3[var_t1].z)) {
                         var_a1 = var_v1_3;
                     }
                     var_a0 -= 1;
@@ -4304,13 +4304,13 @@ s32 clip_polygon_to_rect(s32 arg0, unk8011C8B8 *arg1, s32 arg2, Vec2f *arg3) {
                         gShadowBucketCounts[var_v0] = 0x1F;
                     }
                     var_v1_3 = gShadowBucketCounts[var_v0] + (var_v0 << 5);
-                    gShadowBucketVertices[var_v1_3].unk10 = var_s3[var_t1].x;
-                    gShadowBucketVertices[var_v1_3].unk14 = var_s3[var_t1].z;
-                    gShadowBucketVertices[var_v1_3].unk18 = var_s3[var_v1].x;
-                    gShadowBucketVertices[var_v1_3].unk1C = var_s3[var_v1].z;
+                    gShadowBucketVertices[var_v1_3].edgeStartX = var_s3[var_t1].x;
+                    gShadowBucketVertices[var_v1_3].edgeStartZ = var_s3[var_t1].z;
+                    gShadowBucketVertices[var_v1_3].edgeEndX = var_s3[var_v1].x;
+                    gShadowBucketVertices[var_v1_3].edgeEndZ = var_s3[var_v1].z;
                     gShadowBucketVertices[var_v1_3].x = var_s0[var_t2].x;
                     gShadowBucketVertices[var_v1_3].z = var_s0[var_t2].z;
-                    gShadowBucketVertices[var_v1_3].unkC = gShadowCurrentPlane;
+                    gShadowBucketVertices[var_v1_3].plane = gShadowCurrentPlane;
                     gShadowBucketCounts[var_v0]++;
                     var_s0[var_t2].unkC_union.s.unkE = var_v1_3;
                     var_t2++;

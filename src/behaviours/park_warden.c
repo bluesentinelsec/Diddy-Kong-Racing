@@ -54,11 +54,11 @@ void obj_init_parkwarden(Object *obj, UNUSED LevelObjectEntry *levelEntry, UNUSE
     obj->interactObj->pushForce = 0;
     taj = obj->npc;
     taj->nodeCurrent = 0xFF;
-    taj->unk0 = 0.0f;
-    taj->unk28 = 0;
-    taj->unk2C = 0;
+    taj->splineProgress = 0.0f;
+    taj->prevMusicChannelMask = 0;
+    taj->musicLayerTimer = 0;
     taj->musicFade = 0;
-    taj->unk36 = 0;
+    taj->musicLayerState = 0;
     gTajSoundMask = NULL;
     gTajSoundID = SOUND_VOICE_TAJ_HELLO;
 }
@@ -283,7 +283,7 @@ void obj_loop_parkwarden(Object *obj, s32 updateRate) {
             taj->animFrameF += updateRateF * 1.0;
             if (taj->animFrameF > 77.0) {
                 taj->animFrameF = 77.0;
-                taj->unk18 = -1.0f;
+                taj->unused18 = -1.0f;
                 obj->properties.taj.action = TAJ_MODE_DIALOGUE;
             }
             arctan = (racerObj->trans.rotation.y_rotation - (obj->trans.rotation.y_rotation & 0xFFFF)) + 0x8000;
@@ -308,7 +308,7 @@ void obj_loop_parkwarden(Object *obj, s32 updateRate) {
                     (dialogueID == 4) ? TAJ_MODE_END_DIALOGUE_CHALLENGE : TAJ_MODE_END_DIALOGUE;
                 taj->animFrameF = 0.1f;
                 obj->animationID = 2;
-                taj->unk1C = 0;
+                taj->faceRacerTimer = 0;
                 play_taj_voice_clip(SOUND_VOICE_TAJ_BYE, TRUE);
                 slowly_change_fog(PLAYER_ONE, taj->fogR, taj->fogG, taj->fogB, taj->fogNear, taj->fogFar, 180);
                 music_voicelimit_set(levelHeader->voiceLimit);
@@ -544,19 +544,19 @@ void obj_loop_parkwarden(Object *obj, s32 updateRate) {
                     taj->nodeBack1 = taj->nodeCurrent;
                 }
             } else {
-                if ((distance < 55.0f) && (taj->unk1C == 0) && (racerObj != NULL)) {
-                    taj->unk1C = 240;
-                    taj->unk1E = (s16) (arctan2_f(xPosDiff / distance, zPosDiff / distance) + 0x4000);
+                if ((distance < 55.0f) && (taj->faceRacerTimer == 0) && (racerObj != NULL)) {
+                    taj->faceRacerTimer = 240;
+                    taj->faceRacerAngle = (s16) (arctan2_f(xPosDiff / distance, zPosDiff / distance) + 0x4000);
                 }
-                if (taj->unk1C > 0) {
-                    taj->unk1C -= updateRate;
+                if (taj->faceRacerTimer > 0) {
+                    taj->faceRacerTimer -= updateRate;
                 } else {
-                    taj->unk1C = 0;
+                    taj->faceRacerTimer = 0;
                 }
-                if (taj->unk1C < 120) {
+                if (taj->faceRacerTimer < 120) {
                     taj->animFrameF += npc_follow_ai_nodes(taj, obj, updateRateF, 1.0f, 0);
                 } else {
-                    var_a2 = taj->unk1E - (obj->trans.rotation.y_rotation & 0xFFFF);
+                    var_a2 = taj->faceRacerAngle - (obj->trans.rotation.y_rotation & 0xFFFF);
                     if (var_a2 > 0x8000) {
                         var_a2 -= 0xFFFF;
                     }
@@ -600,30 +600,30 @@ void obj_loop_parkwarden(Object *obj, s32 updateRate) {
                     music_channel_off(15);
                 }
             }
-            switch (taj->unk36) {
+            switch (taj->musicLayerState) {
                 case 0:
                     if (taj->musicFade > updateRate << 7) {
                         taj->musicFade -= updateRate << 7;
                         music_channel_on(14);
                         music_channel_fade_set(14, taj->musicFade >> 8);
-                        taj->unk30 = 0;
+                        taj->musicLayerDelay = 0;
                     } else {
                         taj->musicFade = 0;
                         music_channel_off(14);
-                        if (taj->unk30 == 0) {
-                            taj->unk30 = rand_range(600, 900);
-                            taj->unk2C = 0;
+                        if (taj->musicLayerDelay == 0) {
+                            taj->musicLayerDelay = rand_range(600, 900);
+                            taj->musicLayerTimer = 0;
                         }
                     }
-                    if ((taj->unk30 != 0) && ((music_channel_get_mask() & ~0x4000) == 0xB)) {
-                        taj->unk2C += updateRate;
-                        if (taj->unk30 < taj->unk2C) {
-                            taj->unk36 = 1;
-                            taj->unk2C = rand_range(600, 900);
+                    if ((taj->musicLayerDelay != 0) && ((music_channel_get_mask() & ~0x4000) == 0xB)) {
+                        taj->musicLayerTimer += updateRate;
+                        if (taj->musicLayerDelay < taj->musicLayerTimer) {
+                            taj->musicLayerState = 1;
+                            taj->musicLayerTimer = rand_range(600, 900);
                         }
                     } else {
-                        taj->unk2C = 0;
-                        taj->unk30 = 0;
+                        taj->musicLayerTimer = 0;
+                        taj->musicLayerDelay = 0;
                     }
                     break;
                 case 1:
@@ -632,20 +632,20 @@ void obj_loop_parkwarden(Object *obj, s32 updateRate) {
                         if (taj->musicFade > 0x7F00) {
                             taj->musicFade = 0x7F00;
                         }
-                        taj->unk2C -= updateRate;
-                        if (taj->unk2C < 0) {
-                            taj->unk36 = 0;
+                        taj->musicLayerTimer -= updateRate;
+                        if (taj->musicLayerTimer < 0) {
+                            taj->musicLayerState = 0;
                         }
                         music_channel_on(14);
                         music_channel_fade_set(14, taj->musicFade >> 8);
                     } else {
-                        taj->unk36 = 0;
-                        taj->unk2C = 0;
-                        taj->unk30 = 0;
+                        taj->musicLayerState = 0;
+                        taj->musicLayerTimer = 0;
+                        taj->musicLayerDelay = 0;
                     }
                     break;
             }
-            taj->unk28 = music_channel_get_mask() & 0xBFFF;
+            taj->prevMusicChannelMask = music_channel_get_mask() & 0xBFFF;
             break;
     }
     obj->trans.y_position = tempPosY;

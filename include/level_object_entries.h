@@ -100,16 +100,16 @@ typedef struct LevelObjectEntry_Audio {
 
 typedef struct LevelObjectEntry_AudioLine {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u8 unk8;
-    /* 0x09 */ u8 unk9;
+    /* 0x08 */ u8 lineType;
+    /* 0x09 */ u8 volume;
     /* 0x0A */ u16 soundID;
     /* 0x0C */ u8 lineID;
-    /* 0x0D */ u8 unkD;
-    /* 0x0E */ u16 unkE;
-    /* 0x10 */ u8 unk10;
-    /* 0x11 */ u8 unk11;
-    /* 0x12 */ u8 unk12;
-    /* 0x13 */ u8 unk13;
+    /* 0x0D */ u8 vertexIndex;
+    /* 0x0E */ u16 range;
+    /* 0x10 */ u8 minVolume;
+    /* 0x11 */ u8 pitch;
+    /* 0x12 */ u8 fastFalloff;
+    /* 0x13 */ u8 priority;
 } LevelObjectEntry_AudioLine;
 
 typedef struct LevelObjectEntry_CameraControl {
@@ -134,24 +134,25 @@ typedef struct LevelObjectEntry_Checkpoint {
     /* 0x00 */ LevelObjectEntryCommon common;
     /* 0x08 */ u8 scale;
     /* 0x09 */ u8 index;
-    /* 0x0A */ u8 angleY; Hint((Angle, DivideBy:64))
-    /* 0x0B */ s8 unkB;
-    /* 0x0C */ s8 unkC;
-    /* 0x0D */ s8 unkD;
-    /* 0x0E */ s8 unkE;
-    /* 0x0F */ s8 unkF;
-    /* 0x10 */ s8 unk10;
-    /* 0x11 */ s8 unk11;
-    /* 0x12 */ s8 unk12;
-    /* 0x13 */ s8 unk13;
-    /* 0x14 */ s8 unk14;
-    /* 0x15 */ s8 unk15;
-    /* 0x16 */ s8 unk16;
+    /* 0x0A */ u8 angleY;
+    Hint((Angle, DivideBy : 64))
+        /* 0x0B */ s8 lane0OffsetX;
+    /* 0x0C */ s8 lane1OffsetX;
+    /* 0x0D */ s8 lane2OffsetX;
+    /* 0x0E */ s8 lane3OffsetX;
+    /* 0x0F */ s8 lane0OffsetY;
+    /* 0x10 */ s8 lane1OffsetY;
+    /* 0x11 */ s8 lane2OffsetY;
+    /* 0x12 */ s8 lane3OffsetY;
+    /* 0x13 */ s8 lane0Action;
+    /* 0x14 */ s8 lane1Action;
+    /* 0x15 */ s8 lane2Action;
+    /* 0x16 */ s8 lane3Action;
     /* 0x17 */ u8 isAltCheckpoint;
-    /* 0x18 */ s8 unk18;
-    /* 0x19 */ u8 unk19;
+    /* 0x18 */ s8 unused18;
+    /* 0x19 */ u8 indicatorType;
     /* 0x1A */ s8 vehicleType;
-    /* 0x1B */ u8 unk1B;
+    /* 0x1B */ u8 unused1B;
 } LevelObjectEntry_Checkpoint;
 
 typedef struct LevelObjectEntry_Door {
@@ -266,20 +267,20 @@ typedef struct LevelObjectEntry_Banana {
 
 typedef struct LevelObjectEntry_RgbaLight {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u8 unk8;
-    /* 0x09 */ u8 unk9;
+    /* 0x08 */ u8 shapeAndFalloff;
+    /* 0x09 */ u8 directionAndMask;
     /* 0x0A */ u8 colourR;
     /* 0x0B */ u8 colourG;
     /* 0x0C */ u8 colourB;
     /* 0x0D */ u8 intensity;
     /* 0x0E */ s16 radius;
-    /* 0x10 */ s16 unk10;
-    /* 0x12 */ s16 unk12;
-    /* 0x14 */ s16 unk14;
-    /* 0x16 */ s16 unk16;
-    /* 0x18 */ s16 unk18;
-    /* 0x1A */ s16 unk1A;
-    /* 0x1C */ u8 unk1C;
+    /* 0x10 */ s16 halfHeight;
+    /* 0x12 */ s16 halfDepth;
+    /* 0x14 */ s16 dirYaw;
+    /* 0x16 */ s16 dirPitch;
+    /* 0x18 */ s16 yawSpinSpeed;
+    /* 0x1A */ s16 pitchSpinSpeed;
+    /* 0x1C */ u8 colourAnimIndex;
 } LevelObjectEntry_RgbaLight;
 
 typedef struct LevelObjectEntry_Buoy_PirateShip {
@@ -290,12 +291,12 @@ typedef struct LevelObjectEntry_Buoy_PirateShip {
 typedef struct LevelObjectEntry_Weather {
     /* 0x00 */ LevelObjectEntryCommon common;
     /* 0x08 */ s16 radius;
-    /* 0x0A */ s16 unkA;
-    /* 0x0C */ s16 unkC;
-    /* 0x0E */ s16 unkE;
-    /* 0x10 */ u8 unk10;
-    /* 0x11 */ u8 unk11;
-    /* 0x12 */ s16 unk12;
+    /* 0x0A */ s16 velocityX;
+    /* 0x0C */ s16 velocityY;
+    /* 0x0E */ s16 velocityZ;
+    /* 0x10 */ u8 intensity;
+    /* 0x11 */ u8 opacity;
+    /* 0x12 */ s16 transitionTime;
 } LevelObjectEntry_Weather;
 
 typedef struct LevelObjectEntry_Bridge_WhaleRamp {
@@ -378,10 +379,10 @@ typedef struct LevelObjectEntry_Animation {
     /* 0x10 */ s8 actorIndex;
     /* 0x11 */ s8 order;
     /* 0x12 */ s8 objAnimIndex;
-    /* 0x13 */ s8 unk13;
+    /* 0x13 */ s8 emitterMask;
     /* 0x14 */ s8 nodeSpeed;
-    /* 0x15 */ s8 unk15;
-    /* 0x16 */ u8 unk16;
+    /* 0x15 */ s8 triggerActorIndex;
+    /* 0x16 */ u8 animStartFrame;
     /* 0x17 */ s8 objAnimSpeed;
     /* 0x18 */ u8 objAnimLoopType; // 0 = Loop, 1 = Reverse loop, 2 = Play once, 3 = reverse once then stop.
     /* 0x19 */ u8 rotateType;
@@ -389,25 +390,26 @@ typedef struct LevelObjectEntry_Animation {
     /* 0x1B */ s8 rollSpinSpeed;
     /* 0x1C */ s8 pitchSpinSpeed;
     /* 0x1D */ s8 goToNode;
-    /* 0x1E */ u8 unk1E;
-    /* 0x1F */ s8 unk1F;
-    /* 0x20 */ s8 unk20;
+    /* 0x1E */ u8 soundID;
+    /* 0x1F */ s8 musicSequence;
+    /* 0x20 */ s8 skipButtons;
     /* 0x21 */ s8 channel;
-    /* 0x22 */ s8 unk22;
-    /* 0x23 */ s8 unk23;
+    /* 0x22 */ s8 attachMode;
+    /* 0x23 */ s8 unused23;
     /* 0x24 */ s16 pauseFrameCount; Hint((Time, RoundToPlaces:4)) // Pause before continuing?
     /* 0x26 */ s8 specialHide;
-    /* 0x27 */ u8 messageId; Hint((AssetId:ASSET_GAME_TEXT))
-    /* 0x28 */ s8 unk28;
-    /* 0x29 */ s8 unk29;
-    /* 0x2A */ s8 unk2A;
+    /* 0x27 */ u8 messageId;
+    Hint((AssetId : ASSET_GAME_TEXT))
+        /* 0x28 */ s8 signalCutsceneEnd;
+    /* 0x29 */ s8 fadeType;
+    /* 0x2A */ s8 cutsceneID;
     /* 0x2B */ s8 fadeAlpha;
     /* 0x2C */ s8 nextAnim;
-    /* 0x2D */ s8 unk2D;
+    /* 0x2D */ s8 linearInterp;
     /* 0x2E */ s8 soundEffect;
     /* 0x2F */ s8 fadeOptions; // 1 = Start fading from fadeAlpha, 2 = make visible, 3 = make invisible.
-    /* 0x30 */ s8 unk30;
-    /* 0x31 */ u8 unk31;
+    /* 0x30 */ s8 musicFadeVolume;
+    /* 0x31 */ u8 unused31;
 } LevelObjectEntry_Animation;
 
 typedef struct LevelObjectEntry_InfoPoint {
@@ -440,20 +442,20 @@ typedef struct LevelObjectEntry_TimeTrial_Ghost {
 
 typedef struct LevelObjectEntry_Butterfly {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u16 unk8;
-    /* 0x0A */ u8 unkA;
-    /* 0x0B */ u8 unkB;
+    /* 0x08 */ u16 homeRadius;
+    /* 0x0A */ u8 textureIndex;
+    /* 0x0B */ u8 scale;
 } LevelObjectEntry_Butterfly;
 
 typedef struct LevelObjectEntry_Fish {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u16 unk8;
-    /* 0x0A */ u8 unkA;
-    /* 0x0B */ u8 unkB;
-    /* 0x0C */ u8 unkC;
-    /* 0x0D */ u8 unkD;
-    /* 0x0E */ u8 unkE;
-    /* 0x0F */ u8 unkF;
+    /* 0x08 */ u16 pathRadius;
+    /* 0x0A */ u8 verticalRange;
+    /* 0x0B */ u8 textureIndex;
+    /* 0x0C */ u8 scale;
+    /* 0x0D */ u8 renderScaleY;
+    /* 0x0E */ u8 swimSpeed;
+    /* 0x0F */ u8 pathAngle;
 } LevelObjectEntry_Fish;
 
 typedef struct LevelObjectEntry_Parkwarden {
@@ -513,14 +515,14 @@ typedef struct LevelObjectEntry_DynamicLightingObject {
 
 typedef struct LevelObjectEntry_EffectBox {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u8 unk8;
-    /* 0x09 */ u8 unk9;
-    /* 0x0A */ u8 unkA;
-    /* 0x0B */ u8 unkB;
-    /* 0x0C */ u8 unkC;
-    /* 0x0D */ u8 unkD;
-    /* 0x0E */ u8 unkE;
-    /* 0x0F */ u8 unkF;
+    /* 0x08 */ u8 halfWidthX;
+    /* 0x09 */ u8 halfHeightY;
+    /* 0x0A */ u8 halfDepthZ;
+    /* 0x0B */ u8 angleY;
+    /* 0x0C */ u8 effectType;
+    /* 0x0D */ u8 effectStrength;
+    /* 0x0E */ u8 unusedE;
+    /* 0x0F */ u8 unusedF;
 } LevelObjectEntry_EffectBox;
 
 typedef struct LevelObjectEntry_TrophyCab {
@@ -664,11 +666,11 @@ typedef struct LevelObjectEntry_TTDoor {
 
 typedef struct LevelObjectEntry_MidiFadePoint {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u16 unk8;
-    /* 0x0A */ u16 unkA;
-    /* 0x0C */ u8 unkC[16];
-    /* 0x1C */ u8 unk1C;
-    /* 0x1D */ u8 unk1D;
+    /* 0x08 */ u16 innerRadius;
+    /* 0x0A */ u16 outerRadius;
+    /* 0x0C */ u8 channelModes[16];
+    /* 0x1C */ u8 sequenceID;
+    /* 0x1D */ u8 unused1D;
 } LevelObjectEntry_MidiFadePoint;
 
 typedef struct LevelObjectEntry_OctoBubble {
@@ -710,13 +712,13 @@ typedef struct LevelObjectEntry8003FC44 {
 
 typedef struct LevelObjectEntry_WaveGenerator {
     LevelObjectEntryCommon common;
-    u8 unk8;
-    u8 unk9;
+    u8 waveSpeed;
+    u8 phaseOffset;
     u16 waveSize;
-    u16 unkC;
-    u16 unkE;
-    u8 unk10;
-    u8 unk11;
+    u16 amplitude;
+    u16 wavelength;
+    u8 linearAlongX;
+    u8 linearAlongZ;
 } LevelObjectEntry_WaveGenerator;
 
 typedef struct LevelObjectEntry_WavePower {

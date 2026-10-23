@@ -65,11 +65,11 @@ void obj_loop_effectbox(Object *obj, UNUSED s32 updateRate) {
 
     effectBoxEntry = (LevelObjectEntry_EffectBox *) obj->level_entry;
     racers = get_racer_objects(&numRacers);
-    cosAngle = coss_f(-(effectBoxEntry->unkB * 256));
-    sinAngle = sins_f(-(effectBoxEntry->unkB * 256));
-    xExtents = effectBoxEntry->unk8 * 3;
-    yExtents = effectBoxEntry->unk9 * 3;
-    zExtents = effectBoxEntry->unkA * 3;
+    cosAngle = coss_f(-(effectBoxEntry->angleY * 256));
+    sinAngle = sins_f(-(effectBoxEntry->angleY * 256));
+    xExtents = effectBoxEntry->halfWidthX * 3;
+    yExtents = effectBoxEntry->halfHeightY * 3;
+    zExtents = effectBoxEntry->halfDepthZ * 3;
     for (i = 0; i < numRacers; i++) {
         curRacerObj = racers[i];
         xDiff = curRacerObj->trans.x_position - obj->trans.x_position;
@@ -82,8 +82,8 @@ void obj_loop_effectbox(Object *obj, UNUSED s32 updateRate) {
                 if (-zExtents < zDiff && zDiff < zExtents) {
                     yExtentsHalf = yExtents / 2;
                     curRacer = curRacerObj->racer;
-                    curRacer->effectBoxType = effectBoxEntry->unkC;
-                    curRacer->effectBoxStrength = effectBoxEntry->unkD;
+                    curRacer->effectBoxType = effectBoxEntry->effectType;
+                    curRacer->effectBoxStrength = effectBoxEntry->effectStrength;
                     if (yExtentsHalf < yDiff && curRacer->effectBoxType == 1) {
                         xDiff = (yDiff - yExtentsHalf) / yExtentsHalf;
                         yDiff = (1.0 - xDiff);

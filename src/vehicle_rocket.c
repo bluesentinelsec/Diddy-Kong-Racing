@@ -146,9 +146,9 @@ void update_rocket(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
             boost = someObj->boost;
             someObj->properties.common.unk0 = 0;
             if (boost != NULL) {
-                boost->unk72 += updateRate;
-                boost->unk70 = 2;
-                boost->unk74 = 1.0f;
+                boost->pulseTimer += updateRate;
+                boost->effectState = 2;
+                boost->effectScale = 1.0f;
                 racer_set_boost_effect(obj, -1, 2, 1, 1);
             }
         }

@@ -83,10 +83,10 @@ ObjectLight *light_add_from_level_object_entry(Object *obj, LevelObjectEntry_Rgb
     light = NULL;
     if (gNumActiveLights < gMaxLights) {
         light = gActiveLights[gNumActiveLights++];
-        light->unk0 = (lightEntry->unk8 & 0xF0) >> 4;
-        light->type = lightEntry->unk8 & 0xF;
-        light->unk1 = (lightEntry->unk9 & 0xE0) >> 5;
-        light->unk2 = lightEntry->unk9 & 0x1F;
+        light->volumeShape = (lightEntry->shapeAndFalloff & 0xF0) >> 4;
+        light->type = lightEntry->shapeAndFalloff & 0xF;
+        light->directionMode = (lightEntry->directionAndMask & 0xE0) >> 5;
+        light->objectTypeMask = lightEntry->directionAndMask & 0x1F;
         light->enabled = TRUE;
         light->owner = NULL;
         light->homeX = 0;
@@ -113,34 +113,34 @@ ObjectLight *light_add_from_level_object_entry(Object *obj, LevelObjectEntry_Rgb
         light->intensity = lightEntry->intensity << 16;
         light->targetIntensityChangeRate = 0;
         light->targetIntensityDiff = 0;
-        light->unk44 = NULL;
-        if (lightEntry->unk1C < 7) {
+        light->keyframes = NULL;
+        if (lightEntry->colourAnimIndex < 7) {
             levelHeader = level_header();
-            if (((s32) levelHeader->unk74[lightEntry->unk1C]) != -1) {
-                light->unk44_asset = (MiscAssetObjectHeader24 *) levelHeader->unk74[lightEntry->unk1C];
-                light->unk48 = light->unk44_asset->unk0;
-                light->unk4A = 0;
-                light->unk4C = 0;
-                light->unk4E = 0;
-                light->unk44 = light->unk44_asset->unk14;
+            if (((s32) levelHeader->colourCycles[lightEntry->colourAnimIndex]) != -1) {
+                light->unk44_asset = (MiscAssetObjectHeader24 *) levelHeader->colourCycles[lightEntry->colourAnimIndex];
+                light->keyframeCount = light->unk44_asset->unk0;
+                light->keyframeIndex = 0;
+                light->keyframeTimer = 0;
+                light->totalAnimDuration = 0;
+                light->keyframes = light->unk44_asset->unk14;
                 // clang-format off
-                for (i = 0; i < light->unk48; i++) { light->unk4E += light->unk44[i].unk4; } // Must be on one line!
+                for (i = 0; i < light->keyframeCount; i++) { light->totalAnimDuration += light->keyframes[i].duration; } // Must be on one line!
                 // clang-format on
             }
         }
         light->radius = lightEntry->radius;
-        light->unk60 = lightEntry->unk10;
-        light->unk64 = lightEntry->unk12;
+        light->halfHeight = lightEntry->halfHeight;
+        light->halfDepth = lightEntry->halfDepth;
         light->radiusSquare = light->radius * light->radius;
         light->radiusMag = 1 / light->radius;
-        light->unk70 = lightEntry->unk14;
-        light->unk74 = lightEntry->unk18;
-        light->unk78 = (lightEntry->unk18) ? 0xFFFF : 0;
-        light->unk72 = lightEntry->unk16;
-        light->unk76 = lightEntry->unk1A;
-        light->unk7A = (lightEntry->unk1A) ? 0xFFFF : 0;
-        light->unk7A = 0;
-        light->unk5 = 1;
+        light->dirYaw = lightEntry->dirYaw;
+        light->yawSpeed = lightEntry->yawSpinSpeed;
+        light->yawSpinTimer = (lightEntry->yawSpinSpeed) ? 0xFFFF : 0;
+        light->dirPitch = lightEntry->dirPitch;
+        light->pitchSpeed = lightEntry->pitchSpinSpeed;
+        light->pitchSpinTimer = (lightEntry->pitchSpinSpeed) ? 0xFFFF : 0;
+        light->pitchSpinTimer = 0;
+        light->boundsDirty = 1;
         light_update(light, 0);
     }
     return light;
@@ -157,11 +157,11 @@ ObjectLight *light_add_from_object_header(Object *obj, ObjectHeader24 *arg1) {
     if (gNumActiveLights < gMaxLights) {
         light = gActiveLights[gNumActiveLights++];
         // Big-endian u32 read: top nibble of the union's first byte (unk8A).
-        light->unk0 = arg1->unk8A >> 4;
-        light->unk1 = arg1->unk9;
-        light->unk2 = arg1->unkB;
-        light->type = arg1->unkA;
-        light->enabled = arg1->unk8A & 0xF;
+        light->volumeShape = arg1->shapeAndEnabled >> 4;
+        light->directionMode = arg1->directionMode;
+        light->objectTypeMask = arg1->affectedObjectMask;
+        light->type = arg1->falloffType;
+        light->enabled = arg1->shapeAndEnabled & 0xF;
         light->owner = obj;
         light->homeX = arg1->homeX;
         light->homeY = arg1->homeY;
@@ -169,43 +169,43 @@ ObjectLight *light_add_from_object_header(Object *obj, ObjectHeader24 *arg1) {
         light->pos.x = light->homeX;
         light->pos.y = light->homeY;
         light->pos.z = light->homeZ;
-        light->colourR = arg1->unk2 << 16;
+        light->colourR = arg1->colourR << 16;
         light->targetColourChangeRateR = 0;
         light->targetColourDiffR = 0;
-        light->colourG = arg1->unk3 << 16;
+        light->colourG = arg1->colourG << 16;
         light->targetColourChangeRateG = 0;
         light->targetColourDiffG = 0;
-        light->colourB = arg1->unk4 << 16;
+        light->colourB = arg1->colourB << 16;
         light->targetColourChangeRateB = 0;
         light->targetColourDiffB = 0;
-        light->intensity = arg1->unk5 << 16;
+        light->intensity = arg1->intensity << 16;
         light->targetIntensityChangeRate = 0;
         light->targetIntensityDiff = 0;
-        if (arg1->unk6 != 0xFFFF) {
-            light->unk44_asset = (MiscAssetObjectHeader24 *) get_misc_asset(arg1->unk6);
-            light->unk48 = light->unk44_asset->unk0;
-            light->unk4A = 0;
-            light->unk4C = 0;
-            light->unk4E = 0;
-            light->unk44 = light->unk44_asset->unk14;
+        if (arg1->colourAnimAssetId != 0xFFFF) {
+            light->unk44_asset = (MiscAssetObjectHeader24 *) get_misc_asset(arg1->colourAnimAssetId);
+            light->keyframeCount = light->unk44_asset->unk0;
+            light->keyframeIndex = 0;
+            light->keyframeTimer = 0;
+            light->totalAnimDuration = 0;
+            light->keyframes = light->unk44_asset->unk14;
             // clang-format off
-            for (i = 0; i < light->unk48; i++) { light->unk4E += light->unk44[i].unk4; } // Must be on one line!
+            for (i = 0; i < light->keyframeCount; i++) { light->totalAnimDuration += light->keyframes[i].duration; } // Must be on one line!
             // clang-format on
         } else {
-            light->unk44 = 0;
+            light->keyframes = 0;
         }
         light->radius = arg1->radius;
-        light->unk60 = arg1->unk14;
-        light->unk64 = arg1->unk16;
+        light->halfHeight = arg1->extentY;
+        light->halfDepth = arg1->extentZ;
         light->radiusSquare = light->radius * light->radius;
         light->radiusMag = 1.0f / light->radius;
-        light->unk70 = arg1->unk0 << 8;
-        light->unk74 = 0;
-        light->unk78 = 0;
-        light->unk72 = arg1->unk1 << 8;
-        light->unk76 = 0;
-        light->unk7A = 0;
-        light->unk5 = 1;
+        light->dirYaw = arg1->dirYaw << 8;
+        light->yawSpeed = 0;
+        light->yawSpinTimer = 0;
+        light->dirPitch = arg1->dirPitch << 8;
+        light->pitchSpeed = 0;
+        light->pitchSpinTimer = 0;
+        light->boundsDirty = 1;
         light_update(light, 0);
     }
     return light;
@@ -295,28 +295,28 @@ void light_update(ObjectLight *light, s32 updateRate) {
         light->pos.x += light->owner->trans.x_position;
         light->pos.y += light->owner->trans.y_position;
         light->pos.z += light->owner->trans.z_position;
-        light->unk5 = 1;
+        light->boundsDirty = 1;
     }
-    if (light->unk44 != NULL) {
-        light->unk4C += updateRate;
-        while (light->unk4C >= light->unk44[light->unk4A].unk4) {
-            light->unk4C -= light->unk44[light->unk4A].unk4;
-            light->unk4A++;
-            if (light->unk48 < light->unk4A) {
-                light->unk4A = 0;
+    if (light->keyframes != NULL) {
+        light->keyframeTimer += updateRate;
+        while (light->keyframeTimer >= light->keyframes[light->keyframeIndex].duration) {
+            light->keyframeTimer -= light->keyframes[light->keyframeIndex].duration;
+            light->keyframeIndex++;
+            if (light->keyframeCount < light->keyframeIndex) {
+                light->keyframeIndex = 0;
             }
         }
-        temp_v1 = &light->unk44[light->unk4A];
-        if (light->unk4A < (light->unk48 - 1)) {
-            var_a3 = &light->unk44[light->unk4A + 1];
+        temp_v1 = &light->keyframes[light->keyframeIndex];
+        if (light->keyframeIndex < (light->keyframeCount - 1)) {
+            var_a3 = &light->keyframes[light->keyframeIndex + 1];
         } else {
-            var_a3 = light->unk44;
+            var_a3 = light->keyframes;
         }
-        temp_v0 = (0x10000 / temp_v1->unk4);
-        light->colourR = ((var_a3->unk0 - temp_v1->unk0) * light->unk4C * temp_v0) + (temp_v1->unk0 << 0x10);
-        light->colourG = ((var_a3->unk1 - temp_v1->unk1) * light->unk4C * temp_v0) + (temp_v1->unk1 << 0x10);
-        light->colourB = ((var_a3->unk2 - temp_v1->unk2) * light->unk4C * temp_v0) + (temp_v1->unk2 << 0x10);
-        light->intensity = ((var_a3->unk3 - temp_v1->unk3) * light->unk4C * temp_v0) + (temp_v1->unk3 << 0x10);
+        temp_v0 = (0x10000 / temp_v1->duration);
+        light->colourR = ((var_a3->colourR - temp_v1->colourR) * light->keyframeTimer * temp_v0) + (temp_v1->colourR << 0x10);
+        light->colourG = ((var_a3->colourG - temp_v1->colourG) * light->keyframeTimer * temp_v0) + (temp_v1->colourG << 0x10);
+        light->colourB = ((var_a3->colourB - temp_v1->colourB) * light->keyframeTimer * temp_v0) + (temp_v1->colourB << 0x10);
+        light->intensity = ((var_a3->intensity - temp_v1->intensity) * light->keyframeTimer * temp_v0) + (temp_v1->intensity << 0x10);
     } else {
         if (light->targetColourDiffR != 0) {
             temp_v0 = light->targetColourDiffR;
@@ -359,53 +359,53 @@ void light_update(ObjectLight *light, s32 updateRate) {
             }
         }
     }
-    if (light->unk78 != 0) {
-        temp_v0 = light->unk78;
-        if (light->unk78 == 0xFFFF) {
-            light->unk70 += light->unk74 * updateRate;
+    if (light->yawSpinTimer != 0) {
+        temp_v0 = light->yawSpinTimer;
+        if (light->yawSpinTimer == 0xFFFF) {
+            light->dirYaw += light->yawSpeed * updateRate;
         } else if (updateRate < temp_v0) {
-            light->unk70 += light->unk74 * updateRate;
-            light->unk78 = temp_v0 - updateRate;
+            light->dirYaw += light->yawSpeed * updateRate;
+            light->yawSpinTimer = temp_v0 - updateRate;
         } else {
-            light->unk78 = 0;
-            light->unk70 += light->unk74 * temp_v0;
+            light->yawSpinTimer = 0;
+            light->dirYaw += light->yawSpeed * temp_v0;
         }
-        light->unk5 = 1;
+        light->boundsDirty = 1;
     }
-    if (light->unk7A != 0) {
-        temp_v0 = light->unk7A;
-        if (light->unk7A == 0xFFFF) {
-            light->unk72 += light->unk76 * updateRate;
+    if (light->pitchSpinTimer != 0) {
+        temp_v0 = light->pitchSpinTimer;
+        if (light->pitchSpinTimer == 0xFFFF) {
+            light->dirPitch += light->pitchSpeed * updateRate;
         } else if (updateRate < temp_v0) {
-            light->unk72 += light->unk76 * updateRate;
-            light->unk7A = temp_v0 - updateRate;
+            light->dirPitch += light->pitchSpeed * updateRate;
+            light->pitchSpinTimer = temp_v0 - updateRate;
         } else {
-            light->unk7A = 0;
-            light->unk72 += light->unk76 * temp_v0;
+            light->pitchSpinTimer = 0;
+            light->dirPitch += light->pitchSpeed * temp_v0;
         }
-        light->unk5 = 1;
+        light->boundsDirty = 1;
     }
-    if (light->unk5) {
+    if (light->boundsDirty) {
         light->minX = light->pos.x - light->radius;
         light->maxX = light->pos.x + light->radius;
-        if (light->unk0 == 1) {
+        if (light->volumeShape == 1) {
             light->minY = light->pos.y - light->radius;
             light->maxY = light->pos.y + light->radius;
         } else {
-            light->minY = light->pos.y - light->unk60;
-            light->maxY = light->pos.y + light->unk60;
+            light->minY = light->pos.y - light->halfHeight;
+            light->maxY = light->pos.y + light->halfHeight;
         }
-        if (light->unk0 == 0) {
-            light->minZ = light->pos.z - light->unk64;
-            light->maxZ = light->pos.z + light->unk64;
+        if (light->volumeShape == 0) {
+            light->minZ = light->pos.z - light->halfDepth;
+            light->maxZ = light->pos.z + light->halfDepth;
         } else {
             light->minZ = light->pos.z - light->radius;
             light->maxZ = light->pos.z + light->radius;
         }
-        if (light->unk1 == 2) {
+        if (light->directionMode == 2) {
             light->direction.z = -1.0f;
-            rotation.y_rotation = light->unk70;
-            rotation.x_rotation = light->unk72;
+            rotation.y_rotation = light->dirYaw;
+            rotation.x_rotation = light->dirPitch;
             rotation.z_rotation = 0;
             vec3f_rotate_py(&rotation, &light->direction);
             if (light->owner != NULL) {
@@ -415,7 +415,7 @@ void light_update(ObjectLight *light, s32 updateRate) {
             light->direction.y = -light->direction.y;
             light->direction.z = -light->direction.z;
         }
-        light->unk5 = 0;
+        light->boundsDirty = 0;
     }
 }
 
@@ -487,10 +487,10 @@ void light_update_shading(Object *object) {
 
         for (i = 0; i < gNumActiveLights; i++) {
             light = gActiveLights[i];
-            if ((light->unk2 & objTypeMask) && (light->enabled == TRUE) && (objX >= light->minX) &&
+            if ((light->objectTypeMask & objTypeMask) && (light->enabled == TRUE) && (objX >= light->minX) &&
                 (light->maxX >= objX) && (objY >= light->minY) && (light->maxY >= objY) && (objZ >= light->minZ) &&
                 (light->maxZ >= objZ)) {
-                if (light->unk0 == 0) {
+                if (light->volumeShape == 0) {
                     if (light->intensity >= 0x10000) {
                         gShadeBuffer[numLights].lightObj = light;
                         gShadeBuffer[numLights].colourR = light->colourR >> 0x10;
@@ -503,13 +503,13 @@ void light_update_shading(Object *object) {
                     gLightDiffX = light->pos.x - object->trans.x_position;
                     gLightDiffY = light->pos.y - object->trans.y_position;
                     gLightDiffZ = light->pos.z - object->trans.z_position;
-                    if (light->unk0 == 2) {
+                    if (light->volumeShape == 2) {
                         gLightDiffY = 0.0f;
                     }
                     gLightDistance =
                         (gLightDiffX * gLightDiffX) + (gLightDiffY * gLightDiffY) + (gLightDiffZ * gLightDiffZ);
                     if (gLightDistance < light->radiusSquare) {
-                        if (light->unk1 == 2) {
+                        if (light->directionMode == 2) {
                             intensity = light_direction_calc(light);
                         } else {
                             intensity = 1.0f;

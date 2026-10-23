@@ -1298,7 +1298,7 @@ static void particle_mark_translucent(Particle *particle) {
  */
 static void particle_set_brightness(Particle *particle, Object *obj) {
     if ((particle->descFlags & PARTICLE_SHADED) && obj->shading != NULL) {
-        particle->brightness = obj->shading->unk0 * 255.0f;
+        particle->brightness = obj->shading->brightness * 255.0f;
     } else {
         particle->brightness = 255;
     }

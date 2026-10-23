@@ -20,11 +20,11 @@ enum LightMask {
 };
 
 typedef struct SubMiscAssetObjectHeader24 {
-    u8 unk0;
-    u8 unk1;
-    u8 unk2;
-    u8 unk3;
-    s32 unk4;
+    u8 colourR;
+    u8 colourG;
+    u8 colourB;
+    u8 intensity;
+    s32 duration;
 } SubMiscAssetObjectHeader24;
 
 typedef struct MiscAssetObjectHeader24 {
@@ -35,12 +35,12 @@ typedef struct MiscAssetObjectHeader24 {
 
 /* Size: 0x88 bytes */
 typedef struct ObjectLight {
-    u8 unk0;
-    u8 unk1;
-    u8 unk2;
+    u8 volumeShape;
+    u8 directionMode;
+    u8 objectTypeMask;
     u8 type;
     u8 enabled;
-    u8 unk5;
+    u8 boundsDirty;
     s16 homeX;
     s16 homeY;
     s16 homeZ;
@@ -59,13 +59,13 @@ typedef struct ObjectLight {
     u16 targetColourDiffB;
     u16 targetIntensityDiff;
     union {
-        SubMiscAssetObjectHeader24 *unk44;
+        SubMiscAssetObjectHeader24 *keyframes;
         MiscAssetObjectHeader24 *unk44_asset;
-    };    
-    u16 unk48;
-    u16 unk4A;
-    u16 unk4C;
-    u16 unk4E;
+    };
+    u16 keyframeCount;
+    u16 keyframeIndex;
+    u16 keyframeTimer;
+    u16 totalAnimDuration;
     s16 minX;
     s16 minY;
     s16 minZ;
@@ -73,16 +73,16 @@ typedef struct ObjectLight {
     s16 maxY;
     s16 maxZ;
     f32 radius;
-    f32 unk60;
-    f32 unk64;
+    f32 halfHeight;
+    f32 halfDepth;
     f32 radiusSquare;
     f32 radiusMag;
-    s16 unk70;
-    s16 unk72;
-    s16 unk74;
-    s16 unk76;
-    u16 unk78;
-    u16 unk7A;
+    s16 dirYaw;
+    s16 dirPitch;
+    s16 yawSpeed;
+    s16 pitchSpeed;
+    u16 yawSpinTimer;
+    u16 pitchSpinTimer;
     Vec3f direction; // Think this might be scale.
 } ObjectLight;
 

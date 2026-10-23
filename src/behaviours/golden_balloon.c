@@ -63,7 +63,7 @@ void obj_init_goldenballoon(Object *obj, LevelObjectEntry *levelEntry, UNUSED s3
     obj->trans.scale = obj->header->scale * scalef;
     obj64 = obj->npc;
     obj64->nodeCurrent = 255;
-    obj64->unk0 = 0.0f;
+    obj64->splineProgress = 0.0f;
     obj->properties.goldenBalloon.action = 0;
     if (entry->challengeID) {
         if (get_settings()->tajFlags & (1 << (entry->challengeID + 2))) {

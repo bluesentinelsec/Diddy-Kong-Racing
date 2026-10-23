@@ -253,11 +253,11 @@ typedef struct CheckpointNode {
 
 /* Size: 0x40 bytes */
 typedef struct unk800179D0 {
-    s32 unk0;
-    Object *unk04;
-    Object *unk08;
-    f32 unk0C[12];
-    u32 unk3C;
+    s32 ttl;
+    Object *objA;
+    Object *objB;
+    f32 prevLocalPoints[12];
+    u32 unused3C;
 } unk800179D0;
 
 typedef struct TTGhostTable {

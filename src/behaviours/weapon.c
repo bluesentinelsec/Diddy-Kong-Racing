@@ -285,8 +285,8 @@ void homing_rocket_prevent_overshoot(Object *obj, s32 updateRate, Object_Weapon 
     if (rocket->target != NULL) {
         targetObj = rocket->target;
         racer = targetObj->racer;
-        rocket->unk14 = racer->unk1BA >> 1;
-        rocket->unk16 = racer->unk1BC >> 1;
+        rocket->unk14 = racer->trackOffsetX >> 1;
+        rocket->unk16 = racer->trackOffsetY >> 1;
         diffX = targetObj->trans.x_position - obj->trans.x_position;
         diffY = targetObj->trans.y_position - obj->trans.y_position;
         diffZ = targetObj->trans.z_position - obj->trans.z_position;

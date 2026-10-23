@@ -190,8 +190,8 @@ void generate_collision_candidates(s32 numPoints, Vec3f *origins, Vec3f *targets
                 CollisionFacetPlanes *facet = &seg->collisionFacets[triIndex];
 
                 // Check if the triangle's grid mask intersects with the bounding rectangle's grid mask
-                if (((seg->unk10[triIndex] & grid_mask[i]) & 0x00FF) == 0 ||
-                    ((seg->unk10[triIndex] & grid_mask[i]) & 0xFF00) == 0) {
+                if (((seg->triangleGridMasks[triIndex] & grid_mask[i]) & 0x00FF) == 0 ||
+                    ((seg->triangleGridMasks[triIndex] & grid_mask[i]) & 0xFF00) == 0) {
                     continue;
                 }
 
