@@ -147,7 +147,7 @@ set(DKR_GAME_SOURCES
     src/game.c src/game_text.c src/game_ui.c src/get_stack_pointer.c src/gzip.c
     src/joypad.c src/lights.c src/memory.c src/behaviours.c
     src/object_models.c src/particles.c src/printf.c
-    src/racer.c src/rcp_dkr.c src/save_data.c src/screen_asset.c src/set_rsp_segment.c
+    src/rcp_dkr.c src/save_data.c src/screen_asset.c src/set_rsp_segment.c
     src/textures_sprites.c src/thread30_bgload.c src/thread3_main.c
     src/tracks.c src/unused_string.c src/vehicle_bluey.c src/vehicle_bubbler.c
     src/vehicle_rocket.c src/vehicle_smokey.c src/vehicle_tricky.c src/vehicle_wizpig.c
@@ -157,7 +157,8 @@ set(DKR_GAME_SOURCES
 file(GLOB DKR_BEHAVIOUR_SOURCES CONFIGURE_DEPENDS src/behaviours/*.c)
 file(GLOB DKR_MENU_SOURCES CONFIGURE_DEPENDS src/menu/*.c)
 file(GLOB DKR_OBJECTS_SOURCES CONFIGURE_DEPENDS src/objects/*.c)
-list(APPEND DKR_GAME_SOURCES ${DKR_BEHAVIOUR_SOURCES} ${DKR_MENU_SOURCES} ${DKR_OBJECTS_SOURCES})
+file(GLOB DKR_RACER_SOURCES CONFIGURE_DEPENDS src/racer/*.c)
+list(APPEND DKR_GAME_SOURCES ${DKR_BEHAVIOUR_SOURCES} ${DKR_MENU_SOURCES} ${DKR_OBJECTS_SOURCES} ${DKR_RACER_SOURCES})
 
 set(DKR_LIBULTRA_SOURCES
     libultra/src/audio/bnkf.c libultra/src/audio/cents2ratio.c libultra/src/audio/copy.c
