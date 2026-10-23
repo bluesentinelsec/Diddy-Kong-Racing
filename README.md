@@ -422,7 +422,13 @@ additive, so a real gamepad still works too.
   `src/menu/`, one file per screen (title, options, track select, results,
   credits and so on) with `menu.c` holding the shared drawing helpers and the
   state the screens share, declared in `menu_internal.h`; `src/menu.h` is the
-  interface the rest of the game uses. `libultra/`
+  interface the rest of the game uses. The object system lives in
+  `src/objects/` (spawning and the update loop in `objects.c`, then rendering,
+  interaction and collision, checkpoints, race flow, AI nodes, shading,
+  cutscenes) and the racers in `src/racer/` (shared physics in `racer.c`, then
+  one file each for the AI, car, hovercraft, plane, the special vehicles,
+  items, cameras and ghosts); `objects.h` and `racer.h` stay their interfaces.
+  `libultra/`
   keeps only the parts of the N64 SDK the game still runs as code: the audio
   synthesizer and sequence player, and the matrix helpers. `include/PR/` is
   down to the formats those need (display-list and audio command macros, the
