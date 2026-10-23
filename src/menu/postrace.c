@@ -74,7 +74,7 @@ s32 postrace_render(s32 updateRate) {
     s32 i;
     s32 buttonsPressedAllPlayers;
 
-    ret = MENU_RESULT_FLAGS_1;
+    ret = MENU_RESULT_RETURN_TO_GAME;
     scale = -1.0f;
     buttonsPressedAllPlayers = 0;
     if (gPostraceState != POSTRACE_SLIDE_END) {
@@ -840,12 +840,10 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
                 if (gPostraceFinishState >= 2) {
                     if (gPostraceFinishState == 9) {
                         cinematic_start((s8 *) get_misc_asset(ASSET_MISC_CINEMATIC_RACE), gPostraceFinishState,
-                                        MENU_RESULT_FLAGS_100 | MENU_RESULT_FLAGS_2 | MENU_RESULT_FLAGS_4 |
-                                            MENU_RESULT_FLAGS_8,
-                                        0, 0, NULL);
+                                        MENU_RESULT_SWITCH(MENU_RESULT_GO_TO_HUB), 0, 0, NULL);
                     } else {
                         cinematic_start((s8 *) get_misc_asset(ASSET_MISC_CINEMATIC_RACE), gPostraceFinishState,
-                                        MENU_RESULT_FLAGS_100 | MENU_RESULT_FLAGS_1, 0, 0, NULL);
+                                        MENU_RESULT_SWITCH(MENU_RESULT_RETURN_TO_GAME), 0, 0, NULL);
                     }
                     ret = POSTRACE_OPT_13;
                 } else if (gRaceSetup.trophyRaceWorldId != 0) {
@@ -1235,15 +1233,15 @@ s32 menu_results_loop(s32 updateRate) {
             dialogue_close(7);
             dialogue_clear(7);
             if (gResults.optionText[gMenuFlow.option] == gMenuLoaded.text[ASSET_MENU_TEXT_TRYAGAIN]) {
-                return (MENU_RESULT_FLAGS_100 | MENU_RESULT_FLAGS_2); // This gets parsed in mode_menu as a flag
-                                                                      // and an ID from the bottom 7 bits.
+                return MENU_RESULT_SWITCH(MENU_RESULT_RESTART_LEVEL);
+                // and an ID from the bottom 7 bits.
             }
             if (gResults.optionText[gMenuFlow.option] == gMenuLoaded.text[ASSET_MENU_TEXT_SELECTTRACK]) {
                 load_level_for_menu(SPECIAL_MAP_ID_NO_LEVEL, -1, 0);
                 menu_init(MENU_TRACK_SELECT);
                 return MENU_RESULT_CONTINUE;
             }
-            return (MENU_RESULT_FLAGS_100 | MENU_RESULT_FLAGS_4);
+            return MENU_RESULT_SWITCH(MENU_RESULT_GO_TO_TITLE);
         }
     }
     gMenuInput.ignoreInputTime = 0;

@@ -113,9 +113,9 @@ void trophyround_adventure(void) {
     Settings *settings = get_settings();
     gRaceSetup.trophyRaceWorldId = settings->worldId;
     gRaceSetup.trophyRaceRound = 0;
-    settings->levelTransition->courseID = settings->courseId;
-    settings->levelTransition->entranceID = 0;
-    settings->levelTransition->unk1 = 0;
+    settings->levelExit->fromMapId = settings->courseId;
+    settings->levelExit->returnEntrance = 0;
+    settings->levelExit->chosenExit = 0;
     gRaceSetup.inAdvModeTrophyRace = TRUE;
     set_time_trial_enabled(0);
 }
@@ -586,14 +586,14 @@ s32 menu_trophy_race_rankings_loop(s32 updateRate) {
                         if (sp34 >= 3) {
                             menu_init(MENU_TRACK_SELECT);
                         } else {
-                            ret = MENU_RESULT_FLAGS_100 | MENU_RESULT_TRACKS_MODE;
+                            ret = MENU_RESULT_SWITCH(MENU_RESULT_TRACKS_MODE);
                         }
                     } else {
                         ret = MENU_RESULT_RETURN_TO_GAME;
                         settings->courseId = level_world_id(settings->worldId);
                         if (gRaceSetup.inAdvModeTrophyRace) {
                             gRaceSetup.inAdvModeTrophyRace = FALSE;
-                            ret = settings->courseId | MENU_RESULT_FLAGS_200;
+                            ret = MENU_RESULT_START_LEVEL(settings->courseId);
                             if (sp34 < 3) {
                                 temp0 = settings->worldId - 1;
                                 temp0 <<= 1;

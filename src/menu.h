@@ -255,12 +255,30 @@ typedef enum MENU_ID {
     MENU_CAUTION
 } MENU_ID;
 
+/**
+ * What a menu screen's loop hands back to mode_menu each frame:
+ *   MENU_RESULT_CONTINUE          keep showing the menu
+ *   MENU_RESULT_SKIP_RENDER       the menu drew nothing this frame
+ *   n > 0                         start the chosen track with n players
+ *   MENU_RESULT_START_LEVEL(id)   leave the menus and load level id
+ *   MENU_RESULT_SWITCH(what)      switch to another menu or back into the game (a MenuResult)
+ *   MENU_RESULT_TAKE_EXIT(index)  adventure: take the stored exit, index picks which destination
+ */
+#define MENU_RESULT_SKIP_RENDER (-2)
+#define MENU_RESULT_LEVEL_FLAG 0x200
+#define MENU_RESULT_SWITCH_FLAG 0x100
+#define MENU_RESULT_EXIT_FLAG 0x80
+#define MENU_RESULT_PAYLOAD(result) ((result) & 0x7F)
+#define MENU_RESULT_START_LEVEL(levelId) (MENU_RESULT_LEVEL_FLAG | (levelId))
+#define MENU_RESULT_SWITCH(what) (MENU_RESULT_SWITCH_FLAG | (what))
+#define MENU_RESULT_TAKE_EXIT(index) (MENU_RESULT_EXIT_FLAG | (index))
+
 enum MenuResult {
     MENU_RESULT_CONTINUE,
-    MENU_RESULT_RETURN_TO_GAME,
-    MENU_RESULT_UNK2,
-    MENU_RESULT_UNK3,
-    MENU_RESULT_UNK4,
+    MENU_RESULT_RETURN_TO_GAME,   // back into the level with the stored exit's entrance and cutscene
+    MENU_RESULT_RESTART_LEVEL,    // reload the current level as it is
+    MENU_RESULT_RESUME_ADVENTURE, // load the stored exit's destination with the level's default vehicle
+    MENU_RESULT_GO_TO_TITLE,
     MENU_RESULT_TRACKS_MODE,
     MENU_RESULT_UNK6,
     MENU_RESULT_UNK7,
@@ -270,25 +288,11 @@ enum MenuResult {
     MENU_RESULT_UNK11,
     MENU_RESULT_UNK12,
     MENU_RESULT_UNK13,
-    MENU_RESULT_UNK14,
+    MENU_RESULT_GO_TO_HUB,
     MENU_RESULT_UNK15,
     MENU_RESULT_UNK16,
     MENU_RESULT_UNK17,
     MENU_RESULT_UNK18,
-};
-
-enum MenuResultFlags {
-    MENU_RESULT_FLAGS_0,
-    MENU_RESULT_FLAGS_1 = (1 << 0),
-    MENU_RESULT_FLAGS_2 = (1 << 1),
-    MENU_RESULT_FLAGS_4 = (1 << 2),
-    MENU_RESULT_FLAGS_8 = (1 << 3),
-    MENU_RESULT_FLAGS_10 = (1 << 4),
-    MENU_RESULT_FLAGS_20 = (1 << 5),
-    MENU_RESULT_FLAGS_40 = (1 << 6),
-    MENU_RESULT_FLAGS_80 = (1 << 7),
-    MENU_RESULT_FLAGS_100 = (1 << 8),
-    MENU_RESULT_FLAGS_200 = (1 << 9),
 };
 
 enum TrackFinishBits {

@@ -23,6 +23,13 @@ enum LevelLoadType {
     LEVEL_LOAD_FUTURE_FUN_LAND,
 };
 
+/** Where a level hands over when it is left, when no menu context says otherwise. */
+enum LevelExitRoute {
+    EXIT_ROUTE_NONE,         // stay in game: reload from the exit settings, restart, or go to the title
+    EXIT_ROUTE_MENU,         // the exit led to a menu (adventure track select)
+    EXIT_ROUTE_PREVIOUS_MAP, // a cutscene or boss sequence ended: back to the map the exit settings name
+};
+
 enum LevelLoadContext {
     LEVEL_CONTEXT_NONE,
     LEVEL_CONTEXT_TRACK_SELECT,
