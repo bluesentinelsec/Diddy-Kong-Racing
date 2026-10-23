@@ -106,25 +106,25 @@ void menu_intro_names_update(f32 updateRateF) {
         }
     }
 
-    if (introCharData->unk4 <= sIntroNameTimer) {
-        if (sIntroNameTimer < introCharData->unk8) {
-            temp = (sIntroNameTimer - introCharData->unk4);
-            temp2 = (introCharData->unk8 - introCharData->unk4);
-            xPos = (introCharData->unk14 + (((introCharData->unk1C - introCharData->unk14) * temp) / temp2));
-            yPos = (introCharData->unk18 + (((introCharData->unk20 - introCharData->unk18) * temp) / temp2));
-            text = introCharData->unk0;
+    if (introCharData->slideInStartTime <= sIntroNameTimer) {
+        if (sIntroNameTimer < introCharData->slideInEndTime) {
+            temp = (sIntroNameTimer - introCharData->slideInStartTime);
+            temp2 = (introCharData->slideInEndTime - introCharData->slideInStartTime);
+            xPos = (introCharData->startX + (((introCharData->centreX - introCharData->startX) * temp) / temp2));
+            yPos = (introCharData->startY + (((introCharData->centreY - introCharData->startY) * temp) / temp2));
+            text = introCharData->text;
             didUpdate = TRUE;
-        } else if (sIntroNameTimer <= introCharData->unkC) {
-            xPos = introCharData->unk1C;
-            yPos = introCharData->unk20;
-            text = introCharData->unk0;
+        } else if (sIntroNameTimer <= introCharData->holdEndTime) {
+            xPos = introCharData->centreX;
+            yPos = introCharData->centreY;
+            text = introCharData->text;
             didUpdate = TRUE;
-        } else if (sIntroNameTimer < introCharData->unk10) {
-            temp = (sIntroNameTimer - introCharData->unkC);
-            temp2 = (introCharData->unk10 - introCharData->unkC);
-            xPos = (introCharData->unk1C + (((introCharData->unk24 - introCharData->unk1C) * temp) / temp2));
-            yPos = (introCharData->unk20 + (((introCharData->unk28 - introCharData->unk20) * temp) / temp2));
-            text = introCharData->unk0;
+        } else if (sIntroNameTimer < introCharData->slideOutEndTime) {
+            temp = (sIntroNameTimer - introCharData->holdEndTime);
+            temp2 = (introCharData->slideOutEndTime - introCharData->holdEndTime);
+            xPos = (introCharData->centreX + (((introCharData->endX - introCharData->centreX) * temp) / temp2));
+            yPos = (introCharData->centreY + (((introCharData->endY - introCharData->centreY) * temp) / temp2));
+            text = introCharData->text;
             didUpdate = TRUE;
         } else {
             gOpeningNameID++;

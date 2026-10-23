@@ -144,8 +144,8 @@ void level_global_init(void) {
         gGlobalLevelTable[i].raceType = gCurrentLevelHeader->race_type;
         gGlobalLevelTable[i].vehicles = ((u16) gCurrentLevelHeader->available_vehicles) << 4;
         gGlobalLevelTable[i].vehicles |= gCurrentLevelHeader->vehicle & 0xF;
-        gGlobalLevelTable[i].unk3 = 1;
-        gGlobalLevelTable[i].unk4 = gCurrentLevelHeader->unusedB0;
+        gGlobalLevelTable[i].unused3 = 1;
+        gGlobalLevelTable[i].unused4 = gCurrentLevelHeader->unusedB0;
     }
     gNumberOfWorlds++;
     gWorldBossLevelIds = mempool_alloc_safe(gNumberOfWorlds, COLOUR_TAG_YELLOW);

@@ -318,12 +318,12 @@ typedef enum TitleDemoIndex {
 typedef struct MenuAsset {
     ObjectTransform trans;
     s16 spriteOffset;
-    s8 unk1A;
-    s8 unk1B;
-    s8 unk1C;
-    s8 unk1D;
-    s8 unk1E;
-    s8 unk1F;
+    s8 randomSeedA; // best guess
+    s8 randomSeedB; // best guess
+    s8 randomSeedC; // best guess
+    s8 animFrame;
+    s8 unused1E;
+    s8 unused1F;
 } MenuAsset;
 
 typedef struct unk80080BC8 {
@@ -339,41 +339,41 @@ typedef struct unk80126460 {
 
 typedef struct unk801263C0 {
     s8 channelIndex;
-    s8 unk1;
+    s8 switchDelay;
     union {
         struct {
-            s8 unk2a;
-            s8 unk3;
+            s8 unused2a;
+            s8 volumeLowByte;
         };
-        s16 unk2;
+        s16 volume;
     };
 } unk801263C0;
 
 typedef struct unk80126C54 {
     union {
         struct {
-            u8 unk0;
-            u8 unk1;
-            u8 unk2;
-            u8 unk3;
+            u8 unused0;
+            u8 unused1;
+            u8 unused2;
+            u8 unused3;
         };
-        s32 unk0_s32;
+        s32 assetLoadStep;
     };
 } unk80126C54;
 
 /* Size: 0x30 bytes */
 typedef struct unk800DF83C {
-    char *unk0; // Pointer to ascii text.
-    f32  unk4;
-    f32  unk8;
-    f32  unkC;
-    f32  unk10;
-    f32  unk14;
-    f32  unk18;
-    f32  unk1C;
-    f32  unk20;
-    f32  unk24;
-    f32  unk28;
+    char *text; // Pointer to ascii text.
+    f32 slideInStartTime;
+    f32 slideInEndTime;
+    f32 holdEndTime;
+    f32 slideOutEndTime;
+    f32 startX;
+    f32 startY;
+    f32 centreX;
+    f32 centreY;
+    f32 endX;
+    f32 endY;
 } unk800DF83C;
 
 typedef struct unk800DFA3C {
@@ -465,25 +465,6 @@ typedef struct unk80126878 {
   /* 0x06 */ s16 y;
   /* 0x08 */ s32 colourIndex;
 } unk80126878;
-
-/* Unknown size */
-typedef struct unk80069D20 {
-    s16 unk0;
-    s16 unk2;
-    s16 unk4;
-    u8 pad6[6];
-    f32 unkC;
-    f32 unk10;
-    f32 unk14;
-} unk80069D20;
-
-typedef struct unk8009CA602 {
-    ObjectTransform trans;
-    s16 unk18;
-    s16 unk1A;
-    s8 unk1C;
-    s8 unk1D;
-} unk8009CA602;
 
 typedef struct TitleScreenDemos {
     s8 levelId;

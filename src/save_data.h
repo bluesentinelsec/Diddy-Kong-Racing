@@ -94,17 +94,17 @@ enum RumbleTypes {
 typedef struct unk80075000_body {
     union {
         struct {
-            u8 unk0;
-            u8 unk1;
+            u8 levelID;
+            u8 vehicleID;
         };
-        s16 unk0_hw;
+        s16 checksum;
     };
     union {
         struct {
-            u8 unk2_b;
-            u8 unk3_b;
+            u8 characterID;
+            u8 unused3_b;
         };
-        s16 unk2;
+        s16 dataOffset;
     };
 } unk80075000_body;
 

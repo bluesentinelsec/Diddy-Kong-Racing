@@ -102,7 +102,7 @@ static const PcField sObjectModelFields[] = {
     PCU_FIELD(ObjectModel, references, 0x30, 2, PCU_U16),
     PCU_FIELD(ObjectModel, pad34, 0x34, 4, PCU_BYTES),
     PCU_FIELD(ObjectModel, batches, 0x38, 1, PCU_PTR),
-    PCU_FIELD(ObjectModel, unk3C, 0x3C, 1, PCU_U32),
+    PCU_FIELD(ObjectModel, boundingRadius, 0x3C, 1, PCU_U32),
     PCU_FIELD(ObjectModel, normals, 0x40, 2, PCU_PTR), // normals, animations
     PCU_FIELD(ObjectModel, numberOfAnimations, 0x48, 2, PCU_U16),
     PCU_FIELD(ObjectModel, animatedVertexIndices, 0x4C, 1, PCU_PTR),

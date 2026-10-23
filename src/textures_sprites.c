@@ -1768,15 +1768,15 @@ void tex_animate_texture(TextureHeader *texture, u32 *triangleBatchInfoFlags, s3
 void pulse_light_reset(LevelHeader_70 *arg0) {
     s32 i;
 
-    arg0->unk4 = 0;
-    arg0->unk8 = 0;
-    arg0->unkC = 0;
+    arg0->currentKeyframe = 0;
+    arg0->keyframeTimer = 0;
+    arg0->totalDuration = 0;
     arg0->rgba.r = arg0->rgba2.r;
     arg0->rgba.g = arg0->rgba2.g;
     arg0->rgba.b = arg0->rgba2.b;
     arg0->rgba.a = arg0->rgba2.a;
-    for (i = 0; i < arg0->unk0; i++) {
-        arg0->unkC += arg0->unk18[i].unk0;
+    for (i = 0; i < arg0->numKeyframes; i++) {
+        arg0->totalDuration += arg0->keyframes[i].duration;
     }
 }
 
@@ -1798,28 +1798,28 @@ void update_colour_cycle(LevelHeader_70 *arg0, s32 updateRate) {
     LevelHeader_70 *cur;
     LevelHeader_70 *next;
 
-    if (arg0->unk0 >= 2) {
-        arg0->unk8 += updateRate;
-        while (arg0->unk8 >= arg0->unkC) {
+    if (arg0->numKeyframes >= 2) {
+        arg0->keyframeTimer += updateRate;
+        while (arg0->keyframeTimer >= arg0->totalDuration) {
             if (!temp) {}
-            arg0->unk8 -= arg0->unkC;
+            arg0->keyframeTimer -= arg0->totalDuration;
         }
-        while (arg0->unk8 >= arg0->unk18[arg0->unk4].unk0) {
-            arg0->unk8 -= arg0->unk18[arg0->unk4].unk0;
-            arg0->unk4++;
-            if (arg0->unk4 >= arg0->unk0) {
-                arg0->unk4 = 0;
+        while (arg0->keyframeTimer >= arg0->keyframes[arg0->currentKeyframe].duration) {
+            arg0->keyframeTimer -= arg0->keyframes[arg0->currentKeyframe].duration;
+            arg0->currentKeyframe++;
+            if (arg0->currentKeyframe >= arg0->numKeyframes) {
+                arg0->currentKeyframe = 0;
             }
         }
 
-        curIndex = arg0->unk4;
+        curIndex = arg0->currentKeyframe;
         nextIndex = curIndex + 1;
-        if (nextIndex >= arg0->unk0) {
+        if (nextIndex >= arg0->numKeyframes) {
             nextIndex = 0;
         }
 
         cur = (LevelHeader_70 *) (&((LevelHeader_70_18 *) arg0)[curIndex]);
-        temp = (arg0->unk8 << 16) / (cur->unk18->unk0);
+        temp = (arg0->keyframeTimer << 16) / (cur->keyframes->duration);
         cur_red = cur->rgba2.r;
         cur_green = cur->rgba2.g;
         cur_blue = cur->rgba2.b;

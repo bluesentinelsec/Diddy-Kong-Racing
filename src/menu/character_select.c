@@ -152,16 +152,16 @@ void menu_character_select_init(void) {
         if (gActivePlayersArray[i] != 0) {
             breakTheLoop = TRUE;
             gMenuCurrentCharacter.channelIndex = (*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID;
-            gMenuCurrentCharacter.unk2 = 0x7F;
-            gMenuCurrentCharacter.unk1 = 1;
+            gMenuCurrentCharacter.volume = 0x7F;
+            gMenuCurrentCharacter.switchDelay = 1;
         }
     }
     gMenuSelectedCharacter.channelIndex = -1;
-    gMenuSelectedCharacter.unk2 = 0;
-    gMenuSelectedCharacter.unk1 = 0;
+    gMenuSelectedCharacter.volume = 0;
+    gMenuSelectedCharacter.switchDelay = 0;
     sSoundOptionsState.channelIndex = -1;
-    sSoundOptionsState.unk2 = 0;
-    sSoundOptionsState.unk1 = 0;
+    sSoundOptionsState.volume = 0;
+    sSoundOptionsState.switchDelay = 0;
     music_play(SEQUENCE_CHOOSE_YOUR_RACER);
     for (i = 0; i < NUM_CHARACTERS; i++) {
         channelVolumes = gCharacterVolumes[i];
@@ -233,8 +233,8 @@ void charselect_new_player(void) {
                 gActivePlayersArray[i] = TRUE;
                 gNumberOfActivePlayers++;
                 gMenuCurrentCharacter.channelIndex = (*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID;
-                gMenuCurrentCharacter.unk2 = 0;
-                gMenuCurrentCharacter.unk1 = 20;
+                gMenuCurrentCharacter.volume = 0;
+                gMenuCurrentCharacter.switchDelay = 20;
                 sound_play(SOUND_SELECT2, NULL);
             }
         }
@@ -330,14 +330,14 @@ void charselect_input(s8 *activePlayers) {
                     if (gNumberOfActivePlayers > 0) {
                         if (gMenuSelectedCharacter.channelIndex ==
                             (*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID) {
-                            if (gMenuCurrentCharacter.unk1 <= 0) {
+                            if (gMenuCurrentCharacter.switchDelay <= 0) {
                                 for (found = FALSE, j = 0; j < ARRAY_COUNT(gActivePlayersArray) && !found; j++) {
                                     if (gActivePlayersArray[j]) {
                                         found = TRUE;
                                         gMenuCurrentCharacter.channelIndex =
                                             (*gCurrCharacterSelectData)[gPlayersCharacterArray[j]].voiceID;
-                                        gMenuCurrentCharacter.unk2 = 0;
-                                        gMenuCurrentCharacter.unk1 = 20;
+                                        gMenuCurrentCharacter.volume = 0;
+                                        gMenuCurrentCharacter.switchDelay = 20;
                                     }
                                 }
                             }
@@ -375,8 +375,8 @@ void charselect_input(s8 *activePlayers) {
                     if (charSelectData->voiceID != (*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID) {
                         gMenuCurrentCharacter.channelIndex =
                             (*gCurrCharacterSelectData)[gPlayersCharacterArray[i]].voiceID;
-                        gMenuCurrentCharacter.unk2 = 0;
-                        gMenuCurrentCharacter.unk1 = 20;
+                        gMenuCurrentCharacter.volume = 0;
+                        gMenuCurrentCharacter.switchDelay = 20;
                     }
                 }
             }
@@ -565,46 +565,46 @@ void charselect_free(void) {
  * Raise and lower music channel volumes based on which character is last selected.
  */
 void charselect_music_channels(s32 updateRate) {
-    if (gMenuCurrentCharacter.unk1 > 0) {
-        gMenuCurrentCharacter.unk1 -= updateRate;
-        if (gMenuCurrentCharacter.unk1 <= 0) {
+    if (gMenuCurrentCharacter.switchDelay > 0) {
+        gMenuCurrentCharacter.switchDelay -= updateRate;
+        if (gMenuCurrentCharacter.switchDelay <= 0) {
             if (sSoundOptionsState.channelIndex >= 0) {
                 music_channel_off(gCharacterVolumes[sSoundOptionsState.channelIndex][0]);
                 music_channel_off(gCharacterVolumes[0][sSoundOptionsState.channelIndex * 2 + 1]);
             }
             sSoundOptionsState.channelIndex = gMenuSelectedCharacter.channelIndex;
             if (gMenuSelectedCharacter.channelIndex >= 0) {
-                sSoundOptionsState.unk2 = gMenuSelectedCharacter.unk2;
+                sSoundOptionsState.volume = gMenuSelectedCharacter.volume;
             }
             gMenuSelectedCharacter.channelIndex = gMenuCurrentCharacter.channelIndex;
             if (gMenuSelectedCharacter.channelIndex >= 0) {
-                gMenuSelectedCharacter.unk2 = gMenuCurrentCharacter.unk2;
+                gMenuSelectedCharacter.volume = gMenuCurrentCharacter.volume;
                 music_channel_on(gCharacterVolumes[gMenuSelectedCharacter.channelIndex][0]);
                 music_channel_on(gCharacterVolumes[0][gMenuSelectedCharacter.channelIndex * 2 + 1]);
             }
         }
     }
     if (gMenuSelectedCharacter.channelIndex >= 0) {
-        gMenuSelectedCharacter.unk2 += updateRate * 4;
-        if (gMenuSelectedCharacter.unk2 > 127) {
-            gMenuSelectedCharacter.unk2 = 127;
+        gMenuSelectedCharacter.volume += updateRate * 4;
+        if (gMenuSelectedCharacter.volume > 127) {
+            gMenuSelectedCharacter.volume = 127;
         }
-        music_channel_fade_set(gCharacterVolumes[gMenuSelectedCharacter.channelIndex][0], gMenuSelectedCharacter.unk2);
+        music_channel_fade_set(gCharacterVolumes[gMenuSelectedCharacter.channelIndex][0], gMenuSelectedCharacter.volume);
         music_channel_fade_set(gCharacterVolumes[0][gMenuSelectedCharacter.channelIndex * 2 + 1],
-                               gMenuSelectedCharacter.unk3);
+                               gMenuSelectedCharacter.volumeLowByte);
     }
     if (sSoundOptionsState.channelIndex >= 0) {
-        sSoundOptionsState.unk2 -= updateRate * 4;
+        sSoundOptionsState.volume -= updateRate * 4;
         if (sSoundOptionsState.channelIndex != gMenuSelectedCharacter.channelIndex) {
-            if (sSoundOptionsState.unk2 < 0) {
+            if (sSoundOptionsState.volume < 0) {
                 music_channel_off(gCharacterVolumes[sSoundOptionsState.channelIndex][0]);
                 music_channel_off(gCharacterVolumes[0][sSoundOptionsState.channelIndex * 2 + 1]);
             } else {
-                music_channel_fade_set(gCharacterVolumes[sSoundOptionsState.channelIndex][0], sSoundOptionsState.unk2);
-                music_channel_fade_set(gCharacterVolumes[0][sSoundOptionsState.channelIndex * 2 + 1], sSoundOptionsState.unk3);
+                music_channel_fade_set(gCharacterVolumes[sSoundOptionsState.channelIndex][0], sSoundOptionsState.volume);
+                music_channel_fade_set(gCharacterVolumes[0][sSoundOptionsState.channelIndex * 2 + 1], sSoundOptionsState.volumeLowByte);
             }
         }
-        if (sSoundOptionsState.unk2 < 0) {
+        if (sSoundOptionsState.volume < 0) {
             sSoundOptionsState.channelIndex = -1;
         }
     }

@@ -302,7 +302,7 @@ typedef struct Settings {
     // 0x10 = Dragon Forest key
     /* 0x0008 */ u16 keys;
 
-    /* 0x000A */ u16 unkA;
+    /* 0x000A */ u16 unusedA;
 
     // Boss bits:
     // 0x001 = Wizpig 1
@@ -365,17 +365,17 @@ typedef struct Settings {
     /* 0x0049 */ u8 courseId;
     /* 0x004A */ u8 gNumRacers;
     /* 0x004B */ u8 newGame;
-    /* 0x004C */ Settings4C *unk4C;
+    /* 0x004C */ Settings4C *levelTransition;
     /* 0x0050 */ u32 filename;
     /* 0x0054 */ Racer racers[8];
     /* 0x0114 */ s8 timeTrialRacer;
-    /* 0x0115 */ s8 unk115[2];
+    /* 0x0115 */ s8 bestLapRacerAndLap[2];
     /* 0x0117 */ s8 display_times;
 } Settings;
 
 /* Size: 8 bytes */
 typedef struct LevelHeader_70_18 {
-    s32 unk0; // 0x0000001E
+    s32 duration; // 0x0000001E
     u8 red;   // 0xFF
     u8 green; // 0x70
     u8 blue;  // 0x00
@@ -396,13 +396,13 @@ typedef struct {
 
 /* Unknown size */
 typedef struct LevelHeader_70 {
-    /* 0x00 */ s32 unk0; // 0x00000004
-    /* 0x04 */ s32 unk4; // 0x00000000
-    /* 0x08 */ s32 unk8; // 0x00000000
-    /* 0x0C */ s32 unkC; // 0x00000000
+    /* 0x00 */ s32 numKeyframes;    // 0x00000004
+    /* 0x04 */ s32 currentKeyframe; // 0x00000000
+    /* 0x08 */ s32 keyframeTimer;   // 0x00000000
+    /* 0x0C */ s32 totalDuration;   // 0x00000000
     /* 0x10 */ ColourRGBA rgba;
     /* 0x14 */ ColourRGBA rgba2;
-    /* 0x18 */ LevelHeader_70_18 unk18[1]; // Actual length depends on unk0
+    /* 0x18 */ LevelHeader_70_18 keyframes[1]; // Actual length depends on numKeyframes
 } LevelHeader_70;
 
 // Used to update the pulsating lights in Spaceport Alpha
@@ -475,8 +475,8 @@ typedef struct LevelHeader {
     /* 0x5E */ s16 waveSineHeight1; // values between 512 and 4963
     /* 0x60 */ s16 waveSeedSize;    // possible values: 120, 130, 157, 178, 187
     /* 0x62 */ s16 wavePower;       // always 256
-    /* 0x64 */ s16 waveMinDetailScale; // Always 153 except in Smokey Castle where it's 0 and the title screen where
-                                       // it's 256 (Some form of secondary power)
+    /* 0x64 */ s16 waveMinDetailScale;    // Always 153 except in Smokey Castle where it's 0 and the title screen where
+                                          // it's 256 (Some form of secondary power)
     /* 0x66 */ s16 waveHeightColourScale; // values between 908 and 2560
     /* 0x68 */ s16 waveTexID;    // always 62 except in the trophy race where it's 205
     /* 0x6A */ u8 waveUVScaleX;  // values between 1 and 6
@@ -625,7 +625,7 @@ typedef struct ObjectModel {
     /* 0x10 */ f32 *collisionPlanes;
     /* 0x14 */ s16 *attachPoints; // (Vehicle parts, Egg) Indices positions (stored in vertices).
     /* 0x18 */ s16 numberOfAttachPoints;
-    /* 0x1A */ s16 unk1A;
+    /* 0x1A */ s16 unused1A;
     /* 0x1C */ s16 *collisionSpheres; // Used in object_collide_with_object. Data is a pair of s16 values.
     /* 0x20 */ s16 collisionSpheresSize; // Should be an even number.
     /* 0x22 */ s16 numberOfTextures;
@@ -638,7 +638,7 @@ typedef struct ObjectModel {
     /* 0x32 */ s16 collisionFacetCount;
     /* 0x34 */ u8 pad34[4];
     /* 0x38 */ TriangleBatchInfo *batches;
-    /* 0x3C */ f32 unk3C;
+    /* 0x3C */ f32 boundingRadius;
     /* 0x40 */ Vec3s *normals;
     /* 0x44 */ ObjectModel_44 *animations;
     /* 0x48 */ s16 numberOfAnimations;
@@ -714,16 +714,16 @@ typedef struct LevelModel {
     /* 0x00 */ TextureInfo *textures;
     /* 0x04 */ LevelModelSegment *segments;
     /* 0x08 */ LevelModelSegmentBoundingBox *segmentsBoundingBoxes;
-    /* 0x0C */ u8 *unkC; // Unused?
+    /* 0x0C */ u8 *unusedC; // Unused?
     /* 0x10 */ u8 *segmentsBitfields;
     /* 0x14 */ BspTreeNode *segmentsBspTree;
     /* 0x18 */ s16 numberOfTextures;
     /* 0x1A */ s16 numberOfSegments;
-    /* 0x1C */ s16 unk1C; // Unused?
+    /* 0x1C */ s16 unused1C; // Unused?
     /* 0x1E */ s16 numberOfAnimatedTextures;
     /* 0x20 */ ptrint_t minimapSpriteIndex; // sprite id from the asset, replaced by the Sprite * at runtime
     /* 0x24 */ u16 minimapRotation; // angle for icons on minimap?
-    /* 0x26 */ u16 unk26;           // Unused? Common values: 0x0009, 0xFFFF, 0x0303
+    /* 0x26 */ u16 unused26;        // Unused? Common values: 0x0009, 0xFFFF, 0x0303
     /* 0x28 */ f32 minimapXScale;
     /* 0x2C */ f32 minimapYScale;
     /* 0x30 */ s16 minimapOffsetXAdv1; // minimap X offset (Adventure 1)
@@ -848,8 +848,8 @@ typedef struct ShadowData {
     TextureHeader *texture;
     s16 meshStart;
     s16 meshEnd;
-    s16 unkC;
-    s16 unkE;
+    s16 unusedC;
+    s16 unusedE;
 } ShadowData;
 
 typedef struct WaterEffect {
@@ -859,8 +859,8 @@ typedef struct WaterEffect {
     s16 meshEnd;
     s16 textureFrame;
     s16 animationSpeed;
-    s16 unk10;
-    s16 unk12;
+    s16 unused10;
+    s16 unused12;
 } WaterEffect;
 
 typedef struct ShadeProperties {
@@ -911,9 +911,9 @@ typedef struct AttachPoint {
 } AttachPoint;
 
 typedef struct Object_LaserGun {
-    /* 0x00 */ s32 unk0;
-    /* 0x00 */ s32 unk4;
-    /* 0x00 */ s32 unk7;
+    /* 0x00 */ s32 unused0;
+    /* 0x00 */ s32 unused4;
+    /* 0x00 */ s32 unused7;
     /* 0x0C */ s16 fireTimer;
     /* 0x0E */ s8 targeting;
     /* 0x0F */ s8 fireRate;
@@ -953,11 +953,11 @@ typedef struct Object_Weapon {
     /* 0x08 */ struct Object *hitObj;
     /* 0x0C */ f32 checkpointDist;
     /* 0x10 */ f32 forwardVel;
-    /* 0x14 */ s16 unk14;
-    /* 0x14 */ s16 unk16;
+    /* 0x14 */ s16 targetTrackOffsetX;
+    /* 0x14 */ s16 targetTrackOffsetY;
     /* 0x18 */ u8 weaponID;
     /* 0x19 */ s8 checkpoint;
-    /* 0x1A */ s16 unk1A;
+    /* 0x1A */ s16 unused1A;
     /* 0x1C */ struct AudioPoint *soundMask;
 } Object_Weapon;
 
@@ -1068,10 +1068,10 @@ typedef struct Object_AudioReverb {
 typedef struct Object_TexScroll {
     /* 0x0 */ s16 textureIndex;
     /* 0x2 */ s16 pad2;
-    /* 0x4 */ s16 unk4;
-    /* 0x6 */ s16 unk6;
-    /* 0x8 */ s16 unk8;
-    /* 0xA */ s16 unkA;
+    /* 0x4 */ s16 scrollSpeedU;
+    /* 0x6 */ s16 scrollSpeedV;
+    /* 0x8 */ s16 scrollAccumU;
+    /* 0xA */ s16 scrollAccumV;
 } Object_TexScroll;
 
 typedef struct Object_Frog {
@@ -1409,9 +1409,9 @@ typedef struct Object_MidiChannelSet {
 } Object_MidiChannelSet;
 
 typedef struct Object_Banana {
-    /* 0x0 */ s32 unk0;
+    /* 0x0 */ s32 pickupIgnoreObj; // best guess
     /* 0x4 */ struct Object *spawner;
-    /* 0x8 */ s8 unk8;
+    /* 0x8 */ s8 pickupIgnoreTimer; // best guess
     /* 0x9 */ s8 droppedVehicleID;
 } Object_Banana;
 
@@ -1488,7 +1488,7 @@ typedef struct Object_AnimatedObject {
     /* 0x32 */ s8 rollSpinSpeed;
     /* 0x33 */ s8 pitchSpinSpeed;
     /* 0x34 */ u8 skipButtons; // bit 0 A, bit 1 B, bit 2 Start: any of these starts a waiting actor
-    /* 0x35 */ u8 unk35;
+    /* 0x35 */ u8 unused35;
     /* 0x36 */ s16 pauseCounter;
     /* 0x38 */ s8 soundID;
     /* 0x39 */ s8 musicSequence; // >0 sequence to start, -2 started this frame, -1 none
@@ -1502,7 +1502,7 @@ typedef struct Object_AnimatedObject {
     /* 0x41 */ s8 fadeOptions; // bit 0 fade the actor out, bit 1 start from fully in/out
     /* 0x42 */ u8 opacity;
     /* 0x43 */ s8 musicFadeVolume;
-    /* 0x44 */ u8 unk44;
+    /* 0x44 */ u8 cameraStage;
     /* 0x45 */ s8 started;
 } Object_AnimatedObject;
 
@@ -1532,12 +1532,12 @@ typedef struct Object {
     /* 0x001C */ f32 x_velocity;
     /* 0x0020 */ f32 y_velocity;
     /* 0x0024 */ f32 z_velocity;
-    /* 0x0028 */ f32 unk28;
+    /* 0x0028 */ f32 unused28;
     /* 0x002C */ s16 headerType;
     /* 0x002E */ s16 segmentID;
     /* 0x0030 */ f32 distanceToCamera;
-    /* 0x0034 */ f32 unk34;
-    /* 0x0038 */ s8 unk38;
+    /* 0x0034 */ f32 cullRadius;
+    /* 0x0038 */ s8 unused38;
     /* 0x0039 */ u8 opacity;
     /* 0x003A */ s8 modelIndex;
     /* 0x003B */ s8 animationID;
@@ -1605,11 +1605,11 @@ typedef struct Object {
 } Object;
 
 typedef struct SegmentPropertiesObject {
-    /* 0x002C */ s16 unk2C;
+    /* 0x002C */ s16 headerType;
     /* 0x002E */ s16 segmentID;
     /* 0x0030 */ f32 distanceToCamera;
-    /* 0x0034 */ f32 unk34;
-    /* 0x0038 */ s8 unk38;
+    /* 0x0034 */ f32 cullRadius;
+    /* 0x0038 */ s8 unused38;
     /* 0x0039 */ u8 opacity;
     /* 0x003A */ s8 modelIndex;
     /* 0x003B */ s8 animationID;
@@ -1644,14 +1644,14 @@ typedef struct GhostHeader {
     union {
         struct {
             u8 characterID; // 9 = T.T.
-            u8 unk3;
+            u8 unused3;
         };
         s16 unk2;
     };
     union {
         struct {
-            u8 unk4;
-            s8 unk5;
+            u8 unused4;
+            s8 unused5;
         };
         s16 time; // In frames, where 60 frames = 1 second.
     };

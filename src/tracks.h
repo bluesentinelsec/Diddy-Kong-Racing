@@ -49,10 +49,10 @@ typedef struct VoidMesh {
 } VoidMesh;
 
 typedef struct unk8011C238 {
-    u8 unk0;
-    u8 unk1;
-    u8 unk2[8];
-    s16 unkA;
+    u8 vertexCount;
+    u8 bucketVertexMask;
+    u8 vertexIndices[8];
+    s16 lightLevel;
 } unk8011C238;
 
 /* Size: 0x8 bytes */

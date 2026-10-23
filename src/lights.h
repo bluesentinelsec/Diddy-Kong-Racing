@@ -28,9 +28,9 @@ typedef struct SubMiscAssetObjectHeader24 {
 } SubMiscAssetObjectHeader24;
 
 typedef struct MiscAssetObjectHeader24 {
-    s32 unk0;
+    s32 keyframeCount;
     u8 pad2[16];
-    SubMiscAssetObjectHeader24 unk14[1];
+    SubMiscAssetObjectHeader24 keyframes[1];
 } MiscAssetObjectHeader24;
 
 /* Size: 0x88 bytes */

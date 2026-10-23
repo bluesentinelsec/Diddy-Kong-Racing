@@ -1801,7 +1801,7 @@ void render_level_geometry_and_objects(void) {
             visible = 0;
         }
         if (obj != NULL && visible == 255 && check_if_in_draw_range(obj) &&
-            (objectsVisible[obj->segmentID + 1] || obj->unk34 > 1000.0)) {
+            (objectsVisible[obj->segmentID + 1] || obj->cullRadius > 1000.0)) {
             if (obj->trans.flags & OBJ_FLAGS_PARTICLE) {
                 render_object(&gTrackDL, &gTrackMtxPtr, &gTrackVtxPtr, obj);
                 continue;
@@ -2384,7 +2384,7 @@ s32 check_if_in_draw_range(Object *obj) {
             w = gFrustumPlanes[i].w;
             y = gFrustumPlanes[i].y;
             accum = (x * obj->trans.x_position) + (y * obj->trans.y_position) + (z * obj->trans.z_position) + w +
-                    obj->unk34;
+                    obj->cullRadius;
             if (accum < 0.0f) {
                 return FALSE;
             }
@@ -2893,7 +2893,7 @@ static void pc_load_level_model(LevelModel *heap, s32 assetOffset, s32 compSize)
     bbOff = (u32) (uintptr_t) heap->segmentsBoundingBoxes;
     bspOff = (u32) (uintptr_t) heap->segmentsBspTree;
     PC_REBASE(heap, segmentsBoundingBoxes, LevelModelSegmentBoundingBox *);
-    PC_REBASE(heap, unkC, u8 *);
+    PC_REBASE(heap, unusedC, u8 *);
     PC_REBASE(heap, segmentsBitfields, u8 *);
     PC_REBASE(heap, segmentsBspTree, BspTreeNode *);
 
@@ -2994,7 +2994,7 @@ void generate_track(s32 modelId) {
     LOCAL_OFFSET_TO_RAM_ADDRESS(TextureInfo *, gCurrentLevelModel->textures);
     LOCAL_OFFSET_TO_RAM_ADDRESS(LevelModelSegment *, gCurrentLevelModel->segments);
     LOCAL_OFFSET_TO_RAM_ADDRESS(LevelModelSegmentBoundingBox *, gCurrentLevelModel->segmentsBoundingBoxes);
-    LOCAL_OFFSET_TO_RAM_ADDRESS(u8 *, gCurrentLevelModel->unkC);
+    LOCAL_OFFSET_TO_RAM_ADDRESS(u8 *, gCurrentLevelModel->unusedC);
     LOCAL_OFFSET_TO_RAM_ADDRESS(u8 *, gCurrentLevelModel->segmentsBitfields);
     LOCAL_OFFSET_TO_RAM_ADDRESS(BspTreeNode *, gCurrentLevelModel->segmentsBspTree);
 
@@ -3854,7 +3854,7 @@ void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
                                     }
                                     someCount = clip_polygon_to_rect(3, sp100, 4, spD0);
                                     if (someCount >= 3) {
-                                        gShadowTris[gShadowTriCount].unk1 = 0;
+                                        gShadowTris[gShadowTriCount].bucketVertexMask = 0;
                                         for (i2 = 0; i2 < someCount; i2++) {
                                             if (sp100[i2].unkC_union.s.unkE < 0) {
                                                 foundIndex = -1;
@@ -3870,17 +3870,17 @@ void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
                                                     gShadowVertices[gShadowVertexCount].x = sp100[i2].x;
                                                     gShadowVertices[gShadowVertexCount].unkC = gShadowCurrentPlane;
                                                     gShadowVertices[gShadowVertexCount].z = sp100[i2].z;
-                                                    gShadowTris[gShadowTriCount].unk2[i2] = gShadowVertexCount++;
+                                                    gShadowTris[gShadowTriCount].vertexIndices[i2] = gShadowVertexCount++;
                                                 } else {
-                                                    gShadowTris[gShadowTriCount].unk2[i2] = foundIndex;
+                                                    gShadowTris[gShadowTriCount].vertexIndices[i2] = foundIndex;
                                                 }
                                             } else {
-                                                gShadowTris[gShadowTriCount].unk2[i2] = sp100[i2].unkC_union.s.unkE;
-                                                gShadowTris[gShadowTriCount].unk1 |= 1 << i2;
+                                                gShadowTris[gShadowTriCount].vertexIndices[i2] = sp100[i2].unkC_union.s.unkE;
+                                                gShadowTris[gShadowTriCount].bucketVertexMask |= 1 << i2;
                                             }
                                         }
-                                        gShadowTris[gShadowTriCount].unk0 = someCount;
-                                        gShadowTris[gShadowTriCount].unkA = sp88;
+                                        gShadowTris[gShadowTriCount].vertexCount = someCount;
+                                        gShadowTris[gShadowTriCount].lightLevel = sp88;
                                         gShadowTriCount += 1;
                                         if ((gShadowCentreTri >= 0) && (sp88 != gShadowCentreTri)) {
                                             gShadowCentreShared = 0;
@@ -3959,7 +3959,7 @@ void shadow_add_wave_triangles(s32 arg0) {
                 temp_v0_3 = clip_polygon_to_rect(3, spA8, 4, sp88);
                 if (temp_v0_3 >= 3) {
                     tempIdx = gShadowTriCount;
-                    gShadowTris[tempIdx].unk1 = 0;
+                    gShadowTris[tempIdx].bucketVertexMask = 0;
                     for (var_t1 = 0; var_t1 < temp_v0_3; var_t1++) {
                         if (spA8[var_t1].unkC_union.s.unkE < 0) {
                             var_a1 = -1;
@@ -3975,17 +3975,17 @@ void shadow_add_wave_triangles(s32 arg0) {
                                 gShadowVertices[gShadowVertexCount].x = spA8[var_t1].x;
                                 gShadowVertices[gShadowVertexCount].unkC = gShadowCurrentPlane;
                                 gShadowVertices[gShadowVertexCount].z = spA8[var_t1].z;
-                                gShadowTris[tempIdx].unk2[var_t1] = gShadowVertexCount++;
+                                gShadowTris[tempIdx].vertexIndices[var_t1] = gShadowVertexCount++;
                             } else {
-                                gShadowTris[tempIdx].unk2[var_t1] = var_a1;
+                                gShadowTris[tempIdx].vertexIndices[var_t1] = var_a1;
                             }
                         } else {
-                            gShadowTris[tempIdx].unk2[var_t1] = spA8[var_t1].unkC_union.s.unkE;
-                            gShadowTris[tempIdx].unk1 |= 1 << var_t1;
+                            gShadowTris[tempIdx].vertexIndices[var_t1] = spA8[var_t1].unkC_union.s.unkE;
+                            gShadowTris[tempIdx].bucketVertexMask |= 1 << var_t1;
                         }
                     }
                     gShadowTriCount = tempIdx + 1;
-                    gShadowTris[tempIdx].unk0 = temp_v0_3;
+                    gShadowTris[tempIdx].vertexCount = temp_v0_3;
                 }
             }
         }
@@ -4071,30 +4071,30 @@ void shadow_build_mesh(void) {
     alpha *= gShadowOpacity;
     var_s2 = 25;
     for (spAC = 0; spAC < gShadowTriCount; spAC++) {
-        if ((gShadowTris[spAC].unk0 + var_s2) >= 24) {
+        if ((gShadowTris[spAC].vertexCount + var_s2) >= 24) {
             gCurrShadowHeapData[gShadowTail].texture = gNewShadowTexture;
             gCurrShadowHeapData[gShadowTail].triCount = gNewShadowTriCount;
             gCurrShadowHeapData[gShadowTail].vtxCount = gNewShadowVtxCount;
             gShadowTail++;
             var_s2 = 0;
         }
-        var_t0 = gShadowTris[spAC].unk1;
+        var_t0 = gShadowTris[spAC].bucketVertexMask;
 
-        for (i = 0; i < gShadowTris[spAC].unk0; i++) {
+        for (i = 0; i < gShadowTris[spAC].vertexCount; i++) {
             vert = &gCurrShadowVerts[gNewShadowVtxCount];
             gNewShadowVtxCount++;
             if (var_t0 & 1) {
-                vert->x = gShadowBucketVertices[gShadowTris[spAC].unk2[i]].x;
-                xDiff = gShadowBucketVertices[gShadowTris[spAC].unk2[i]].x - gNewShadowObj->trans.x_position;
-                vert->y = (gShadowBucketVertices[gShadowTris[spAC].unk2[i]].y + gShadowYOffset);
-                vert->z = gShadowBucketVertices[gShadowTris[spAC].unk2[i]].z;
-                zDiff = gShadowBucketVertices[gShadowTris[spAC].unk2[i]].z - gNewShadowObj->trans.z_position;
+                vert->x = gShadowBucketVertices[gShadowTris[spAC].vertexIndices[i]].x;
+                xDiff = gShadowBucketVertices[gShadowTris[spAC].vertexIndices[i]].x - gNewShadowObj->trans.x_position;
+                vert->y = (gShadowBucketVertices[gShadowTris[spAC].vertexIndices[i]].y + gShadowYOffset);
+                vert->z = gShadowBucketVertices[gShadowTris[spAC].vertexIndices[i]].z;
+                zDiff = gShadowBucketVertices[gShadowTris[spAC].vertexIndices[i]].z - gNewShadowObj->trans.z_position;
             } else {
-                vert->x = gShadowVertices[gShadowTris[spAC].unk2[i]].x;
-                xDiff = gShadowVertices[gShadowTris[spAC].unk2[i]].x - gNewShadowObj->trans.x_position;
-                vert->y = (gShadowVertices[gShadowTris[spAC].unk2[i]].y + gShadowYOffset);
-                vert->z = gShadowVertices[gShadowTris[spAC].unk2[i]].z;
-                zDiff = gShadowVertices[gShadowTris[spAC].unk2[i]].z - gNewShadowObj->trans.z_position;
+                vert->x = gShadowVertices[gShadowTris[spAC].vertexIndices[i]].x;
+                xDiff = gShadowVertices[gShadowTris[spAC].vertexIndices[i]].x - gNewShadowObj->trans.x_position;
+                vert->y = (gShadowVertices[gShadowTris[spAC].vertexIndices[i]].y + gShadowYOffset);
+                vert->z = gShadowVertices[gShadowTris[spAC].vertexIndices[i]].z;
+                zDiff = gShadowVertices[gShadowTris[spAC].vertexIndices[i]].z - gNewShadowObj->trans.z_position;
             }
             var_t0 >>= 1;
             vert->r = 255;
@@ -4105,7 +4105,7 @@ void shadow_build_mesh(void) {
             sp80[i] = ((((zDiff * yRotCos) + (xDiff * yRotSin)) * scale) + temp_f18);
         }
 
-        for (i = 1; i < (gShadowTris[spAC].unk0 - 1); i++) {
+        for (i = 1; i < (gShadowTris[spAC].vertexCount - 1); i++) {
             tri = &gCurrShadowTris[gNewShadowTriCount];
             gNewShadowTriCount++;
             tri->flags = 0x40;
@@ -4119,7 +4119,7 @@ void shadow_build_mesh(void) {
             tri->uv2.u = sp90[0];
             tri->uv2.v = sp80[0];
         }
-        var_s2 += gShadowTris[spAC].unk0;
+        var_s2 += gShadowTris[spAC].vertexCount;
     }
 }
 
@@ -4142,34 +4142,34 @@ f32 shadow_light_level(void) {
             }
         } else {
             for (i = 0; i < gShadowTriCount; i++) {
-                if (gShadowTris[i].unkA > 0) {
-                    temp_t5 = gShadowTris[i].unk1;
+                if (gShadowTris[i].lightLevel > 0) {
+                    temp_t5 = gShadowTris[i].bucketVertexMask;
                     if (temp_t5 & 1) {
-                        x0 = gShadowBucketVertices[gShadowTris[i].unk2[0]].x;
-                        z0 = gShadowBucketVertices[gShadowTris[i].unk2[0]].z;
+                        x0 = gShadowBucketVertices[gShadowTris[i].vertexIndices[0]].x;
+                        z0 = gShadowBucketVertices[gShadowTris[i].vertexIndices[0]].z;
                     } else {
-                        x0 = gShadowVertices[gShadowTris[i].unk2[0]].x;
-                        z0 = gShadowVertices[gShadowTris[i].unk2[0]].z;
+                        x0 = gShadowVertices[gShadowTris[i].vertexIndices[0]].x;
+                        z0 = gShadowVertices[gShadowTris[i].vertexIndices[0]].z;
                     }
                     temp_t5 >>= 1;
                     if (temp_t5 & 1) {
-                        x1 = gShadowBucketVertices[gShadowTris[i].unk2[1]].x;
-                        z1 = gShadowBucketVertices[gShadowTris[i].unk2[1]].z;
+                        x1 = gShadowBucketVertices[gShadowTris[i].vertexIndices[1]].x;
+                        z1 = gShadowBucketVertices[gShadowTris[i].vertexIndices[1]].z;
                     } else {
-                        x1 = gShadowVertices[gShadowTris[i].unk2[1]].x;
-                        z1 = gShadowVertices[gShadowTris[i].unk2[1]].z;
+                        x1 = gShadowVertices[gShadowTris[i].vertexIndices[1]].x;
+                        z1 = gShadowVertices[gShadowTris[i].vertexIndices[1]].z;
                     }
                     temp_t5 >>= 1;
-                    for (var_s2 = 2; var_s2 < gShadowTris[i].unk0; var_s2++) {
+                    for (var_s2 = 2; var_s2 < gShadowTris[i].vertexCount; var_s2++) {
                         if (temp_t5 & 1) {
-                            x2 = gShadowBucketVertices[gShadowTris[i].unk2[var_s2]].x;
-                            z2 = gShadowBucketVertices[gShadowTris[i].unk2[var_s2]].z;
+                            x2 = gShadowBucketVertices[gShadowTris[i].vertexIndices[var_s2]].x;
+                            z2 = gShadowBucketVertices[gShadowTris[i].vertexIndices[var_s2]].z;
                         } else {
-                            x2 = gShadowVertices[gShadowTris[i].unk2[var_s2]].x;
-                            z2 = gShadowVertices[gShadowTris[i].unk2[var_s2]].z;
+                            x2 = gShadowVertices[gShadowTris[i].vertexIndices[var_s2]].x;
+                            z2 = gShadowVertices[gShadowTris[i].vertexIndices[var_s2]].z;
                         }
                         temp_t5 >>= 1;
-                        var_f2 += area_triangle_2d(x0, z0, x1, z1, x2, z2) * gShadowLightLevels[gShadowTris[i].unkA];
+                        var_f2 += area_triangle_2d(x0, z0, x1, z1, x2, z2) * gShadowLightLevels[gShadowTris[i].lightLevel];
                         x1 = x2;
                         z1 = z2;
                     }

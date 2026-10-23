@@ -381,11 +381,11 @@ typedef struct HudAudio {
     u8 volume;
     s8 volumeRamp;
     SoundHandle soundMask;
-    s32 unk8;
+    s32 unused8;
     s8 playerIndex;
-    s8 unkD;
-    s8 unkE;
-    s8 unkF;
+    s8 unusedD;
+    s8 unusedE;
+    s8 unusedF;
 } HudAudio;
 
 typedef struct HudElements {

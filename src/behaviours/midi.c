@@ -81,11 +81,11 @@ void obj_init_midifade(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 par
     midiFade->planeZ = oz;
     midiFade->planeOffset =
         -((obj->trans.x_position * ox) + (obj->trans.y_position * oy) + (obj->trans.z_position * oz));
-    midiFade->duration = entry->unk1A;
-    midiFade->sequenceID = entry->unk1B;
+    midiFade->duration = entry->duration;
+    midiFade->sequenceID = entry->sequenceId;
 
     for (i = 0; i < ARRAY_COUNT(midiFade->channelModes) - 1; i++) {
-        midiFade->channelModes[i] = entry->unkA[i];
+        midiFade->channelModes[i] = entry->channelModes[i];
     }
 
     modInst = obj->modelInstances[0];
@@ -187,7 +187,7 @@ void obj_init_midifadepoint(Object *obj, LevelObjectEntry *levelEntry, UNUSED s3
 void obj_init_midichset(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param) {
     LevelObjectEntry_Midichset *entry = &levelEntry->midichset;
     Object_MidiChannelSet *temp = obj->midi_channel_set;
-    temp->channelMask = entry->unk8;
-    temp->radius = entry->unkA;
-    temp->sequenceID = entry->unkB;
+    temp->channelMask = entry->channelMask;
+    temp->radius = entry->radius;
+    temp->sequenceID = entry->sequenceId;
 }

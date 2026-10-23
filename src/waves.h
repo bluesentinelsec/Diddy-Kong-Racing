@@ -50,10 +50,10 @@ typedef struct unk800E3184 {
 
 typedef struct unk8012A5E8 {
     s16 blockID;
-    s16 unk2;
-    s16 unk4;
-    s16 unk6;
-    s32 unk8;
+    s16 quadrant;
+    s16 tileOffsetX;
+    s16 tileOffsetZ;
+    s32 detailLevelIndex;
 } unk8012A5E8;
 
 typedef struct WaveControlSine {
@@ -75,8 +75,8 @@ typedef struct WaveControl {
     s32 uvScrollX;
     s32 uvScrollY;
     f32 magnitude; // Global wave strength
-    f32 unk44; // something related to height / scale
-    f32 unk48; // used in vertex RGBA calculation
+    f32 minDetailScale;    // something related to height / scale
+    f32 heightColourScale; // used in vertex RGBA calculation
     s32 xlu; // Determines whether to use semitransparent or opaque render modes by default.
 } WaveControl;
 

@@ -44,7 +44,7 @@ void obj_init_rampswitch(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 p
     obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
-    obj->properties.rampSwitch.unk0 = entry->unk8;
+    obj->properties.rampSwitch.unk0 = entry->bridgeId;
 }
 
 /**

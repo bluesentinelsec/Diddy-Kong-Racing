@@ -320,10 +320,10 @@ void audspat_update_all(Object **objList, s32 numObjects, s32 updateRate) {
                 }
 
                 if (!line->fastFalloff) {
-                    adjustedVolume = (1.0f - (f32) minDist / (f32) line->range) * line->unk174;
+                    adjustedVolume = (1.0f - (f32) minDist / (f32) line->range) * line->volume;
                 } else {
                     temp = (f32) (line->range - minDist) / (f32) line->range;
-                    adjustedVolume = temp * temp * line->unk174;
+                    adjustedVolume = temp * temp * line->volume;
                 }
 
                 if (volume <= adjustedVolume) {
@@ -356,7 +356,7 @@ void audspat_update_all(Object **objList, s32 numObjects, s32 updateRate) {
                 }
 
                 if (volume > MIN_VOLUME_THRESHOLD) {
-                    pitch3 = line->unk176 / 100.0f;
+                    pitch3 = line->pitch / 100.0f;
 
                     if (line->soundHandle == NULL) {
                         sound_play_direct(line->soundBite, &line->soundHandle);
@@ -606,9 +606,9 @@ void audspat_line_add_vertex(u8 type, u16 soundBite, f32 x, f32 y, f32 z, u8 arg
             line->type = type;
             line->range = arg9;
             line->fastFalloff = argA;
-            line->unk174 = arg6;
+            line->volume = arg6;
             line->maxVolume = arg5;
-            line->unk176 = arg7;
+            line->pitch = arg7;
             line->priority = priority;
         }
         if (line->numSegments < vertexIndex) {

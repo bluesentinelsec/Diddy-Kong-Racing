@@ -120,8 +120,8 @@ typedef struct ObjPropertyAnimation {
 } ObjPropertyAnimation;
 
 typedef struct ObjPropertyAnimatedObject {
-    s32 unk0;
-    s32 unk4;
+    s32 attachRacerID;
+    s32 pathIdle;
 } ObjPropertyAnimatedObject;
 
 typedef struct ObjPropertyInfoPoint {
@@ -186,8 +186,8 @@ typedef struct ObjPropertyWeaponBalloon {
 } ObjPropertyWeaponBalloon;
 
 typedef struct ObjPropertyRacer {
-    struct Object *unk0;
-    s32 unk4;
+    struct Object *unused0;
+    s32 unused4;
 } ObjPropertyRacer;
 
 typedef struct ObjPropertySetupPoint {

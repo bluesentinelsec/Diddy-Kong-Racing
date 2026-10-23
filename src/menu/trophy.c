@@ -83,9 +83,9 @@ void trophyround_adventure(void) {
     Settings *settings = get_settings();
     gTrophyRaceWorldId = settings->worldId;
     gTrophyRaceRound = 0;
-    settings->unk4C->courseID = settings->courseId;
-    settings->unk4C->entranceID = 0;
-    settings->unk4C->unk1 = 0;
+    settings->levelTransition->courseID = settings->courseId;
+    settings->levelTransition->entranceID = 0;
+    settings->levelTransition->unk1 = 0;
     gInAdvModeTrophyRace = TRUE;
     set_time_trial_enabled(0);
 }

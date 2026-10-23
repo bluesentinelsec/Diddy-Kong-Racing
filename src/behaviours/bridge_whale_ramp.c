@@ -84,7 +84,7 @@ void obj_loop_bridge_whaleramp(Object *obj, s32 updateRate) {
         updateRateF *= 1.2;
     }
 
-    if (entry->unkB != 3) {
+    if (entry->moveMode != 3) {
         if (obj->properties.bridgeWhaleRamp.unk0 != 0) {
             bobAmount = 2.0 * (f32) entry->bobAmount;
             if (bobAmount > 0.0f) {
@@ -110,7 +110,7 @@ void obj_loop_bridge_whaleramp(Object *obj, s32 updateRate) {
             obj->trans.rotation.x_rotation -= updateRate * 45;
         }
         if (whaleRamp->soundMask == NULL) {
-            obj_bridge_pos(entry->unkA, &bellX1, &bellY1, &bellZ1);
+            obj_bridge_pos(entry->bridgeId, &bellX1, &bellY1, &bellZ1);
             audspat_play_sound_at_position(SOUND_DRAWBRIDGE_BELL, bellX1, bellY1, bellZ1, AUDIO_POINT_FLAG_1,
                                            &whaleRamp->soundMask);
         }
@@ -118,7 +118,7 @@ void obj_loop_bridge_whaleramp(Object *obj, s32 updateRate) {
         if (obj->trans.rotation.x_rotation < 0) {
             obj->trans.rotation.x_rotation += updateRate * 40;
             if (whaleRamp->soundMask == NULL) {
-                obj_bridge_pos(entry->unkA, &bellX2, &bellY2, &bellZ2);
+                obj_bridge_pos(entry->bridgeId, &bellX2, &bellY2, &bellZ2);
                 audspat_play_sound_at_position(SOUND_DRAWBRIDGE_BELL, bellX2, bellY2, bellZ2, AUDIO_POINT_FLAG_1,
                                                &whaleRamp->soundMask);
             }
@@ -130,7 +130,7 @@ void obj_loop_bridge_whaleramp(Object *obj, s32 updateRate) {
         }
     }
 
-    switch (entry->unkB) {
+    switch (entry->moveMode) {
         case 0:
             obj->properties.bridgeWhaleRamp.unk0 = 0;
             if (obj->interactObj->distance < entry->radius) {
@@ -159,8 +159,8 @@ void obj_loop_bridge_whaleramp(Object *obj, s32 updateRate) {
             }
             break;
         default:
-            if (is_bridge_raised(entry->unkA) != 0) {
-                obj->properties.bridgeWhaleRamp.unk0 = (entry->unkD * 2);
+            if (is_bridge_raised(entry->bridgeId) != 0) {
+                obj->properties.bridgeWhaleRamp.unk0 = (entry->raisedDuration * 2);
             }
             if (obj->properties.bridgeWhaleRamp.unk0 > 0) {
                 obj->properties.bridgeWhaleRamp.unk0 -= updateRate;

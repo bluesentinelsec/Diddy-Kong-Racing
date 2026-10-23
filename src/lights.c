@@ -118,11 +118,11 @@ ObjectLight *light_add_from_level_object_entry(Object *obj, LevelObjectEntry_Rgb
             levelHeader = level_header();
             if (((s32) levelHeader->colourCycles[lightEntry->colourAnimIndex]) != -1) {
                 light->unk44_asset = (MiscAssetObjectHeader24 *) levelHeader->colourCycles[lightEntry->colourAnimIndex];
-                light->keyframeCount = light->unk44_asset->unk0;
+                light->keyframeCount = light->unk44_asset->keyframeCount;
                 light->keyframeIndex = 0;
                 light->keyframeTimer = 0;
                 light->totalAnimDuration = 0;
-                light->keyframes = light->unk44_asset->unk14;
+                light->keyframes = light->unk44_asset->keyframes;
                 // clang-format off
                 for (i = 0; i < light->keyframeCount; i++) { light->totalAnimDuration += light->keyframes[i].duration; } // Must be on one line!
                 // clang-format on
@@ -183,11 +183,11 @@ ObjectLight *light_add_from_object_header(Object *obj, ObjectHeader24 *arg1) {
         light->targetIntensityDiff = 0;
         if (arg1->colourAnimAssetId != 0xFFFF) {
             light->unk44_asset = (MiscAssetObjectHeader24 *) get_misc_asset(arg1->colourAnimAssetId);
-            light->keyframeCount = light->unk44_asset->unk0;
+            light->keyframeCount = light->unk44_asset->keyframeCount;
             light->keyframeIndex = 0;
             light->keyframeTimer = 0;
             light->totalAnimDuration = 0;
-            light->keyframes = light->unk44_asset->unk14;
+            light->keyframes = light->unk44_asset->keyframes;
             // clang-format off
             for (i = 0; i < light->keyframeCount; i++) { light->totalAnimDuration += light->keyframes[i].duration; } // Must be on one line!
             // clang-format on

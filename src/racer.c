@@ -437,9 +437,9 @@ void racer_ai_tactics(Object *obj, Object_Racer *racer, s32 updateRate) {
         racer->aiLane = 1;
     }
     if (gRaceStartTimer == 0) {
-        var_f0 = sp54->unk4;
+        var_f0 = sp54->maxTargetSpeed;
         var_f0 = sqrtf(((var_f0 * 0.025) + 0.561) / 0.004);
-        var_f12 = sp54->unk0;
+        var_f12 = sp54->minTargetSpeed;
         var_f12 = sqrtf(((var_f12 * 0.025) + 0.561) / 0.004);
         // explicit load of 7 required
         temp7 = 7;
@@ -1233,8 +1233,8 @@ void racer_ai_eggs(Object *obj, Object_Racer *racer, s32 updateRate) {
                 if (!(curObj->trans.flags & OBJ_FLAGS_PARTICLE) && targetBehaviourID == curObj->behaviorId) {
                     switch (targetBehaviourID) {
                         case BHV_UNK_5C:
-                            if (bestTick == curObj->level_entry->bhv_unk_5C.unk8 &&
-                                (racerID == PLAYER_COMPUTER || racerID == curObj->level_entry->bhv_unk_5C.unk9)) {
+                            if (bestTick == curObj->level_entry->bhv_unk_5C.aiTargetType &&
+                                (racerID == PLAYER_COMPUTER || racerID == curObj->level_entry->bhv_unk_5C.ownerRacerIndex)) {
                                 tickCount = TRUE;
                             }
                             break;
@@ -1366,7 +1366,7 @@ void racer_ai_eggs(Object *obj, Object_Racer *racer, s32 updateRate) {
             if (distance < 200.0 && curObj != NULL) {
                 racer->currentAnimId = 0;
                 objEntry = &curObj->level_entry->bhv_unk_5C;
-                racer->aiNodeId = (objEntry->unk9 & 3) | 0x40;
+                racer->aiNodeId = (objEntry->ownerRacerIndex & 3) | 0x40;
             }
             break;
     }
@@ -1440,11 +1440,11 @@ void racer_ai_drive(Object *obj, Object_Racer *racer, s32 updateRate) {
         splineY[i] = checkpoint->y;
         splineZ[i] = checkpoint->z;
         if (racer->aiBehaviour == 0) {
-            sp74[i] = checkpoint->unk2E[racer->aiLane];
-            sp64[i] = checkpoint->unk32[racer->aiLane];
-            splineX[i] += checkpoint->scale * checkpoint->rotationZFrac * checkpoint->unk2E[racer->aiLane];
-            splineY[i] += checkpoint->scale * checkpoint->unk32[racer->aiLane];
-            splineZ[i] += checkpoint->scale * -checkpoint->rotationXFrac * checkpoint->unk2E[racer->aiLane];
+            sp74[i] = checkpoint->laneOffsetX[racer->aiLane];
+            sp64[i] = checkpoint->laneOffsetY[racer->aiLane];
+            splineX[i] += checkpoint->scale * checkpoint->rotationZFrac * checkpoint->laneOffsetX[racer->aiLane];
+            splineY[i] += checkpoint->scale * checkpoint->laneOffsetY[racer->aiLane];
+            splineZ[i] += checkpoint->scale * -checkpoint->rotationXFrac * checkpoint->laneOffsetX[racer->aiLane];
         }
 
         s0++;
@@ -4662,15 +4662,15 @@ void update_player_racer(Object *obj, s32 updateRate) {
             racer_update_progress(tempRacer);
         }
         checkpointNode = find_next_checkpoint_node(tempRacer->nextCheckpoint, tempRacer->isOnAlternateRoute);
-        if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->unk36[tempRacer->aiLane] == 5 &&
+        if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->laneAction[tempRacer->aiLane] == 5 &&
             tempRacer->waterTimer) {
             tempRacer->isOnAlternateRoute = TRUE;
         }
-        if (checkpointNode->unk36[tempRacer->aiLane] == 6) {
+        if (checkpointNode->laneAction[tempRacer->aiLane] == 6) {
             tempRacer->lap = header->laps + 1;
         }
         if (tempVar == 0) {
-            if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->unk36[tempRacer->aiLane] == 2) {
+            if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->laneAction[tempRacer->aiLane] == 2) {
                 tempRacer->isOnAlternateRoute = TRUE;
             }
             checkpointCount = get_checkpoint_count();
@@ -9208,22 +9208,22 @@ void update_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, f32 updat
             racer_update_progress(racer);
         }
         checkpoint = find_next_checkpoint_node(racer->nextCheckpoint, racer->isOnAlternateRoute);
-        if (checkpoint->unk36[racer->aiLane] == 5) {
+        if (checkpoint->laneAction[racer->aiLane] == 5) {
             racer->aiPhysicsTimer = 30;
             if (racer->waterTimer) {
                 racer->isOnAlternateRoute = TRUE;
             }
         }
-        if (checkpoint->unk36[racer->aiLane] == 6) {
+        if (checkpoint->laneAction[racer->aiLane] == 6) {
             racer->lap = levelHeader->laps + 1;
         }
-        if (checkpoint->unk36[racer->aiLane] == 4) {
+        if (checkpoint->laneAction[racer->aiLane] == 4) {
             if (racer->velocity < -4.0) {
                 racer->velocity *= 0.9; //!@Delta
             }
         }
         if (var_t2 == 0) {
-            if (checkpoint->unk36[racer->aiLane] == 2) {
+            if (checkpoint->laneAction[racer->aiLane] == 2) {
                 racer->isOnAlternateRoute = TRUE;
             }
             temp_v0_10 = get_checkpoint_count();
@@ -9434,11 +9434,11 @@ void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f3
         checkpointX[i] = checkpoint->x;
         checkpointY[i] = checkpoint->y;
         checkpointZ[i] = checkpoint->z;
-        spB8[i] = checkpoint->unk2E[racer->aiLane];
-        spA4[i] = checkpoint->unk32[racer->aiLane];
-        checkpointX[i] += ((checkpoint->scale * checkpoint->rotationZFrac * checkpoint->unk2E[racer->aiLane]));
-        checkpointY[i] += ((checkpoint->scale * checkpoint->unk32[racer->aiLane]));
-        checkpointZ[i] += ((checkpoint->scale * -checkpoint->rotationXFrac * checkpoint->unk2E[racer->aiLane]));
+        spB8[i] = checkpoint->laneOffsetX[racer->aiLane];
+        spA4[i] = checkpoint->laneOffsetY[racer->aiLane];
+        checkpointX[i] += ((checkpoint->scale * checkpoint->rotationZFrac * checkpoint->laneOffsetX[racer->aiLane]));
+        checkpointY[i] += ((checkpoint->scale * checkpoint->laneOffsetY[racer->aiLane]));
+        checkpointZ[i] += ((checkpoint->scale * -checkpoint->rotationXFrac * checkpoint->laneOffsetX[racer->aiLane]));
         checkpointIdx++;
         if (checkpointIdx == checkpointCount) {
             checkpointIdx = 0;

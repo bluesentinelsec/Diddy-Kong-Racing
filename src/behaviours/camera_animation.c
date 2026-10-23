@@ -48,7 +48,7 @@ void obj_loop_animcamera(Object *obj, s32 updateRate) {
     camera = obj->animatedObject;
     if (temp_v0 == 0) {
         if (cam_get_viewport_layout() == VIEWPORT_LAYOUT_1_PLAYER) {
-            updateCam = anim_stage_reached(camera->unk44);
+            updateCam = anim_stage_reached(camera->cameraStage);
         } else {
             updateCam = TRUE;
         }

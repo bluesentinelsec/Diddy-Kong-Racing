@@ -48,14 +48,14 @@ UNUSED void obj_init_animcar(UNUSED Object *obj, UNUSED s32 arg1) {
 void obj_loop_animcar(Object *obj, s32 updateRate) {
     Object *racerObj;
     s32 racerID;
-    racerID = obj->properties.animatedObj.unk0;
+    racerID = obj->properties.animatedObj.attachRacerID;
     racerObj = NULL;
     if (racerID != 0) {
         racerObj = get_racer_object(racerID - 1);
     }
-    obj->properties.animatedObj.unk4 = anim_object_follow_path(obj, updateRate, obj);
+    obj->properties.animatedObj.pathIdle = anim_object_follow_path(obj, updateRate, obj);
     obj->trans.flags |= OBJ_FLAGS_INVISIBLE;
-    if (obj->properties.animatedObj.unk4 == 0 && racerObj != NULL) {
+    if (obj->properties.animatedObj.pathIdle == 0 && racerObj != NULL) {
         Object_Racer *racer = racerObj->racer;
         racer->approachTarget = obj;
     }

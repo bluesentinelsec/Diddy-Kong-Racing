@@ -385,10 +385,10 @@ void racerfx_alloc(s32 numberOfVertices, s32 numberOfTriangles) {
     objEntry.common.z = 0;
     gShieldEffectObject = spawn_object(&objEntry.common, OBJECT_SPAWN_NONE);
     for (i = 0; i < NUMBER_OF_CHARACTERS; i++) {
-        gRacerFXData[i].unk0 = 0;
-        gRacerFXData[i].unk1 = rand_range(0, 255);
-        gRacerFXData[i].unk2 = rand_range(0, 255);
-        gRacerFXData[i].unk3 = 0;
+        gRacerFXData[i].unused0 = 0;
+        gRacerFXData[i].magnetPulseTimer = rand_range(0, 255);
+        gRacerFXData[i].magnetSpinTimer = rand_range(0, 255);
+        gRacerFXData[i].magnetFade = 0;
     }
     objEntry.common.objectID = ASSET_OBJECT_ID_AINODE;
     objEntry.common.size = sizeof(LevelObjectEntry_Boost2) + 0x80; // Not sure where this 0x80 comes from.
@@ -671,19 +671,19 @@ void racerfx_update(s32 updateRate) {
             racer_set_boost_effect((*gRacers)[i], racer->racerIndex, racer->vehicleIDPrev, racer->boostType, 0);
         }
         temp = racer->racerIndex;
-        gRacerFXData[temp].unk1 += updateRate;
-        gRacerFXData[temp].unk2 += updateRate;
+        gRacerFXData[temp].magnetPulseTimer += updateRate;
+        gRacerFXData[temp].magnetSpinTimer += updateRate;
         if (racer->magnetTimer != 0) {
-            if (gRacerFXData[temp].unk3 + (updateRate << 2) < 32) {
-                gRacerFXData[temp].unk3 += (updateRate << 2);
+            if (gRacerFXData[temp].magnetFade + (updateRate << 2) < 32) {
+                gRacerFXData[temp].magnetFade += (updateRate << 2);
             } else {
-                gRacerFXData[temp].unk3 = 32;
+                gRacerFXData[temp].magnetFade = 32;
             }
         } else {
-            if (gRacerFXData[temp].unk3 - updateRate > 0) {
-                gRacerFXData[temp].unk3 -= updateRate;
+            if (gRacerFXData[temp].magnetFade - updateRate > 0) {
+                gRacerFXData[temp].magnetFade -= updateRate;
             } else {
-                gRacerFXData[temp].unk3 = 0;
+                gRacerFXData[temp].magnetFade = 0;
             }
         }
     }
@@ -1155,7 +1155,7 @@ static void pc_swap_spawn_entry_fields(u8 *entryBytes) {
             PC_SWAP16_AT(entry, midiFadePoint.innerRadius, 4); // innerRadius, outerRadius
             break;
         case BHV_MIDI_CHANNEL_SET:
-            PC_SWAP16_AT(entry, midichset.unk8, 2);
+            PC_SWAP16_AT(entry, midichset.channelMask, 2);
             break;
         case BHV_BUBBLER:
             PC_SWAP16_AT(entry, bubbler.particleDensity, 2);
@@ -1968,7 +1968,7 @@ void transform_player_vehicle(void) {
         return;
     }
     settings = get_settings();
-    spawnObj.unkE = 0;
+    spawnObj.playerIndex = 0;
     spawnObj.common.size = 16;
     if (gOverworldVehicle < VEHICLE_BOSSES) {
         objectID =
@@ -1978,13 +1978,13 @@ void transform_player_vehicle(void) {
     }
     set_level_default_vehicle(gOverworldVehicle);
     spawnObj.common.size |= (objectID & 0x100) >> 1;
-    spawnObj.unkA = 0;
-    spawnObj.unk8 = 0;
+    spawnObj.angleX = 0;
+    spawnObj.angleZ = 0;
     spawnObj.common.objectID = objectID;
     spawnObj.common.x = gTransformPosX;
     spawnObj.common.y = gTransformPosY;
     spawnObj.common.z = gTransformPosZ;
-    spawnObj.unkC = gTransformAngleY;
+    spawnObj.angleY = gTransformAngleY;
     set_taj_status(TAJ_DIALOGUE);
     player = spawn_object(&spawnObj.common, OBJECT_SPAWN_NO_LODS | OBJECT_SPAWN_UNK01);
     gNumRacers = 1;
@@ -2464,7 +2464,7 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
     curObj->objectID = objType;
     readout_log_push(objType);
     curObj->trans.scale = curObj->header->scale;
-    curObj->unk34 = curObj->header->cullRadius * curObj->trans.scale;
+    curObj->cullRadius = curObj->header->cullRadius * curObj->trans.scale;
     curObj->opacity = 255;
     behaviourFlags = obj_init_property_flags(curObj->header->behaviorId);
     curObj->header->instanceCount++;
@@ -4278,7 +4278,7 @@ void render_racer_magnet(Gfx **dList, Mtx **mtx, Vertex **vtxList, Object *obj) 
 
     racer = obj->racer;
     racerIndex = racer->racerIndex;
-    if (gRacerFXData[racerIndex].unk3 != 0) {
+    if (gRacerFXData[racerIndex].magnetFade != 0) {
         if (gMagnetEffectObject != NULL) {
             gObjectCurrDisplayList = *dList;
             gObjectCurrMatrix = *mtx;
@@ -4297,17 +4297,17 @@ void render_racer_magnet(Gfx **dList, Mtx **mtx, Vertex **vtxList, Object *obj) 
             gMagnetEffectObject->trans.y_position = magnet[1];
             gMagnetEffectObject->trans.z_position = magnet[2];
             magnet += 3;
-            shear = (coss_f((gRacerFXData[racerIndex].unk1 * 0x400)) * 0.02f) + 0.98f;
+            shear = (coss_f((gRacerFXData[racerIndex].magnetPulseTimer * 0x400)) * 0.02f) + 0.98f;
             gMagnetEffectObject->trans.scale = magnet[0] * shear;
             magnet += 1;
             shear = magnet[0] * shear;
-            gMagnetEffectObject->trans.rotation.y_rotation = gRacerFXData[racerIndex].unk2 * 0x1000;
+            gMagnetEffectObject->trans.rotation.y_rotation = gRacerFXData[racerIndex].magnetSpinTimer * 0x1000;
             gMagnetEffectObject->trans.rotation.x_rotation = 0;
             gMagnetEffectObject->trans.rotation.z_rotation = 0;
             modInst = gMagnetEffectObject->modelInstances[0];
             mdl = modInst->objModel;
             gMagnetEffectObject->curVertData = modInst->vertices[modInst->animationTaskNum];
-            opacity = ((gRacerFXData[racerIndex].unk1 * 8) & 0x7F) + 0x80;
+            opacity = ((gRacerFXData[racerIndex].magnetPulseTimer * 8) & 0x7F) + 0x80;
             gfx_init_basic_xlu(&gObjectCurrDisplayList, DRAW_BASIC_2CYCLE, COLOUR_RGBA32(255, 255, 255, opacity),
                                gMagnetColours[racer->magnetModelID]);
             mtx_shear_push(&gObjectCurrDisplayList, &gObjectCurrMatrix, gMagnetEffectObject, obj, shear);
@@ -5071,7 +5071,7 @@ void object_collide_with_object(Object *obj0, Object *obj1) {
         xDiff = obj0->trans.x_position - obj1->trans.x_position;
         yDiff = obj0->trans.y_position - obj1->trans.y_position;
         zDiff = obj0->trans.z_position - obj1->trans.z_position;
-        if (!((objModel->unk3C + 50.0) < sqrtf((xDiff * xDiff) + (yDiff * yDiff) + (zDiff * zDiff)))) {
+        if (!((objModel->boundingRadius + 50.0) < sqrtf((xDiff * xDiff) + (yDiff * yDiff) + (zDiff * zDiff)))) {
             obj0Interact = obj0->interactObj;
             obj1Interact = obj1->interactObj;
             mtxf_from_transform((MtxF *) obj1TransformMtx, &obj1->trans);
@@ -5332,7 +5332,7 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
             sp158->interactObj->obj = obj;
         }
 
-        if (dist - 25.0f < sp154->unk3C * sp158->trans.scale) {
+        if (dist - 25.0f < sp154->boundingRadius * sp158->trans.scale) {
             spB4[sp160] = sp170;
             sp8C[sp160] = dist;
 
@@ -5763,18 +5763,18 @@ static void checkpoint_init_node(s32 i) {
         checkpoint->altDistance = checkpoint->distance;
     }
 
-    checkpoint->unk2E[0] = checkpointEntry->lane0OffsetX;
-    checkpoint->unk32[0] = checkpointEntry->lane0OffsetY;
-    checkpoint->unk36[0] = checkpointEntry->lane0Action;
-    checkpoint->unk2E[1] = checkpointEntry->lane1OffsetX;
-    checkpoint->unk32[1] = checkpointEntry->lane1OffsetY;
-    checkpoint->unk36[1] = checkpointEntry->lane1Action;
-    checkpoint->unk2E[2] = checkpointEntry->lane2OffsetX;
-    checkpoint->unk32[2] = checkpointEntry->lane2OffsetY;
-    checkpoint->unk36[2] = checkpointEntry->lane2Action;
-    checkpoint->unk2E[3] = checkpointEntry->lane3OffsetX;
-    checkpoint->unk32[3] = checkpointEntry->lane3OffsetY;
-    checkpoint->unk36[3] = checkpointEntry->lane3Action;
+    checkpoint->laneOffsetX[0] = checkpointEntry->lane0OffsetX;
+    checkpoint->laneOffsetY[0] = checkpointEntry->lane0OffsetY;
+    checkpoint->laneAction[0] = checkpointEntry->lane0Action;
+    checkpoint->laneOffsetX[1] = checkpointEntry->lane1OffsetX;
+    checkpoint->laneOffsetY[1] = checkpointEntry->lane1OffsetY;
+    checkpoint->laneAction[1] = checkpointEntry->lane1Action;
+    checkpoint->laneOffsetX[2] = checkpointEntry->lane2OffsetX;
+    checkpoint->laneOffsetY[2] = checkpointEntry->lane2OffsetY;
+    checkpoint->laneAction[2] = checkpointEntry->lane2Action;
+    checkpoint->laneOffsetX[3] = checkpointEntry->lane3OffsetX;
+    checkpoint->laneOffsetY[3] = checkpointEntry->lane3OffsetY;
+    checkpoint->laneAction[3] = checkpointEntry->lane3Action;
     checkpoint->indicatorType = checkpointEntry->indicatorType;
 }
 
@@ -6919,8 +6919,8 @@ void race_finish_time_trial(void) {
     levelHeader = level_header();
     settings = get_settings();
     settings->timeTrialRacer = 0;
-    settings->unk115[1] = 0;
-    settings->unk115[0] = 0;
+    settings->bestLapRacerAndLap[1] = 0;
+    settings->bestLapRacerAndLap[0] = 0;
     bestCourseTime = 36001;
     bestRacerTime = 36001;
     bestRacer = gRacersByPosition[0]->racer;
@@ -6937,8 +6937,8 @@ void race_finish_time_trial(void) {
                         curRacerLapTime = curRacer->lap_times[j];
                         courseTime += curRacerLapTime;
                         if (curRacerLapTime < bestRacerTime) {
-                            settings->unk115[1] = j;
-                            settings->unk115[0] = curRacer->racerIndex;
+                            settings->bestLapRacerAndLap[1] = j;
+                            settings->bestLapRacerAndLap[0] = curRacer->racerIndex;
                             bestRacerTime = curRacerLapTime;
                         }
                     }
@@ -6959,11 +6959,11 @@ void race_finish_time_trial(void) {
             vehicleID = VEHICLE_CAR;
         }
         settings->display_times = TRUE;
-        if (settings->unk115[0] == 0) {
+        if (settings->bestLapRacerAndLap[0] == 0) {
             if ((settings->flapTimesPtr[vehicleID][settings->courseId] == NULL) ||
                 (bestRacerTime < settings->flapTimesPtr[vehicleID][settings->courseId])) {
                 settings->flapTimesPtr[vehicleID][settings->courseId] = bestRacerTime;
-                settings->racers[settings->unk115[0]].best_times |= 1 << settings->unk115[1];
+                settings->racers[settings->bestLapRacerAndLap[0]].best_times |= 1 << settings->bestLapRacerAndLap[1];
             }
         }
         if (settings->timeTrialRacer == 0) {
@@ -8765,13 +8765,13 @@ void obj_init_animobject(Object *animationObj, Object *animatedObj) {
     }
     scale /= 64;
     animatedObj->trans.scale = animatedObj->header->scale * scale;
-    animatedObj->properties.animatedObj.unk0 = 0;
-    animatedObj->properties.animatedObj.unk4 = 0;
+    animatedObj->properties.animatedObj.attachRacerID = 0;
+    animatedObj->properties.animatedObj.pathIdle = 0;
     if (animEntry->attachMode >= 2 && animEntry->attachMode < 10) {
-        animatedObj->properties.animatedObj.unk0 = animEntry->attachMode - 1;
+        animatedObj->properties.animatedObj.attachRacerID = animEntry->attachMode - 1;
     }
     if (animEntry->attachMode >= 10 && animEntry->attachMode < 18) {
-        animatedObj->properties.animatedObj.unk0 = animEntry->attachMode - 9;
+        animatedObj->properties.animatedObj.attachRacerID = animEntry->attachMode - 9;
     }
     animatedObj->trans.x_position = animationObj->trans.x_position;
     animatedObj->trans.y_position = animationObj->trans.y_position;
@@ -8845,7 +8845,7 @@ void anim_object_spawn_target(Object *obj, LevelObjectEntry_Animation *animEntry
         obj_init_animobject(obj, newObj);
         if (newObj->header->behaviorId == BHV_CAMERA_ANIMATION) {
             camera = newObj->animatedObject;
-            camera->unk44 = gAnimCameraCount;
+            camera->cameraStage = gAnimCameraCount;
             viewportCount = cam_get_viewport_layout();
             if (race_is_adventure_2P()) {
                 viewportCount = VIEWPORT_LAYOUT_2_PLAYERS;
@@ -8858,7 +8858,7 @@ void anim_object_spawn_target(Object *obj, LevelObjectEntry_Animation *animEntry
                     camera = newObj->animatedObject;
                     i++;
                     camera->cameraID = i;
-                    camera->unk44 = gAnimCameraCount;
+                    camera->cameraStage = gAnimCameraCount;
                 }
             }
             gAnimCameraCount++;
@@ -9579,7 +9579,7 @@ void anim_actor_init(Object *obj, Object_AnimatedObject *animObj, LevelObjectEnt
 
     animObjTrans = &animObj->animator->trans;
     if (obj->behaviorId == BHV_CAMERA_ANIMATION) {
-        animObj->unk44 = gAnimCameraCount;
+        animObj->cameraStage = gAnimCameraCount;
         gAnimCameraCount++;
     }
     if (entry->attachMode == 18) {

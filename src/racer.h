@@ -138,8 +138,8 @@ typedef enum RacerEggFlags {
 #define AI_MAX_STEP 3
 
 typedef struct AIBehaviourTable {
-    f32 unk0;
-    f32 unk4;
+    f32 minTargetSpeed;
+    f32 maxTargetSpeed;
     s8 percentages[4][4];
 } AIBehaviourTable;
 

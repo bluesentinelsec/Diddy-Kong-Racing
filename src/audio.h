@@ -20,10 +20,10 @@ typedef struct SoundData {
  u8 volume; // Multiplied by 256. 128 = 32768, max volume.
  u8 minVolume;
  u8 pitch; // Fractional. 100 = 1.0f.
- u8 unk5;
+ u8 unused5;
  u16 range; // Ingame units distance, same as any other.
  u8 priority;
- u8 unk9;
+ u8 unused9;
 } SoundData;
 
 /* Size: 0x03 bytes */

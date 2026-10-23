@@ -244,9 +244,9 @@ typedef struct CheckpointNode {
     /* 0x24 */ f32 altDistance; // Appears to be exactly the same as distance?
     /* 0x28 */ Object *obj;
     /* 0x2C */ s16 checkpointID;
-    /* 0x2E */ s8 unk2E[4];
-    /* 0x32 */ s8 unk32[4];
-    /* 0x36 */ s8 unk36[4];   // Appear to be flags of some sort?
+    /* 0x2E */ s8 laneOffsetX[4];
+    /* 0x32 */ s8 laneOffsetY[4];
+    /* 0x36 */ s8 laneAction[4]; // Appear to be flags of some sort?
     /* 0x3A */ s8 altRouteID; // -1 if there's none to be found.
     /* 0x3B */ u8 indicatorType; // HUD arrow shown to racers passing this checkpoint, 0 for none
 } CheckpointNode;
@@ -278,18 +278,11 @@ typedef struct ObjectTransform_800135B8 {
     s16 unk18;
 } ObjectTransform_800135B8;
 
-typedef struct unk800149C0 {
-    u8 pad0[4];
-    u8 unk4;
-    u8 pad5;
-    s16 unk6;
-} unk800149C0;
-
 typedef struct RacerFXData {
-    u8 unk0;
-    u8 unk1;
-    u8 unk2;
-    u8 unk3;
+    u8 unused0;
+    u8 magnetPulseTimer;
+    u8 magnetSpinTimer;
+    u8 magnetFade;
 } RacerFXData;
 
 extern s32 osCicId; // Used for an Anti-Piracy check in render_3d_model
