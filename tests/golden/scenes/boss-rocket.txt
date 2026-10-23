@@ -1,0 +1,8 @@
+# frames 3000
+# save 100
+# level 55
+# Second race against Wizpig, on the rocket (Future Fun Land), started straight from the title
+# menu (# level, DKR_TRACE_LEVEL) on the 100% save and driven by the autopilot (AUTO).
+# Added from the coverage report (make coverage): no other scene reaches this level's code.
+# Format: <frame> <buttons> <stickX> <stickY> [p<N>], held until the next line (DKR_INPUT_SCRIPT).
+150 AUTO 0 0

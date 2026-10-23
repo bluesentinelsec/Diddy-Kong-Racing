@@ -914,6 +914,9 @@ void mode_menu(s32 updateRate) {
 
         if (traceLevel >= 0) {
             gSettingsPtr->gNumRacers = pc_trace_players();
+            if (pc_trace_adventure()) {
+                enable_tracks_mode(FALSE);
+            }
             gGameNumPlayers = gSettingsPtr->gNumRacers - 1;
             menuLoopResult = MENU_RESULT_START_LEVEL(traceLevel & 0x7F);
         }

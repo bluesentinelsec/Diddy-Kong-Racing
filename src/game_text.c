@@ -239,7 +239,10 @@ void process_subtitles(s32 updateRate) {
  */
 void load_game_text_table(void) {
     gGameTextTable[0] = (GameTextTableStruct *) mempool_alloc_safe(0x800, COLOUR_TAG_GREEN);
-    gGameTextTableEntries[0] = (char *) &gGameTextTable[0]->entries[32];
+    // The first 32 words (128 bytes) hold the table window; the two text buffers follow. Counted
+    // in bytes, since entries[] holds host pointers (8 bytes on a 64-bit host, which put the
+    // second buffer 128 bytes past the end of this allocation).
+    gGameTextTableEntries[0] = (char *) gGameTextTable[0] + 32 * sizeof(u32);
     gGameTextTableEntries[1] = &gGameTextTableEntries[0][960];
     gGameTextTableIndex = 0;
     init_dialogue_text();
@@ -296,7 +299,7 @@ void set_delayed_text(s32 textID, f32 delay) {
  * like showing a subtitle, or opening an onscreen text box.
  */
 void set_current_text(s32 textID) {
-    char **entries;
+    u32 *words;
     UNUSED s32 pad;
     s32 size;
     s32 language;
@@ -324,19 +327,22 @@ void set_current_text(s32 textID) {
             pc_swap32_buf((*gGameTextTable)->entries, 16);
         }
 
-        entries = (*gGameTextTable)->entries;
-        temp = ((s32) entries[textID & 1]) & 0xFF000000;
-        size = (((s32) entries[(textID & 1) + 1]) & 0xFFFFFF) - (((s32) entries[textID & 1]) & 0xFFFFFF);
+        // The table holds 32-bit words, not pointers: read them as such, or on a 64-bit host each
+        // entry spans two words and the size comes out negative (Wizpig's first race crashed here).
+        words = (u32 *) (*gGameTextTable)->entries;
+        temp = ((s32) words[textID & 1]) & 0xFF000000;
+        size = (((s32) words[(textID & 1) + 1]) & 0xFFFFFF) - (((s32) words[textID & 1]) & 0xFFFFFF);
 
         if (temp) {
-            asset_load(ASSET_GAME_TEXT, (uintptr_t) gCurrentMessageText[gGameTextMessageIndex], ((s32) entries[textID & 1]) ^ temp,
-                       size);
+            asset_load(ASSET_GAME_TEXT, (uintptr_t) gCurrentMessageText[gGameTextMessageIndex],
+                       ((s32) words[textID & 1]) ^ temp, size);
             gCurrentTextProperties = gCurrentMessageText[gGameTextMessageIndex];
             find_next_subtitle();
             gGameTextMessageIndex = (gGameTextMessageIndex + 1) & 1;
             return;
         }
-        asset_load(ASSET_GAME_TEXT, (uintptr_t) gGameTextTableEntries[gGameTextTableIndex], ((s32) entries[textID & 1]) ^ temp, size);
+        asset_load(ASSET_GAME_TEXT, (uintptr_t) gGameTextTableEntries[gGameTextTableIndex],
+                   ((s32) words[textID & 1]) ^ temp, size);
         gGameTextBuffer = gGameTextTableEntries[gGameTextTableIndex];
         gGameTextTableIndex = (gGameTextTableIndex + 1) & 1;
         D_8012A788 = 0;

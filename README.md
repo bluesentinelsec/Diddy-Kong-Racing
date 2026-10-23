@@ -203,12 +203,14 @@ the port honest:
   exercises it: a car race, a hovercraft race and a plane race on Ancient Lake
   with the AI, a time trial against the ghost, a race paused and resumed from
   the pause menu, a race driven to the finish and through the results menu, a
-  two-player split-screen race joined through the menus, a boss race against
-  Tricky, and a drive around the central hub (doors, Taj, the music fade
-  zones). Each script's header gives its length (`# frames N`) and, as needed,
+  two-player split-screen race joined through the menus, a race against each
+  boss (Tricky, Bluey, Bubbler, Smokey and both Wizpig races), the three battle
+  arenas, an adventure-mode race, Diddy on the character select screen, and a
+  drive around the central hub (doors, Taj, the music fade zones). Each script's header gives its length (`# frames N`) and, as needed,
   `# save 100` to start from the 100%-completion save image, `# level N` to
   start level N straight from the title menu (for the places the menus cannot
-  reach by script) and `# players N`. A script line may end in `p2`..`p4` to
+  reach by script), `# adventure` to start that level in adventure mode
+  rather than Tracks mode, and `# players N`. A script line may end in `p2`..`p4` to
   drive another controller, which plugs it in, and the `AUTO` token hands a
   human racer to the AI's driving so a scene can finish a race.
   `tests/golden/scenes.sh` runs them all; adding a scene is adding a script
@@ -224,6 +226,13 @@ the port honest:
   a rewrite is correct when every trace is identical. They already caught one
   real bug while being written (a pointer table allocated at the console's
   4 bytes per entry, which on a 64-bit host overran into the level names).
+- `make coverage` shows what that net covers. It builds with clang's
+  source-based coverage into `build/coverage`, runs every trace (each must
+  still match) and writes `build/coverage/report/summary.txt` (line and
+  function coverage per game file, lowest first) and `unexecuted.txt` (every
+  game function no trace enters). Code listed there can change without a
+  trace noticing, so give it a scene before rewriting it. The traces execute
+  about two thirds of the game's lines today.
 
 ## Running
 
