@@ -75,6 +75,29 @@ void pc_trace_init(void) {
     printf("TRACE: writing %ld frames to %s\n", sFrames, sPath);
 }
 
+// DKR_TRACE_LEVEL / DKR_TRACE_PLAYERS: a scene that starts in a level the menus
+// cannot reach by script (a boss race, a hub world). The request fires once the
+// title menu has been running for a while, so the boot sequence is untouched.
+#define TRACE_LEVEL_FRAME 120
+
+int pc_trace_level_request(unsigned int frame) {
+    static int sDone = 0;
+    const char *env = getenv("DKR_TRACE_LEVEL");
+
+    if (sDone || env == NULL || env[0] == '\0' || frame < TRACE_LEVEL_FRAME) {
+        return -1;
+    }
+    sDone = 1;
+    return atoi(env);
+}
+
+int pc_trace_players(void) {
+    const char *env = getenv("DKR_TRACE_PLAYERS");
+    int n = env != NULL ? atoi(env) : 1;
+
+    return n < 1 ? 1 : (n > 4 ? 4 : n);
+}
+
 int pc_trace_active(void) {
     return sActive;
 }

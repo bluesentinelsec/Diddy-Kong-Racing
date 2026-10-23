@@ -52,21 +52,30 @@ static const KeyBinding sKeyBindings[] = {
 // Scripted input: DKR_INPUT_SCRIPT=FILE replays controller state by frame, for
 // reproducing a report or driving a trace past the title screen. Each line is
 //
-//     <frame> <buttons> <stickX> <stickY>
+//     <frame> <buttons> <stickX> <stickY> [p<N>]
 //
 // and holds from that frame (as counted by gfx_frame_count) until the next
-// line. Buttons are a comma-separated list of A B Z START L R DU DD DL DR CU CD
-// CL CR, or "-" for none. Lines must be in frame order; '#' starts a comment.
+// line for the same controller. Buttons are a comma-separated list of A B Z
+// START L R DU DD DL DR CU CD CL CR, or "-" for none; AUTO is not a button but
+// a mode: while it is held, human racers drive themselves with the AI's inputs
+// (so a scene can finish a race). p<N> addresses controller N (1-based; 1 is
+// the default), and a script that names p2..p4 plugs those controllers in.
+// Lines must be in frame order; '#' starts a comment.
 // ---------------------------------------------------------------------------
+#define SCRIPT_MAX_PORTS 4
+#define BTN_SCRIPT_AUTO 0x0080 // an unused bit of the N64 button word
+
 typedef struct {
     unsigned int frame;
     unsigned short buttons;
     signed char stickX, stickY;
+    unsigned char port;
 } ScriptStep;
 
 static ScriptStep *sScript;
 static int sScriptCount;
 static int sScriptLoaded;
+static int sScriptPorts;
 
 static unsigned short script_button(const char *name) {
     static const struct {
@@ -83,6 +92,9 @@ static unsigned short script_button(const char *name) {
         if (strcmp(name, table[i].name) == 0) {
             return table[i].bit;
         }
+    }
+    if (strcmp(name, "AUTO") == 0) {
+        return BTN_SCRIPT_AUTO;
     }
     fprintf(stderr, "INPUT: unknown button '%s' in DKR_INPUT_SCRIPT\n", name);
     return 0;
@@ -104,13 +116,25 @@ static void script_load(void) {
     }
     while (fgets(line, sizeof(line), f) != NULL) {
         char buttons[128];
+        char portName[16];
         ScriptStep step;
         int x, y;
+        int port;
         char *tok;
         char *save;
 
-        if (line[0] == '#' || sscanf(line, "%u %127s %d %d", &step.frame, buttons, &x, &y) != 4) {
+        portName[0] = '\0';
+        if (line[0] == '#' || sscanf(line, "%u %127s %d %d %15s", &step.frame, buttons, &x, &y, portName) < 4) {
             continue;
+        }
+        port = 1;
+        if (portName[0] != '\0' && (sscanf(portName, "p%d", &port) != 1 || port < 1 || port > SCRIPT_MAX_PORTS)) {
+            fprintf(stderr, "INPUT: bad controller '%s' in DKR_INPUT_SCRIPT (p1..p%d)\n", portName, SCRIPT_MAX_PORTS);
+            exit(1);
+        }
+        step.port = (unsigned char) (port - 1);
+        if (port > sScriptPorts) {
+            sScriptPorts = port;
         }
         step.buttons = 0;
         step.stickX = (signed char) x;
@@ -124,13 +148,33 @@ static void script_load(void) {
         sScript[sScriptCount++] = step;
     }
     fclose(f);
-    printf("INPUT: replaying %d steps from %s\n", sScriptCount, path);
+    if (sScriptCount > 0 && sScriptPorts < 1) {
+        sScriptPorts = 1;
+    }
+    printf("INPUT: replaying %d steps from %s (%d controller%s)\n", sScriptCount, path, sScriptPorts,
+           sScriptPorts == 1 ? "" : "s");
+}
+
+// The script step in force for `port` at the current frame, or NULL.
+static const ScriptStep *script_current(int port) {
+    unsigned int frame;
+    int i;
+
+    if (!sScriptLoaded) {
+        script_load();
+    }
+    frame = gfx_frame_count();
+    for (i = sScriptCount - 1; i >= 0; i--) {
+        if (sScript[i].port == port && sScript[i].frame <= frame) {
+            return &sScript[i];
+        }
+    }
+    return NULL;
 }
 
 // Returns 1 and fills the outputs if a script is active.
-static int script_read(unsigned short *button, signed char *stickX, signed char *stickY) {
-    unsigned int frame;
-    int i;
+static int script_read(int port, unsigned short *button, signed char *stickX, signed char *stickY) {
+    const ScriptStep *step;
 
     if (!sScriptLoaded) {
         script_load();
@@ -138,16 +182,45 @@ static int script_read(unsigned short *button, signed char *stickX, signed char 
     if (sScriptCount == 0) {
         return 0;
     }
-    frame = gfx_frame_count();
-    for (i = sScriptCount - 1; i >= 0; i--) {
-        if (sScript[i].frame <= frame) {
-            *button = sScript[i].buttons;
-            *stickX = sScript[i].stickX;
-            *stickY = sScript[i].stickY;
-            break;
-        }
+    step = script_current(port);
+    if (step != NULL) {
+        *button = step->buttons & ~BTN_SCRIPT_AUTO;
+        *stickX = step->stickX;
+        *stickY = step->stickY;
     }
     return 1;
+}
+
+int input_script_ports(void) {
+    if (!sScriptLoaded) {
+        script_load();
+    }
+    return sScriptPorts;
+}
+
+int input_script_autopilot(void) {
+    const ScriptStep *step;
+
+    if (!sScriptLoaded) {
+        script_load();
+    }
+    if (sScriptCount == 0) {
+        return 0;
+    }
+    step = script_current(0);
+    return step != NULL && (step->buttons & BTN_SCRIPT_AUTO) != 0;
+}
+
+// src/racer.c asks through this name.
+int pc_trace_autopilot(void) {
+    return input_script_autopilot();
+}
+
+void input_host_read_port(int port, unsigned short *button, signed char *stickX, signed char *stickY) {
+    *button = 0;
+    *stickX = 0;
+    *stickY = 0;
+    script_read(port, button, stickX, stickY);
 }
 
 // Xbox-style layout. The N64 pad's yellow C buttons were used as a second
@@ -263,7 +336,7 @@ void input_host_read(unsigned short *button, signed char *stickX, signed char *s
     *button = 0;
     *stickX = 0;
     *stickY = 0;
-    if (script_read(button, stickX, stickY)) {
+    if (script_read(0, button, stickX, stickY)) {
         return; // DKR_INPUT_SCRIPT drives the controller
     }
     if (pc_trace_active()) {

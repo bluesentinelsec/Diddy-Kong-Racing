@@ -4,10 +4,13 @@
 #   tests/golden/scenes.sh BINARY            compare each scene
 #   tests/golden/scenes.sh --update BINARY   regenerate every scene's trace
 #
-# Each script's first line is "# frames N", the trace length. A scene is a
-# scripted path into one part of the game (a race in each vehicle, the pause
-# menu, a time trial...) so that a change to the game logic has a trace that
-# exercises it; see tests/golden.sh for what a trace hashes.
+# Each script's first line is "# frames N", the trace length; "# save 100",
+# "# level N" and "# players N" are the other headers tests/golden.sh reads.
+# A scene is a scripted path into one part of the game (a race in each
+# vehicle, the pause menu, a time trial, a finished race and its results, a
+# two-player race, a boss race, a hub world...) so that a change to the game
+# logic has a trace that exercises it; see tests/golden.sh for what a trace
+# hashes and linux/input.c for the script format (p<N> controllers, AUTO).
 set -u
 update=0
 if [ "${1:-}" = "--update" ]; then

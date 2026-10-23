@@ -28,6 +28,13 @@ void pc_trace_init(void);
 
 int pc_trace_active(void);
 
+// DKR_TRACE_LEVEL=<level id>: once the title menu is up, start that level
+// directly (as the game's own level-select result would), with
+// DKR_TRACE_PLAYERS human players (default 1). Returns the level id once and
+// -1 otherwise.
+int pc_trace_level_request(unsigned int frame);
+int pc_trace_players(void);
+
 // Feed data into the running hashes for the current frame.
 void pc_trace_gfx(const void *data, size_t size);
 void pc_trace_gfx_u32(uint32_t value);

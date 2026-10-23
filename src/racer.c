@@ -42,6 +42,7 @@
  * WRAP will "overflow" the value. Used to keep angles within s16 bounds.
  */
 
+extern int pc_trace_autopilot(void); // linux/input.c: scripted traces can let a human racer drive itself
 /************ .data ************/
 
 s32 gObjLoopGoldenBalloonLength = 0x310;
@@ -4478,7 +4479,10 @@ void update_player_racer(Object *obj, s32 updateRate) {
             }
         }
         tempVar = tempRacer->playerIndex;
-        if (tempRacer->playerIndex != PLAYER_COMPUTER) {
+        if (tempRacer->playerIndex != PLAYER_COMPUTER && pc_trace_autopilot()) {
+            // A scripted trace holding AUTO: the human racer drives itself (linux/input.c).
+            racer_AI_pathing_inputs(obj, tempRacer, updateRate);
+        } else if (tempRacer->playerIndex != PLAYER_COMPUTER) {
             if (tempRacer->exitObj == 0) {
                 if (is_race_started_by_player_two()) {
                     tempVar = 1 - tempVar;

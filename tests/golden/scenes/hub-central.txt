@@ -1,0 +1,24 @@
+# frames 3600
+# save 100
+# level 0
+# Adventure, the central hub (Timber's Island) started straight from the title
+# menu on the 100% save: a drive around the island, turning every few seconds,
+# which crosses the music fade zones and passes the doors and Taj.
+# Format: <frame> <buttons> <stickX> <stickY> [p<N>], held until the next line (DKR_INPUT_SCRIPT).
+300 B 0 -70
+420 - 0 0
+450 A 50 0
+600 A 0 0
+900 A -60 0
+1050 A 0 0
+1350 A 60 0
+1500 A 0 0
+1800 A -70 0
+1950 A 0 0
+2250 A 70 0
+2400 A 0 0
+2700 A -60 0
+2850 A 0 0
+3150 A,R 0 0
+3154 A 0 0
+3300 A 60 0

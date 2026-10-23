@@ -31,6 +31,12 @@ if [ -n "$input" ]; then
     # "# save 100" in the script starts the trace from the 100%-completion save
     # (DKR_TRACE_SAVE, linux/reimpl.c) instead of an erased one.
     save=$(sed -n 's/^# save \([0-9a-z]*\).*/\1/p' "$input" | head -n 1)
+    # "# level N" starts level N from the title menu (DKR_TRACE_LEVEL,
+    # linux/trace.c), "# players N" with N human players (DKR_TRACE_PLAYERS).
+    level=$(sed -n 's/^# level \([0-9]*\).*/\1/p' "$input" | head -n 1)
+    players=$(sed -n 's/^# players \([0-9]*\).*/\1/p' "$input" | head -n 1)
+    if [ -n "$level" ]; then export DKR_TRACE_LEVEL=$level; else unset DKR_TRACE_LEVEL; fi
+    if [ -n "$players" ]; then export DKR_TRACE_PLAYERS=$players; else unset DKR_TRACE_PLAYERS; fi
     if [ -n "$save" ]; then
         export DKR_TRACE_SAVE=$save
     else
@@ -39,6 +45,8 @@ if [ -n "$input" ]; then
 else
     unset DKR_INPUT_SCRIPT
     unset DKR_TRACE_SAVE
+    unset DKR_TRACE_LEVEL
+    unset DKR_TRACE_PLAYERS
 fi
 
 if [ "$update" = 1 ]; then
