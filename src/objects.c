@@ -2990,8 +2990,8 @@ static void obj_stop_animated_object_sound(Object *obj) {
         case BHV_DOOR_OPENER:
         case BHV_PIG_ROCKETEER:
         case BHV_WIZPIG_GHOSTS:
-            if (obj->animatedObject->unk18 != NULL) {
-                sndp_stop(obj->animatedObject->unk18);
+            if (obj->animatedObject->soundHandle != NULL) {
+                sndp_stop(obj->animatedObject->soundHandle);
             }
             break;
     }
@@ -3141,7 +3141,7 @@ static void obj_update_scenery(s32 updateRate, s32 objectCount) {
         if (obj->behaviorId == BHV_LIGHT_RGBA || obj->behaviorId == BHV_WEAPON || obj->behaviorId == BHV_FOG_CHANGER) {
             continue;
         }
-        if (obj->interactObj == NULL || obj->interactObj->unk11 != 2) {
+        if (obj->interactObj == NULL || obj->interactObj->hitboxKind != 2) {
             run_object_loop_func(obj, updateRate);
         }
         if (obj->header->modelType == OBJECT_MODEL_TYPE_3D_MODEL) {
@@ -3746,240 +3746,266 @@ void render_3d_billboard(Object *obj) {
 }
 
 /**
+ * Advance the model's animation and relight its vertices. AI racers in single player and
+ * split screen use the fast shader; the stopwatch icon is always shaded fully.
+ */
+static void model_update_vertices(Object *obj, ModelInstance *modInst, Object_Racer *racer) {
+    ObjectModel *objModel;
+    s32 fancyShading;
+
+    objModel = modInst->objModel;
+    obj->curVertData = modInst->vertices[modInst->animationTaskNum];
+    if (modInst->modelType == MODELTYPE_ANIMATED) {
+        obj_animate(obj);
+    }
+    if (modInst->modelType != MODELTYPE_BASIC && objModel->normals != NULL) {
+        fancyShading = TRUE;
+        if (racer != NULL && racer->vehicleID < VEHICLE_BOSSES && racer->playerIndex == PLAYER_COMPUTER) {
+            fancyShading = FALSE;
+        }
+        if (cam_get_viewport_layout() != VIEWPORT_LAYOUT_1_PLAYER) {
+            fancyShading = FALSE;
+        }
+        obj->curVertData = modInst->vertices[modInst->animationTaskNum];
+        if (obj->behaviorId == BHV_UNK_3F) { // 63 = stopwatchicon, stopwatchhand
+            obj_shade_fancy(objModel, obj, 0, gCurrentLightIntensity);
+        } else if (fancyShading) {
+            obj_shade_fancy(objModel, obj, -1, gCurrentLightIntensity);
+        } else {
+            obj_shade_fast(objModel, obj, gCurrentLightIntensity);
+        }
+    }
+    // Set the animation ticker for non player racers to 2, making them animate at half the framerate.
+    if ((racer != NULL) && (racer->playerIndex == PLAYER_COMPUTER) && (racer->vehicleID < VEHICLE_BOSSES)) {
+        modInst->animUpdateTimer = 2;
+    } else {
+        modInst->animUpdateTimer = 1;
+    }
+}
+
+/**
+ * Draw the sprites attached to the model's attach points (balloons, held eggs, wheels'
+ * decorations). Each is moved onto its attach vertex for the draw and moved back after.
+ */
+static void model_render_attachments(Object *obj, ObjectModel *objModel, Object_Racer *racer, s32 intensity,
+                                     s32 opacity) {
+    Object *attached;
+    Sprite *sprite;
+    s32 attachPointCount;
+    s32 flags;
+    s32 isCargo;
+    s8 index;
+    f32 vtxX;
+    f32 vtxY;
+    f32 vtxZ;
+    s32 i;
+
+    attachPointCount = obj->attachPoints->count;
+    if (racer != NULL && racer->vehicleID == VEHICLE_FLYING_CAR) {
+        attachPointCount = 0;
+    }
+    for (i = 0; i < attachPointCount; i++) {
+        attached = obj->attachPoints->obj[i];
+        if (attached->trans.flags & OBJ_FLAGS_INVISIBLE) {
+            continue;
+        }
+        index = obj->attachPoints->unk2C[i];
+        if (index < 0 || index >= objModel->numberOfAttachPoints) {
+            continue;
+        }
+        sprite = attached->sprites[attached->modelIndex];
+        vtxX = obj->curVertData[objModel->attachPoints[index]].x;
+        vtxY = obj->curVertData[objModel->attachPoints[index]].y;
+        vtxZ = obj->curVertData[objModel->attachPoints[index]].z;
+        attached->trans.x_position += vtxX;
+        attached->trans.y_position += vtxY;
+        attached->trans.z_position += vtxZ;
+        if (attached->header->modelType == OBJECT_MODEL_TYPE_SPRITE_BILLBOARD) {
+            flags = (RENDER_Z_COMPARE | RENDER_FOG_ACTIVE | RENDER_Z_UPDATE);
+        } else {
+            flags = (RENDER_Z_COMPARE | RENDER_FOG_ACTIVE | RENDER_Z_UPDATE | RENDER_ANTI_ALIASING);
+        }
+        if (opacity < 255) {
+            flags |= RENDER_SEMI_TRANSPARENT;
+        }
+        // In this instance, cargo refers to the eggs in the fire mountain challenge.
+        isCargo = (attached->trans.flags & OBJ_FLAGS_UNK_0080 && attachPointCount == 3);
+        if (racer != NULL && racer->transparency < 255) {
+            isCargo = FALSE;
+        }
+        if (isCargo) {
+            deferred_dl_begin(&gObjectCurrDisplayList);
+            gDPSetEnvColor(gObjectCurrDisplayList++, 255, 255, 255, 0);
+            gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, intensity, intensity, intensity, opacity);
+        }
+        attached->properties.common.unk0 = render_sprite_billboard(&gObjectCurrDisplayList, &gObjectCurrMatrix,
+                                                                   &gObjectCurrVertexList, attached, sprite, flags);
+        if (isCargo) {
+            gSPSelectMatrixDKR(gObjectCurrDisplayList++, G_MTX_DKR_INDEX_0);
+            deferred_dl_end(&gObjectCurrDisplayList);
+        }
+        attached->trans.x_position -= vtxX;
+        attached->trans.y_position -= vtxY;
+        attached->trans.z_position -= vtxZ;
+    }
+}
+
+/**
+ * The egg a racer carries eases towards the model's hold point and is drawn there.
+ */
+static void model_render_held_object(Object *obj, ObjectModel *objModel, Object_Racer *racer) {
+    Object *held;
+    Sprite *sprite;
+    s32 flags;
+    s8 index;
+    f32 vtxX;
+    f32 vtxY;
+    f32 vtxZ;
+
+    held = racer->held_obj;
+    if (held == NULL) {
+        return;
+    }
+    index = obj->header->unk58;
+    if (index < 0 || index >= objModel->numberOfAttachPoints) {
+        return;
+    }
+    flags = (RENDER_Z_COMPARE | RENDER_FOG_ACTIVE | RENDER_Z_UPDATE);
+    sprite = held->sprites[held->modelIndex];
+    vtxX = obj->curVertData[objModel->attachPoints[index]].x;
+    vtxY = obj->curVertData[objModel->attachPoints[index]].y;
+    vtxZ = obj->curVertData[objModel->attachPoints[index]].z;
+    held->trans.x_position += (vtxX - held->trans.x_position) * 0.25;
+    held->trans.y_position += (vtxY - held->trans.y_position) * 0.25;
+    held->trans.z_position += (vtxZ - held->trans.z_position) * 0.25;
+    if (held->header->modelType == OBJECT_MODEL_TYPE_SPRITE_BILLBOARD) {
+        render_sprite_billboard(&gObjectCurrDisplayList, &gObjectCurrMatrix, &gObjectCurrVertexList, held, sprite,
+                                flags);
+    }
+}
+
+/**
  * Renders a 3D object, with support for vehicle part entities as part of the process.
  * Loads materials, and sets environment and/or primitive colours based on the material type.
  * Computes the view matrix for the model, and calls a function to draw meshes.
  * Loops through racers to find vehicle parts, which are wheels and propellers.
  */
 void render_3d_model(Object *obj) {
-    s32 i;
     s32 intensity;
     s32 opacity;
-    s32 vertOffset;
-    s32 attachPointCount;
+    s32 headPushed;
     s32 hasOpacity;
     s32 hasLighting;
-    s32 flags;
     s32 meshBatch;
-    s32 cicFailed;
-    f32 vtxX;
-    f32 vtxY;
-    f32 vtxZ;
-    s8 index;
-    s8 isCargo;
-    Object *loopObj;
     ModelInstance *modInst;
-    Object_Racer *racerObj;
+    Object_Racer *racer;
     ObjectModel *objModel;
-    Sprite *something;
 
     modInst = obj->modelInstances[obj->modelIndex];
-    if (modInst != NULL) {
-        objModel = modInst->objModel;
-        hasOpacity = FALSE;
-        hasLighting = FALSE;
-        intensity = 255;
-        if (obj->shading != NULL) {
-            intensity = (s32) (obj->shading->unk0 * 255.0f * gCurrentLightIntensity);
-            hasOpacity = TRUE;
-            hasLighting = TRUE;
-        }
-        if (obj->behaviorId == BHV_RACER) {
-            racerObj = obj->racer;
-            object_do_player_tumble(obj);
+    if (modInst == NULL) {
+        return;
+    }
+    objModel = modInst->objModel;
+    hasOpacity = FALSE;
+    hasLighting = FALSE;
+    intensity = 255;
+    if (obj->shading != NULL) {
+        intensity = (s32) (obj->shading->unk0 * 255.0f * gCurrentLightIntensity);
+        hasOpacity = TRUE;
+        hasLighting = TRUE;
+    }
+    if (obj->behaviorId == BHV_RACER) {
+        racer = obj->racer;
+        object_do_player_tumble(obj);
+    } else {
+        racer = NULL;
+    }
+    if (modInst->animUpdateTimer <= 0) {
+        model_update_vertices(obj, modInst, racer);
+    }
+    obj->curVertData = modInst->vertices[modInst->animationTaskNum];
+    if (obj->behaviorId == BHV_DOOR) {
+        obj_door_number(objModel, obj);
+    }
+    if (objModel->texOffsetUpdateRate && objModel->hasAnimatedTexture > 0) {
+        obj_tex_animate(obj, objModel->texOffsetUpdateRate);
+        modInst->objModel->texOffsetUpdateRate = 0;
+    }
+    mtx_cam_push(&gObjectCurrDisplayList, &gObjectCurrMatrix, &obj->trans, gObjectModelScaleY, 0.0f);
+    headPushed = FALSE;
+    if (racer != NULL) {
+        object_undo_player_tumble(obj);
+        if (obj->animationID == 0 || racer->vehicleID >= VEHICLE_BOSSES) {
+            mtx_head_push(&gObjectCurrDisplayList, &gObjectCurrMatrix, modInst, racer->headAngle);
+            headPushed = TRUE;
         } else {
-            racerObj = NULL;
+            racer->headAngle = 0;
         }
-        if (modInst->animUpdateTimer <= 0) {
-            obj->curVertData = modInst->vertices[modInst->animationTaskNum];
-            if (modInst->modelType == MODELTYPE_ANIMATED) {
-                obj_animate(obj);
-            }
-            if (modInst->modelType != MODELTYPE_BASIC && objModel->normals != NULL) {
-                flags = TRUE;
-                if (racerObj != NULL && racerObj->vehicleID < VEHICLE_BOSSES &&
-                    racerObj->playerIndex == PLAYER_COMPUTER) {
-                    flags = FALSE;
-                }
-                if (cam_get_viewport_layout() != VIEWPORT_LAYOUT_1_PLAYER) {
-                    flags = FALSE;
-                }
-                obj->curVertData = modInst->vertices[modInst->animationTaskNum];
-                if (obj->behaviorId == BHV_UNK_3F) { // 63 = stopwatchicon, stopwatchhand
-                    obj_shade_fancy(objModel, obj, 0, gCurrentLightIntensity);
-                } else if (flags) {
-                    obj_shade_fancy(objModel, obj, -1, gCurrentLightIntensity);
-                } else {
-                    obj_shade_fast(objModel, obj, gCurrentLightIntensity);
-                }
-            }
-            // Set the animation ticker for non player racers to 2, making them animate at half the framerate.
-            if ((racerObj != NULL) && (racerObj->playerIndex == PLAYER_COMPUTER) &&
-                (racerObj->vehicleID < VEHICLE_BOSSES)) {
-                modInst->animUpdateTimer = 2;
-            } else {
-                modInst->animUpdateTimer = 1;
-            }
-        }
-        obj->curVertData = modInst->vertices[modInst->animationTaskNum];
-        if (obj->behaviorId == BHV_DOOR) {
-            obj_door_number(objModel, obj);
-        }
-        if (objModel->texOffsetUpdateRate && objModel->hasAnimatedTexture > 0) {
-            obj_tex_animate(obj, objModel->texOffsetUpdateRate);
-            modInst->objModel->texOffsetUpdateRate = 0;
-        }
-        mtx_cam_push(&gObjectCurrDisplayList, &gObjectCurrMatrix, &obj->trans, gObjectModelScaleY, 0.0f);
-        vertOffset = FALSE;
-        if (racerObj != NULL) {
-            object_undo_player_tumble(obj);
-            if (obj->animationID == 0 || racerObj->vehicleID >= VEHICLE_BOSSES) {
-                mtx_head_push(&gObjectCurrDisplayList, &gObjectCurrMatrix, modInst, racerObj->headAngle);
-                vertOffset = TRUE;
-            } else {
-                racerObj->headAngle = 0;
-            }
-        }
-        opacity = obj->opacity;
-        if (opacity > 255) {
-            opacity = 255;
-        }
-        // If the behavior is a water zipper, then halve it's transparency.
-        if (obj->behaviorId == BHV_ZIPPER_WATER) {
-            opacity >>= 1;
-        }
-        if (opacity < 255) {
-            hasOpacity = TRUE;
-        }
-        if (hasLighting) {
-            gDPSetEnvColor(gObjectCurrDisplayList++, obj->shading->lightR, obj->shading->lightG, obj->shading->lightB,
-                           obj->shading->lightIntensity);
-        } else {
-            gDPSetEnvColor(gObjectCurrDisplayList++, 255, 255, 255, 0);
-        }
-        if (obj->header->directionalPointLighting) {
-            gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, obj->shading->shadowR, obj->shading->shadowG,
-                            obj->shading->shadowB, opacity);
-            directional_lighting_on();
-        } else if (hasOpacity) {
+    }
+    opacity = obj->opacity;
+    if (opacity > 255) {
+        opacity = 255;
+    }
+    // If the behavior is a water zipper, then halve it's transparency.
+    if (obj->behaviorId == BHV_ZIPPER_WATER) {
+        opacity >>= 1;
+    }
+    if (opacity < 255) {
+        hasOpacity = TRUE;
+    }
+    if (hasLighting) {
+        gDPSetEnvColor(gObjectCurrDisplayList++, obj->shading->lightR, obj->shading->lightG, obj->shading->lightB,
+                       obj->shading->lightIntensity);
+    } else {
+        gDPSetEnvColor(gObjectCurrDisplayList++, 255, 255, 255, 0);
+    }
+    if (obj->header->directionalPointLighting) {
+        gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, obj->shading->shadowR, obj->shading->shadowG,
+                        obj->shading->shadowB, opacity);
+        directional_lighting_on();
+    } else if (hasOpacity) {
+        gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, intensity, intensity, intensity, opacity);
+    } else {
+        gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, 255, 255, 255, 255);
+    }
+    if (opacity < 255) {
+        meshBatch = render_mesh(objModel, obj, 0, RENDER_SEMI_TRANSPARENT, headPushed);
+    } else {
+        meshBatch = render_mesh(objModel, obj, 0, RENDER_NONE, headPushed);
+    }
+    if (obj->header->directionalPointLighting) {
+        if (hasOpacity) {
             gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, intensity, intensity, intensity, opacity);
         } else {
             gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, 255, 255, 255, 255);
         }
-        if (opacity < 255) {
-            meshBatch = render_mesh(objModel, obj, 0, RENDER_SEMI_TRANSPARENT, vertOffset);
-        } else {
-            meshBatch = render_mesh(objModel, obj, 0, RENDER_NONE, vertOffset);
-        }
+        directional_lighting_off();
+    }
+    if (obj->attachPoints != NULL) {
+        model_render_attachments(obj, objModel, racer, intensity, opacity);
+    }
+    if (racer != NULL) {
+        model_render_held_object(obj, objModel, racer);
+    }
+    // The translucent batches are drawn after everything opaque.
+    if (meshBatch != -1) {
         if (obj->header->directionalPointLighting) {
-            if (hasOpacity) {
-                gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, intensity, intensity, intensity, opacity);
-            } else {
-                gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, 255, 255, 255, 255);
-            }
+            gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, obj->shading->shadowR, obj->shading->shadowG,
+                            obj->shading->shadowB, opacity);
+            directional_lighting_on();
+        }
+        render_mesh(objModel, obj, meshBatch, RENDER_SEMI_TRANSPARENT, headPushed);
+        if (obj->header->directionalPointLighting) {
             directional_lighting_off();
         }
-        if (obj->attachPoints != NULL) {
-            attachPointCount = obj->attachPoints->count;
-            if (racerObj != NULL && racerObj->vehicleID == VEHICLE_FLYING_CAR) {
-                attachPointCount = 0;
-            }
-            for (i = 0; i < attachPointCount; i++) {
-                loopObj = obj->attachPoints->obj[i];
-                if (!(loopObj->trans.flags & OBJ_FLAGS_INVISIBLE)) {
-                    index = obj->attachPoints->unk2C[i];
-                    if (index >= 0 && index < objModel->numberOfAttachPoints) {
-                        something = loopObj->sprites[loopObj->modelIndex];
-                        vtxX = obj->curVertData[objModel->attachPoints[index]].x;
-                        vtxY = obj->curVertData[objModel->attachPoints[index]].y;
-                        vtxZ = obj->curVertData[objModel->attachPoints[index]].z;
-                        loopObj->trans.x_position += vtxX;
-                        loopObj->trans.y_position += vtxY;
-                        loopObj->trans.z_position += vtxZ;
-                        if (loopObj->header->modelType == OBJECT_MODEL_TYPE_SPRITE_BILLBOARD) {
-                            flags = (RENDER_Z_COMPARE | RENDER_FOG_ACTIVE | RENDER_Z_UPDATE);
-                        } else {
-                            flags = (RENDER_Z_COMPARE | RENDER_FOG_ACTIVE | RENDER_Z_UPDATE | RENDER_ANTI_ALIASING);
-                        }
-                        if (opacity < 255) {
-                            flags |= RENDER_SEMI_TRANSPARENT;
-                        }
-#ifdef ANTI_TAMPER
-                        cicFailed = FALSE;
-                        // Anti-Piracy check
-                        if (osCicId != CIC_ID) {
-                            cicFailed = TRUE;
-                        }
-                        if (!cicFailed) {
-#else
-                        if (1) {
-#endif
-                            // In this instance, cargo refers to the eggs in the fire mountain challenge.
-                            isCargo = (loopObj->trans.flags & OBJ_FLAGS_UNK_0080 && attachPointCount == 3);
-                            if (racerObj != NULL && racerObj->transparency < 255) {
-                                isCargo = FALSE;
-                            }
-                            if (isCargo) {
-                                deferred_dl_begin(&gObjectCurrDisplayList);
-                                gDPSetEnvColor(gObjectCurrDisplayList++, 255, 255, 255, 0);
-                                gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, intensity, intensity, intensity,
-                                                opacity);
-                            }
-                            loopObj->properties.common.unk0 =
-                                render_sprite_billboard(&gObjectCurrDisplayList, &gObjectCurrMatrix,
-                                                        &gObjectCurrVertexList, loopObj, something, flags);
-                            if (isCargo) {
-                                gSPSelectMatrixDKR(gObjectCurrDisplayList++, G_MTX_DKR_INDEX_0);
-                                deferred_dl_end(&gObjectCurrDisplayList);
-                            }
-                        }
-                        loopObj->trans.x_position -= vtxX;
-                        loopObj->trans.y_position -= vtxY;
-                        loopObj->trans.z_position -= vtxZ;
-                    }
-                }
-            }
-        }
-        // This section draws the egg sprite being held by a racer.
-        if (racerObj != NULL) {
-            loopObj = racerObj->held_obj;
-            if (loopObj != NULL) {
-                index = obj->header->unk58;
-                if (index >= 0 && index < objModel->numberOfAttachPoints) {
-                    flags = (RENDER_Z_COMPARE | RENDER_FOG_ACTIVE | RENDER_Z_UPDATE);
-                    something = loopObj->sprites[loopObj->modelIndex];
-                    vtxX = obj->curVertData[objModel->attachPoints[index]].x;
-                    vtxY = obj->curVertData[objModel->attachPoints[index]].y;
-                    vtxZ = obj->curVertData[objModel->attachPoints[index]].z;
-                    loopObj->trans.x_position += (vtxX - loopObj->trans.x_position) * 0.25;
-                    loopObj->trans.y_position += (vtxY - loopObj->trans.y_position) * 0.25;
-                    loopObj->trans.z_position += (vtxZ - loopObj->trans.z_position) * 0.25;
-                    if (loopObj->header->modelType == OBJECT_MODEL_TYPE_SPRITE_BILLBOARD) {
-                        render_sprite_billboard(&gObjectCurrDisplayList, &gObjectCurrMatrix, &gObjectCurrVertexList,
-                                                loopObj, something, flags);
-                    }
-                }
-            }
-        }
-        if (meshBatch != -1) {
-            if (obj->header->directionalPointLighting) {
-                gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, obj->shading->shadowR, obj->shading->shadowG,
-                                obj->shading->shadowB, opacity);
-                directional_lighting_on();
-            }
-            render_mesh(objModel, obj, meshBatch, RENDER_SEMI_TRANSPARENT, vertOffset);
-            if (obj->header->directionalPointLighting) {
-                directional_lighting_off();
-            }
-        }
-        if (hasOpacity || obj->header->directionalPointLighting) {
-            gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, 255, 255, 255, 255);
-        }
-        if (hasLighting) {
-            gDPSetEnvColor(gObjectCurrDisplayList++, 255, 255, 255, 0);
-        }
-        mtx_pop(&gObjectCurrDisplayList);
     }
+    if (hasOpacity || obj->header->directionalPointLighting) {
+        gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, 255, 255, 255, 255);
+    }
+    if (hasLighting) {
+        gDPSetEnvColor(gObjectCurrDisplayList++, 255, 255, 255, 0);
+    }
+    mtx_pop(&gObjectCurrDisplayList);
 }
 
 /** Deferred display lists: sections of an object's list cut out to be drawn after the track. */
@@ -4798,7 +4824,7 @@ void process_object_interactions(void) {
             if (objInteract != NULL) {
                 objList[objsWithInteractives] = obj;
                 objsWithInteractives++;
-                if (objInteract->unk11 != 2) {
+                if (objInteract->hitboxKind != 2) {
                     objInteract->obj = NULL;
                     objInteract->flags &= ~(INTERACT_FLAGS_COLLIDED | INTERACT_FLAGS_PUSHING);
                     objInteract->distance = 255;
@@ -4812,7 +4838,7 @@ void process_object_interactions(void) {
     for (i = 0; i < objsWithInteractives; i++) {
         obj = objList[i];
         objInteract = obj->interactObj;
-        if (objInteract->unk11 == 2 && gCollisionObjectCount < 20) {
+        if (objInteract->hitboxKind == 2 && gCollisionObjectCount < 20) {
             gCollisionObjects[gCollisionObjectCount] = obj;
             gCollisionObjectCount++;
         }
@@ -4822,9 +4848,9 @@ void process_object_interactions(void) {
                     obj2 = objList[j];
                     objInteract2 = obj2->interactObj;
                     if (objInteract2->flags & (INTERACT_FLAGS_SOLID | INTERACT_FLAGS_TANGIBLE)) {
-                        if (objInteract2->unk11 == 3) {
+                        if (objInteract2->hitboxKind == 3) {
                             object_collide_with_object(obj, obj2);
-                        } else if (objInteract2->unk11 != 2) {
+                        } else if (objInteract2->hitboxKind != 2) {
                             xDiff = obj->trans.x_position - obj2->trans.x_position;
                             zDiff = obj->trans.z_position - obj2->trans.z_position;
                             if (objInteract2->flags & INTERACT_FLAGS_UNK_0020) {
@@ -4845,7 +4871,7 @@ void process_object_interactions(void) {
                 if (i != j) {
                     obj2 = objList[j];
                     objInteract2 = obj2->interactObj;
-                    if (objInteract2->unk11 == 3) {
+                    if (objInteract2->hitboxKind == 3) {
                         object_collide_with_object(obj, obj2);
                     }
                 }
@@ -4862,264 +4888,294 @@ void process_object_interactions(void) {
     }
 }
 
-/** Pushes two interacting objects apart according to their interaction shapes. */
-void object_apply_interaction(Object *arg0, Object *arg1) {
-    f32 sp9C;
-    f32 sp98;
-    f32 f14;
-    f32 sp90;
-    f32 sp8C;
-    f32 f18;
-    f32 sp84;
-    f32 sp80;
-    f32 sp7C;
-    f32 f12;
-    f32 sp74;
-    f32 f2;
-    f32 f0;
-    f32 sp68;
-    f32 sp64;
-    f32 sp60;
-    s32 var_v0;
-    ObjectInteraction *sp58;
-    ObjectInteraction *sp54;
-    Object_Racer *sp50;
-    Object_Racer *sp4C;
+/**
+ * Remember the nearest object each side has met this frame. The distance saturates at
+ * 255; INTERACT_FLAGS_UNK_0020 counts it at an eighth.
+ */
+static void interaction_track_nearest(ObjectInteraction *interact, Object *other, f32 distance) {
+    s32 d;
 
-    sp68 = arg1->trans.x_position - arg0->trans.x_position;
-    sp64 = arg1->trans.y_position - arg0->trans.y_position;
-    sp60 = arg1->trans.z_position - arg0->trans.z_position;
+    d = (s32) (f32) (s32) distance;
+    if (interact->flags & INTERACT_FLAGS_UNK_0020) {
+        d >>= 3;
+    }
+    if (d > 255) {
+        d = 255;
+    }
+    if (interact->distance >= d) {
+        interact->obj = other;
+        interact->distance = d;
+    }
+}
 
-    sp58 = arg0->interactObj;
-    sp54 = arg1->interactObj;
-    sp80 = 1 / gObjectUpdateRateF;
+/**
+ * When `obj` has moved more than a unit since its interaction position was recorded,
+ * use the distance from `other` to the closest point on that movement instead, so a fast
+ * object cannot tunnel through. Returns the distance to use.
+ */
+static f32 interaction_closest_approach(Object *obj, ObjectInteraction *interact, Object *other, s32 flat,
+                                        f32 distance) {
+    f32 moveX;
+    f32 moveY;
+    f32 moveZ;
+    f32 t;
+    f32 px;
+    f32 py;
+    f32 pz;
 
-    if (sp54->unk11 == 1) {
-        sp64 = -sp64;
-        if (sp64 < sp54->unk16 * 10.0f || sp54->unk17 * 10.0f < sp64) {
-            return;
+    moveX = obj->trans.x_position - interact->x_position;
+    moveY = obj->trans.y_position - interact->y_position;
+    moveZ = obj->trans.z_position - interact->z_position;
+    if (flat) {
+        moveY = 0.0f;
+    }
+    t = moveX * moveX + moveY * moveY + moveZ * moveZ;
+    if (t > 1.0) {
+        t = ((other->trans.x_position - interact->x_position) * moveX +
+             (other->trans.y_position - interact->y_position) * moveY +
+             (other->trans.z_position - interact->z_position) * moveZ) /
+            t;
+        if (t >= 0.0f && t <= 1.0) {
+            px = interact->x_position + t * moveX;
+            py = interact->y_position + t * moveY;
+            pz = interact->z_position + t * moveZ;
+            distance = sqrtf((px - other->trans.x_position) * (px - other->trans.x_position) +
+                             (py - other->trans.y_position) * (py - other->trans.y_position) +
+                             (pz - other->trans.z_position) * (pz - other->trans.z_position));
         }
-        sp64 = 0.0f;
     }
+    return distance;
+}
 
-    if (sp54->unk11 == 4 && sp64 < 0.0f) {
-        sp64 *= 0.3;
-    }
+/**
+ * Push `obj` out of an immovable object. A racer that hits it hard enough also loses speed
+ * and is bumped sideways for a few frames: hovercraft glance off, other vehicles bounce.
+ */
+static void interaction_push_into_solid(Object *obj, Object *other, ObjectInteraction *interactOther, f32 pushX,
+                                        f32 pushY, f32 pushZ, f32 overlap, f32 invUpdateRate) {
+    Object_Racer *racer;
+    s32 bumped;
+    f32 side;
 
-    sp9C = sqrtf(sp68 * sp68 + sp64 * sp64 + sp60 * sp60);
-
-#if VERSION == VERSION_80
-    if (sp9C > 4000.0f) {
+    obj->trans.x_position -= pushX;
+    obj->trans.y_position -= pushY;
+    obj->trans.z_position -= pushZ;
+    pushX *= invUpdateRate;
+    pushZ *= invUpdateRate;
+    if (obj->behaviorId != BHV_RACER) {
         return;
     }
-    if (sp9C < -4000.0f) {
+    racer = obj->racer;
+    bumped = FALSE;
+    if (racer->vehicleID == VEHICLE_HOVERCRAFT) {
+        if (overlap > 0.3) {
+            if (overlap > 1.0) {
+                bumped = TRUE;
+            }
+            if (bumped) {
+                obj->x_velocity *= 0.8;
+                obj->z_velocity *= 0.8;
+            }
+            if (bumped) {
+                interactOther->flags |= INTERACT_FLAGS_COLLIDED;
+                // Which side of the velocity line the obstacle is on decides the bump direction.
+                side = (obj->trans.x_position * obj->z_velocity - obj->trans.z_position * obj->x_velocity);
+                side = (other->trans.x_position * obj->z_velocity - other->trans.z_position * obj->x_velocity) - side;
+                racer->bumpTimer = 7;
+                if (side >= 0.0f) {
+                    racer->bumpVelZ = obj->x_velocity * 0.1;
+                    racer->bumpVelX = -obj->z_velocity * 0.1;
+                } else {
+                    racer->bumpVelZ = -obj->x_velocity * 0.1;
+                    racer->bumpVelX = obj->z_velocity * 0.1;
+                }
+            }
+        }
+    } else {
+        if (overlap > 0.3) {
+            if (overlap > 1.0) {
+                bumped = TRUE;
+            }
+            obj->x_velocity -= pushX;
+            obj->z_velocity -= pushZ;
+            racer->velocity = overlap * 0.25;
+            racer->lateral_velocity = 0.0f;
+        }
+        if (bumped) {
+            interactOther->flags |= INTERACT_FLAGS_COLLIDED;
+            side = obj->trans.x_position * obj->z_velocity - obj->trans.z_position * obj->x_velocity;
+            side = other->trans.x_position * obj->z_velocity - other->trans.z_position * obj->x_velocity - side;
+            if (side >= 0.0f) {
+                side = 2.0f;
+            } else {
+                side = -2.0f;
+            }
+            racer->bumpTimer = 7;
+            racer->bumpVelX = racer->ox3 * side * racer->velocity;
+            racer->bumpVelZ = racer->oz3 * side * racer->velocity;
+        }
+    }
+    if (bumped && racer->playerIndex != -1) {
+        racer_update_local_velocity(obj, racer);
+    }
+}
+
+/**
+ * Two movable objects share the push. Racers also trade velocity, weighted by their push
+ * forces, and a shielded racer spins the other out.
+ */
+static void interaction_push_apart(Object *obj, Object *other, ObjectInteraction *interact,
+                                   ObjectInteraction *interactOther, f32 pushX, f32 pushY, f32 pushZ, f32 overlap,
+                                   f32 invUpdateRate) {
+    Object_Racer *racer;
+    Object_Racer *racerOther;
+    f32 weight;
+    f32 weightObj;
+    s32 bumped;
+
+    pushX *= 0.5;
+    pushY *= 0.5;
+    pushZ *= 0.5;
+    if (interact->pushForce != 0) {
+        obj->trans.x_position -= pushX;
+        obj->trans.y_position -= pushY;
+        obj->trans.z_position -= pushZ;
+    }
+    other->trans.x_position += pushX;
+    other->trans.y_position += pushY;
+    other->trans.z_position += pushZ;
+
+    pushX *= invUpdateRate;
+    pushZ *= invUpdateRate;
+    if (obj->behaviorId != BHV_RACER || other->behaviorId != BHV_RACER) {
+        return;
+    }
+    weight = 1.0;
+    weight += (f32) (interact->pushForce - interactOther->pushForce) * 0.3;
+
+    racer = obj->racer;
+    racerOther = other->racer;
+    if (racer->shieldType != 0 && racerOther->shieldType == 0) {
+        racerOther->spinout_timer = racer->shieldType;
+    }
+    if (racerOther->shieldType != 0 && racer->shieldType == 0) {
+        racer->spinout_timer = racerOther->shieldType;
+    }
+
+    bumped = FALSE;
+    if (racer->vehicleID == VEHICLE_HOVERCRAFT) {
+        bumped = TRUE;
+    } else if (overlap > 0.1) {
+        bumped = TRUE;
+        pushX *= 0.5;
+        pushZ *= 0.5;
+    }
+    if (bumped) {
+        if (interact->pushForce != 0) {
+            weightObj = 2.0 - weight;
+            obj->x_velocity -= pushX * weightObj;
+            obj->z_velocity -= pushZ * weightObj;
+            racer_update_local_velocity(obj, racer);
+        }
+        other->x_velocity += pushX * weight;
+        other->z_velocity += pushZ * weight;
+        racer_update_local_velocity(other, racerOther);
+    }
+}
+
+/**
+ * Resolve one pair of interacting objects: record each as the other's nearest, then if
+ * `other` is solid and their hitboxes overlap, separate them along the line between
+ * their interaction positions and apply the bump.
+ */
+void object_apply_interaction(Object *obj, Object *other) {
+    f32 distance;
+    f32 minDistance;
+    f32 overlap;
+    f32 invUpdateRate;
+    f32 dx;
+    f32 dy;
+    f32 dz;
+    f32 sepX;
+    f32 sepY;
+    f32 sepZ;
+    f32 sepLength;
+    ObjectInteraction *interact;
+    ObjectInteraction *interactOther;
+
+    dx = other->trans.x_position - obj->trans.x_position;
+    dy = other->trans.y_position - obj->trans.y_position;
+    dz = other->trans.z_position - obj->trans.z_position;
+
+    interact = obj->interactObj;
+    interactOther = other->interactObj;
+    invUpdateRate = 1 / gObjectUpdateRateF;
+
+    if (interactOther->hitboxKind == 1) {
+        dy = -dy;
+        if (dy < interactOther->yRangeMin * 10.0f || interactOther->yRangeMax * 10.0f < dy) {
+            return;
+        }
+        dy = 0.0f;
+    }
+    if (interactOther->hitboxKind == 4 && dy < 0.0f) {
+        dy *= 0.3;
+    }
+
+    distance = sqrtf(dx * dx + dy * dy + dz * dz);
+#if VERSION == VERSION_80
+    if (distance > 4000.0f) {
+        return;
+    }
+    if (distance < -4000.0f) {
         return;
     }
 #endif
+    interaction_track_nearest(interact, other, distance);
+    interaction_track_nearest(interactOther, obj, distance);
 
-    var_v0 = (s32) (f32) (s32) sp9C;
-    if (sp58->flags & 0x20) {
-        var_v0 >>= 3;
+    if (!(interactOther->flags & INTERACT_FLAGS_SOLID)) {
+        return;
     }
-
-    if (var_v0 > 255) {
-        var_v0 = 255;
-    }
-
-    if (sp58->distance >= var_v0) {
-        sp58->obj = arg1;
-        sp58->distance = var_v0;
-    }
-
-    var_v0 = (s32) (f32) (s32) sp9C;
-    if (sp54->flags & 0x20) {
-        var_v0 >>= 3;
-    }
-
-    if (var_v0 > 255) {
-        var_v0 = 255;
-    }
-
-    if (sp54->distance >= var_v0) {
-        sp54->obj = arg0;
-        sp54->distance = var_v0;
-    }
-
-    if (!(sp54->flags & 1)) {
+    minDistance = interactOther->hitboxRadius + interact->hitboxRadius;
+    distance = interaction_closest_approach(obj, interact, other, interactOther->hitboxKind == 1, distance);
+    if (!(distance < minDistance && distance > 0.0f)) {
         return;
     }
 
-    sp98 = sp54->hitboxRadius + sp58->hitboxRadius;
-
-    sp7C = arg0->trans.x_position - sp58->x_position;
-    f12 = arg0->trans.y_position - sp58->y_position;
-    sp74 = arg0->trans.z_position - sp58->z_position;
-
-    if (sp54->unk11 == 1) {
-        f12 = 0.0f;
+    // Separate along the line between the interaction positions, or between the objects
+    // themselves when those coincide.
+    sepX = interactOther->x_position - interact->x_position;
+    sepY = interactOther->y_position - interact->y_position;
+    sepZ = interactOther->z_position - interact->z_position;
+    if (interactOther->hitboxKind == 1) {
+        sepY = 0.0f;
     }
-
-    f2 = sp7C * sp7C + f12 * f12 + sp74 * sp74;
-    if (f2 > 1.0) {
-        f2 = ((arg1->trans.x_position - sp58->x_position) * sp7C + (arg1->trans.y_position - sp58->y_position) * f12 +
-              (arg1->trans.z_position - sp58->z_position) * sp74) /
-             f2;
-        if (f2 >= 0.0f && f2 <= 1.0) {
-            sp8C = sp58->x_position + f2 * sp7C;
-            f18 = sp58->y_position + f2 * f12;
-            sp84 = sp58->z_position + f2 * sp74;
-            sp9C = sqrtf((sp8C - arg1->trans.x_position) * (sp8C - arg1->trans.x_position) +
-                         (f18 - arg1->trans.y_position) * (f18 - arg1->trans.y_position) +
-                         (sp84 - arg1->trans.z_position) * (sp84 - arg1->trans.z_position));
-        }
+    sepLength = sqrtf(sepX * sepX + sepY * sepY + sepZ * sepZ);
+    if (sepLength > 0.0f) {
+        dx = sepX / sepLength;
+        dy = sepY / sepLength;
+        dz = sepZ / sepLength;
+    } else {
+        dx /= distance;
+        dy /= distance;
+        dz /= distance;
     }
-
-    if (sp9C < sp98 && sp9C > 0.0f) {
-        sp8C = sp54->x_position - sp58->x_position;
-        f18 = sp54->y_position - sp58->y_position;
-        sp84 = sp54->z_position - sp58->z_position;
-        if (sp54->unk11 == 1) {
-            f18 = 0.0f;
-        }
-
-        f0 = sqrtf(sp8C * sp8C + f18 * f18 + sp84 * sp84);
-        if (f0 > 0.0f) {
-            sp68 = sp8C / f0;
-            sp64 = f18 / f0;
-            sp60 = sp84 / f0;
-        } else {
-            sp68 /= sp9C;
-            sp64 /= sp9C;
-            sp60 /= sp9C;
-        }
-        sp9C = f0 - sp9C;
-        if (sp9C < 0.0f) {
-            sp9C = -sp9C;
-        }
-
-        sp68 *= sp9C;
-        sp64 *= sp9C;
-        sp60 *= sp9C;
-        sp9C *= sp80;
-        sp58->flags |= 8;
-        sp54->flags |= 8;
-        if (sp54->pushForce == 0) {
-            arg0->trans.x_position -= sp68;
-            arg0->trans.y_position -= sp64;
-            arg0->trans.z_position -= sp60;
-
-            sp68 *= sp80;
-            sp60 *= sp80;
-            if (arg0->behaviorId != 1) {
-                return;
-            }
-
-            sp50 = arg0->racer;
-            var_v0 = FALSE;
-            if (sp50->vehicleID == 1) {
-                if (sp9C > 0.3) {
-                    if (sp9C > 1.0) {
-                        var_v0 = TRUE;
-                    }
-                    if (var_v0) {
-                        arg0->x_velocity *= 0.8;
-                        arg0->z_velocity *= 0.8;
-                    }
-                    if (var_v0) {
-                        sp54->flags |= 0x40;
-                        f2 = (arg0->trans.x_position * arg0->z_velocity - arg0->trans.z_position * arg0->x_velocity);
-                        f2 = (arg1->trans.x_position * arg0->z_velocity - arg1->trans.z_position * arg0->x_velocity) -
-                             f2;
-                        sp50->unk1D2 = 7;
-                        if (f2 >= 0.0f) {
-                            sp50->unk120 = arg0->x_velocity * 0.1;
-                            sp50->unk11C = -arg0->z_velocity * 0.1;
-                        } else {
-                            sp50->unk120 = -arg0->x_velocity * 0.1;
-                            sp50->unk11C = arg0->z_velocity * 0.1;
-                        }
-                    }
-                }
-            } else {
-                if (sp9C > 0.3) {
-                    if (sp9C > 1.0) {
-                        var_v0 = 1;
-                    }
-                    arg0->x_velocity -= sp68;
-                    arg0->z_velocity -= sp60;
-                    sp50->velocity = sp9C * 0.25;
-                    sp50->lateral_velocity = 0.0f;
-                }
-                if (var_v0) {
-                    sp54->flags |= 0x40;
-                    f2 = arg0->trans.x_position * arg0->z_velocity - arg0->trans.z_position * arg0->x_velocity;
-                    f2 = arg1->trans.x_position * arg0->z_velocity - arg1->trans.z_position * arg0->x_velocity - f2;
-                    if (f2 >= 0.0f) {
-                        f2 = 2.0f;
-                    } else {
-                        f2 = -2.0f;
-                    }
-                    sp50->unk1D2 = 7;
-                    sp50->unk11C = sp50->ox3 * f2 * sp50->velocity;
-                    sp50->unk120 = sp50->oz3 * f2 * sp50->velocity;
-                }
-            }
-            if (var_v0 && sp50->playerIndex != -1) {
-                racer_update_local_velocity(arg0, sp50);
-            }
-            return;
-        }
-
-        sp68 *= 0.5;
-        sp64 *= 0.5;
-        sp60 *= 0.5;
-        if (sp58->pushForce != 0) {
-            arg0->trans.x_position -= sp68;
-            arg0->trans.y_position -= sp64;
-            arg0->trans.z_position -= sp60;
-        }
-        arg1->trans.x_position += sp68;
-        arg1->trans.y_position += sp64;
-        arg1->trans.z_position += sp60;
-
-        sp68 *= sp80;
-        sp60 *= sp80;
-        if (arg0->behaviorId == 1 && arg1->behaviorId == 1) {
-            sp90 = 1.0;
-            sp90 += (f32) (sp58->pushForce - sp54->pushForce) * 0.3;
-
-            sp50 = arg0->racer;
-            sp4C = arg1->racer;
-
-            if (sp50->shieldType != 0 && sp4C->shieldType == 0) {
-                sp4C->spinout_timer = sp50->shieldType;
-            }
-            if (sp4C->shieldType != 0 && sp50->shieldType == 0) {
-                sp50->spinout_timer = sp4C->shieldType;
-            }
-
-            var_v0 = FALSE;
-            if (sp50->vehicleID == 1) {
-                var_v0 = TRUE;
-            } else if (sp9C > 0.1) {
-                var_v0 = TRUE;
-                sp68 *= 0.5;
-                sp60 *= 0.5;
-            }
-
-            if (var_v0) {
-                if (sp58->pushForce != 0) {
-                    f0 = 2.0 - sp90;
-                    arg0->x_velocity -= sp68 * f0;
-                    arg0->z_velocity -= sp60 * f0;
-                    racer_update_local_velocity(arg0, sp50);
-                }
-                arg1->x_velocity += sp68 * sp90;
-                arg1->z_velocity += sp60 * sp90;
-                racer_update_local_velocity(arg1, sp4C);
-            }
-        }
+    overlap = sepLength - distance;
+    if (overlap < 0.0f) {
+        overlap = -overlap;
     }
+    dx *= overlap;
+    dy *= overlap;
+    dz *= overlap;
+    overlap *= invUpdateRate;
+    interact->flags |= INTERACT_FLAGS_PUSHING;
+    interactOther->flags |= INTERACT_FLAGS_PUSHING;
+    if (interactOther->pushForce == 0) {
+        interaction_push_into_solid(obj, other, interactOther, dx, dy, dz, overlap, invUpdateRate);
+        return;
+    }
+    interaction_push_apart(obj, other, interact, interactOther, dx, dy, dz, overlap, invUpdateRate);
 }
 
 /** Splits the racer's world velocity into forward and lateral components in its own frame. */
@@ -6104,196 +6160,220 @@ Object *find_taj_object(void) {
     return NULL;
 }
 
-/** Fades music channels by the racer's position relative to the level's midi fade points. */
-void update_midi_fade_points(Object *racerObj, f32 xPos, f32 yPos, f32 zPos, s32 updateRate) {
-    f32 temp_f0;
-    s32 pad_spF8;
-    s32 spF4;
-    s32 pad_spF0;
-    f32 temp_f22;
-    s32 pad_spE8;
-    s32 pad_spE4;
-    s32 pad_spE0;
-    f32 temp_f2;
-    s32 pad_spD8;
-    f32 tempF2;
-    s32 temp_f10;
-    s32 temp_t3_2;
-    s32 i; // s1
-    s32 var_s2;
-    f32 spC0;
-    Object_MidiFadePoint *midiFadePoint; // spBC
-    f32 tempF;
-    u16 temp_t4;
-    s8 var_v0_2;
-    u8 var_v0_u;
-    s8 var_v1;
-    Object *obj;
-    Object_MidiFade *midiFade;
-    Object_MidiChannelSet *midiChannelSet;
-    Object_Racer *racer;
+/**
+ * Fade channels by the player's distance from a midi fade point: full inside the inner
+ * radius, gone at the outer one. Only acts while its sequence is playing.
+ */
+static void midi_fade_point_apply(Object *racerObj, Object *obj) {
+    Object_MidiFadePoint *point;
+    f32 distance;
+    f32 range;
+    s32 fade;
+    s32 i;
 
-    racer = racerObj->racer;
-    if (racer->playerIndex != 0) {
+    distance = sqrtf(
+        ((racerObj->trans.x_position - obj->trans.x_position) * (racerObj->trans.x_position - obj->trans.x_position)) +
+        ((racerObj->trans.y_position - obj->trans.y_position) * (racerObj->trans.y_position - obj->trans.y_position)) +
+        ((racerObj->trans.z_position - obj->trans.z_position) * (racerObj->trans.z_position - obj->trans.z_position)));
+    point = obj->midi_fade_point;
+    if (distance >= point->outerRadius || point->sequenceID != music_current_sequence()) {
         return;
     }
+    if (distance <= point->innerRadius) {
+        fade = 0;
+    } else {
+        distance -= point->innerRadius;
+        range = (point->outerRadius - point->innerRadius);
+        fade = (127.0f * distance) / range;
+    }
+    for (i = 0; i < 16; i++) {
+        switch (point->channelModes[i]) {
+            case 1:
+                if (fade >= 0x7B) {
+                    music_channel_off(i);
+                } else {
+                    music_channel_fade_set(i, (0x7F - fade));
+                    music_channel_on(i);
+                }
+                break;
+            case 2:
+                if ((music_channel_fade(i) > 0) && (music_channel_active(i) == 0)) {
+                    music_channel_fade_set(i, fade);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+}
 
+/**
+ * Start a midi fade when the player's movement this frame crosses its plane inside its
+ * box. The crossing direction picks which channel modes apply.
+ */
+static void midi_fade_check_crossing(Object *racerObj, Object *obj, f32 xPos, f32 yPos, f32 zPos) {
+    Object_MidiFade *midiFade;
+    f32 prevSide;
+    f32 currSide;
+    f32 moveX;
+    f32 moveY;
+    f32 moveZ;
+    f32 t;
+    f32 hitX;
+    s8 direction;
+
+    midiFade = obj->midi_fade;
+    prevSide =
+        (midiFade->planeX * xPos) + (midiFade->planeY * yPos) + (midiFade->planeZ * zPos) + midiFade->planeOffset;
+    currSide = (midiFade->planeX * racerObj->trans.x_position) + (midiFade->planeY * racerObj->trans.y_position) +
+               (midiFade->planeZ * racerObj->trans.z_position) + midiFade->planeOffset;
+    if (prevSide > 0.0f && currSide <= 0.0f) {
+        direction = 1;
+    } else if (currSide > 0.0f && prevSide <= 0.0f) {
+        direction = -1;
+    } else {
+        return;
+    }
+    moveX = racerObj->trans.x_position - xPos;
+    moveY = racerObj->trans.y_position - yPos;
+    // Where along the movement the plane was crossed.
+    t = (-midiFade->planeX * xPos - midiFade->planeY * yPos - midiFade->planeZ * zPos - midiFade->planeOffset) /
+        (midiFade->planeX * moveX + midiFade->planeY * moveY + midiFade->planeZ * (racerObj->trans.z_position - zPos));
+    hitX = t * moveX;
+    if (!((midiFade->minX <= hitX + xPos) && (hitX + xPos <= midiFade->maxX))) {
+        return;
+    }
+    moveZ = racerObj->trans.z_position - zPos;
+    if (!((midiFade->minY <= (t * moveY) + yPos) && ((t * moveY) + yPos <= midiFade->maxY))) {
+        return;
+    }
+    if (!((midiFade->minZ <= (t * (moveZ)) + zPos) && ((t * (moveZ)) + zPos <= midiFade->maxZ))) {
+        return;
+    }
+    midiFade->direction = direction;
+    midiFade->progress = 0;
+    midiFade->timer = 0;
+    gCurrentMidiFade = midiFade;
+}
+
+/**
+ * Switch the music's channel mask when the player comes within range of a channel set.
+ */
+static void midi_channel_set_apply(Object *racerObj, Object *obj) {
+    Object_MidiChannelSet *channelSet;
+    f32 distance;
+    u8 radius;
+
+    channelSet = obj->midi_channel_set;
+    distance = sqrtf(
+        ((racerObj->trans.x_position - obj->trans.x_position) * (racerObj->trans.x_position - obj->trans.x_position)) +
+        ((racerObj->trans.y_position - obj->trans.y_position) * (racerObj->trans.y_position - obj->trans.y_position)) +
+        ((racerObj->trans.z_position - obj->trans.z_position) * (racerObj->trans.z_position - obj->trans.z_position)));
+    radius = channelSet->radius;
+    if ((distance < (radius * 4)) && (channelSet->channelMask != music_channel_get_mask()) &&
+        (channelSet->sequenceID == music_current_sequence())) {
+        music_dynamic_set(channelSet->channelMask);
+    }
+}
+
+/**
+ * Step the running midi fade: progress runs 0..254 over its duration, and each channel
+ * follows its mode for the crossing direction. The fade is dropped once complete.
+ */
+static void midi_fade_advance(s32 updateRate) {
+    Object_MidiFade *midiFade;
+    u16 durationFrames;
+    s32 progress;
+    s32 level;
+    s8 mode;
+    s32 i;
+
+    midiFade = gCurrentMidiFade;
+    if (midiFade->sequenceID != music_current_sequence()) {
+        return;
+    }
+    midiFade->timer += updateRate;
+    durationFrames = midiFade->duration * gVideoRefreshRate;
+    if (durationFrames < midiFade->timer) {
+        midiFade->timer = durationFrames;
+    }
+    progress = (midiFade->timer * 254.0f) / durationFrames;
+    if (progress < 0xFE) {
+        midiFade->progress = progress;
+    } else {
+        midiFade->progress = 0xFE;
+    }
+    for (i = 0; i < 16; i++) {
+        mode = midiFade->channelModes[i];
+        if (midiFade->direction == -1) {
+            mode >>= 2;
+        }
+        mode &= 3;
+        switch (mode) {
+            case 1:
+                music_channel_on(i);
+                music_channel_fade_set(i, 0x7FU);
+                break;
+            case 0:
+                music_channel_off(i);
+                break;
+            case 3:
+                if (midiFade->progress >= 0x80) {
+                    level = (midiFade->progress - 0x7F) & 0xFF;
+                    music_channel_on(i);
+                    if (music_channel_fade(i) < level) {
+                        music_channel_fade_set(i, level);
+                    }
+                }
+                break;
+            case 2:
+                if (midiFade->progress < 0x7F) {
+                    level = (0x7F - midiFade->progress) & 0xFF;
+                    if (level < music_channel_fade(i)) {
+                        music_channel_fade_set(i, level);
+                    }
+                } else {
+                    music_channel_off(i);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+    if (midiFade->progress == 0xFE) {
+        gCurrentMidiFade = 0;
+    }
+}
+
+/**
+ * Fades music channels by player one's position relative to the level's midi fade
+ * objects. (xPos, yPos, zPos) is where the racer was last frame.
+ */
+void update_midi_fade_points(Object *racerObj, f32 xPos, f32 yPos, f32 zPos, s32 updateRate) {
+    Object *obj;
+    s32 i;
+
+    if (racerObj->racer->playerIndex != 0) {
+        return;
+    }
     if (cam_get_viewport_layout() != 0) {
         return;
     }
-
-    for (spF4 = gObjectListStart; spF4 < gObjectCount; spF4++) {
-        obj = gObjPtrList[spF4];
-        if (!(obj->trans.flags & 0x8000)) {
-            if (obj->behaviorId == BHV_MIDI_FADE_POINT) {
-                spC0 = sqrtf(((racerObj->trans.x_position - obj->trans.x_position) *
-                              (racerObj->trans.x_position - obj->trans.x_position)) +
-                             ((racerObj->trans.y_position - obj->trans.y_position) *
-                              (racerObj->trans.y_position - obj->trans.y_position)) +
-                             ((racerObj->trans.z_position - obj->trans.z_position) *
-                              (racerObj->trans.z_position - obj->trans.z_position)));
-                midiFadePoint = obj->midi_fade_point;
-                if (spC0 < midiFadePoint->unk2) {
-                    if (midiFadePoint->unk1C == music_current_sequence()) {
-                        if (spC0 <= midiFadePoint->unk0) {
-                            var_s2 = 0;
-                        } else {
-                            spC0 -= midiFadePoint->unk0;
-                            temp_f0 = (midiFadePoint->unk2 - midiFadePoint->unk0);
-                            var_s2 = (127.0f * spC0) / temp_f0;
-                        }
-                        for (i = 0; i < 16; i++) {
-                            switch (midiFadePoint->unkC[i]) {
-                                case 1:
-                                    if (var_s2 >= 0x7B) {
-                                        music_channel_off(i);
-                                    } else {
-                                        music_channel_fade_set(i, (0x7F - var_s2));
-                                        music_channel_on(i);
-                                    }
-                                    break;
-                                case 2:
-                                    if ((music_channel_fade(i) > 0) && (music_channel_active(i) == 0)) {
-                                        music_channel_fade_set(i, var_s2);
-                                    }
-                                    break;
-                                default:
-                                    break;
-                            }
-                        }
-                    }
-                }
-            } else if (obj->behaviorId == BHV_MIDI_FADE) {
-                midiFade = obj->midi_fade;
-
-                temp_f0 =
-                    (midiFade->unk8 * xPos) + (midiFade->unkC * yPos) + (midiFade->unk10 * zPos) + midiFade->unk14;
-                temp_f2 = (midiFade->unk8 * racerObj->trans.x_position) +
-                          (midiFade->unkC * racerObj->trans.y_position) +
-                          (midiFade->unk10 * racerObj->trans.z_position) + midiFade->unk14;
-                if (temp_f0 > 0.0f && temp_f2 <= 0.0f) {
-                    var_v1 = 1;
-                } else if (temp_f2 > 0.0f && temp_f0 <= 0.0f) {
-                    var_v1 = -1;
-                } else {
-                    var_v1 = 0;
-                }
-                if (var_v1 != 0) {
-                    temp_f0 = racerObj->trans.x_position - xPos;
-                    temp_f2 = racerObj->trans.y_position - yPos;
-
-                    temp_f22 =
-                        (-midiFade->unk8 * xPos - midiFade->unkC * yPos - midiFade->unk10 * zPos - midiFade->unk14) /
-                        (midiFade->unk8 * temp_f0 + midiFade->unkC * temp_f2 +
-                         midiFade->unk10 * (racerObj->trans.z_position - zPos));
-                    tempF = temp_f22 * temp_f0;
-                    if ((midiFade->unk18 <= tempF + xPos) && (tempF + xPos <= midiFade->unk24)) {
-                        tempF2 = racerObj->trans.z_position - zPos;
-                        if ((midiFade->unk1C <= (temp_f22 * temp_f2) + yPos) &&
-                            ((temp_f22 * temp_f2) + yPos <= midiFade->unk28)) {
-                            if ((midiFade->unk20 <= (temp_f22 * (tempF2)) + zPos) &&
-                                ((temp_f22 * (tempF2)) + zPos <= midiFade->unk2C)) {
-                                midiFade->unk0 = var_v1;
-                                midiFade->unk1 = 0;
-                                midiFade->unk4 = 0;
-                                gCurrentMidiFade = midiFade;
-                            }
-                        }
-                    }
-                }
-            } else if (obj->behaviorId == BHV_MIDI_CHANNEL_SET) {
-                midiChannelSet = obj->midi_channel_set;
-                temp_f0 = sqrtf(((racerObj->trans.x_position - obj->trans.x_position) *
-                                 (racerObj->trans.x_position - obj->trans.x_position)) +
-                                ((racerObj->trans.y_position - obj->trans.y_position) *
-                                 (racerObj->trans.y_position - obj->trans.y_position)) +
-                                ((racerObj->trans.z_position - obj->trans.z_position) *
-                                 (racerObj->trans.z_position - obj->trans.z_position)));
-                var_v0_u = midiChannelSet->unk2;
-                if ((temp_f0 < (var_v0_u * 4)) && (midiChannelSet->unk0 != music_channel_get_mask()) &&
-                    (midiChannelSet->unk3 == music_current_sequence())) {
-                    music_dynamic_set(midiChannelSet->unk0);
-                }
-            }
+    for (i = gObjectListStart; i < gObjectCount; i++) {
+        obj = gObjPtrList[i];
+        if (obj->trans.flags & OBJ_FLAGS_PARTICLE) {
+            continue;
+        }
+        if (obj->behaviorId == BHV_MIDI_FADE_POINT) {
+            midi_fade_point_apply(racerObj, obj);
+        } else if (obj->behaviorId == BHV_MIDI_FADE) {
+            midi_fade_check_crossing(racerObj, obj, xPos, yPos, zPos);
+        } else if (obj->behaviorId == BHV_MIDI_CHANNEL_SET) {
+            midi_channel_set_apply(racerObj, obj);
         }
     }
-
-    if (gCurrentMidiFade == 0) {
-        return;
-    }
-
-    if (gCurrentMidiFade->unk40 == music_current_sequence()) {
-        gCurrentMidiFade->unk4 += updateRate;
-        temp_t4 = gCurrentMidiFade->unk2 * gVideoRefreshRate;
-        if (temp_t4 < gCurrentMidiFade->unk4) {
-            gCurrentMidiFade->unk4 = temp_t4;
-        }
-        temp_f10 = (gCurrentMidiFade->unk4 * 254.0f) / temp_t4;
-        if (temp_f10 < 0xFE) {
-            gCurrentMidiFade->unk1 = temp_f10;
-        } else {
-            gCurrentMidiFade->unk1 = 0xFE;
-        }
-        for (i = 0; i < 16; i++) {
-            var_v0_2 = gCurrentMidiFade->unk2F[i];
-            if (gCurrentMidiFade->unk0 == -1) {
-                var_v0_2 >>= 2;
-            }
-            var_v0_2 &= 3;
-            switch (var_v0_2) {
-                case 1:
-                    music_channel_on(i);
-                    music_channel_fade_set(i, 0x7FU);
-                    break;
-                case 0:
-                    music_channel_off(i);
-                    break;
-                case 3:
-                    if (gCurrentMidiFade->unk1 >= 0x80) {
-                        temp_t3_2 = (gCurrentMidiFade->unk1 - 0x7F) & 0xFF;
-                        music_channel_on(i);
-                        if (music_channel_fade(i) < temp_t3_2) {
-                            music_channel_fade_set(i, temp_t3_2);
-                        }
-                    }
-                    break;
-                case 2:
-                    if (gCurrentMidiFade->unk1 < 0x7F) {
-                        temp_t3_2 = (0x7F - gCurrentMidiFade->unk1) & 0xFF;
-                        if (temp_t3_2 < music_channel_fade(i)) {
-                            music_channel_fade_set(i, temp_t3_2);
-                        }
-                    } else {
-                        music_channel_off(i);
-                    }
-                    break;
-                default:
-                    break;
-            }
-        }
-    }
-    if ((gCurrentMidiFade->unk1 == 0xFE) && (gCurrentMidiFade->unk40 == music_current_sequence())) {
-        gCurrentMidiFade = 0;
+    if (gCurrentMidiFade != 0) {
+        midi_fade_advance(updateRate);
     }
 }
 
@@ -6359,7 +6439,6 @@ s32 homing_rocket_get_next_direction(Object *obj, s32 checkpoint, u8 isOnAlterna
     return TRUE;
 }
 
-// D_B0000574 is a direct read from the ROM as opposed to RAM
 /**
  * A challenge racer's score for ranking those who have not finished: bananas lost in battle,
  * laps elsewhere, with eggs counting progress towards the next lap. Clamped to 0..10.
@@ -8893,46 +8972,46 @@ void obj_init_animobject(Object *animationObj, Object *animatedObj) {
     animatedObj->trans.rotation.y_rotation = animationObj->trans.rotation.y_rotation;
     animatedObj->trans.rotation.z_rotation = animationObj->trans.rotation.z_rotation;
     animatedObj->trans.rotation.x_rotation = animationObj->trans.rotation.x_rotation;
-    anim->unk26 = 0;
-    anim->unk3D = animEntry->channel;
+    anim->nodeIndex = 0;
+    anim->channel = animEntry->channel;
     anim->actorIndex = animEntry->actorIndex;
-    anim->unk8 = (f32) animEntry->nodeSpeed * 0.1;
+    anim->speed = (f32) animEntry->nodeSpeed * 0.1;
     anim->startDelay = normalise_time(animEntry->animationStartDelay);
     animatedObj->animationID = animEntry->objAnimIndex;
     animatedObj->animFrame = animEntry->unk16;
     anim->z = animEntry->objAnimSpeed;
     anim->y = 0;
     anim->loopType = animEntry->objAnimLoopType;
-    anim->unk2E = animEntry->rotateType;
-    anim->unk3E = animEntry->nextAnim;
-    anim->unk3F = animEntry->unk2D;
-    anim->unk31 = animEntry->yawSpinSpeed;
-    anim->unk32 = animEntry->rollSpinSpeed;
-    anim->unk33 = animEntry->pitchSpinSpeed;
-    anim->unk34 = animEntry->unk20;
-    anim->unk2D = 0;
-    anim->unk4 = 0;
-    anim->unk0 = 0;
+    anim->rotateType = animEntry->rotateType;
+    anim->targetActorIndex = animEntry->nextAnim;
+    anim->linearInterp = animEntry->unk2D;
+    anim->yawSpinSpeed = animEntry->yawSpinSpeed;
+    anim->rollSpinSpeed = animEntry->rollSpinSpeed;
+    anim->pitchSpinSpeed = animEntry->pitchSpinSpeed;
+    anim->skipButtons = animEntry->unk20;
+    anim->modelReversing = 0;
+    anim->segmentStep = 0;
+    anim->segmentProgress = 0;
     animationObj->particleEmitter = NULL;
     anim->pauseCounter = normalise_time(animEntry->pauseFrameCount);
-    anim->unk3A = animEntry->specialHide;
+    anim->specialHide = animEntry->specialHide;
     if (animEntry->unk13 >= 0) {
-        anim->unk2F = animEntry->unk13;
+        anim->emitterMask = animEntry->unk13;
     }
-    anim->unk39 = animEntry->unk1F;
+    anim->musicSequence = animEntry->unk1F;
     anim->soundID = animEntry->unk1E;
-    anim->unk3B = animEntry->unk29;
-    anim->unk40 = animEntry->soundEffect;
-    anim->unk41 = animEntry->fadeOptions;
-    anim->unk3C = animEntry->fadeAlpha;
-    anim->unk42 = 0xFF;
-    if (anim->unk18 != NULL) {
-        sndp_stop(anim->unk18);
+    anim->fadeType = animEntry->unk29;
+    anim->fadeColourIndex = animEntry->soundEffect;
+    anim->fadeOptions = animEntry->fadeOptions;
+    anim->fadeLength = animEntry->fadeAlpha;
+    anim->opacity = 0xFF;
+    if (anim->soundHandle != NULL) {
+        sndp_stop(anim->soundHandle);
     }
-    anim->unk18 = NULL;
-    anim->unk43 = animEntry->unk30;
-    anim->unk1C = animationObj;
-    anim->unk45 = 0;
+    anim->soundHandle = NULL;
+    anim->musicFadeVolume = animEntry->unk30;
+    anim->animator = animationObj;
+    anim->started = 0;
 }
 
 /** Spawns the object an animation entry animates and binds it. */
@@ -9013,576 +9092,669 @@ void cutscene_skip_request(void) {
     gCutsceneSkipRequested = 1;
 }
 
-/** Moves an animated object along its spline path. */
-s32 anim_object_follow_path(Object *arg0, s32 arg1, Object *arg2) {
-    f32 var_f2;
-    f32 var_f0;
-    f32 var_f20;
-    s32 var_s0;
-    s32 var_s2;
-    s32 var_s4;
-    s32 var_s5;
-    s32 q;
-    s32 var_t0;
+typedef struct AnimPathPoints {
+    f32 x[5];
+    f32 y[5];
+    f32 z[5];
+    f32 scale[5];
+    f32 yaw[5];
+    f32 pitch[5];
+    f32 roll[5];
+} AnimPathPoints;
+
+/**
+ * Find the run of animation nodes that make up actor `actorIndex`'s path. Returns FALSE
+ * when there is no path of at least two nodes.
+ */
+static s32 anim_path_find(s32 actorIndex, s32 *first, s32 *count) {
+    s32 i;
+    s32 n;
+
+    for (i = 0; i < gAnimObjectCount && actorIndex != gAnimObjects[i]->properties.animation.behaviourID; i++) {}
+    if (i >= gAnimObjectCount) {
+        return FALSE;
+    }
+    for (n = 1; (i + n) < gAnimObjectCount && actorIndex == gAnimObjects[i + n]->properties.animation.behaviourID;
+         n++) {}
+    *first = i;
+    *count = n;
+    return n >= 2;
+}
+
+/**
+ * The node a path loops back to after its last node, or -1 for a path that ends.
+ */
+static s32 anim_path_loop_node(s32 first, s32 count) {
+    LevelObjectEntry_Animation *entry;
+
+    entry = &gAnimObjects[first + count - 1]->level_entry->animation;
+    if (count > 2 && entry->goToNode >= 0 && entry->goToNode < count - 1) {
+        return entry->goToNode;
+    }
+    return -1;
+}
+
+/**
+ * The five control points around the actor's current node: the node before, the node, and
+ * the three after, extrapolated past either end of a path that does not loop. A node
+ * marked with unk22 takes its position from the actor's camera instead.
+ */
+static void anim_path_control_points(s32 first, s32 count, s32 loopNode, s32 nodeIndex, s8 cameraID,
+                                     AnimPathPoints *pts) {
+    LevelObjectEntry_Animation *entry;
     ObjectTransform *trans;
-    Object_AnimatedObject *obj64;
-    s32 sp168;
-    f32 sp154[5];
-    f32 sp140[5];
-    f32 sp12C[5];
-    LevelObjectEntry_Animation *temp_s1;
-    f32 sp124;
-    f32 sp120;
-    f32 sp11C;
-    Object *otherObj64;
-    f32 sp114;
-    ObjectModel *temp_a0_3;
-    s32 temp_a1_2;
-    s32 var_v0_2;
+    s32 node;
+    s32 q;
+    s32 j;
 
-    f32 spF4[5];
-    f32 spE0[5];
-    f32 spCC[5];
-    f32 spB8[5];
-    f32 spB4;
-    s8 *miscAsset;
-    s32 pad;
-    FadeTransition fadeTransition;
-
-    if (gCutsceneID < 0) {
-        return 1;
-    }
-
-    if (arg1 >= 9) {
-        arg1 = 8;
-    }
-
-    sp114 = arg1;
-
-    obj64 = arg0->animatedObject;
-    if (osTvType == 0) {
-        sp114 *= 1.2;
-    }
-    if (obj64->startDelay < 0) {
-        var_t0 = 0;
-        if (obj64->unk34 & 1) {
-            var_t0 = A_BUTTON;
-        }
-        if (obj64->unk34 & 2) {
-            var_t0 |= B_BUTTON;
-        }
-        if (obj64->unk34 & 4) {
-            var_t0 |= CONT_START;
-        }
-
-        var_s2 = 0;
-
-        // clang-format off
-        for (var_s0 = 0; var_s0 < MAXCONTROLLERS; var_s0++) { var_s2 |= input_pressed(var_s0); }
-        // clang-format on
-
-        if (var_s2 & var_t0) {
-            obj64->startDelay = 1;
-        }
-    }
-
-    if ((obj64->startDelay >= 0) && (obj64->unk45 == 0)) {
-        obj64->startDelay -= arg1;
-        if (obj64->startDelay <= 0) {
-            obj64->unk45 = 1;
-            temp_s1 = &obj64->unk1C->level_entry->animation;
-            anim_actor_init(arg0, obj64, temp_s1);
-            obj64->startDelay = 0;
-            anim_actor_apply_entry(arg0, temp_s1, obj64, -1);
-        }
-    }
-    if (obj64->startDelay != 0) {
-        if (obj64->unk3A != 0) {
-            arg0->trans.flags |= OBJ_FLAGS_INVISIBLE;
-            obj64->unk42 = 0;
-            return 1;
-        } else {
-            return 0;
-        }
-    }
-
-    arg0->trans.flags &= ~OBJ_FLAGS_INVISIBLE;
-    if (obj64->unk39 > 0) {
-        if (obj64->unk39 != music_current_sequence()) {
-            music_play(obj64->unk39);
-            music_change_off();
-        }
-        obj64->unk39 = -2;
-        music_volume_reset();
-    } else if (obj64->unk39 == -2) {
-        music_change_on();
-        obj64->unk39 = -1;
-    }
-    if (obj64->soundID != 0) {
-        var_v0_2 = obj64->soundID & 0xFF;
-        if (obj64->currentSound == 0) {
-            if (var_v0_2 == 0xFF) {
-                if (obj64->unk18 != NULL) {
-                    sndp_stop(obj64->unk18);
-                }
+    node = nodeIndex - 1;
+    for (j = 0; j < 5; j++, node++) {
+        if (node == -1) {
+            if (loopNode != 0) {
+                q = first;
+                pts->x[j] = gAnimObjects[q]->trans.x_position +
+                            (gAnimObjects[q]->trans.x_position - gAnimObjects[q + 1]->trans.x_position);
+                pts->y[j] = gAnimObjects[q]->trans.y_position +
+                            (gAnimObjects[q]->trans.y_position - gAnimObjects[q + 1]->trans.y_position);
+                pts->z[j] = gAnimObjects[q]->trans.z_position +
+                            (gAnimObjects[q]->trans.z_position - gAnimObjects[q + 1]->trans.z_position);
             } else {
-                if (obj64->unk18 != NULL) {
-                    sndp_stop(obj64->unk18);
-                    var_v0_2 = obj64->soundID & 0xFF;
-                }
-                sound_play(var_v0_2, &obj64->unk18);
+                q = first + count - 1;
+                pts->x[j] = gAnimObjects[q]->trans.x_position;
+                pts->y[j] = gAnimObjects[q]->trans.y_position;
+                pts->z[j] = gAnimObjects[q]->trans.z_position;
             }
-            obj64->soundID = 0;
-        }
-    }
-
-    if (obj64->unk43 != 0) {
-        music_fade(obj64->unk43 << 8);
-        obj64->unk43 = 0;
-    }
-
-    var_t0 = (u8) obj64->unk42;
-    if (obj64->unk41 & 1) {
-        if (obj64->unk41 & 2) {
-            var_t0 = 0;
-        }
-        if ((arg1 * 8) < var_t0) {
-            var_t0 -= (arg1 * 8);
-        } else {
-            var_t0 = 0;
-            arg0->trans.flags |= OBJ_FLAGS_INVISIBLE;
-        }
-    } else {
-        if (obj64->unk41 & 2) {
-            var_t0 = 0xFF;
-        }
-        var_t0 += arg1 * 8;
-        if (var_t0 > 0xFF) {
-            var_t0 = 0xFF;
-        }
-        arg0->trans.flags &= ~OBJ_FLAGS_INVISIBLE;
-    }
-
-    var_s2 = obj64->unk3B & 0x7F;
-    obj64->unk42 = var_t0;
-    if (var_s2 != 0x7F) {
-        if (var_s2 >= 8) {
-            miscAsset = ((s8 *) get_misc_asset(ASSET_MISC_13) + (var_s2 * 5));
-            miscAsset -= 0x28;
-            var_t0 = (miscAsset[0] & 0xFF) + 900;
-            var_s0 = (miscAsset[1] & 0xFF) + 900;
-            slowly_change_fog(0, miscAsset[2] & 0xFF, miscAsset[3] & 0xFF, miscAsset[4] & 0xFF, var_t0, var_s0,
-                              normalise_time(6) * obj64->unk3C);
-        } else if (var_s2 >= 6) {
-            fadeTransition.type = FADE_FLAG_INVERT;
-            // clang-format off
-            if (var_s2 == 7) {
-                fadeTransition.red = 200; fadeTransition.green = 200; fadeTransition.blue = 255; 
-            } else {
-                fadeTransition.red = 255; fadeTransition.green = 255; fadeTransition.blue = 255;
-            }
-            // clang-format on
-            fadeTransition.duration = 7;
-            fadeTransition.endTimer = 3;
-            transition_begin(&fadeTransition);
-        } else {
-            fadeTransition.type = obj64->unk3B;
-            miscAsset = (s8 *) get_misc_asset(ASSET_MISC_14) + (obj64->unk40 * 3);
-            fadeTransition.red = miscAsset[0];
-            fadeTransition.green = miscAsset[1];
-            fadeTransition.blue = miscAsset[2];
-            if (obj64->unk3B & 0x80) {
-                fadeTransition.endTimer = 0;
-            } else {
-                fadeTransition.endTimer = 0xFFFF;
-            }
-            fadeTransition.duration = normalise_time(6) * obj64->unk3C;
-            if (check_fadeout_transition() == 0 || (fadeTransition.type & 0x80)) {
-                transition_begin(&fadeTransition);
-            }
-        }
-        obj64->unk3B = 0xFF;
-    }
-
-    if (obj64->unk2E == 1) {
-        arg0->trans.rotation.y_rotation += (s16) (obj64->unk31 * (f32) (sp114 * 8.0));
-        arg0->trans.rotation.x_rotation += (s16) (obj64->unk32 * (f32) (sp114 * 8.0));
-        arg0->trans.rotation.z_rotation += (s16) (obj64->unk33 * (f32) (sp114 * 8.0));
-    }
-
-    if (arg2 != NULL && arg2->header->modelType == 0) {
-        arg2->animationID = arg0->animationID;
-        if ((s16) obj64->y != arg2->animFrame) {
-            obj64->y = arg2->animFrame;
-        }
-        if (arg2->modelInstances[arg2->modelIndex] != NULL) {
-            temp_a0_3 = arg2->modelInstances[arg2->modelIndex]->objModel;
-            if (arg2->animationID >= 0 && arg2->animationID < temp_a0_3->numberOfAnimations) {
-                var_s5 = (temp_a0_3->animations[arg2->animationID].animLength - 1) << 4;
-                switch (obj64->loopType) {
-                    case 0:
-                        obj64->y += obj64->z * sp114;
-                        if (obj64->y >= var_s5) {
-                            obj64->y -= var_s5;
-                        }
-                        break;
-                    case 2:
-                        obj64->y += obj64->z * sp114;
-                        if (obj64->y >= var_s5) {
-                            obj64->y = var_s5 - 1.0f;
-                        }
-                        break;
-                    case 1:
-                        if (obj64->unk2D == 0) {
-                            obj64->y += obj64->z * sp114;
-                            if (obj64->y >= var_s5) {
-                                obj64->unk2D = 1;
-                                obj64->y = var_s5 - 1.0f;
-                            }
-                        } else {
-                            obj64->y -= obj64->z * sp114;
-                            if (obj64->y <= 0) {
-                                obj64->y = 0;
-                                obj64->unk2D = 0;
-                            }
-                        }
-                        break;
-                    case 3:
-                        if (obj64->unk2D == 0) {
-                            obj64->y += obj64->z * sp114;
-                            if (obj64->y >= var_s5) {
-                                obj64->unk2D = 1;
-                                obj64->y = var_s5 - 1.0f;
-                            }
-                        } else {
-                            obj64->y -= obj64->z * sp114;
-                            if (obj64->y <= 0) {
-                                obj64->y = 0;
-                            }
-                        }
-                        break;
-                }
-            }
-        }
-        arg2->animFrame = obj64->y;
-    }
-
-    if (obj64->unk8 <= 0.0) {
-        return anim_actor_update(arg0, arg1);
-    }
-
-    temp_a1_2 = obj64->actorIndex;
-    for (var_s4 = 0; var_s4 < gAnimObjectCount && temp_a1_2 != gAnimObjects[var_s4]->properties.animation.behaviourID;
-         var_s4++) {}
-    if (var_s4 >= gAnimObjectCount) {
-        return anim_actor_update(arg0, arg1);
-    }
-
-    for (var_s5 = 1;
-         (var_s4 + var_s5) < gAnimObjectCount && temp_a1_2 == gAnimObjects[var_s4 + var_s5]->properties.animation.behaviourID;
-         var_s5++) {}
-    if (var_s5 < 2) {
-        return anim_actor_update(arg0, arg1);
-    }
-
-    sp168 = -1;
-    spB4 = 1.0 / gAnimObjects[0]->header->scale;
-
-    temp_s1 = &gAnimObjects[var_s4 + var_s5 - 1]->level_entry->animation;
-    if (var_s5 > 2) {
-        if (temp_s1->goToNode >= 0 && temp_s1->goToNode < var_s5 - 1) {
-            sp168 = temp_s1->goToNode;
-        }
-    }
-
-    if (sp168 == -1 && obj64->unk26 >= var_s5 - 1) {
-        return anim_actor_update(arg0, arg1);
-    }
-
-    if (obj64->pauseCounter >= 0) {
-        if (gCutsceneSkipRequested == 0) {
-            obj64->pauseCounter -= arg1;
-        }
-        return 0;
-    }
-
-    var_s0 = obj64->unk26 - 1;
-    var_s2 = 0;
-    for (var_t0 = 0; var_t0 != 5; var_s2++, var_t0++, var_s0++) {
-        if (var_s0 == -1) {
-            if (sp168 != 0) {
-                sp154[var_s2] = gAnimObjects[var_s4]->trans.x_position +
-                                (gAnimObjects[var_s4]->trans.x_position - gAnimObjects[var_s4 + 1]->trans.x_position);
-                sp140[var_s2] = gAnimObjects[var_s4]->trans.y_position +
-                                (gAnimObjects[var_s4]->trans.y_position - gAnimObjects[var_s4 + 1]->trans.y_position);
-                sp12C[var_s2] = gAnimObjects[var_s4]->trans.z_position +
-                                (gAnimObjects[var_s4]->trans.z_position - gAnimObjects[var_s4 + 1]->trans.z_position);
-                spE0[var_t0] = gAnimObjects[var_s4]->trans.rotation.y_rotation;
-                spCC[var_t0] = gAnimObjects[var_s4]->trans.rotation.x_rotation;
-                spB8[var_t0] = gAnimObjects[var_s4]->trans.rotation.z_rotation;
-                spF4[var_t0] = gAnimObjects[var_s4]->trans.scale;
-            } else {
-                q = var_s4 + var_s5 - 1;
-                sp154[var_s2] = gAnimObjects[q]->trans.x_position;
-                sp140[var_s2] = gAnimObjects[q]->trans.y_position;
-                sp12C[var_s2] = gAnimObjects[q]->trans.z_position;
-                spE0[var_t0] = gAnimObjects[q]->trans.rotation.y_rotation;
-                spCC[var_t0] = gAnimObjects[q]->trans.rotation.x_rotation;
-                spB8[var_t0] = gAnimObjects[q]->trans.rotation.z_rotation;
-                spF4[var_t0] = gAnimObjects[q]->trans.scale;
-            }
-        } else if (var_s0 >= var_s5) {
-            if (sp168 == -1) {
-                var_s0 = var_s5 - 1;
-                q = var_s5 + var_s4 - 1;
-                temp_s1 = &gAnimObjects[q]->level_entry->animation;
-                if (temp_s1->unk22 == 1) {
-                    set_active_camera(obj64->cameraID);
+            pts->yaw[j] = gAnimObjects[q]->trans.rotation.y_rotation;
+            pts->pitch[j] = gAnimObjects[q]->trans.rotation.x_rotation;
+            pts->roll[j] = gAnimObjects[q]->trans.rotation.z_rotation;
+            pts->scale[j] = gAnimObjects[q]->trans.scale;
+        } else if (node >= count) {
+            if (loopNode == -1) {
+                node = count - 1;
+                q = first + node;
+                entry = &gAnimObjects[q]->level_entry->animation;
+                if (entry->unk22 == 1) {
+                    set_active_camera(cameraID);
                     trans = &cam_get_active_camera_no_cutscenes()->trans;
                 } else {
                     trans = &gAnimObjects[q]->trans;
                 }
-                sp154[var_s2] = trans->x_position + (trans->x_position - gAnimObjects[q - 1]->trans.x_position);
-                sp140[var_s2] = trans->y_position + (trans->y_position - gAnimObjects[q - 1]->trans.y_position);
-                sp12C[var_s2] = trans->z_position + (trans->z_position - gAnimObjects[q - 1]->trans.z_position);
-                spCC[var_t0] = trans->rotation.x_rotation;
-                spB8[var_t0] = trans->rotation.z_rotation;
-                trans = &gAnimObjects[q]->trans;
-                spE0[var_t0] = trans->rotation.y_rotation;
-                spF4[var_t0] = gAnimObjects[q]->trans.scale;
+                pts->x[j] = trans->x_position + (trans->x_position - gAnimObjects[q - 1]->trans.x_position);
+                pts->y[j] = trans->y_position + (trans->y_position - gAnimObjects[q - 1]->trans.y_position);
+                pts->z[j] = trans->z_position + (trans->z_position - gAnimObjects[q - 1]->trans.z_position);
+                pts->pitch[j] = trans->rotation.x_rotation;
+                pts->roll[j] = trans->rotation.z_rotation;
+                pts->yaw[j] = gAnimObjects[q]->trans.rotation.y_rotation;
+                pts->scale[j] = gAnimObjects[q]->trans.scale;
             } else {
-                q = var_s4 + sp168 + var_s0 - var_s5;
-                sp154[var_s2] = gAnimObjects[q]->trans.x_position;
-                sp140[var_s2] = gAnimObjects[q]->trans.y_position;
-                sp12C[var_s2] = gAnimObjects[q]->trans.z_position;
-                spE0[var_t0] = gAnimObjects[q]->trans.rotation.y_rotation;
-                spCC[var_t0] = gAnimObjects[q]->trans.rotation.x_rotation;
-                spB8[var_t0] = gAnimObjects[q]->trans.rotation.z_rotation;
-                spF4[var_t0] = gAnimObjects[q]->trans.scale;
+                q = first + loopNode + node - count;
+                pts->x[j] = gAnimObjects[q]->trans.x_position;
+                pts->y[j] = gAnimObjects[q]->trans.y_position;
+                pts->z[j] = gAnimObjects[q]->trans.z_position;
+                pts->yaw[j] = gAnimObjects[q]->trans.rotation.y_rotation;
+                pts->pitch[j] = gAnimObjects[q]->trans.rotation.x_rotation;
+                pts->roll[j] = gAnimObjects[q]->trans.rotation.z_rotation;
+                pts->scale[j] = gAnimObjects[q]->trans.scale;
             }
         } else {
-            q = var_s0 + var_s4;
-            if (obj64->z) {} // @fake
-            temp_s1 = &gAnimObjects[q]->level_entry->animation;
-
-            if (temp_s1->unk22 == 1) {
-                set_active_camera(obj64->cameraID);
+            q = node + first;
+            entry = &gAnimObjects[q]->level_entry->animation;
+            if (entry->unk22 == 1) {
+                set_active_camera(cameraID);
                 trans = &cam_get_active_camera_no_cutscenes()->trans;
             } else {
                 trans = &gAnimObjects[q]->trans;
             }
-            sp154[var_s2] = trans->x_position;
-            sp140[var_s2] = trans->y_position;
-            sp12C[var_s2] = trans->z_position;
-            spCC[var_t0] = trans->rotation.x_rotation;
-            spB8[var_t0] = trans->rotation.z_rotation;
-            trans = &gAnimObjects[q]->trans;
-            spE0[var_t0] = trans->rotation.y_rotation;
-            if (temp_s1->unk22 == 1) {
-                spCC[var_t0] = -spCC[var_t0];
+            pts->x[j] = trans->x_position;
+            pts->y[j] = trans->y_position;
+            pts->z[j] = trans->z_position;
+            pts->pitch[j] = trans->rotation.x_rotation;
+            pts->roll[j] = trans->rotation.z_rotation;
+            pts->yaw[j] = gAnimObjects[q]->trans.rotation.y_rotation;
+            if (entry->unk22 == 1) {
+                pts->pitch[j] = -pts->pitch[j];
             }
-            spF4[var_t0] = gAnimObjects[q]->trans.scale;
+            pts->scale[j] = gAnimObjects[q]->trans.scale;
         }
     }
+}
 
-    if (obj64->unk4 == 0) {
-        obj64->unk4 = 0.01f;
-    }
+/**
+ * Make consecutive angles continuous so the spline does not sweep the long way round,
+ * even though that pushes them past the s16 range.
+ */
+static void anim_path_unwrap_angles(f32 *angles) {
+    f32 shift;
+    f32 delta;
+    s32 j;
+    s32 k;
 
-    for (var_s2 = 0, var_s0 = 0; var_s0 < 2; var_s0++) {
-        var_f20 = obj64->unk0 + (obj64->unk4 * sp114);
-        if (var_f20 >= 1.00) {
-            var_s2 = 1;
-            var_f20 -= 1.0;
+    for (j = 1; j < 5; j++) {
+        shift = 0;
+        delta = angles[j] - angles[j - 1];
+        if (delta > 32768.0) {
+            shift -= 65536.0;
+        } else if (delta < -32768.0) {
+            shift += 65536.0;
         }
-        if (obj64->unk3F == 0) {
-            sp124 = catmull_rom_interpolation(sp154, var_s2, var_f20);
-            sp120 = catmull_rom_interpolation(sp140, var_s2, var_f20);
-            sp11C = catmull_rom_interpolation(sp12C, var_s2, var_f20);
+        for (k = j; k < 5; k++) {
+            angles[k] += shift;
+        }
+    }
+}
+
+/**
+ * Rotation interpolated from the node rotations (rotateType other than 1, 2 or 3).
+ * The unwrap above leaves angles outside the s16 range on purpose, so the store relies
+ * on wrapping mod 65536: f32->s16 out of range is UB (x87 fistps would write 0x8000),
+ * so go through s32, which wraps everywhere.
+ */
+static void anim_path_apply_node_rotation(Object *obj, Object_AnimatedObject *anim, AnimPathPoints *pts, s32 segment,
+                                          f32 t) {
+    anim_path_unwrap_angles(pts->yaw);
+    anim_path_unwrap_angles(pts->pitch);
+    anim_path_unwrap_angles(pts->roll);
+    if (anim->linearInterp == 0) {
+        obj->trans.rotation.y_rotation = (s16) (s32) catmull_rom_interpolation(pts->yaw, segment, t);
+        obj->trans.rotation.x_rotation = (s16) (s32) catmull_rom_interpolation(pts->pitch, segment, t);
+        obj->trans.rotation.z_rotation = (s16) (s32) catmull_rom_interpolation(pts->roll, segment, t);
+    } else {
+        obj->trans.rotation.y_rotation = (s16) (s32) lerp(pts->yaw, segment, t);
+        obj->trans.rotation.x_rotation = (s16) (s32) lerp(pts->pitch, segment, t);
+        obj->trans.rotation.z_rotation = (s16) (s32) lerp(pts->roll, segment, t);
+    }
+}
+
+/**
+ * Face along the path's tangent (rotateType 2).
+ */
+static void anim_path_face_along(Object *obj, Object_AnimatedObject *anim, AnimPathPoints *pts, s32 segment, f32 t,
+                                 f32 *tangentZ) {
+    f32 dx;
+    f32 dy;
+    f32 dz;
+    f32 length;
+
+    if (anim->linearInterp == 0) {
+        cubic_spline_interpolation(pts->x, segment, t, &dx);
+        cubic_spline_interpolation(pts->y, segment, t, &dy);
+        cubic_spline_interpolation(pts->z, segment, t, &dz);
+    } else {
+        lerp_and_get_derivative(pts->x, segment, t, &dx);
+        lerp_and_get_derivative(pts->y, segment, t, &dy);
+        lerp_and_get_derivative(pts->z, segment, t, &dz);
+    }
+    length = sqrtf((dx * dx) + (dy * dy) + (dz * dz));
+    if (length != 0) {
+        length = 100.0 / length;
+        dx *= length;
+        dy *= length;
+        dz *= length;
+    }
+    obj->trans.rotation.y_rotation = arctan2_f(dx, dz) - 0x8000;
+    obj->trans.rotation.x_rotation = arctan2_f(dy, 100.0f);
+    *tangentZ = dz;
+}
+
+/**
+ * Face the actor that another animation path is driving (rotateType 3).
+ */
+static void anim_path_face_actor(Object *obj, s8 actorIndex) {
+    ObjectTransform *trans;
+    f32 dx;
+    f32 dy;
+    f32 dz;
+    f32 length;
+    s32 j;
+
+    for (j = 0; j < gAnimObjectCount && actorIndex != gAnimObjects[j]->properties.animation.behaviourID; j++) {}
+    if (j == gAnimObjectCount) {
+        return;
+    }
+    trans = &gAnimObjects[j]->animTarget->trans;
+    if (trans == NULL) {
+        return;
+    }
+    dx = trans->x_position - obj->trans.x_position;
+    dy = trans->y_position - obj->trans.y_position;
+    dz = trans->z_position - obj->trans.z_position;
+    length = sqrtf((dx * dx) + (dy * dy) + (dz * dz));
+    if (length > 0) {
+        obj->trans.rotation.y_rotation = arctan2_f(dx, dz) - 0x8000;
+        obj->trans.rotation.x_rotation = arctan2_f(dy, length);
+    }
+}
+
+/**
+ * An actor waiting with a negative start delay starts when one of its skip buttons is
+ * pressed on any controller.
+ */
+static void anim_actor_check_skip(Object_AnimatedObject *anim) {
+    s32 buttons;
+    s32 pressed;
+    s32 i;
+
+    buttons = 0;
+    if (anim->skipButtons & 1) {
+        buttons = A_BUTTON;
+    }
+    if (anim->skipButtons & 2) {
+        buttons |= B_BUTTON;
+    }
+    if (anim->skipButtons & 4) {
+        buttons |= CONT_START;
+    }
+    pressed = 0;
+    for (i = 0; i < MAXCONTROLLERS; i++) {
+        pressed |= input_pressed(i);
+    }
+    if (pressed & buttons) {
+        anim->startDelay = 1;
+    }
+}
+
+/**
+ * Music and sound cues attached to the current node: a sequence to start, a one-shot
+ * sound (0xFF stops the current one) and a music fade.
+ */
+static void anim_actor_play_cues(Object_AnimatedObject *anim) {
+    s32 soundID;
+
+    if (anim->musicSequence > 0) {
+        if (anim->musicSequence != music_current_sequence()) {
+            music_play(anim->musicSequence);
+            music_change_off();
+        }
+        anim->musicSequence = -2;
+        music_volume_reset();
+    } else if (anim->musicSequence == -2) {
+        music_change_on();
+        anim->musicSequence = -1;
+    }
+    if (anim->soundID != 0) {
+        soundID = anim->soundID & 0xFF;
+        if (anim->currentSound == 0) {
+            if (soundID == 0xFF) {
+                if (anim->soundHandle != NULL) {
+                    sndp_stop(anim->soundHandle);
+                }
+            } else {
+                if (anim->soundHandle != NULL) {
+                    sndp_stop(anim->soundHandle);
+                    soundID = anim->soundID & 0xFF;
+                }
+                sound_play(soundID, &anim->soundHandle);
+            }
+            anim->soundID = 0;
+        }
+    }
+    if (anim->musicFadeVolume != 0) {
+        music_fade(anim->musicFadeVolume << 8);
+        anim->musicFadeVolume = 0;
+    }
+}
+
+/**
+ * Fade the actor in or out over time and hide it once fully out.
+ */
+static void anim_actor_update_opacity(Object *obj, Object_AnimatedObject *anim, s32 updateRate) {
+    s32 opacity;
+
+    opacity = (u8) anim->opacity;
+    if (anim->fadeOptions & 1) {
+        if (anim->fadeOptions & 2) {
+            opacity = 0;
+        }
+        if ((updateRate * 8) < opacity) {
+            opacity -= (updateRate * 8);
         } else {
-            sp124 = lerp(sp154, var_s2, var_f20);
-            sp120 = lerp(sp140, var_s2, var_f20);
-            sp11C = lerp(sp12C, var_s2, var_f20);
+            opacity = 0;
+            obj->trans.flags |= OBJ_FLAGS_INVISIBLE;
         }
-        sp124 -= arg0->trans.x_position;
-        sp120 -= arg0->trans.y_position;
-        sp11C -= arg0->trans.z_position;
-        if (var_s0 != 1) {
-            var_s2 = 0;
-            var_f2 = sqrtf((sp124 * sp124) + (sp120 * sp120) + (sp11C * sp11C)) / sp114;
-            if (var_f2 != 0) {
-                obj64->unk4 *= obj64->unk8 / var_f2;
+    } else {
+        if (anim->fadeOptions & 2) {
+            opacity = 0xFF;
+        }
+        opacity += updateRate * 8;
+        if (opacity > 0xFF) {
+            opacity = 0xFF;
+        }
+        obj->trans.flags &= ~OBJ_FLAGS_INVISIBLE;
+    }
+    anim->opacity = opacity;
+}
+
+/**
+ * A screen transition cued by the current node: 8 and above change the fog, 6 and 7
+ * flash white or blue, the rest are colour fades from the misc asset.
+ */
+static void anim_actor_update_fade(Object_AnimatedObject *anim) {
+    FadeTransition fadeTransition;
+    s8 *miscAsset;
+    s32 fadeType;
+    s32 fogNear;
+    s32 fogFar;
+
+    fadeType = anim->fadeType & 0x7F;
+    if (fadeType == 0x7F) {
+        return;
+    }
+    if (fadeType >= 8) {
+        miscAsset = ((s8 *) get_misc_asset(ASSET_MISC_13) + (fadeType * 5));
+        miscAsset -= 0x28;
+        fogNear = (miscAsset[0] & 0xFF) + 900;
+        fogFar = (miscAsset[1] & 0xFF) + 900;
+        slowly_change_fog(0, miscAsset[2] & 0xFF, miscAsset[3] & 0xFF, miscAsset[4] & 0xFF, fogNear, fogFar,
+                          normalise_time(6) * anim->fadeLength);
+    } else if (fadeType >= 6) {
+        fadeTransition.type = FADE_FLAG_INVERT;
+        if (fadeType == 7) {
+            fadeTransition.red = 200;
+            fadeTransition.green = 200;
+            fadeTransition.blue = 255;
+        } else {
+            fadeTransition.red = 255;
+            fadeTransition.green = 255;
+            fadeTransition.blue = 255;
+        }
+        fadeTransition.duration = 7;
+        fadeTransition.endTimer = 3;
+        transition_begin(&fadeTransition);
+    } else {
+        fadeTransition.type = anim->fadeType;
+        miscAsset = (s8 *) get_misc_asset(ASSET_MISC_14) + (anim->fadeColourIndex * 3);
+        fadeTransition.red = miscAsset[0];
+        fadeTransition.green = miscAsset[1];
+        fadeTransition.blue = miscAsset[2];
+        if (anim->fadeType & 0x80) {
+            fadeTransition.endTimer = 0;
+        } else {
+            fadeTransition.endTimer = 0xFFFF;
+        }
+        fadeTransition.duration = normalise_time(6) * anim->fadeLength;
+        if (check_fadeout_transition() == 0 || (fadeTransition.type & 0x80)) {
+            transition_begin(&fadeTransition);
+        }
+    }
+    anim->fadeType = 0xFF;
+}
+
+/**
+ * Advance the target model's animation frame (16ths) by the actor's rate, following its
+ * loop type: 0 loop, 1 ping-pong, 2 play once, 3 play once then back.
+ */
+static void anim_actor_advance_model_frame(Object *obj, Object_AnimatedObject *anim, Object *target, f32 rate) {
+    ObjectModel *model;
+    s32 lastFrame;
+
+    target->animationID = obj->animationID;
+    if ((s16) anim->y != target->animFrame) {
+        anim->y = target->animFrame;
+    }
+    if (target->modelInstances[target->modelIndex] != NULL) {
+        model = target->modelInstances[target->modelIndex]->objModel;
+        if (target->animationID >= 0 && target->animationID < model->numberOfAnimations) {
+            lastFrame = (model->animations[target->animationID].animLength - 1) << 4;
+            switch (anim->loopType) {
+                case 0:
+                    anim->y += anim->z * rate;
+                    if (anim->y >= lastFrame) {
+                        anim->y -= lastFrame;
+                    }
+                    break;
+                case 2:
+                    anim->y += anim->z * rate;
+                    if (anim->y >= lastFrame) {
+                        anim->y = lastFrame - 1.0f;
+                    }
+                    break;
+                case 1:
+                    if (anim->modelReversing == 0) {
+                        anim->y += anim->z * rate;
+                        if (anim->y >= lastFrame) {
+                            anim->modelReversing = 1;
+                            anim->y = lastFrame - 1.0f;
+                        }
+                    } else {
+                        anim->y -= anim->z * rate;
+                        if (anim->y <= 0) {
+                            anim->y = 0;
+                            anim->modelReversing = 0;
+                        }
+                    }
+                    break;
+                case 3:
+                    if (anim->modelReversing == 0) {
+                        anim->y += anim->z * rate;
+                        if (anim->y >= lastFrame) {
+                            anim->modelReversing = 1;
+                            anim->y = lastFrame - 1.0f;
+                        }
+                    } else {
+                        anim->y -= anim->z * rate;
+                        if (anim->y <= 0) {
+                            anim->y = 0;
+                        }
+                    }
+                    break;
+            }
+        }
+    }
+    target->animFrame = anim->y;
+}
+
+/**
+ * Drive a cutscene actor along its path of animation nodes for one frame: handle its
+ * start delay and cues, step its model animation, then move it along the spline at the
+ * node speed and rotate it by its rotate type. Returns 1 when the actor has nothing to do.
+ */
+s32 anim_object_follow_path(Object *obj, s32 updateRate, Object *target) {
+    Object_AnimatedObject *anim;
+    LevelObjectEntry_Animation *entry;
+    AnimPathPoints pts;
+    f32 rate;
+    f32 t;
+    f32 moveX;
+    f32 moveY;
+    f32 moveZ;
+    f32 moved;
+    f32 invBaseScale;
+    f32 nodeSpeed;
+    f32 nextNodeSpeed;
+    s32 first;
+    s32 count;
+    s32 loopNode;
+    s32 segment;
+    s32 pass;
+    s32 node;
+    s32 nextNode;
+
+    if (gCutsceneID < 0) {
+        return 1;
+    }
+    if (updateRate >= 9) {
+        updateRate = 8;
+    }
+    rate = updateRate;
+    anim = obj->animatedObject;
+    if (osTvType == 0) {
+        rate *= 1.2;
+    }
+    if (anim->startDelay < 0) {
+        anim_actor_check_skip(anim);
+    }
+    if ((anim->startDelay >= 0) && (anim->started == 0)) {
+        anim->startDelay -= updateRate;
+        if (anim->startDelay <= 0) {
+            anim->started = 1;
+            entry = &anim->animator->level_entry->animation;
+            anim_actor_init(obj, anim, entry);
+            anim->startDelay = 0;
+            anim_actor_apply_entry(obj, entry, anim, -1);
+        }
+    }
+    if (anim->startDelay != 0) {
+        if (anim->specialHide != 0) {
+            obj->trans.flags |= OBJ_FLAGS_INVISIBLE;
+            anim->opacity = 0;
+            return 1;
+        }
+        return 0;
+    }
+
+    obj->trans.flags &= ~OBJ_FLAGS_INVISIBLE;
+    anim_actor_play_cues(anim);
+    anim_actor_update_opacity(obj, anim, updateRate);
+    anim_actor_update_fade(anim);
+
+    if (anim->rotateType == 1) {
+        obj->trans.rotation.y_rotation += (s16) (anim->yawSpinSpeed * (f32) (rate * 8.0));
+        obj->trans.rotation.x_rotation += (s16) (anim->rollSpinSpeed * (f32) (rate * 8.0));
+        obj->trans.rotation.z_rotation += (s16) (anim->pitchSpinSpeed * (f32) (rate * 8.0));
+    }
+    if (target != NULL && target->header->modelType == 0) {
+        anim_actor_advance_model_frame(obj, anim, target, rate);
+    }
+
+    if (anim->speed <= 0.0) {
+        return anim_actor_update(obj, updateRate);
+    }
+    if (!anim_path_find(anim->actorIndex, &first, &count)) {
+        return anim_actor_update(obj, updateRate);
+    }
+    loopNode = anim_path_loop_node(first, count);
+    invBaseScale = 1.0 / gAnimObjects[0]->header->scale;
+    if (loopNode == -1 && anim->nodeIndex >= count - 1) {
+        return anim_actor_update(obj, updateRate);
+    }
+    if (anim->pauseCounter >= 0) {
+        if (gCutsceneSkipRequested == 0) {
+            anim->pauseCounter -= updateRate;
+        }
+        return 0;
+    }
+
+    anim_path_control_points(first, count, loopNode, anim->nodeIndex, anim->cameraID, &pts);
+
+    // Two passes: the first measures how far the current step would move the actor and
+    // rescales the step to hold the node speed; the second takes the corrected step.
+    if (anim->segmentStep == 0) {
+        anim->segmentStep = 0.01f;
+    }
+    for (segment = 0, pass = 0; pass < 2; pass++) {
+        t = anim->segmentProgress + (anim->segmentStep * rate);
+        if (t >= 1.00) {
+            segment = 1;
+            t -= 1.0;
+        }
+        if (anim->linearInterp == 0) {
+            moveX = catmull_rom_interpolation(pts.x, segment, t);
+            moveY = catmull_rom_interpolation(pts.y, segment, t);
+            moveZ = catmull_rom_interpolation(pts.z, segment, t);
+        } else {
+            moveX = lerp(pts.x, segment, t);
+            moveY = lerp(pts.y, segment, t);
+            moveZ = lerp(pts.z, segment, t);
+        }
+        moveX -= obj->trans.x_position;
+        moveY -= obj->trans.y_position;
+        moveZ -= obj->trans.z_position;
+        if (pass != 1) {
+            segment = 0;
+            moved = sqrtf((moveX * moveX) + (moveY * moveY) + (moveZ * moveZ)) / rate;
+            if (moved != 0) {
+                anim->segmentStep *= anim->speed / moved;
             }
         }
     }
 
-    arg0->trans.scale = catmull_rom_interpolation(spF4, var_s2, var_f20) * spB4 * arg0->header->scale;
-    if (var_s2 != 0 && sp168 == -1 && var_s5 == obj64->unk26 + 2) {
-        sp124 = catmull_rom_interpolation(sp154, 0, 1.0f);
-        sp120 = catmull_rom_interpolation(sp140, 0, 1.0f);
-        sp11C = catmull_rom_interpolation(sp12C, 0, 1.0f);
-        sp124 -= arg0->trans.x_position;
-        sp120 -= arg0->trans.y_position;
-        sp11C -= arg0->trans.z_position;
+    obj->trans.scale = catmull_rom_interpolation(pts.scale, segment, t) * invBaseScale * obj->header->scale;
+    // Reaching the last node of a path that ends: land exactly on it.
+    if (segment != 0 && loopNode == -1 && count == anim->nodeIndex + 2) {
+        moveX = catmull_rom_interpolation(pts.x, 0, 1.0f);
+        moveY = catmull_rom_interpolation(pts.y, 0, 1.0f);
+        moveZ = catmull_rom_interpolation(pts.z, 0, 1.0f);
+        moveX -= obj->trans.x_position;
+        moveY -= obj->trans.y_position;
+        moveZ -= obj->trans.z_position;
     }
+    obj->x_velocity = moveX / rate;
+    obj->y_velocity = moveY / rate;
+    obj->z_velocity = moveZ / rate;
+    move_object(obj, moveX, moveY, moveZ);
 
-    arg0->x_velocity = sp124 / sp114;
-    arg0->y_velocity = sp120 / sp114;
-    arg0->z_velocity = sp11C / sp114;
-    move_object(arg0, sp124, sp120, sp11C);
-
-    switch (obj64->unk2E) {
+    switch (anim->rotateType) {
         case 1:
             break;
         case 2:
-            if (obj64->unk3F == 0) {
-                cubic_spline_interpolation(sp154, var_s2, var_f20, &sp124);
-                cubic_spline_interpolation(sp140, var_s2, var_f20, &sp120);
-                cubic_spline_interpolation(sp12C, var_s2, var_f20, &sp11C);
-            } else {
-                lerp_and_get_derivative(sp154, var_s2, var_f20, &sp124);
-                lerp_and_get_derivative(sp140, var_s2, var_f20, &sp120);
-                lerp_and_get_derivative(sp12C, var_s2, var_f20, &sp11C);
-            }
-            var_f2 = sqrtf((sp124 * sp124) + (sp120 * sp120) + (sp11C * sp11C));
-            if (var_f2 != 0) {
-                var_f2 = 100.0 / var_f2;
-                sp124 *= var_f2;
-                sp120 *= var_f2;
-                sp11C *= var_f2;
-            }
-            arg0->trans.rotation.y_rotation = arctan2_f(sp124, sp11C) - 0x8000;
-            arg0->trans.rotation.x_rotation = arctan2_f(sp120, 100.0f);
+            anim_path_face_along(obj, anim, &pts, segment, t, &moveZ);
             break;
         case 3:
             break;
         default:
-            for (var_t0 = 1; var_t0 < 5; var_t0++) {
-                f32 temp = 0;
-                f32 delta;
-
-                delta = spE0[var_t0] - spE0[var_t0 - 1];
-                if (delta > 32768.0) {
-                    temp -= 65536.0;
-                } else if (delta < -32768.0) {
-                    temp += 65536.0;
-                }
-                // clang-format off
-                for (var_s0 = var_t0; var_s0 < 5; var_s0++) { spE0[var_s0] += temp; }
-                // clang-format on
-
-                temp = 0;
-                delta = spCC[var_t0] - spCC[var_t0 - 1];
-                if (delta > 32768.0) {
-                    temp -= 65536.0;
-                } else if (delta < -32768.0) {
-                    temp += 65536.0;
-                }
-                // clang-format off
-                for (var_s0 = var_t0; var_s0 < 5; var_s0++) {spCC[var_s0] += temp; }
-                // clang-format on
-
-                temp = 0;
-                delta = spB8[var_t0] - spB8[var_t0 - 1];
-                if (delta > 32768.0) {
-                    temp -= 65536.0;
-                } else if (delta < -32768.0) {
-                    temp += 65536.0;
-                }
-                // clang-format off
-                for (var_s0 = var_t0; var_s0 < 5; var_s0++) { spB8[var_s0] += temp; }
-                // clang-format on
-            }
-            if (obj64->unk3F == 0) {
-                // The angle unwrap above pushes control points past the s16 range on
-                // purpose, so this store relies on the conversion wrapping mod 65536.
-                // f32->s16 out of range is UB: MIPS wraps (correct), but x87 fistps
-                // writes the indefinite 0x8000 — freezing the angle at 180 degrees.
-                // Go through s32, which wraps on both.
-                arg0->trans.rotation.s[0] = (s16) (s32) catmull_rom_interpolation(spE0, var_s2, var_f20);
-                arg0->trans.rotation.s[1] = (s16) (s32) catmull_rom_interpolation(spCC, var_s2, var_f20);
-                arg0->trans.rotation.s[2] = (s16) (s32) catmull_rom_interpolation(spB8, var_s2, var_f20);
-            } else {
-                arg0->trans.rotation.s[0] = (s16) (s32) lerp(spE0, var_s2, var_f20);
-                arg0->trans.rotation.s[1] = (s16) (s32) lerp(spCC, var_s2, var_f20);
-                arg0->trans.rotation.s[2] = (s16) (s32) lerp(spB8, var_s2, var_f20);
-            }
+            anim_path_apply_node_rotation(obj, anim, &pts, segment, t);
             break;
     }
 
-    var_t0 = obj64->unk26;
-    obj64->unk0 = var_f20;
-    if (sp168 != -1 && var_t0 >= var_s5) {
-        var_t0 = (var_t0 - var_s5) + sp168;
+    // Node speed: the current node's, blended towards the next node's across the segment.
+    node = anim->nodeIndex;
+    anim->segmentProgress = t;
+    if (loopNode != -1 && node >= count) {
+        node = (node - count) + loopNode;
     }
-
-    temp_s1 = &gAnimObjects[var_s4 + var_t0]->level_entry->animation;
-    sp124 = (f32) temp_s1->nodeSpeed * 0.1;
-    if (sp124 < 0) {
-        sp124 = obj64->x;
+    entry = &gAnimObjects[first + node]->level_entry->animation;
+    nodeSpeed = (f32) entry->nodeSpeed * 0.1;
+    if (nodeSpeed < 0) {
+        nodeSpeed = anim->x;
     } else {
-        obj64->x = sp124;
+        anim->x = nodeSpeed;
     }
-    if (sp124 >= 0) {
-        if (var_s2 == 0) {
-            var_s0 = var_t0 + 1;
-            if (sp168 != -1 && var_s0 >= var_s5) {
-                var_s0 = var_s0 - var_s5 + sp168;
+    if (nodeSpeed >= 0) {
+        if (segment == 0) {
+            nextNode = node + 1;
+            if (loopNode != -1 && nextNode >= count) {
+                nextNode = nextNode - count + loopNode;
             }
-            if (var_s0 < var_s5) {
-                temp_s1 = &gAnimObjects[var_s4 + var_s0]->level_entry->animation;
-                if (temp_s1->nodeSpeed >= 0) {
-                    if (0) {} // @fake
-                    sp11C = (f32) temp_s1->nodeSpeed * 0.1;
+            if (nextNode < count) {
+                entry = &gAnimObjects[first + nextNode]->level_entry->animation;
+                if (entry->nodeSpeed >= 0) {
+                    nextNodeSpeed = (f32) entry->nodeSpeed * 0.1;
                 } else {
-                    sp11C = sp124;
+                    nextNodeSpeed = nodeSpeed;
                 }
+            } else {
+                nextNodeSpeed = moveZ; //!@bug uninitialised in the original: it reads the stale z move
             }
-            obj64->unk8 = ((sp11C - sp124) * var_f20) + sp124;
+            anim->speed = ((nextNodeSpeed - nodeSpeed) * t) + nodeSpeed;
         }
     }
 
-    if (var_s2 != 0) {
-        obj64->unk26 += 1;
-        if (sp168 == -1) {
-            if (obj64->unk26 >= var_s5) {
-                obj64->unk26 = var_s5 - 1;
+    if (segment != 0) {
+        anim->nodeIndex += 1;
+        if (loopNode == -1) {
+            if (anim->nodeIndex >= count) {
+                anim->nodeIndex = count - 1;
             } else {
-                temp_s1 = &gAnimObjects[var_s4 + obj64->unk26]->level_entry->animation;
-                anim_actor_apply_entry(arg0, temp_s1, obj64, var_s4);
+                entry = &gAnimObjects[first + anim->nodeIndex]->level_entry->animation;
+                anim_actor_apply_entry(obj, entry, anim, first);
             }
         } else {
-            if (var_s5 < obj64->unk26) {
-                obj64->unk26 = sp168 + 1;
+            if (count < anim->nodeIndex) {
+                anim->nodeIndex = loopNode + 1;
             }
-            var_s2 = obj64->unk26;
-            if (obj64->unk26 >= var_s5) {
-                var_s2 = (obj64->unk26 - var_s5) + sp168;
+            node = anim->nodeIndex;
+            if (anim->nodeIndex >= count) {
+                node = (anim->nodeIndex - count) + loopNode;
             }
-            var_s2 += var_s4;
-            temp_s1 = &gAnimObjects[var_s2]->level_entry->animation;
-            anim_actor_apply_entry(arg0, temp_s1, obj64, var_s4);
+            entry = &gAnimObjects[first + node]->level_entry->animation;
+            anim_actor_apply_entry(obj, entry, anim, first);
         }
     }
-    if (obj64->unk2E == 3) {
-        for (var_t0 = 0; var_t0 < gAnimObjectCount && obj64->unk3E != gAnimObjects[var_t0]->properties.animation.behaviourID;
-             var_t0++) {}
-        if (var_t0 != gAnimObjectCount) {
-            trans = &gAnimObjects[var_t0]->animTarget->trans;
-            if (trans != NULL) {
-                sp124 = trans->x_position - arg0->trans.x_position;
-                sp120 = trans->y_position - arg0->trans.y_position;
-                sp11C = trans->z_position - arg0->trans.z_position;
-                var_f0 = sqrtf((sp124 * sp124) + (sp120 * sp120) + (sp11C * sp11C));
-                if (var_f0 > 0) {
-                    arg0->trans.rotation.y_rotation = arctan2_f(sp124, sp11C) - 0x8000;
-                    arg0->trans.rotation.x_rotation = arctan2_f(sp120, var_f0);
-                }
-            }
-        }
+    if (anim->rotateType == 3) {
+        anim_path_face_actor(obj, anim->targetActorIndex);
     }
-    arg0->particleEmittersEnabled = obj64->unk2F;
-    obj_spawn_particle(arg0, arg1);
+    obj->particleEmittersEnabled = anim->emitterMask;
+    obj_spawn_particle(obj, updateRate);
     return 0;
 }
 
@@ -9598,7 +9770,7 @@ void anim_actor_init(Object *obj, Object_AnimatedObject *animObj, LevelObjectEnt
     Camera *camera;
     ObjectTransform *animObjTrans;
 
-    animObjTrans = &animObj->unk1C->trans;
+    animObjTrans = &animObj->animator->trans;
     if (obj->behaviorId == BHV_CAMERA_ANIMATION) {
         animObj->unk44 = gAnimCameraCount;
         gAnimCameraCount++;
@@ -9639,18 +9811,18 @@ void anim_actor_apply_entry(Object *obj, LevelObjectEntry_Animation *entry, Obje
         animObj->loopType = entry->objAnimLoopType;
     }
     if (entry->unk13 >= 0) {
-        animObj->unk2F = entry->unk13;
+        animObj->emitterMask = entry->unk13;
     }
     animObj->pauseCounter = normalise_time(entry->pauseFrameCount);
-    animObj->unk3F = entry->unk2D;
-    animObj->unk3A = entry->specialHide;
-    animObj->unk39 = entry->unk1F;
-    animObj->unk43 = entry->unk30;
+    animObj->linearInterp = entry->unk2D;
+    animObj->specialHide = entry->specialHide;
+    animObj->musicSequence = entry->unk1F;
+    animObj->musicFadeVolume = entry->unk30;
     animObj->soundID = entry->unk1E;
-    animObj->unk3B = entry->unk29;
-    animObj->unk40 = entry->soundEffect;
-    animObj->unk41 = entry->fadeOptions;
-    animObj->unk3C = entry->fadeAlpha;
+    animObj->fadeType = entry->unk29;
+    animObj->fadeColourIndex = entry->soundEffect;
+    animObj->fadeOptions = entry->fadeOptions;
+    animObj->fadeLength = entry->fadeAlpha;
     if (entry->messageId != 255) {
         set_current_text(entry->messageId);
     }
@@ -9690,11 +9862,11 @@ s8 anim_actor_update(Object *obj, s32 updateRate) {
     Object_AnimatedObject *animObj;
 
     animObj = obj->animatedObject;
-    if (animObj->unk3A != 0) {
+    if (animObj->specialHide != 0) {
         obj->trans.flags |= OBJ_FLAGS_INVISIBLE;
     }
     if (animObj->pauseCounter == -1) {
-        return animObj->unk3A;
+        return animObj->specialHide;
     }
     if (animObj->pauseCounter >= 0) {
         animObj->pauseCounter -= updateRate;
@@ -9713,260 +9885,68 @@ s8 anim_actor_update(Object *obj, s32 updateRate) {
     return 0;
 }
 
-s32 anim_actor_is_active(s32 arg0) {
-    Object_AnimatedObject *objAnim;
-    s32 i;
-    Object *sp154;
-    LevelObjectEntry_Animation *levelObjAnim;
+/**
+ * Place the actor of animation path `actorIndex` at its current point on the path, for
+ * the camera and other things that read actor positions. Returns TRUE when the actor is
+ * not on a path.
+ */
+s32 anim_actor_is_active(s32 actorIndex) {
+    Object_AnimatedObject *anim;
+    Object *actor;
+    AnimPathPoints pts;
+    f32 t;
+    f32 moveX;
+    f32 moveY;
+    f32 moveZ;
+    f32 invBaseScale;
+    s32 first;
     s32 count;
-    s32 s0;
-    s32 j;
-    ObjectTransform *objTransform;
-    f32 f0;
-    s32 sp138;
-    f32 xPositions[5];
-    f32 yPositions[5];
-    f32 zPositions[5];
-    f32 spF8;
-    f32 spF4;
-    f32 spF0;
-    f32 spEC;
-    f32 delta;
-    s32 q;
-    f32 scales[5];
-    f32 yRotations[5];
-    f32 xRotations[5];
-    f32 zRotations[5];
-    f32 sp90;
+    s32 loopNode;
 
     if (gCutsceneID < 0) {
         return TRUE;
     }
-
-    for (i = 0; i < gAnimObjectCount && arg0 != gAnimObjects[i]->properties.animation.behaviourID; i++) {}
-    if (i >= gAnimObjectCount) {
+    if (!anim_path_find(actorIndex, &first, &count)) {
         return TRUE;
     }
-
-    for (count = 1; i + count < gAnimObjectCount && arg0 == gAnimObjects[i + count]->properties.animation.behaviourID;
-         count++) {}
-    if (count < 2) {
+    actor = gAnimObjects[first]->animTarget;
+    if (actor == NULL) {
         return TRUE;
     }
+    anim = actor->animatedObject;
+    invBaseScale = 1.0 / gAnimObjects[first]->header->scale;
+    loopNode = anim_path_loop_node(first, count);
+    anim_path_control_points(first, count, loopNode, anim->nodeIndex, anim->cameraID, &pts);
 
-    sp154 = gAnimObjects[i]->animTarget;
-    if (sp154 == NULL) {
-        return TRUE;
-    }
-
-    objAnim = sp154->animatedObject;
-    sp138 = -1;
-    sp90 = 1.0 / gAnimObjects[i]->header->scale;
-
-    levelObjAnim = &gAnimObjects[i + count - 1]->level_entry->animation;
-    if (count > 2) {
-        if (levelObjAnim->goToNode >= 0 && levelObjAnim->goToNode < count - 1) {
-            sp138 = levelObjAnim->goToNode;
-        }
-    }
-
-    s0 = objAnim->unk26 - 1;
-    for (j = 0; j < 5; j++, s0++) {
-        if (s0 == -1) {
-            if (sp138 != 0) {
-                xPositions[j] = gAnimObjects[i]->trans.x_position +
-                                (gAnimObjects[i]->trans.x_position - gAnimObjects[i + 1]->trans.x_position);
-                yPositions[j] = gAnimObjects[i]->trans.y_position +
-                                (gAnimObjects[i]->trans.y_position - gAnimObjects[i + 1]->trans.y_position);
-                zPositions[j] = gAnimObjects[i]->trans.z_position +
-                                (gAnimObjects[i]->trans.z_position - gAnimObjects[i + 1]->trans.z_position);
-                yRotations[j] = gAnimObjects[i]->trans.rotation.y_rotation;
-                xRotations[j] = gAnimObjects[i]->trans.rotation.x_rotation;
-                zRotations[j] = gAnimObjects[i]->trans.rotation.z_rotation;
-                scales[j] = gAnimObjects[i]->trans.scale;
-            } else {
-                q = i + count - 1;
-                xPositions[j] = gAnimObjects[q]->trans.x_position;
-                yPositions[j] = gAnimObjects[q]->trans.y_position;
-                zPositions[j] = gAnimObjects[q]->trans.z_position;
-                yRotations[j] = gAnimObjects[q]->trans.rotation.y_rotation;
-                xRotations[j] = gAnimObjects[q]->trans.rotation.x_rotation;
-                zRotations[j] = gAnimObjects[q]->trans.rotation.z_rotation;
-                scales[j] = gAnimObjects[q]->trans.scale;
-            }
-        } else if (s0 >= count) {
-            if (sp138 == -1) {
-                s0 = count - 1;
-                q = s0 + i;
-                levelObjAnim = &gAnimObjects[q]->level_entry->animation;
-                if (levelObjAnim->unk22 == 1) {
-                    set_active_camera(objAnim->cameraID);
-                    objTransform = &cam_get_active_camera_no_cutscenes()->trans;
-                } else {
-                    objTransform = &gAnimObjects[q]->trans;
-                }
-
-                xPositions[j] =
-                    (objTransform->x_position - gAnimObjects[q - 1]->trans.x_position) + objTransform->x_position;
-                yPositions[j] =
-                    (objTransform->y_position - gAnimObjects[q - 1]->trans.y_position) + objTransform->y_position;
-                zPositions[j] =
-                    (objTransform->z_position - gAnimObjects[q - 1]->trans.z_position) + objTransform->z_position;
-                xRotations[j] = objTransform->rotation.x_rotation;
-                zRotations[j] = objTransform->rotation.z_rotation;
-                objTransform = &gAnimObjects[q]->trans;
-                yRotations[j] = objTransform->rotation.y_rotation;
-                scales[j] = gAnimObjects[q]->trans.scale;
-            } else {
-                q = i + sp138 + s0 - count;
-                xPositions[j] = gAnimObjects[q]->trans.x_position;
-                yPositions[j] = gAnimObjects[q]->trans.y_position;
-                zPositions[j] = gAnimObjects[q]->trans.z_position;
-                yRotations[j] = gAnimObjects[q]->trans.rotation.y_rotation;
-                xRotations[j] = gAnimObjects[q]->trans.rotation.x_rotation;
-                zRotations[j] = gAnimObjects[q]->trans.rotation.z_rotation;
-                scales[j] = gAnimObjects[q]->trans.scale;
-            }
-        } else {
-            q = s0 + i;
-            if (1) {} // Fake
-            levelObjAnim = &gAnimObjects[q]->level_entry->animation;
-            if (levelObjAnim->unk22 == 1) {
-                set_active_camera(objAnim->cameraID);
-                objTransform = &cam_get_active_camera_no_cutscenes()->trans;
-            } else {
-                objTransform = &gAnimObjects[q]->trans;
-            }
-            xPositions[j] = objTransform->x_position;
-            yPositions[j] = objTransform->y_position;
-            zPositions[j] = objTransform->z_position;
-            xRotations[j] = objTransform->rotation.x_rotation;
-            zRotations[j] = objTransform->rotation.z_rotation;
-            objTransform = &gAnimObjects[q]->trans;
-            yRotations[j] = objTransform->rotation.y_rotation;
-            if (levelObjAnim->unk22 == 1) {
-                xRotations[j] = -xRotations[j];
-            }
-            scales[j] = gAnimObjects[q]->trans.scale;
-        }
-    }
-
-    spEC = objAnim->unk0;
-    if (objAnim->unk3F == 0) {
-        spF8 = catmull_rom_interpolation(xPositions, 0, spEC);
-        spF4 = catmull_rom_interpolation(yPositions, 0, spEC);
-        spF0 = catmull_rom_interpolation(zPositions, 0, spEC);
+    t = anim->segmentProgress;
+    if (anim->linearInterp == 0) {
+        moveX = catmull_rom_interpolation(pts.x, 0, t);
+        moveY = catmull_rom_interpolation(pts.y, 0, t);
+        moveZ = catmull_rom_interpolation(pts.z, 0, t);
     } else {
-        spF8 = lerp(xPositions, 0, spEC);
-        spF4 = lerp(yPositions, 0, spEC);
-        spF0 = lerp(zPositions, 0, spEC);
+        moveX = lerp(pts.x, 0, t);
+        moveY = lerp(pts.y, 0, t);
+        moveZ = lerp(pts.z, 0, t);
     }
+    moveX -= actor->trans.x_position;
+    moveY -= actor->trans.y_position;
+    moveZ -= actor->trans.z_position;
+    move_object(actor, moveX, moveY, moveZ);
+    actor->trans.scale = catmull_rom_interpolation(pts.scale, 0, t) * invBaseScale * actor->header->scale;
 
-    spF8 -= sp154->trans.x_position;
-    spF4 -= sp154->trans.y_position;
-    spF0 -= sp154->trans.z_position;
-
-    move_object(sp154, spF8, spF4, spF0);
-    sp154->trans.scale = catmull_rom_interpolation(scales, 0, spEC) * sp90 * sp154->header->scale;
-
-    switch (objAnim->unk2E) {
+    switch (anim->rotateType) {
         case 1:
             break;
         case 2:
-            if (objAnim->unk3F == 0) {
-                cubic_spline_interpolation(xPositions, 0, spEC, &spF8);
-                cubic_spline_interpolation(yPositions, 0, spEC, &spF4);
-                cubic_spline_interpolation(zPositions, 0, spEC, &spF0);
-            } else {
-                lerp_and_get_derivative(xPositions, 0, spEC, &spF8);
-                lerp_and_get_derivative(yPositions, 0, spEC, &spF4);
-                lerp_and_get_derivative(zPositions, 0, spEC, &spF0);
-            }
-
-            spEC = sqrtf(spF8 * spF8 + spF4 * spF4 + spF0 * spF0);
-            if (spEC != 0.0f) {
-                delta = spEC;
-                spEC = spF8;
-                delta = 100.0 / delta;
-
-                spF8 *= delta;
-                spF4 *= delta;
-                spF0 *= delta;
-            }
-
-            sp154->trans.rotation.y_rotation = arctan2_f(spF8, spF0) - 0x8000;
-            sp154->trans.rotation.x_rotation = arctan2_f(spF4, 100.0f);
+            anim_path_face_along(actor, anim, &pts, 0, t, &moveZ);
             break;
         case 3:
-            for (j = 0; j < gAnimObjectCount && objAnim->unk3E != gAnimObjects[j]->properties.animation.behaviourID; j++) {}
-
-            if (j != gAnimObjectCount) {
-                objTransform = &gAnimObjects[j]->animTarget->trans;
-                if (objTransform != NULL) {
-                    spF8 = objTransform->x_position - sp154->trans.x_position;
-                    spF4 = objTransform->y_position - sp154->trans.y_position;
-                    spF0 = objTransform->z_position - sp154->trans.z_position;
-                    spEC = sqrtf(spF8 * spF8 + spF4 * spF4 + spF0 * spF0);
-                    if (spEC > 0.0f) {
-                        sp154->trans.rotation.y_rotation = arctan2_f(spF8, spF0) - 0x8000;
-                        sp154->trans.rotation.x_rotation = arctan2_f(spF4, spEC);
-                    }
-                }
-            }
+            anim_path_face_actor(actor, anim->targetActorIndex);
             break;
         default:
-            for (j = 1; j < 5; j++) {
-                f0 = 0.0f;
-                delta = yRotations[j] - yRotations[j - 1];
-                if (delta > 32768.0) {
-                    f0 -= 65536.0;
-                } else if (delta < -32768.0) {
-                    f0 += 65536.0;
-                }
-
-                // clang-format off
-                for (s0 = j; s0 < 5; s0++) { yRotations[s0] += f0; }
-                // clang-format on
-
-                f0 = 0.0f;
-                delta = xRotations[j] - xRotations[j - 1];
-                if (delta > 32768.0) {
-                    f0 -= 65536.0;
-                } else if (delta < -32768.0) {
-                    f0 += 65536.0;
-                }
-
-                // clang-format off
-                for (s0 = j; s0 < 5; s0++) { xRotations[s0] += f0; }
-                // clang-format on
-
-                f0 = 0.0f;
-                delta = zRotations[j] - zRotations[j - 1];
-                if (delta > 32768.0) {
-                    f0 -= 65536.0;
-                } else if (delta < -32768.0) {
-                    f0 += 65536.0;
-                }
-
-                // clang-format off
-                for (s0 = j; s0 < 5; s0++) { zRotations[s0] += f0; }
-                // clang-format on
-            }
-
-            if (objAnim->unk3F == 0) {
-                // Same wrap-dependent store as in anim_object_follow_path: go through s32 so the
-                // out-of-range angles from the unwrap wrap mod 65536 on x86 too.
-                sp154->trans.rotation.y_rotation = (s16) (s32) catmull_rom_interpolation(yRotations, 0, spEC);
-                sp154->trans.rotation.x_rotation = (s16) (s32) catmull_rom_interpolation(xRotations, 0, spEC);
-                sp154->trans.rotation.z_rotation = (s16) (s32) catmull_rom_interpolation(zRotations, 0, spEC);
-            } else {
-                sp154->trans.rotation.y_rotation = (s16) (s32) lerp(yRotations, 0, spEC);
-                sp154->trans.rotation.x_rotation = (s16) (s32) lerp(xRotations, 0, spEC);
-                sp154->trans.rotation.z_rotation = (s16) (s32) lerp(zRotations, 0, spEC);
-            }
+            anim_path_apply_node_rotation(actor, anim, &pts, 0, t);
             break;
     }
-
     return FALSE;
 }
 
