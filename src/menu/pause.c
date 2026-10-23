@@ -1,3 +1,4 @@
+#include "host.h"
 #include "menu_internal.h"
 
 static char *gMenuOptionText[8]; // Menu Text

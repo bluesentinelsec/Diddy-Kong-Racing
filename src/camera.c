@@ -5,10 +5,9 @@
 #include "math_util.h"
 #include "menu.h"
 #include "objects.h"
-#include "PRinternal/piint.h"
-#include "PRinternal/viint.h"
-#include "textures_sprites.h"
 #include "pc_gfx.h"
+#include "PR/gu.h"
+#include "textures_sprites.h"
 #include "tracks.h"
 #include "video.h"
 #include "weather.h"
@@ -994,13 +993,6 @@ void mtx_perspective(Gfx **dList, Mtx **mtx) {
  */
 void viewport_rsp_set(Gfx **dList, s32 halfWidth, s32 halfHeight, s32 centerX, s32 centerY) {
     s32 tempWidth = (get_filtered_cheats() & CHEAT_MIRRORED_TRACKS) ? -halfWidth : halfWidth;
-#ifdef ANTI_TAMPER
-    // Antipiracy measure. Flips the screen upside down.
-    if (gAntiPiracyViewport) {
-        halfHeight = -halfHeight;
-        tempWidth = -halfWidth;
-    }
-#endif
     if (!(gScreenViewports[gActiveCameraID].flags & VIEWPORT_EXTRA_BG)) {
         gViewportStack[gActiveCameraID].vp.vtrans[0] = centerX * 4;
         gViewportStack[gActiveCameraID].vp.vtrans[1] = centerY * 4;

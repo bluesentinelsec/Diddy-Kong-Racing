@@ -21,8 +21,6 @@
 #include "object_models.h"
 #include "objects.h"
 #include "particles.h"
-#include "PR/os_cont.h"
-#include "PRinternal/viint.h"
 #include "printf.h"
 #include "racer.h"
 #include "structs.h"

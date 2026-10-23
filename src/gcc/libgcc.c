@@ -7,6 +7,7 @@
 /* Note: This file is NOT part of the original game source code.                   */
 /* --------------------------------------------------------------------------------*/
 
+#include "libc/string.h"
 #include <ultra64.h>
 
 // Self-hosted libc memory functions, gcc assumes these exist even in a freestanding

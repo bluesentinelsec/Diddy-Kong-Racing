@@ -68,17 +68,6 @@ void allocate_object_model_pools(void) {
     }
     gAnimFracDeltas = (s16 *) mempool_alloc_safe(0xC00, COLOUR_TAG_GREEN);
     gModelAnimOffsetID = 0;
-
-#ifdef ANTI_TAMPER
-    // Antipiracy measure
-    checksum = 0;
-    for (i = 0; i < gRenderSceneFuncLength; i++) {
-        checksum += *(u8 *) (((s32) &render_scene) + i);
-    }
-    if (checksum != gRenderSceneChecksum) {
-        drm_vehicle_traction();
-    }
-#endif
 }
 
 // Inflated object models are big-endian: a 0x80-byte header whose offsets point

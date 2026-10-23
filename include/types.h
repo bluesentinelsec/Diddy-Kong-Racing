@@ -28,4 +28,9 @@ void isv_printf(const char *fmt, ...);
 #define stubbed_printf
 #endif
 
+// The game hands the renderer and audio code "physical" addresses the way the N64 did; on the
+// host they are plain pointers.
+#define OS_K0_TO_PHYSICAL(x) (uintptr_t) (x)
+#define OS_PHYSICAL_TO_K0(x) (void *) (x)
+
 #endif

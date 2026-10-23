@@ -1,5 +1,6 @@
 #include "video.h"
 #include "host.h"
+#include "macros.h"
 #include "memory.h"
 #include "types.h"
 

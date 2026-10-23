@@ -7,6 +7,7 @@
  * so the thread, message-queue, scheduler and DMA plumbing is gone and what
  * remains is a handful of plain calls.
  */
+#include "host.h"
 #include "types.h"
 
 // --- Logging (linux/reimpl.c) ---------------------------------------------------

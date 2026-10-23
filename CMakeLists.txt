@@ -145,7 +145,7 @@ set(DKR_GAME_SOURCES
     src/audio_vehicle.c src/borders.c src/camera.c src/fade_transition.c src/font.c
     src/game.c src/game_text.c src/game_ui.c src/get_stack_pointer.c src/gzip.c
     src/joypad.c src/lights.c src/memory.c src/behaviours.c
-    src/object_models.c src/objects.c src/os_yield_data.c src/particles.c src/printf.c
+    src/object_models.c src/objects.c src/particles.c src/printf.c
     src/racer.c src/rcp_dkr.c src/save_data.c src/screen_asset.c src/set_rsp_segment.c
     src/textures_sprites.c src/thread30_bgload.c src/thread3_main.c
     src/tracks.c src/unused_string.c src/vehicle_bluey.c src/vehicle_bubbler.c

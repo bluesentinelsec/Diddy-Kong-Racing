@@ -1,4 +1,5 @@
 #include "fade_transition.h"
+#include "host.h"
 
 #include "asset_enums.h"
 #include "camera.h"
@@ -6,11 +7,10 @@
 #include "macros.h"
 #include "math_util.h"
 #include "memory.h"
-#include "PRinternal/viint.h"
+#include "pc_gfx.h"
 #include "textures_sprites.h"
 #include "types.h"
 #include "video.h"
-#include "pc_gfx.h"
 
 /************ .data ************/
 

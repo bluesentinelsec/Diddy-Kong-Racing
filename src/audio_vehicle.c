@@ -1,4 +1,5 @@
 #include "audio_vehicle.h"
+#include "libc/string.h"
 
 #include "asset_loading.h"
 #include "audio_spatial.h"

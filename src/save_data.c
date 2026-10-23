@@ -9,7 +9,6 @@
 #include "memory.h"
 #include "menu.h"
 #include "objects.h"
-#include "PR/os_pfs.h"
 #include "save_layout.h"
 #include "structs.h"
 #include "thread3_main.h"

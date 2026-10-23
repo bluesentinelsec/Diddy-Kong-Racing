@@ -21,8 +21,6 @@
 #include "object_models.h"
 #include "objects.h"
 #include "particles.h"
-#include "PR/os_cont.h"
-#include "PRinternal/viint.h"
 #include "printf.h"
 #include "racer.h"
 #include "structs.h"
@@ -98,12 +96,6 @@ void obj_loop_goldenballoon(Object *obj, s32 updateRate) {
         updateRateF *= 1.2;
     }
     isPirated = FALSE;
-#ifdef ANTI_TAMPER
-    // AntiPiracy check. Seems to set a flag that prevents collecting balloons.
-    if (IO_READ(0x284) != 0x240B17D7) {
-        isPirated = TRUE;
-    }
-#endif
     speedf = updateRateF;
     settings = get_settings();
     levelEntry = obj->level_entry;

@@ -1,10 +1,10 @@
 #ifndef _SAVE_LAYOUT_H_
 #define _SAVE_LAYOUT_H_
 
-#include "types.h"
-#include "structs.h"
+#include "joypad.h"
 #include "macros.h"
-#include "PR/os_cont.h"
+#include "structs.h"
+#include "types.h"
 
 /**
  * File contains the struct and macro definitions for the save layout for DKR.

@@ -175,15 +175,6 @@ void level_global_init(void) {
     }
     mempool_free(gTempAssetTable);
     // Antipiracy measure
-#ifdef ANTI_TAMPER
-    checksumCount = 0;
-    for (j = 0; j < gViewportFuncLength; j++) {
-        checksumCount += ((u8 *) (&viewport_rsp_set))[j];
-    }
-    if (checksumCount != gViewportFuncChecksum) {
-        drm_disable_input();
-    }
-#endif
 }
 
 

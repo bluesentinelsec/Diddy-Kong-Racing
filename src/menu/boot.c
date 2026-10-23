@@ -1,3 +1,4 @@
+#include "host.h"
 #include "menu_internal.h"
 
 static s32 sControllerPakMenuNumberOfRows; // 8 if PAL, 7 if not

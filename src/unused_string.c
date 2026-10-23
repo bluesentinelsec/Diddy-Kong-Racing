@@ -1,3 +1,4 @@
+#include "libc/string.h"
 #include "macros.h"
 #include "types.h"
 

@@ -1,17 +1,17 @@
 #include "waves.h"
 #include "camera.h"
+#include "host.h"
 #include "macros.h"
 #include "math_util.h"
 #include "memory.h"
 #include "objects.h"
-#include "PRinternal/viint.h"
+#include "pc_gfx.h"
 #include "printf.h"
 #include "racer.h"
 #include "textures_sprites.h"
 #include "tracks.h"
 #include "types.h"
 #include <ultra64.h>
-#include "pc_gfx.h"
 
 /************ .data ************/
 
