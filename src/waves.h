@@ -5,7 +5,7 @@
 
 /* Size: 4 bytes */
 typedef struct {
-    u8 unk0[4];
+    u8 quadrantFade[4];
 } LevelModelSubArray;
 
 /* Size: 0x1C bytes */
@@ -44,9 +44,9 @@ typedef struct WaveGen {
   u32 pad34[3];
 } WaveGen;
 
-typedef struct unk800E3184 {
-    u8 unk0[8];
-} unk800E3184;
+typedef struct WaveGenTileSlots {
+    u8 genIndices[8];
+} WaveGenTileSlots;
 
 typedef struct WaveVisibleBlock {
     s16 blockID;

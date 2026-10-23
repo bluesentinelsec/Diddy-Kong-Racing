@@ -59,7 +59,7 @@ void obj_init_trigger(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 para
     trigger->rotationDiff =
         -((trigger->directionX * obj->trans.x_position) + (trigger->directionZ * obj->trans.z_position));
     trigger->radius = entry->scale;
-    trigger->unk14 = entry->racerFilterFlags;
+    trigger->racerFilterFlags = entry->racerFilterFlags;
     obj->interactObj->flags = INTERACT_FLAGS_TANGIBLE;
     obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = entry->scale;
@@ -98,8 +98,8 @@ void obj_loop_trigger(Object *obj, UNUSED s32 updateRate) {
                 for (i = 0; i < numRacers; i++) {
                     racerObj = racers[i];
                     racer = racerObj->racer;
-                    if ((!(trigger->unk14 & 1) && racer->playerIndex == PLAYER_COMPUTER) ||
-                        (!(trigger->unk14 & 2) && racer->playerIndex != PLAYER_COMPUTER)) {
+                    if ((!(trigger->racerFilterFlags & 1) && racer->playerIndex == PLAYER_COMPUTER) ||
+                        (!(trigger->racerFilterFlags & 2) && racer->playerIndex != PLAYER_COMPUTER)) {
                         diffX = racerObj->trans.x_position - obj->trans.x_position;
                         diffY = racerObj->trans.y_position - obj->trans.y_position;
                         diffZ = racerObj->trans.z_position - obj->trans.z_position;

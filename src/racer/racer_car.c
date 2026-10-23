@@ -1549,7 +1549,7 @@ void update_car_wheels(Object *objRacer, Object_Racer *racer, f32 updateRateF) {
                 if (i < 2 || isNotHardBraking) {
                     someObj = objRacer->attachPoints->obj[i];
                     if ((racer->wheelspinTimer != 0 && i >= 3) || racer->wheelspinTimer == 0) {
-                        if (someObj->properties.common.unk0 != 0) {
+                        if (someObj->properties.vehiclePart.frontFacing != 0) {
                             someObj->modelIndex--;
                             if (someObj->modelIndex < 0) {
                                 someObj->modelIndex = someObj->header->numberOfModelIds - 1;
@@ -1570,7 +1570,7 @@ void update_car_wheels(Object *objRacer, Object_Racer *racer, f32 updateRateF) {
                 if (i < 2 || isNotHardBraking) {
                     someObj = objRacer->attachPoints->obj[i];
                     if ((racer->wheelspinTimer != 0 && i >= 3) || racer->wheelspinTimer == 0) {
-                        if (someObj->properties.common.unk0 == 0) {
+                        if (someObj->properties.vehiclePart.frontFacing == 0) {
                             someObj->modelIndex--;
                             if (someObj->modelIndex < 0) {
                                 someObj->modelIndex = someObj->header->numberOfModelIds - 1;
@@ -1589,7 +1589,7 @@ void update_car_wheels(Object *objRacer, Object_Racer *racer, f32 updateRateF) {
         if (racer->wheelspinTimer != 0) {
             for (i = 0; i < 2; i++) {
                 someObj = objRacer->attachPoints->obj[i];
-                if (someObj->properties.common.unk0 != 0) {
+                if (someObj->properties.vehiclePart.frontFacing != 0) {
                     someObj->modelIndex--;
                     if (someObj->modelIndex < 0) {
                         someObj->modelIndex = (s8) (someObj->header->numberOfModelIds - 1);

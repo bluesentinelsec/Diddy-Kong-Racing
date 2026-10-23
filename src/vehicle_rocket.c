@@ -145,7 +145,7 @@ void update_rocket(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
         someObj = racerfx_get_boost(BOOST_DEFAULT);
         if (someObj != NULL) {
             boost = someObj->boost;
-            someObj->properties.common.unk0 = 0;
+            someObj->properties.boost.obj = NULL;
             if (boost != NULL) {
                 boost->pulseTimer += updateRate;
                 boost->effectState = 2;

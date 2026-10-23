@@ -93,7 +93,7 @@ s32 *sMenuNullElement;                       // Never set, but it's read? Is it 
 // of its own is behaviour-neutral and keeps the stray store in bounds.
 char *gAudioOutputStrings[3];
 char *gMusicTestString;
-unk80080BC8 *gMenuGeometry;
+MenuPanelGeometry *gMenuGeometry;
 u16 (*gCheatsAssetData)[30]; // Cheat table.
 s16 gOptionsMenuItemIndex;
 #if VERSION >= VERSION_79
@@ -665,7 +665,7 @@ void menu_panel_draw_textured(Gfx **dList, s32 startX, s32 startY, s32 width, s3
         }
     }
     if (dList != NULL) {
-        gMenuGeometry[gWoodPanelCount].unk18[gMenuTrisFlip] = 1;
+        gMenuGeometry[gWoodPanelCount].drawnImmediately[gMenuTrisFlip] = 1;
         gSPDisplayList((*dList)++, &dMenuHudSettings);
         if (tex != NULL) {
             gDkrDmaDisplayList((*dList)++, OS_K0_TO_PHYSICAL(&dMenuHudDrawModes[1]), 2);
@@ -680,7 +680,7 @@ void menu_panel_draw_textured(Gfx **dList, s32 startX, s32 startY, s32 width, s3
         gSPPolygon((*dList)++, OS_K0_TO_PHYSICAL(gMenuGeometry[gWoodPanelCount].triangles[gMenuTrisFlip]), 10, i);
         rendermode_reset(dList);
     } else {
-        gMenuGeometry[gWoodPanelCount].unk18[gMenuTrisFlip] = 0;
+        gMenuGeometry[gWoodPanelCount].drawnImmediately[gMenuTrisFlip] = 0;
     }
     gWoodPanelCount++;
 }
@@ -1146,7 +1146,7 @@ void menu_panels_alloc(s32 numberOfPanels) {
     gWoodPanelTexScaleU = 32; // 32 = 1.0x scale
     gWoodPanelTexScaleV = 32; // 32 = 1.0x scale
 
-    menuGeometrySize = sizeof(unk80080BC8) * numberOfPanels;
+    menuGeometrySize = sizeof(MenuPanelGeometry) * numberOfPanels;
     vertexSize = sizeof(Vertex) * (20 * numberOfPanels);
     triangleCount = sizeof(Triangle) * (10 * numberOfPanels);
 
@@ -1154,7 +1154,7 @@ void menu_panels_alloc(s32 numberOfPanels) {
         (Triangle *) mempool_alloc_safe(((vertexSize + triangleCount) * 2) + menuGeometrySize, COLOUR_TAG_WHITE);
     gWoodPanelTriangles[1] = (Triangle *) ((uintptr_t) gWoodPanelTriangles[0] + triangleCount);
 
-    gMenuGeometry = (unk80080BC8 *) ((uintptr_t) gWoodPanelTriangles[1] + triangleCount);
+    gMenuGeometry = (MenuPanelGeometry *) ((uintptr_t) gWoodPanelTriangles[1] + triangleCount);
 
     gWoodPanelVertices[0] = (Vertex *) ((uintptr_t) gMenuGeometry + menuGeometrySize);
     gWoodPanelVertices[1] = (Vertex *) ((uintptr_t) gWoodPanelVertices[0] + vertexSize);
@@ -1168,8 +1168,8 @@ void menu_panels_alloc(s32 numberOfPanels) {
         gMenuGeometry[i].triangles[1] = &gWoodPanelTriangles[1][triangleCount];
         gMenuGeometry[i].texture[0] = 0;
         gMenuGeometry[i].texture[1] = 0;
-        gMenuGeometry[i].unk18[0] = 0;
-        gMenuGeometry[i].unk18[1] = 0;
+        gMenuGeometry[i].drawnImmediately[0] = 0;
+        gMenuGeometry[i].drawnImmediately[1] = 0;
         panelIndex += 20;
         triangleCount += 10;
     }
@@ -1217,7 +1217,7 @@ void menu_panels_render(Gfx **dList) {
     lastTex = NULL;
 
     for (i = 0; i < gWoodPanelCount; i++) {
-        if (!gMenuGeometry[i].unk18[gMenuTrisFlip]) {
+        if (!gMenuGeometry[i].drawnImmediately[gMenuTrisFlip]) {
             tex = gMenuGeometry[i].texture[gMenuTrisFlip];
             if (tex != NULL) {
                 if (var_t0 != 1) {

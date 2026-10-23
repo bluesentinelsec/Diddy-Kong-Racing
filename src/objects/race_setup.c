@@ -378,7 +378,7 @@ static void racers_spawn_position_arrows(LevelObjectEntry_Racer *racerEntry) {
         racerEntry->common.y = 0;
         racerEntry->common.z = 0;
         obj = spawn_object((LevelObjectEntryCommon *) racerEntry, OBJECT_SPAWN_UNK01);
-        obj->properties.common.unk0 = j;
+        obj->properties.posArrow.playerID = j;
         obj->level_entry = NULL;
     }
 }
@@ -733,7 +733,7 @@ void despawn_player_racer(Object *obj, s32 vehicleID) {
  */
 void transform_player_vehicle(void) {
     Object *player;
-    LevelObjectEntry8000E2B4 spawnObj;
+    LevelObjectEntry_Racer spawnObj;
     Settings *settings;
     Object_Racer *racer;
     s16 objectID;

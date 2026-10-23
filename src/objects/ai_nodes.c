@@ -270,7 +270,7 @@ s32 ainode_find_nearest(f32 diffX, f32 diffY, f32 diffZ, s32 useElevation) {
             if (useElevation && elevation != levelObj->elevation) {
                 findDist = FALSE;
             }
-            if (useElevation == 2 && levelObj->unk8 != 3) {
+            if (useElevation == 2 && levelObj->targetTag != 3) {
                 findDist = FALSE;
             }
             if (findDist) {
@@ -557,7 +557,7 @@ s16 ainode_pick_next(s32 arg0, s32 arg1, s32 arg2, s32 arg3) {
                 if ((arg1 & 0x7F) == spD4[var_t1]) {
                     result = var_s3;
                 }
-            } else if (arg1 == aiNodeEntry->unk8) {
+            } else if (arg1 == aiNodeEntry->targetTag) {
                 result = var_s3;
             }
             if ((var_t1 == 0) && (result == 0xFF)) {

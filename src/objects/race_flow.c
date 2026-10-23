@@ -1090,7 +1090,7 @@ void obj_taj_create_balloon(s32 blockID, f32 x, f32 y, f32 z) {
                 obj->trans.y_position = y + 10.0;
                 obj->trans.z_position = z;
                 obj->segmentID = blockID;
-                obj->properties.common.unk0 = 0;
+                obj->properties.goldenBalloon.action = 0;
                 obj->opacity = 0;
             }
         }
@@ -1155,7 +1155,7 @@ void mode_end_taj_race(s32 reason) {
         } else {
             set_next_taj_challenge_menu(4);
         }
-        obj->properties.common.unk0 = 31;
+        obj->properties.taj.action = TAJ_MODE_UNK1F;
         set_taj_status(TAJ_TELEPORT);
     } else {
         music_change_on();
@@ -1167,7 +1167,7 @@ void mode_end_taj_race(s32 reason) {
         }
         gEventCountdown = 0;
         gEventStartTimer = 0;
-        obj->properties.common.unk0 = 20;
+        obj->properties.taj.action = TAJ_MODE_TELEPORT_AWAY_BEGIN;
     }
     music_change_on();
     hud_audio_init();

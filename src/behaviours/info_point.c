@@ -44,7 +44,7 @@ void obj_init_infopoint(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 pa
     obj->interactObj->pushForce = 0;
     obj->properties.infoPoint.radius = (entry->hitbox[2] << 16) | entry->hitbox[0]; // Not sure about the values here.
     obj->properties.infoPoint.visible = entry->hitbox[1];
-    obj->trans.rotation.y_rotation = entry->unkB << 10; // Not sure about the values here.
+    obj->trans.rotation.y_rotation = entry->angleY << 10; // Not sure about the values here.
 }
 
 void obj_loop_infopoint(Object *obj, UNUSED s32 updateRate) {

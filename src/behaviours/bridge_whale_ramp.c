@@ -83,7 +83,7 @@ void obj_loop_bridge_whaleramp(Object *obj, s32 updateRate) {
     }
 
     if (entry->moveMode != 3) {
-        if (obj->properties.bridgeWhaleRamp.unk0 != 0) {
+        if (obj->properties.bridgeWhaleRamp.raiseTimer != 0) {
             bobAmount = 2.0 * (f32) entry->bobAmount;
             if (bobAmount > 0.0f) {
                 if (obj->trans.y_position < whaleRamp->homeY + bobAmount) {
@@ -103,7 +103,7 @@ void obj_loop_bridge_whaleramp(Object *obj, s32 updateRate) {
                 obj->trans.y_position += updateRateF * 2;
             }
         }
-    } else if (obj->properties.bridgeWhaleRamp.unk0 != 0) {
+    } else if (obj->properties.bridgeWhaleRamp.raiseTimer != 0) {
         if (obj->trans.rotation.x_rotation > -0x1300) {
             obj->trans.rotation.x_rotation -= updateRate * 45;
         }
@@ -130,13 +130,13 @@ void obj_loop_bridge_whaleramp(Object *obj, s32 updateRate) {
 
     switch (entry->moveMode) {
         case 0:
-            obj->properties.bridgeWhaleRamp.unk0 = 0;
+            obj->properties.bridgeWhaleRamp.raiseTimer = 0;
             if (obj->interactObj->distance < entry->radius) {
-                obj->properties.bridgeWhaleRamp.unk0 = 1;
+                obj->properties.bridgeWhaleRamp.raiseTimer = 1;
             }
             break;
         case 2:
-            obj->properties.bridgeWhaleRamp.unk0 = 1;
+            obj->properties.bridgeWhaleRamp.raiseTimer = 1;
             racerObj = get_racer_object(PLAYER_ONE);
             if (racerObj != NULL) {
                 racer = racerObj->racer;
@@ -152,18 +152,18 @@ void obj_loop_bridge_whaleramp(Object *obj, s32 updateRate) {
                         break;
                 }
                 if (entry->allowedVehicles & vehicleID) {
-                    obj->properties.bridgeWhaleRamp.unk0 = NULL;
+                    obj->properties.bridgeWhaleRamp.raiseTimer = NULL;
                 }
             }
             break;
         default:
             if (is_bridge_raised(entry->bridgeId) != 0) {
-                obj->properties.bridgeWhaleRamp.unk0 = (entry->raisedDuration * 2);
+                obj->properties.bridgeWhaleRamp.raiseTimer = (entry->raisedDuration * 2);
             }
-            if (obj->properties.bridgeWhaleRamp.unk0 > 0) {
-                obj->properties.bridgeWhaleRamp.unk0 -= updateRate;
+            if (obj->properties.bridgeWhaleRamp.raiseTimer > 0) {
+                obj->properties.bridgeWhaleRamp.raiseTimer -= updateRate;
             } else {
-                obj->properties.bridgeWhaleRamp.unk0 = 0;
+                obj->properties.bridgeWhaleRamp.raiseTimer = 0;
             }
             break;
     }

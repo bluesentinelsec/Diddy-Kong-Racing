@@ -132,7 +132,7 @@ typedef struct SaveConfig {
     unsigned language : 2;
     TT_COURSES
     unsigned subtitles : 1;
-    unsigned unk0 : 31;
+    unsigned reserved : 31;
     // unsigned checksum : 8; // For some reason, the struct becomes 12 bytes if this is there.
 } SaveConfig;
 

@@ -78,7 +78,7 @@ void obj_loop_wizpigship(Object *wizShipObj, s32 updateRate) {
                 mtxf_from_transform(&laserMtx, &trans);
 
                 for (i = 0; i < wizShipObj->attachPoints->count; i++) {
-                    index = wizShipObj->attachPoints->unk2C[i];
+                    index = wizShipObj->attachPoints->attachIndices[i];
                     if ((index >= 0) && (index < wizShipModel->numberOfAttachPoints)) {
                         if (wizShipObj->curVertData != NULL) {
                             posX = wizShipObj->curVertData[wizShipModel->attachPoints[index]].x;

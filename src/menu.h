@@ -278,21 +278,10 @@ enum MenuResult {
     MENU_RESULT_RETURN_TO_GAME,   // back into the level with the stored exit's entrance and cutscene
     MENU_RESULT_RESTART_LEVEL,    // reload the current level as it is
     MENU_RESULT_RESUME_ADVENTURE, // load the stored exit's destination with the level's default vehicle
-    MENU_RESULT_GO_TO_TITLE,
-    MENU_RESULT_TRACKS_MODE,
-    MENU_RESULT_UNK6,
-    MENU_RESULT_UNK7,
-    MENU_RESULT_UNK8,
-    MENU_RESULT_UNK9,
-    MENU_RESULT_UNK10,
-    MENU_RESULT_UNK11,
-    MENU_RESULT_UNK12,
-    MENU_RESULT_UNK13,
-    MENU_RESULT_GO_TO_HUB,
-    MENU_RESULT_UNK15,
-    MENU_RESULT_UNK16,
-    MENU_RESULT_UNK17,
-    MENU_RESULT_UNK18,
+    MENU_RESULT_GO_TO_TITLE,      // (any value mode_menu does not handle also goes to the title)
+    MENU_RESULT_TRACKS_MODE,      // back to the Tracks menu's track select
+    // 6..13 and 15..18 were never produced by any menu.
+    MENU_RESULT_GO_TO_HUB = 14, // load the central hub
 };
 
 enum TrackFinishBits {
@@ -330,12 +319,12 @@ typedef struct MenuAsset {
     s8 unused1F;
 } MenuAsset;
 
-typedef struct unk80080BC8 {
+typedef struct MenuPanelGeometry {
     Vertex *vertices[2];
     Triangle *triangles[2];
     TextureHeader *texture[2];
-    s32 unk18[2];
-} unk80080BC8;
+    s32 drawnImmediately[2];
+} MenuPanelGeometry;
 
 typedef struct unk80126460 {
     MenuElement elem[2];
@@ -443,7 +432,7 @@ typedef struct unk80126A80 {
 /* Size: 0x10 bytes */
 typedef struct SaveFileData {
   /* 0x00 */ u8 saveFileType; //SaveFileType enum
-  /* 0x01 */ u8 unk1;
+  /* 0x01 */ u8 hasData;      // best guess
   /* 0x02 */ u8 balloonCount;
   /* 0x03 */ u8 adventureTwo;
   /* 0x04 */ s16 compressedFilename;

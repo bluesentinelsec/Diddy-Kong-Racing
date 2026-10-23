@@ -40,7 +40,7 @@
 void obj_init_bubbler(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param) {
     LevelObjectEntry_Bubbler *entry = &levelEntry->bubbler;
     emitter_change_settings(obj->particleEmitter, entry->particleBehaviourID, entry->particlePropertyID, 0, 0, 0);
-    obj->properties.bubbler.unk0 = entry->particleDensity;
+    obj->properties.bubbler.emitChance = entry->particleDensity;
 }
 
 /**
@@ -49,7 +49,7 @@ void obj_init_bubbler(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 para
  * This rolls a random number and starts emitting particles based on that for variable density.
  */
 void obj_loop_bubbler(Object *obj, s32 updateRate) {
-    if (obj->properties.bubbler.unk0 >= rand_range(0, 1024)) {
+    if (obj->properties.bubbler.emitChance >= rand_range(0, 1024)) {
         obj->particleEmittersEnabled = OBJ_EMIT_1;
     } else {
         obj->particleEmittersEnabled = OBJ_EMIT_NONE;

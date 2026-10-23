@@ -95,7 +95,7 @@ typedef struct LevelObjectEntry_Audio {
     /* 0x0E */ u8 pitch;
     /* 0x0F */ u8 fastFalloff;
     /* 0x10 */ u8 priority;
-    /* 0x11 */ u8 unk11;
+    /* 0x11 */ u8 unused11;
 } LevelObjectEntry_Audio;
 
 typedef struct LevelObjectEntry_AudioLine {
@@ -165,7 +165,7 @@ typedef struct LevelObjectEntry_Door {
     /* 0x0D */ u8 balloonCount;
     /* 0x0E */ u8 doorType;
     /* 0x0F */ u8 textID;
-    /* 0x10 */ u8 unk10;
+    /* 0x10 */ u8 blockedVehicleMask;
     /* 0x11 */ s8 keyID;
     /* 0x12 */ u8 scale;
     /* 0x13 */ s8 localBalloons; // Use world balloon count instead of total.
@@ -186,7 +186,7 @@ typedef struct LevelObjectEntry_FogChanger {
 
 typedef struct LevelObjectEntry_AiNode {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u8 unk8;
+    /* 0x08 */ u8 targetTag;
     /* 0x09 */ u8 nodeID;
     /* 0x0A */ u8 adjacent[4];
     /* 0x0E */ s8 elevation;
@@ -195,16 +195,11 @@ typedef struct LevelObjectEntry_AiNode {
 
 typedef struct LevelObjectEntry_WeaponBalloon {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u8 unk8; // Unused?
+    /* 0x08 */ u8 unused8; // Unused?
     /* 0x09 */ u8 balloonType; Hint((Enum:BalloonType))
     /* 0x0A */ u8 scale; Hint((Scale, DivideBy:64)) // This is divided by 64 to get actual scale.
     /* 0x0B */ u8 padB; 
 } LevelObjectEntry_WeaponBalloon;
-
-typedef struct LevelObjectEntry_AudioSeqLine {
-    /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u8 unk8[0xC];
-} LevelObjectEntry_AudioSeqLine;
 
 typedef struct LevelObjectEntry_BombExplosion {
     /* 0x00 */ LevelObjectEntryCommon common;
@@ -214,10 +209,6 @@ typedef struct LevelObjectEntry_BombExplosion {
 typedef struct LevelObjectEntry_WBalloonPop {
     /* 0x00 */ LevelObjectEntryCommon common;
 } LevelObjectEntry_WBalloonPop;
-
-typedef struct LevelObjectEntry_Unknown25 {
-    /* 0x00 */ LevelObjectEntryCommon common;
-} LevelObjectEntry_Unknown25;
 
 typedef struct LevelObjectEntry_SkyControl {
     /* 0x00 */ LevelObjectEntryCommon common;
@@ -230,7 +221,7 @@ typedef struct LevelObjectEntry_AudioReverb {
     /* 0x08 */ u8 magnitude;
     /* 0x09 */ u8 lineID;
     /* 0x0A */ u8 vertexIndex;
-    /* 0x0A */ u8 unkB;
+    /* 0x0A */ u8 unusedB;
 } LevelObjectEntry_AudioReverb;
 
 typedef struct LevelObjectEntry_Torch_Mist {
@@ -258,7 +249,7 @@ typedef struct LevelObjectEntry_ModeChange {
 
 typedef struct LevelObjectEntry_StopWatchMan {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u8 unk8[4];
+    /* 0x08 */ u8 unused8[4];
 } LevelObjectEntry_StopWatchMan;
 
 typedef struct LevelObjectEntry_Banana {
@@ -285,7 +276,7 @@ typedef struct LevelObjectEntry_RgbaLight {
 
 typedef struct LevelObjectEntry_Buoy_PirateShip {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u8 unk8[4];
+    /* 0x08 */ u8 unused8[4];
 } LevelObjectEntry_Buoy_PirateShip;
 
 typedef struct LevelObjectEntry_Weather {
@@ -325,8 +316,9 @@ typedef struct LevelObjectEntry_SeaMonster {
 typedef struct LevelObjectEntry_Bonus {
     /* 0x00 */ LevelObjectEntryCommon common;
     /* 0x08 */ u8 radius;
-    /* 0x09 */ u8 angleY; Hint((Angle, DivideBy:64))
-    /* 0x0A */ u8 unkA;
+    /* 0x09 */ u8 angleY;
+    Hint((Angle, DivideBy : 64))
+        /* 0x0A */ u8 racerFilterFlags; // best guess
 } LevelObjectEntry_Bonus;
 
 typedef struct LevelObjectEntry_LensFlare {
@@ -416,7 +408,7 @@ typedef struct LevelObjectEntry_Animation {
 typedef struct LevelObjectEntry_InfoPoint {
     /* 0x00 */ LevelObjectEntryCommon common;
     /* 0x08 */ u8 hitbox[3];
-    /* 0x0B */ u8 unkB;
+    /* 0x0B */ u8 angleY;
 } LevelObjectEntry_InfoPoint;
 
 typedef struct LevelObjectEntry_Trigger {
@@ -432,7 +424,7 @@ typedef struct LevelObjectEntry_Trigger {
 
 typedef struct LevelObjectEntry_AirZippers_WaterZippers {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u8 unk8;
+    /* 0x08 */ u8 unused8;
     /* 0x09 */ u8 radius;
     /* 0x0A */ u8 angleY; Hint((Angle, DivideBy:64))
     /* 0x0B */ u8 padB;
@@ -539,7 +531,7 @@ typedef struct LevelObjectEntry_Bubbler {
     /* 0x08 */ u8 particlePropertyID;
     /* 0x09 */ u8 particleBehaviourID;
     /* 0x0A */ u16 particleDensity;
-    /* 0x0C */ u8 unkC[4];
+    /* 0x0C */ u8 unusedC[4];
 } LevelObjectEntry_Bubbler;
 
 typedef struct LevelObjectEntry_FlyCoin {
@@ -605,14 +597,6 @@ typedef struct LevelObjectEntry_WardenSmoke {
     /* 0x00 */ LevelObjectEntryCommon common;
 } LevelObjectEntry_WardenSmoke;
 
-typedef struct LevelObjectEntry_Unknown94 {
-    /* 0x00 */ LevelObjectEntryCommon common;
-} LevelObjectEntry_Unknown94;
-
-typedef struct LevelObjectEntry_Unknown96 {
-    /* 0x00 */ LevelObjectEntryCommon common;
-} LevelObjectEntry_Unknown96;
-
 typedef struct LevelObjectEntry_Snowball {
     /* 0x00 */ LevelObjectEntryCommon common;
 } LevelObjectEntry_Snowball;
@@ -625,7 +609,7 @@ typedef struct LevelObjectEntry_Teleport {
 
 typedef struct LevelObjectEntry_Lighthouse_RocketSignpost {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u8 unk8;
+    /* 0x08 */ u8 unused8;
     /* 0x09 */ u8 radius;
     /* 0x0A */ u8 angleY; Hint((Angle, DivideBy:64))
     /* 0x0B */ u8 padB;
@@ -658,9 +642,11 @@ typedef struct LevelObjectEntry_SilverCoinAdv2 {
 
 typedef struct LevelObjectEntry_TTDoor {
     /* 0x00 */ LevelObjectEntryCommon common;
-    /* 0x08 */ u8 angleY; Hint((Angle, DivideBy:64)) // Rotation when closed
-    /* 0x09 */ u8 unk9; Hint((Angle, DivideBy:64)) // Rotation when open
-    /* 0x0A */ u8 radius;
+    /* 0x08 */ u8 angleY;
+    Hint((Angle, DivideBy : 64)) // Rotation when closed
+        /* 0x09 */ u8 openRotation;
+    Hint((Angle, DivideBy : 64)) // Rotation when open
+        /* 0x0A */ u8 radius;
     /* 0x0B */ u8 textID;
     /* 0x0C */ u8 scale;
     /* 0x0D */ u8 padD;
@@ -694,25 +680,11 @@ typedef struct LevelObjectEntry_Midichset {
     /* 0x0B */ u8 sequenceId;
 } LevelObjectEntry_Midichset;
 
-typedef struct LevelObjectEntry8000E2B4 {
-    LevelObjectEntryCommon common;
-    s16 angleZ;
-    s16 angleX;
-    s16 angleY;
-    s16 playerIndex;
-} LevelObjectEntry8000E2B4;
-
-typedef struct LevelObjectEntry80011AD0 {
-    LevelObjectEntryCommon common;
-    u8 pad8[0x6];
-    u8 unkD;
-} LevelObjectEntry80011AD0;
-
-typedef struct LevelObjectEntry8003FC44 {
+typedef struct LevelObjectEntry_EffectSpawn {
     LevelObjectEntryCommon common;
     s8 explosionRepeats;
     s8 unusedA;
-} LevelObjectEntry8003FC44;
+} LevelObjectEntry_EffectSpawn;
 
 typedef struct LevelObjectEntry_WaveGenerator {
     LevelObjectEntryCommon common;
@@ -830,9 +802,14 @@ typedef struct LevelObjectEntry_CameraAnimation {
     LevelObjectEntryCommon common;
 } LevelObjectEntry_CameraAnimation;
 
+// Smokey's race: when the boss passes within `radius` * 4 on lap `lap` (0 = any lap), it drops
+// a fireball that burns for `hazardSeconds`.
 typedef struct LevelObjectEntry_BossHazardTrigger {
-    LevelObjectEntryCommon common;
-    u8 unk8[4];
+    /* 0x00 */ LevelObjectEntryCommon common;
+    /* 0x08 */ u8 lap;
+    /* 0x09 */ u8 radius;
+    /* 0x0A */ u8 hazardSeconds;
+    /* 0x0B */ u8 pad;
 } LevelObjectEntry_BossHazardTrigger;
 
 typedef struct LevelObjectEntry_DoorOpener {
@@ -909,10 +886,8 @@ typedef struct LevelObjectEntry {
         LevelObjectEntry_FogChanger fogChanger;
         LevelObjectEntry_AiNode aiNode;
         LevelObjectEntry_WeaponBalloon weaponBalloon;
-        LevelObjectEntry_AudioSeqLine audioSeqLine;
         LevelObjectEntry_BombExplosion bombExplosion;
         LevelObjectEntry_WBalloonPop balloonPop;
-        LevelObjectEntry_Unknown25 unk25;
         LevelObjectEntry_SkyControl skyControl;
         LevelObjectEntry_AudioReverb audioReverb;
         LevelObjectEntry_Torch_Mist torch_mist;
@@ -962,8 +937,6 @@ typedef struct LevelObjectEntry {
         LevelObjectEntry_Boost boost;
         LevelObjectEntry_Boost2 boost2;
         LevelObjectEntry_WardenSmoke tajSmoke;
-        LevelObjectEntry_Unknown94 unk94;
-        LevelObjectEntry_Unknown96 unk96;
         LevelObjectEntry_Snowball snowball;
         LevelObjectEntry_Teleport teleport;
         LevelObjectEntry_Lighthouse_RocketSignpost lighthouse_signpost;
@@ -977,14 +950,12 @@ typedef struct LevelObjectEntry {
         LevelObjectEntry_OctoBubble octoBubble;
         LevelObjectEntry_LevelName levelName;
         LevelObjectEntry_Midichset midichset;
-        LevelObjectEntry8000E2B4 unk8000E2B4;
-        LevelObjectEntry80011AD0 unk80011AD0;
-        LevelObjectEntry8003FC44 unk8003FC44;
         LevelObjectEntry_WaveGenerator waveGenerator;
         LevelObjectEntry_WavePower wavePower;
         LevelObjectEntry_CharacterSelect characterSelect;
         LevelObjectEntry_Hud hud;
         LevelObjectEntry_BHV_UNK_5C bhv_unk_5C;
+        LevelObjectEntry_BossHazardTrigger bossHazardTrigger;
     };
 } LevelObjectEntry;
 

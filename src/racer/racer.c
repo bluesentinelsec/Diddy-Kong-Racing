@@ -449,10 +449,10 @@ void obj_init_racer(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param)
         gCameraObject->trans.rotation.x_rotation = 0x400;
         gCameraObject->trans.rotation.y_rotation = tempRacer->cameraYaw;
         gCameraObject->mode = CAMERA_CAR;
-        gCameraObject->unk3C = 0xFF;
-        gCameraObject->unk3D = 0xFF;
-        gCameraObject->unk3E = 0xFF;
-        gCameraObject->unk3F = 0xFF;
+        gCameraObject->unused3C = 0xFF;
+        gCameraObject->unused3D = 0xFF;
+        gCameraObject->unused3E = 0xFF;
+        gCameraObject->unused3F = 0xFF;
         gCameraObject->cam_unk_18 = 0.0f;
         update_player_camera(obj, tempRacer, 1.0f);
     }

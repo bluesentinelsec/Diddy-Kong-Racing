@@ -50,18 +50,18 @@ void obj_init_dino_whale(Object *obj, UNUSED LevelObjectEntry *levelEntry, UNUSE
 void obj_loop_dino_whale(Object *obj, s32 updateRate) {
     s32 animFrame;
 
-    if (obj->properties.dinoWhale.unk0 > 0) {
-        obj->properties.dinoWhale.unk0 -= updateRate;
+    if (obj->properties.dinoWhale.roarTimer > 0) {
+        obj->properties.dinoWhale.roarTimer -= updateRate;
         updateRate *= 2;
     } else {
-        obj->properties.dinoWhale.unk0 = 0;
+        obj->properties.dinoWhale.roarTimer = 0;
     }
     animFrame = obj->animFrame;
     anim_object_follow_path(obj, updateRate, obj);
     play_footstep_sounds(obj, 0, animFrame, SOUND_STOMP2, SOUND_STOMP3);
     if (obj->interactObj->distance < 255) {
-        if (obj->properties.dinoWhale.unk0 == 0) {
-            obj->properties.dinoWhale.unk0 = 60;
+        if (obj->properties.dinoWhale.roarTimer == 0) {
+            obj->properties.dinoWhale.roarTimer = 60;
             audspat_play_sound_at_position(SOUND_VOICE_BRONTO_ROAR, obj->trans.x_position, obj->trans.y_position,
                                            obj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
         }

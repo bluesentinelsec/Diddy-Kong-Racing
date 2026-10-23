@@ -1394,7 +1394,7 @@ s32 obj_init_attachpoint(Object *obj) {
         }
         return TRUE;
     }
-    attachPoint->unk2C = obj->header->vehiclePartIndices;
+    attachPoint->attachIndices = obj->header->vehiclePartIndices;
     return FALSE;
 }
 
@@ -2404,7 +2404,7 @@ void obj_bridge_pos(s32 timing, f32 *x, f32 *y, f32 *z) {
         current_obj = gObjPtrList[i];
 
         if (current_obj != NULL && !(current_obj->trans.flags & OBJ_FLAGS_PARTICLE) &&
-            current_obj->behaviorId == BHV_RAMP_SWITCH && current_obj->properties.common.unk0 == timing) {
+            current_obj->behaviorId == BHV_RAMP_SWITCH && current_obj->properties.rampSwitch.bridgeID == timing) {
             *x = current_obj->trans.x_position;
             *y = current_obj->trans.y_position;
             *z = current_obj->trans.z_position;

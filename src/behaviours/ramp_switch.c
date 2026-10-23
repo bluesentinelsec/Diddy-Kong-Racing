@@ -42,7 +42,7 @@ void obj_init_rampswitch(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 p
     obj->interactObj->hitboxKind = 0;
     obj->interactObj->hitboxRadius = 20;
     obj->interactObj->pushForce = 0;
-    obj->properties.rampSwitch.unk0 = entry->bridgeId;
+    obj->properties.rampSwitch.bridgeID = entry->bridgeId;
 }
 
 /**
@@ -52,7 +52,7 @@ void obj_init_rampswitch(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 p
  */
 void obj_loop_rampswitch(Object *obj, UNUSED s32 updateRate) {
     if (obj->interactObj->distance < 45) {
-        start_bridge_timer(obj->properties.rampSwitch.unk0);
+        start_bridge_timer(obj->properties.rampSwitch.bridgeID);
     }
     obj->interactObj->distance = 255;
 }

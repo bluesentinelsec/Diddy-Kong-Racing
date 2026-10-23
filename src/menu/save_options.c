@@ -450,7 +450,7 @@ void savemenu_blank_save_destination(SaveFileData *file, s32 *fileIndex) {
     for (i = 0; i < NUMBER_OF_SAVE_FILES; i++) {
         if (gRaceSetup.saveFiles[i]->newGame) {
             file[*fileIndex].saveFileType = SAVE_FILE_TYPE_CART_SAVE;
-            file[*fileIndex].unk1 = 0;
+            file[*fileIndex].hasData = 0;
             file[*fileIndex].balloonCount = 0;
             file[*fileIndex].controllerIndex = i;
             file[*fileIndex].fileSize = get_game_data_file_size();
@@ -489,7 +489,7 @@ SIDeviceStatus savemenu_load_sources(void) {
     for (i = 0; i < NUMBER_OF_SAVE_FILES; i++) {
         if (!gRaceSetup.saveFiles[i]->newGame) {
             gSaveMenuFilesSource[gSaveMenuOptionCountUpper].saveFileType = SAVE_FILE_TYPE_CART_SAVE;
-            gSaveMenuFilesSource[gSaveMenuOptionCountUpper].unk1 = 1;
+            gSaveMenuFilesSource[gSaveMenuOptionCountUpper].hasData = 1;
             gSaveMenuFilesSource[gSaveMenuOptionCountUpper].balloonCount = gRaceSetup.saveFiles[i]->balloonsPtr[0];
             gSaveMenuFilesSource[gSaveMenuOptionCountUpper].controllerIndex = i;
             gSaveMenuFilesSource[gSaveMenuOptionCountUpper].fileSize = get_game_data_file_size();
@@ -498,7 +498,7 @@ SIDeviceStatus savemenu_load_sources(void) {
     }
 
     gSaveMenuFilesSource[gSaveMenuOptionCountUpper].saveFileType = SAVE_FILE_TYPE_CART_TIMES;
-    gSaveMenuFilesSource[gSaveMenuOptionCountUpper].unk1 = 1;
+    gSaveMenuFilesSource[gSaveMenuOptionCountUpper].hasData = 1;
     gSaveMenuFilesSource[gSaveMenuOptionCountUpper++].fileSize = get_time_data_file_size();
     gSaveMenuFilesSource[gSaveMenuOptionCountUpper++].saveFileType = SAVE_FILE_TYPE_CART_BONUSES;
     temp_D_80126A64 = sSaveMenuFilenames;

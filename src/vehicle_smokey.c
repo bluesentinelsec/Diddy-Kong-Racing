@@ -305,14 +305,14 @@ void spawn_boss_hazard(Object *obj, Object_Racer *racer, f32 offset, s32 objectI
         tempObj = objList[i];
         if (tempObj->behaviorId == BHV_BOSS_HAZARD_TRIGGER) {
             entry = tempObj->level_entry;
-            if ((s8) entry->animation.z_rotation == racer->lap + 1 || (s8) entry->animation.z_rotation == 0) {
+            if ((s8) entry->bossHazardTrigger.lap == racer->lap + 1 || (s8) entry->bossHazardTrigger.lap == 0) {
                 diffX = tempObj->trans.x_position - obj->trans.x_position;
                 diffY = tempObj->trans.y_position - obj->trans.y_position;
                 diffZ = tempObj->trans.z_position - obj->trans.z_position;
                 if (sqrtf((diffX * diffX) + (diffY * diffY) + (diffZ * diffZ)) <
-                    (f32) ((s8) entry->animation.x_rotation & 0xFF) * 4.0) {
-                    if (tempObj->properties.common.unk0 == 0) {
-                        tempObj->properties.common.unk0 = 1;
+                    (f32) ((s8) entry->bossHazardTrigger.radius & 0xFF) * 4.0) {
+                    if (tempObj->properties.bossHazardTrigger.triggered == 0) {
+                        tempObj->properties.bossHazardTrigger.triggered = 1;
                         newObj = spawn_object(&spawnObj, OBJECT_SPAWN_UNK01);
                         if (newObj != NULL) {
                             newObj->level_entry = NULL;
@@ -320,7 +320,7 @@ void spawn_boss_hazard(Object *obj, Object_Racer *racer, f32 offset, s32 objectI
                             newObj->y_velocity = obj->y_velocity;
                             newObj->z_velocity = obj->z_velocity;
                             newObj->properties.fireball.obj = tempObj;
-                            newObj->properties.fireball.timer = (s8) entry->animation.y_rotation * 60;
+                            newObj->properties.fireball.timer = (s8) entry->bossHazardTrigger.hazardSeconds * 60;
                             newObj->animFrame = rand_range(0, 255);
                             audspat_play_sound_at_position(soundID, newObj->trans.x_position, newObj->trans.y_position,
                                                            newObj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER,
@@ -328,7 +328,7 @@ void spawn_boss_hazard(Object *obj, Object_Racer *racer, f32 offset, s32 objectI
                         }
                     }
                 } else {
-                    tempObj->properties.common.unk0 = 0;
+                    tempObj->properties.bossHazardTrigger.triggered = 0;
                 }
             }
         }

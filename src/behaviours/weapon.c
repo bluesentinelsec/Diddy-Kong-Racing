@@ -45,7 +45,7 @@ void obj_init_weapon(Object *obj, UNUSED LevelObjectEntry *levelEntry, UNUSED s3
     obj->interactObj->hitboxRadius = 24;
     obj->interactObj->pushForce = 0;
     obj->properties.projectile.timer = normalise_time(480);
-    obj->properties.projectile.unk4 = 0;
+    obj->properties.projectile.age = 0;
 }
 
 /**
@@ -199,15 +199,15 @@ void weapon_projectile(Object *obj, s32 updateRate) {
         }
     }
 block_37:
-    obj->properties.projectile.unk4 += updateRate;
+    obj->properties.projectile.age += updateRate;
     if (obj->attachPoints != NULL) {
         temp_s1_2 = obj->attachPoints->obj[0];
-        if (obj->properties.projectile.unk4 < 8) {
-            temp_s1_2->trans.scale = obj->properties.projectile.unk4 * 0.5f;
-        } else if (obj->properties.projectile.unk4 < 16) {
-            temp_s1_2->trans.scale = 4.0f - ((obj->properties.projectile.unk4 - 8) * 0.25f);
+        if (obj->properties.projectile.age < 8) {
+            temp_s1_2->trans.scale = obj->properties.projectile.age * 0.5f;
+        } else if (obj->properties.projectile.age < 16) {
+            temp_s1_2->trans.scale = 4.0f - ((obj->properties.projectile.age - 8) * 0.25f);
         } else {
-            temp_s1_2->trans.scale = (sins_f(obj->properties.projectile.unk4 << 12) * 0.25f) + 2.0f;
+            temp_s1_2->trans.scale = (sins_f(obj->properties.projectile.age << 12) * 0.25f) + 2.0f;
         }
     }
     obj->properties.projectile.timer -= updateRate;
@@ -610,7 +610,7 @@ void weapon_trap(Object *weaponObj, s32 updateRate) {
  * Plays a sound if one is given.
  */
 void obj_spawn_effect(f32 x, f32 y, f32 z, s32 objectID, s32 soundID, f32 scale, s32 arg6) {
-    LevelObjectEntry8003FC44 spawnObj;
+    LevelObjectEntry_EffectSpawn spawnObj;
     Object *newObj;
 
     spawnObj.common.x = x;

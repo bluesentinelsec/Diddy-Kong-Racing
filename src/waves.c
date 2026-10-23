@@ -47,7 +47,7 @@ s16 gWaveCellIndexLookupDouble[26] = { 0, 1, 1, 1, 2, 3, 4, 4, 4, 5, 3, 4, 4, 4,
 u8 *gWaveDetailLevels = NULL;
 s32 gWaveTileTotal = 0; // some sort of count? Relative to gWaveController.subdivisions
 ColourCycle *gWavePulseLight = NULL;
-unk800E3184 *gWaveGenSlots = NULL; // tracks an index into gWaveGenList
+WaveGenTileSlots *gWaveGenSlots = NULL; // tracks an index into gWaveGenList
 s32 gWaveGenCount = 0;      // counter for something, incremented in wavegen_register, decremented in wavegen_destroy
 s32 gWaveTileGridCount = 0; // used in mempool_alloc_safe size calculation, multiplied with 8
 WaveGen *gWaveGenList = NULL;
@@ -647,7 +647,9 @@ void wave_block_build_vertices(s32 blockID, s32 viewportID) {
                 } else if (var_v0 < 0) {
                     var_v0 = 0;
                 }
-                var_v0 += ((255 - var_v0) * sp6C->viewportFade[viewportID >> 1].unk0[gWaveVisibleBlocks[k].quadrant]) >> 7;
+                var_v0 += ((255 - var_v0) *
+                           sp6C->viewportFade[viewportID >> 1].quadrantFade[gWaveVisibleBlocks[k].quadrant]) >>
+                          7;
                 vertices[vertexIdx].y = vertexY;
 
                 vertexCol = var_v0 < 192 ? 255 : ((255 - var_v0) * 4) & 255;
@@ -899,31 +901,31 @@ void wave_blocks_decay_ripples(s32 arg0, s32 arg1) {
             if (gWaveController.doubleDensity) {
                 for (j = 0; j < 4; j++) {
                     if (gWaveBlockCells[gWaveModel[i].tileIndex] & (0xFF << (j << 3))) {
-                        if (arg1 < gWaveModel[i].viewportFade[arg0].unk0[j]) {
-                            gWaveModel[i].viewportFade[arg0].unk0[j] -= arg1;
+                        if (arg1 < gWaveModel[i].viewportFade[arg0].quadrantFade[j]) {
+                            gWaveModel[i].viewportFade[arg0].quadrantFade[j] -= arg1;
                         } else {
-                            gWaveModel[i].viewportFade[arg0].unk0[j] = 0;
+                            gWaveModel[i].viewportFade[arg0].quadrantFade[j] = 0;
                         }
                     } else {
-                        if ((gWaveModel[i].viewportFade[arg0].unk0[j] + arg1) < 0x80) {
-                            gWaveModel[i].viewportFade[arg0].unk0[j] += arg1;
+                        if ((gWaveModel[i].viewportFade[arg0].quadrantFade[j] + arg1) < 0x80) {
+                            gWaveModel[i].viewportFade[arg0].quadrantFade[j] += arg1;
                         } else {
-                            gWaveModel[i].viewportFade[arg0].unk0[j] = 0x80;
+                            gWaveModel[i].viewportFade[arg0].quadrantFade[j] = 0x80;
                         }
                     }
                 }
             } else {
                 if (gWaveBlockCells[gWaveModel[i].tileIndex]) {
-                    if (arg1 < gWaveModel[i].viewportFade[arg0].unk0[0]) {
-                        gWaveModel[i].viewportFade[arg0].unk0[0] -= arg1;
+                    if (arg1 < gWaveModel[i].viewportFade[arg0].quadrantFade[0]) {
+                        gWaveModel[i].viewportFade[arg0].quadrantFade[0] -= arg1;
                     } else {
-                        gWaveModel[i].viewportFade[arg0].unk0[0] = 0;
+                        gWaveModel[i].viewportFade[arg0].quadrantFade[0] = 0;
                     }
                 } else {
-                    if (gWaveModel[i].viewportFade[arg0].unk0[0] + arg1 < 0x80) {
-                        gWaveModel[i].viewportFade[arg0].unk0[0] += arg1;
+                    if (gWaveModel[i].viewportFade[arg0].quadrantFade[0] + arg1 < 0x80) {
+                        gWaveModel[i].viewportFade[arg0].quadrantFade[0] += arg1;
                     } else {
-                        gWaveModel[i].viewportFade[arg0].unk0[0] = 0x80;
+                        gWaveModel[i].viewportFade[arg0].quadrantFade[0] = 0x80;
                     }
                 }
             }
@@ -1460,10 +1462,10 @@ void waves_init_segments(LevelModel *model) {
 
     gWaveGenList = (WaveGen *) ((uintptr_t) gWaveModel + model->numberOfSegments * sizeof(LevelModel_Alternate));
     gWaveGenObjs = (Object **) (gWaveGenList + sizeof(WaveGen *) * 8);
-    gWaveGenSlots = (unk800E3184 *) (gWaveGenObjs + 32);
+    gWaveGenSlots = (WaveGenTileSlots *) (gWaveGenObjs + 32);
 
     for (i = 0; i < (gWaveTileGridCount * 8); i++) {
-        gWaveGenSlots->unk0[i] = 0xFF;
+        gWaveGenSlots->genIndices[i] = 0xFF;
     }
 
     // 0x20 / 32 sizeof what?
@@ -1520,8 +1522,8 @@ void waves_init_segments(LevelModel *model) {
         }
 
         for (j = 0; j < 4; j++) {
-            otherModel->viewportFade[0].unk0[j] = 0x80;
-            otherModel->viewportFade[1].unk0[j] = 0x80;
+            otherModel->viewportFade[0].quadrantFade[j] = 0x80;
+            otherModel->viewportFade[1].quadrantFade[j] = 0x80;
         }
     }
 }
@@ -1879,8 +1881,8 @@ void waves_init_collision(LevelModel *model) {
     stubbed_printf("waves_init_collision end\n");
 }
 
-s32 wave_cells_in_rect(s32 arg0, unk8011C3B8 *arg1, ShadowPlane *arg2, f32 shadowXNegPosition, f32 shadowZNegPosition,
-                  f32 shadowXPosition, f32 shadowZPosition) {
+s32 wave_cells_in_rect(s32 arg0, ShadowWaveTri *arg1, ShadowPlane *arg2, f32 shadowXNegPosition, f32 shadowZNegPosition,
+                       f32 shadowXPosition, f32 shadowZPosition) {
     s32 colCount;
     s32 startCol;
     s32 startRow;
@@ -2020,9 +2022,8 @@ s32 wave_cells_in_rect(s32 arg0, unk8011C3B8 *arg1, ShadowPlane *arg2, f32 shado
                 arg2[counter].y = temp_fs3 * temp_fs2;
                 arg2[counter].z = temp_fs1 * temp_fs2;
 
-                arg2[counter].unkC_union.w =
-                    -((arg1[counter].x1 * arg2[counter].x) + (arg1[counter].y1 * arg2[counter].y) +
-                      (arg1[counter].z1 * arg2[counter].z));
+                arg2[counter].planeD.w = -((arg1[counter].x1 * arg2[counter].x) + (arg1[counter].y1 * arg2[counter].y) +
+                                           (arg1[counter].z1 * arg2[counter].z));
                 counter++;
             }
             arg1[counter].x1 = temp_s2;
@@ -2044,9 +2045,8 @@ s32 wave_cells_in_rect(s32 arg0, unk8011C3B8 *arg1, ShadowPlane *arg2, f32 shado
                 arg2[counter].y = temp_fs3 * temp_fs2;
                 arg2[counter].z = temp_fs1 * temp_fs2;
 
-                arg2[counter].unkC_union.w =
-                    -((arg1[counter].x1 * arg2[counter].x) + (arg1[counter].y1 * arg2[counter].y) +
-                      (arg1[counter].z1 * arg2[counter].z));
+                arg2[counter].planeD.w = -((arg1[counter].x1 * arg2[counter].x) + (arg1[counter].y1 * arg2[counter].y) +
+                                           (arg1[counter].z1 * arg2[counter].z));
                 counter++;
             }
 
@@ -2300,7 +2300,7 @@ f32 waves_get_y(s32 blockID, s32 arg1, s32 arg2) {
     s32 i;
     s32 subdivisons;
     s32 temp_0;
-    unk800E3184 *temp_a3;
+    WaveGenTileSlots *temp_a3;
     WaveGen *gen;
 
     y = 0.0f;
@@ -2318,14 +2318,14 @@ f32 waves_get_y(s32 blockID, s32 arg1, s32 arg2) {
     }
     temp_a1 = (gWaveModel[blockID].tileX * subdivisons) + arg1;
     temp_a3 = &gWaveGenSlots[temp_a1];
-    if (temp_a3->unk0[0] != 0xFF) {
+    if (temp_a3->genIndices[0] != 0xFF) {
         temp_0 = arg2 + (subdivisons * gWaveModel[blockID].tileZ);
         temp_f30 = gWaveBlockPosX + (temp_a1 * stepX);
         temp_f24 = gWaveBlockPosZ + (temp_0 * stepZ);
         zeroCheck = 0;
         i = 0;
         do {
-            gen = &gWaveGenList[temp_a3->unk0[i]];
+            gen = &gWaveGenList[temp_a3->genIndices[i]];
             if (gen->minZ <= temp_f24 && temp_f24 <= gen->maxZ) {
                 diffX = temp_f30 - gen->x_position;
                 diffZ = temp_f24 - gen->z_position;
@@ -2353,7 +2353,7 @@ f32 waves_get_y(s32 blockID, s32 arg1, s32 arg2) {
                 }
             }
             i++;
-        } while (i < 8 && temp_a3->unk0[i] != 0xFF);
+        } while (i < 8 && temp_a3->genIndices[i] != 0xFF);
     }
 
     return y;
@@ -2367,7 +2367,7 @@ void wavegen_destroy(Object *obj) {
     s32 k;
     s32 j;
     s32 hasWave;
-    unk800E3184 *temp_a1;
+    WaveGenTileSlots *temp_a1;
 
     if (gWaveGenList == NULL) {
         return;
@@ -2386,16 +2386,16 @@ void wavegen_destroy(Object *obj) {
 
     i--;
     for (j = 0; j < gWaveTileGridCount; j++) {
-        for (k = 0, temp_a1 = &gWaveGenSlots[j]; k < 8 && temp_a1->unk0[k] != 0xFF; k++) {
-            if (i != temp_a1->unk0[k]) {
+        for (k = 0, temp_a1 = &gWaveGenSlots[j]; k < 8 && temp_a1->genIndices[k] != 0xFF; k++) {
+            if (i != temp_a1->genIndices[k]) {
                 continue;
             }
 
             while (k < 7) {
-                temp_a1->unk0[k] = temp_a1->unk0[k + 1];
+                temp_a1->genIndices[k] = temp_a1->genIndices[k + 1];
                 k++;
             }
-            temp_a1->unk0[k] = 0xFF;
+            temp_a1->genIndices[k] = 0xFF;
             k++;
         }
     }
@@ -2439,7 +2439,7 @@ WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 arg
     s32 maxX;
     s32 k;
     s32 i;
-    unk800E3184 *temp;
+    WaveGenTileSlots *temp;
     WaveGen *result;
 
     result = NULL;
@@ -2480,15 +2480,15 @@ WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 arg
 
             for (j = minX; j <= maxX; j++) {
                 temp = &gWaveGenSlots[j];
-                if (temp->unk0[7] != 0xFF) {
+                if (temp->genIndices[7] != 0xFF) {
                     continue;
                 }
 
                 k = 0;
-                while (temp->unk0[k] != 0xFF) {
+                while (temp->genIndices[k] != 0xFF) {
                     k++;
                 }
-                temp->unk0[k] = i;
+                temp->genIndices[k] = i;
             }
             result = &gWaveGenList[i];
             result->minZ = zPos - waveSize;

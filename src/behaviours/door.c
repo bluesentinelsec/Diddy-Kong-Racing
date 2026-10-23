@@ -174,7 +174,7 @@ void obj_loop_door(Object *doorObj, s32 updateRate) {
                 }
             }
         }
-        keyBits &= doorEntry->unk10;
+        keyBits &= doorEntry->blockedVehicleMask;
         if (doorEntry->common.objectID == ASSET_OBJECT_ID_BIGBOSSDOOR ||
             doorEntry->common.objectID == ASSET_OBJECT_ID_BOSSDOOR) {
             if (obj_door_override()) {
@@ -238,9 +238,9 @@ void obj_loop_door(Object *doorObj, s32 updateRate) {
             }
             angleVel = 0;
             if (door->openDir == DOOR_OPENING) {
-                angleVel = doorObj->trans.rotation.y_rotation - doorObj->properties.common.unk4;
+                angleVel = doorObj->trans.rotation.y_rotation - doorObj->properties.door.openAngle;
             } else if (door->openDir == DOOR_CLOSING) {
-                angleVel = doorObj->trans.rotation.y_rotation - doorObj->properties.common.unk0;
+                angleVel = doorObj->trans.rotation.y_rotation - doorObj->properties.door.closeAngle;
             }
             angleVel >>= 3;
             if (angleVel > 0x200) {
@@ -310,7 +310,7 @@ void obj_init_ttdoor(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param
     ttDoor->jingleTimer = 0;
     ttDoor->radius = entry->radius;
     obj->properties.door.closeAngle = obj->trans.rotation.y_rotation;
-    obj->properties.door.openAngle = (entry->unk9 & 0x3F) << 0xA;
+    obj->properties.door.openAngle = (entry->openRotation & 0x3F) << 0xA;
     radius = entry->scale & 0xFF;
     if (radius < 10) {
         radius = 10;

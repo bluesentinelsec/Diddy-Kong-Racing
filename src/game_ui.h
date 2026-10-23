@@ -322,13 +322,13 @@ typedef struct HudElement_Timer {
     s8 minutes;         // Minutes elapsed
     s8 seconds;         // Seconds elapsed
     s8 hundredths;      // Hundredths of a second elapsed
-    s8 unk1D;
+    s8 targetPos;
 } HudElement_Timer;
 
 typedef struct HudElement_FinishText {
     s8 status;          // Which behaviour to do
     s8 fadeTimer;       // Timer that signals sliding the text offscreen when it hits 120
-    s8 unk1C;           // Unused
+    s8 unused1C;        // Unused
     s8 targetPos;       // Target X offset for the element
 } HudElement_FinishText;
 
@@ -394,9 +394,9 @@ typedef struct HudElements {
 typedef struct HudDrawTexture {
     DrawTexture drawTexture;
     // texrect_draw walks DrawTexture elements until a NULL texture pointer. On the N64 the
-    // zeroed unk8 is exactly where element[1].texture lands; with 8-byte pointers it must be
+    // zeroed terminator is exactly where element[1].texture lands; with 8-byte pointers it must be
     // pointer-sized too, or texrect_draw reads uninitialised stack (crashed on C-right in the hub).
-    uintptr_t unk8;
+    uintptr_t terminator;
 } HudDrawTexture;
 
 u8 race_starting(void);

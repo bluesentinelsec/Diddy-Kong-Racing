@@ -62,8 +62,8 @@ void obj_init_weaponballoon(Object *obj, LevelObjectEntry *levelEntry, UNUSED s3
     }
 
     // I guess unk8 is unused?
-    if (entry->unk8 >= 6) {
-        entry->unk8 = 0;
+    if (entry->unused8 >= 6) {
+        entry->unused8 = 0;
     }
 
     if (obj->modelIndex >= obj->header->numberOfModelIds) {
