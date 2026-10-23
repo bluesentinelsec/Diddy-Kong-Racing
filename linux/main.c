@@ -28,8 +28,6 @@ void thread3_main(void *unused);
 // libultra code asks about "the current thread" (osGetThreadPri(NULL) etc.).
 // There is no thread system on PC, so the host thread poses as one: thread 3
 // at its real priority.
-extern OSThread *__osRunningThread;
-static OSThread sHostThread;
 
 // ---------------------------------------------------------------------------
 // Frame pacing — stands in for the VI retrace interrupt. The return value is
@@ -2633,9 +2631,6 @@ int main(int argc, char **argv) {
         options.widescreen = 0;        // the trace hashes 4:3 coordinates
         pc_audio_hle_set_resampler(0); // and the console's mix
     }
-    sHostThread.id = 3;
-    sHostThread.priority = 10;
-    __osRunningThread = &sHostThread;
     gfx_window_init(N64_SCREEN_W, N64_SCREEN_H, &options);
     thread3_main(0);
     return 0;

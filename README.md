@@ -181,10 +181,12 @@ as older builds made, still loads but takes no overrides).
 
 ## Correctness
 
-The game code in `src/`, `include/` and `libultra/` is the decompiled
-original, and every place the port changes it is an `#ifdef TARGET_PC` region
-whose `#else` branch keeps the original line, so the console's behaviour is
-always there to compare against. The check that keeps the port honest:
+The game code in `src/` is the decompiled original, being rewritten into
+readable C one slice at a time, with the rule that no arithmetic or evaluation
+order may change. The N64 operating system is gone: the game runs on one
+thread and takes the few services it needs from the host through `src/host.h`
+(game data, display, audio, controllers, saves, a clock). The check that keeps
+the port honest:
 
 - `make golden` runs the game for a fixed number of frames with no input, an
   erased save and a frame-counted clock, hashing everything the renderer is
@@ -398,11 +400,13 @@ additive, so a real gamepad still works too.
   recording and interpolation, frame loop),
   `gfx.c` (SDL3 window and shader renderer), `audio_hle.c` (RSP audio
   interpreter), `audio.c`, `input.c`, `vcontrols.c` (on-screen touch controls),
-  `reimpl.c` (libultra replacements, asset loading, saves), `pc_asset.c`
-  (64-bit-safe asset unpacking), `shaders/`.
-- `src/`, `libultra/`, `include/` - the decompiled game and its SDK, with
-  `TARGET_PC` sections where the port diverges. `include/pc_*.h` are the host
-  interfaces those sections call; `include/asset_enums.h` names every asset.
+  `reimpl.c` (the host services behind `src/host.h`: asset loading, saves,
+  controllers, the clock), `pc_asset.c` (64-bit-safe asset unpacking),
+  `pc_asset_override.c`, `shaders/`.
+- `src/`, `include/` - the game; `src/host.h` is the whole surface between it
+  and the host, and `include/asset_enums.h` names every asset. `libultra/`
+  keeps only the parts of the N64 SDK the game still runs as code: the audio
+  synthesizer and sequence player, and the matrix helpers.
 - `android/` - the Android app (Gradle + SDL activity) that builds the game as
   `libmain.so` through the root CMakeLists and packages the assets into the APK.
 - `ios/` - the iOS app's own source, Info.plist template, asset catalog (app

@@ -1,14 +1,14 @@
 #include <stddef.h>
 
-#include "audiomgr.h"
 #include "asset_loading.h"
+#include "audiomgr.h"
 #include "common.h"
+#include "host.h"
 #include "math_util.h"
 #include "memory.h"
 #include "objects.h"
 #include "PR/abi.h"
 #include "rcp_dkr.h"
-#include "stacks.h"
 #include "video.h"
 
 /****  type define's for structures unique to audiomgr ****/
@@ -22,9 +22,6 @@ typedef union {
         short type;
         struct AudioInfo_s *info;
     } done;
-
-    OSScMsg app;
-
 } AudioMsg;
 
 // TODO: Rare likely modified this struct as evidenced by __amHandleFrameMsg
@@ -32,7 +29,6 @@ typedef union {
 typedef struct AudioInfo_s {
     short *data;        /* Output data pointer */
     short frameSamples; /* # of samples synthesized in this frame */
-    OSScTask task;      /* scheduler structure */
     AudioMsg msg;       /* completion message */
 } AudioInfo;
 
@@ -43,11 +39,6 @@ typedef struct AudioInfo_s {
 typedef struct {
     Acmd *ACMDList[NUM_ACMD_LISTS];
     AudioInfo *audioInfo[NUM_OUTPUT_BUFFERS];
-    OSThread thread;
-    OSMesgQueue audioFrameMsgQ;
-    OSMesg audioFrameMsgBuf[MAX_MESGS];
-    OSMesgQueue audioReplyMsgQ;
-    OSMesg audioReplyMsgBuf[MAX_MESGS];
     ALGlobals g;
 } AMAudioMgr;
 
@@ -66,11 +57,10 @@ typedef struct {
 
 /**** audio manager globals ****/
 
-OSSched *gAudioSched;
+static s32 gAudioMgrReady = FALSE;
 ALHeap *gAudioHeap; // Set but not used
 
 AMAudioMgr __am;
-static u64 audioStack[STACKSIZE(STACK_AUD)];
 
 AMDMAState dmaState;
 AMDMABuffer dmaBuffs[NUM_DMA_BUFFERS];
@@ -87,11 +77,6 @@ s16 gAntiPiracyCRCStart;
 s8 gAntiPiracyAudioFreq = FALSE;
 s32 gRaceCheckFinishChecksum = Func80019808Checksum;
 s32 gRaceCheckFinishFuncLength = 0xFD0;
-
-/** Queues and storage for use with audio DMA's ****/
-OSIoMesg audDMAIOMesgBuf[NUM_DMA_MESSAGES];
-OSMesgQueue audDMAMessageQ;
-OSMesg audDMAMessageBuf[NUM_DMA_MESSAGES];
 
 /**** Not really sure why these are here. They are set, but never used. ****/
 static s16 *gLastAudioPtr = 0;
@@ -116,7 +101,6 @@ static void pc_audio_submit(Acmd *cmdList, s32 cmdLen, s16 *out, s32 frameSample
 }
 
 /**** private routines ****/
-static void __amMain(UNUSED void *arg);
 static ALDMAAddr __amDMA(s32 addr, s32 len, void *state);
 static ALDMAproc __amDmaNew(AMDMAState **state);
 static u32 __amHandleFrameMsg(AudioInfo *info, AudioInfo *lastInfo);
@@ -128,7 +112,7 @@ static void __clearAudioDMA(void);
 /******************************************************************************
  * Audio Manager API
  *****************************************************************************/
-void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
+void amCreateAudioMgr(ALSynConfig *c) {
     s32 i;
     f32 fsize;
     u32 *asset; // stepped by maxFrameSize *samples*: must stay a 4-byte stride on a 64-bit host
@@ -139,11 +123,10 @@ void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
     u8 *crc_region_start;
     u8 *crc_region;
 
-    gAudioSched = audSched;
     gAudioHeap = c->heap;
 
     c->dmaproc = &__amDmaNew;
-    c->outputRate = osAiSetFrequency(OUTPUT_RATE);
+    c->outputRate = pc_ai_set_frequency(OUTPUT_RATE);
 
     /*
      * Calculate the frame sample parameters from the
@@ -231,21 +214,7 @@ void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched) {
         asset += maxFrameSize;
     }
 
-    osCreateMesgQueue(&__am.audioReplyMsgQ, __am.audioReplyMsgBuf, MAX_MESGS);
-    osCreateMesgQueue(&__am.audioFrameMsgQ, __am.audioFrameMsgBuf, MAX_MESGS);
-    osCreateMesgQueue(&audDMAMessageQ, audDMAMessageBuf, NUM_DMA_MESSAGES);
-}
-
-/**
- * Official Name: amGo
- */
-void audioStartThread(void) {
-}
-
-/**
- * Official Name: amGoStop
- */
-void audioStopThread(void) {
+    gAudioMgrReady = TRUE;
 }
 
 /**
@@ -264,7 +233,7 @@ void am_audio_frame_pc(void) {
     static AudioInfo *lastInfo = NULL;
     AudioInfo *info;
 
-    if (gAudioSched == NULL) {
+    if (!gAudioMgrReady) {
         return; // audio_init hasn't run yet
     }
 
@@ -286,39 +255,6 @@ void am_audio_frame_pc(void) {
  * played.
  *
  *****************************************************************************/
-/**
- * Main function for handling ingame audio. Loops continuously as long as the scheduler feeds it updates.
- */
-static void __amMain(UNUSED void *arg) {
-    s32 done = 0;
-    AudioMsg *msg = NULL;
-    AudioInfo *lastInfo = 0;
-
-    osScAddClient(gAudioSched, (OSScClient *) &audioStack, &__am.audioFrameMsgQ, OS_MESG_BLOCK);
-
-    while (!done) {
-        (void) osRecvMesg(&__am.audioFrameMsgQ, (OSMesg *) &msg, OS_MESG_BLOCK);
-        switch (msg->gen.type) {
-            case OS_SC_RETRACE_MSG:
-                // TODO: Check type of ACMDList?
-                __amHandleFrameMsg((AudioInfo *) __am.ACMDList[(((u32) audFrameCt % 3)) + 2], lastInfo);
-                /* wait for done message */
-                osRecvMesg(&__am.audioReplyMsgQ, (OSMesg *) &lastInfo, OS_MESG_BLOCK);
-                __amHandleDoneMsg(lastInfo);
-                break;
-            case OS_SC_PRE_NMI_MSG:
-                /* what should we really do here? quit? ramp down volume? */
-                break;
-            case QUIT_MSG:
-                done = 1;
-                break;
-            default:
-                break;
-        }
-    }
-
-    alClose(&__am.g);
-}
 
 /******************************************************************************
  *
@@ -340,12 +276,11 @@ static u32 __amHandleFrameMsg(AudioInfo *info, AudioInfo *lastInfo) {
     s16 *audioPtr;
     Acmd *cmdp;
     int samplesLeft = 0;
-    OSScTask *t;
     u32 ret;
 
     __clearAudioDMA(); /* call once a frame, before doing alAudioFrame */
 
-    audioPtr = (s16 *) osVirtualToPhysical(info->data);
+    audioPtr = (s16 *) (info->data);
 
     if (lastInfo) {
         s16 *outputDataPointer;
@@ -353,19 +288,19 @@ static u32 __amHandleFrameMsg(AudioInfo *info, AudioInfo *lastInfo) {
 
         gLastAudioPtr = outputDataPointer = lastInfo->data;
         gLastAudioFrameSamples = frameSamples = lastInfo->frameSamples << 2;
-        osAiSetNextBuffer(outputDataPointer, frameSamples);
+        pc_ai_set_next_buffer(outputDataPointer, frameSamples);
 #ifdef ANTI_TAMPER
         // Antipiracy measure
         if (gAntiPiracyAudioFreq) {
-            osAiSetFrequency(rand_range(0, 10000) + OUTPUT_RATE);
+            pc_ai_set_frequency(rand_range(0, 10000) + OUTPUT_RATE);
         }
 #endif
     }
 
     /* calculate how many samples needed for this frame to keep the DAC full */
     /* this will vary slightly frame to frame, must recalculate every frame */
-    samplesLeft = osAiGetLength() >> 2; /* divide by four, to convert bytes */
-                                        /* to stereo 16 bit samples */
+    samplesLeft = pc_ai_get_length() >> 2; /* divide by four, to convert bytes */
+                                           /* to stereo 16 bit samples */
     info->frameSamples = (16 + (frameSize - samplesLeft + EXTRA_SAMPLES)) & ~0xf;
     if ((u32) info->frameSamples < minFrameSize) {
         info->frameSamples = minFrameSize;
@@ -374,7 +309,7 @@ static u32 __amHandleFrameMsg(AudioInfo *info, AudioInfo *lastInfo) {
     cmdp = alAudioFrame(__am.ACMDList[curAcmdList], &gAudioCmdLen, audioPtr, info->frameSamples);
 
     // No RSP and no scheduler: run the command list the synthesizer just built,
-    // right here, instead of packaging it into an OSScTask. pc_audio_submit is the
+    // right here. pc_audio_submit is the
     // aspMain microcode's replacement (M3); until it exists it just clears the
     // output buffer, which is what makes M2 "silent but correctly paced".
     pc_audio_submit(__am.ACMDList[curAcmdList], (s32) (cmdp - __am.ACMDList[curAcmdList]), audioPtr,
@@ -393,7 +328,7 @@ static void __amHandleDoneMsg(UNUSED AudioInfo *info) {
     s32 samplesLeft;
     static int firstTime = 1;
 
-    samplesLeft = osAiGetLength() >> 2;
+    samplesLeft = pc_ai_get_length() >> 2;
     if (samplesLeft == 0 && !firstTime) {
         stubbed_printf("audio: ai out of samples\n");
         firstTime = 0;
@@ -435,7 +370,7 @@ static ALDMAAddr __amDMA(s32 addr, s32 len, UNUSED void *state) {
         } else if (addrEnd <= buffEnd) {      /* yes, found a buffer with samples */
             dmaPtr->lastFrame = audFrameCt;   /* mark it used */
             foundBuffer = dmaPtr->ptr + addr - dmaPtr->startAddr;
-            return (ALDMAAddr) osVirtualToPhysical(foundBuffer);
+            return (ALDMAAddr) (foundBuffer);
         }
         lastDmaPtr = dmaPtr;
         dmaPtr = (AMDMABuffer *) dmaPtr->node.next;
@@ -456,7 +391,7 @@ static ALDMAAddr __amDMA(s32 addr, s32 len, UNUSED void *state) {
      */
     if (!dmaPtr) {
         stubbed_printf("OH DEAR - No audio DMA buffers left\n");
-        return (ALDMAAddr) osVirtualToPhysical(lastDmaPtr->ptr) + delta;
+        return (ALDMAAddr) (lastDmaPtr->ptr) + delta;
     }
 
     dmaState.firstFree = (AMDMABuffer *) dmaPtr->node.next;
@@ -490,9 +425,9 @@ static ALDMAAddr __amDMA(s32 addr, s32 len, UNUSED void *state) {
     // "Dma not done". (RAW16 sample data was already swapped in the asset image at
     // bank-load time; ADPCM is a byte stream. See docs/audio.md.)
     pc_dmacopy((u32) (uintptr_t) addr, (uintptr_t) foundBuffer, DMA_BUFFER_LENGTH);
-    osSendMesg(&audDMAMessageQ, (OSMesg) &audDMAIOMesgBuf[nextDMA++], OS_MESG_NOBLOCK);
+    nextDMA++;
 
-    return (ALDMAAddr) osVirtualToPhysical(foundBuffer) + delta;
+    return (ALDMAAddr) (foundBuffer) + delta;
 }
 
 /******************************************************************************
@@ -528,21 +463,12 @@ static ALDMAproc __amDmaNew(AMDMAState **state) {
  *
  *****************************************************************************/
 static void __clearAudioDMA(void) {
-    u32 i;
-    OSIoMesg *iomsg = 0;
     AMDMABuffer *dmaPtr, *nextPtr;
 
     /*
      * Don't block here. If dma's aren't complete, you've had an audio
      * overrun. (Bad news, but go for it anyway, and try and recover.)
      */
-    for (i = 0; i < nextDMA; i++) {
-        if (osRecvMesg(&audDMAMessageQ, (OSMesg *) &iomsg, OS_MESG_NOBLOCK) == -1) {
-            stubbed_printf("Dma not done\n");
-        }
-        // if (logging)
-        //     osLogEvent(log, 17, 2, iomsg->devAddr, iomsg->size);
-    }
 
     dmaPtr = dmaState.firstUsed;
     while (dmaPtr) {

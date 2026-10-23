@@ -1,8 +1,9 @@
 #include "memory.h"
 #include "config.h"
+#include "host.h"
+#include "libc/string.h"
 #include "math_util.h"
 #include "printf.h"
-#include "thread0_epc.h"
 
 #ifndef _ALIGN16
 #define _ALIGN16(a) (((uintptr_t) (a) & ~0xF) + 0x10)
@@ -112,11 +113,11 @@ MemoryPoolSlot *mempool_init(MemoryPoolSlot *slots, s32 poolSize, s32 numSlots) 
 void *mempool_alloc_safe(s32 size, u32 colourTag) {
     void *addr;
     if (size == 0) {
-        dump_memory_to_cpak(stack_pointer()->sp, size, colourTag);
+        pc_log("mempool_alloc_safe: zero-size allocation (tag %u)\n", colourTag);
     }
     addr = mempool_slot_find(POOL_MAIN, size, colourTag);
     if (addr == NULL) {
-        dump_memory_to_cpak(stack_pointer()->sp, size, colourTag);
+        pc_log("mempool_alloc_safe: out of memory for %d bytes (tag %u)\n", size, colourTag);
     }
     return addr;
 }

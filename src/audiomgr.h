@@ -40,8 +40,7 @@
 
 #define MAX_SEQ_LENGTH  20000
 
-void audioStartThread(void);
-void audioStopThread(void);
-void amCreateAudioMgr(ALSynConfig *c, OSPri pri, OSSched *audSched);
+                                       void amCreateAudioMgr(ALSynConfig *c);
+                                       void am_audio_frame_pc(void);
 
 #endif

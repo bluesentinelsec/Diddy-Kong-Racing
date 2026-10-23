@@ -1,6 +1,6 @@
 #include "video.h"
+#include "host.h"
 #include "memory.h"
-#include "PRinternal/viint.h"
 #include "types.h"
 
 /************ .data ************/
@@ -28,9 +28,6 @@ VideoModeResolution gVideoModeResolutions[] = {
 s32 gVideoRefreshRate; // Official Name: viFramesPerSecond
 f32 gVideoAspectRatio;
 f32 gVideoHeightRatio;
-OSMesg gVideoMesgBuf[8];
-OSMesgQueue gVideoMesgQueue[8];
-OSViMode gTvViMode;
 s32 gVideoFbWidths[2];
 s32 gVideoFbHeights[2];
 u16 *gVideoFramebuffers[2];
@@ -44,7 +41,6 @@ u16 *gVideoLastDepthBuffer;
 u8 gVideoMaxUpdateRate;
 u8 gVideoDeltaCounter;
 u8 gVideoDeltaTime;
-OSScClient gVideoSched;
 
 /******************************/
 
@@ -53,7 +49,7 @@ OSScClient gVideoSched;
  * Framebuffers are allocated at runtime.
  * Official Name: viInit
  */
-void video_init(s32 videoModeIndex, OSSched *sc) {
+void video_init(s32 videoModeIndex) {
     if (osTvType == OS_TV_TYPE_PAL) {
         gVideoRefreshRate = REFRESH_50HZ;
         gVideoAspectRatio = ASPECT_RATIO_PAL;
@@ -83,11 +79,8 @@ void video_init(s32 videoModeIndex, OSSched *sc) {
     fb_alloc(1);
     gVideoCurrFbIndex = 1;
     fb_swap();
-    osCreateMesgQueue((OSMesgQueue *) &gVideoMesgQueue, gVideoMesgBuf, ARRAY_COUNT(gVideoMesgBuf));
-    osScAddClient(sc, &gVideoSched, (OSMesgQueue *) &gVideoMesgQueue, OS_SC_ID_VIDEO);
     fb_init_vi();
     sBlackScreenTimer = 12;
-    osViBlack(TRUE);
     gVideoDeltaCounter = 0;
     gVideoMaxUpdateRate = 3;
 }
@@ -132,96 +125,21 @@ s32 fb_size(void) {
  * Official Name: viSetTiming
  */
 void fb_init_vi(void) {
-    s32 viModeTableIndex;
-    OSViMode *tvViMode;
+    static const char *const sModeNames[] = {
+        "320 by 240 Point sampled, Non interlaced",
+        "320 by 240 Anti-aliased, Non interlaced",
+        "640 by 240 Point sampled, Non interlaced",
+        "640 by 240 Anti-aliased, Non interlaced",
+        "640 by 480 Point sampled, Interlaced",
+        "640 by 480 Anti-aliased, Interlaced",
+        "640 by 480 Point sampled, Interlaced, De-flickered",
+        "640 by 480 Anti-aliased, Interlaced, De-flickered",
+    };
 
-    viModeTableIndex = OS_VI_NTSC_LPN1;
-    if (osTvType == OS_TV_TYPE_PAL) {
-        viModeTableIndex = OS_VI_PAL_LPN1;
-    } else if (osTvType == OS_TV_TYPE_MPAL) {
-        viModeTableIndex = OS_VI_MPAL_LPN1;
-    }
-
-    switch (gVideoModeIndex & NUM_RESOLUTION_MODES) {
-        case VIDEO_MODE_LOWRES_LAN:
-            stubbed_printf("320 by 240 Point sampled, Non interlaced.\n");
-            osViSetMode(&osViModeTable[viModeTableIndex]);
-            break;
-        case VIDEO_MODE_LOWRES_LPN:
-            //!@bug: The video mode being set here is Point sampled
-            // but the printf implies it was intended to be Anti-aliased.
-            // By my understanding, this is the case we will always hit in code,
-            // So maybe it was swapped out late in development?
-            stubbed_printf("320 by 240 Anti-aliased, Non interlaced.\n");
-            tvViMode = &osViModeNtscLpn1;
-            if (osTvType == OS_TV_TYPE_PAL) {
-                tvViMode = &osViModePalLpn1;
-            } else if (osTvType == OS_TV_TYPE_MPAL) {
-                tvViMode = &osViModeMpalLpn1;
-            }
-            fb_memcpy((u8 *) tvViMode, (u8 *) &gTvViMode, sizeof(OSViMode));
-            if (osTvType == OS_TV_TYPE_PAL) {
-                // A simple osViExtendVStart to add an additional 24 scanlines?
-                gTvViMode.fldRegs[0].vStart -= (PAL_HEIGHT_DIFFERENCE << 16);
-                gTvViMode.fldRegs[1].vStart -= (PAL_HEIGHT_DIFFERENCE << 16);
-                gTvViMode.fldRegs[0].vStart += PAL_HEIGHT_DIFFERENCE;
-                gTvViMode.fldRegs[1].vStart += PAL_HEIGHT_DIFFERENCE;
-            }
-            osViSetMode(&gTvViMode);
-            break;
-        case VIDEO_MODE_MEDRES_LPN:
-            stubbed_printf("640 by 240 Point sampled, Non interlaced.\n");
-            tvViMode = &osViModeNtscLpn1;
-            if (osTvType == OS_TV_TYPE_PAL) {
-                tvViMode = &osViModePalLpn1;
-            } else if (osTvType == OS_TV_TYPE_MPAL) {
-                tvViMode = &osViModeMpalLpn1;
-            }
-
-            fb_memcpy((u8 *) tvViMode, (u8 *) &gTvViMode, sizeof(OSViMode));
-            gTvViMode.comRegs.width = WIDTH(HIGH_RES_SCREEN_WIDTH);
-            gTvViMode.comRegs.xScale = SCALE(1, 0);
-            gTvViMode.fldRegs[0].origin = ORIGIN(HIGH_RES_SCREEN_WIDTH * 2);
-            gTvViMode.fldRegs[1].origin = ORIGIN(HIGH_RES_SCREEN_WIDTH * 2);
-            osViSetMode(&gTvViMode);
-            break;
-        case VIDEO_MODE_MEDRES_LAN:
-            stubbed_printf("640 by 240 Anti-aliased, Non interlaced.\n");
-            tvViMode = &osViModeNtscLan1;
-            if (osTvType == OS_TV_TYPE_PAL) {
-                tvViMode = &osViModePalLan1;
-            } else if (osTvType == OS_TV_TYPE_MPAL) {
-                tvViMode = &osViModeMpalLan1;
-            }
-            fb_memcpy((u8 *) tvViMode, (u8 *) &gTvViMode, sizeof(OSViMode));
-            gTvViMode.comRegs.width = WIDTH(HIGH_RES_SCREEN_WIDTH);
-            gTvViMode.comRegs.xScale = SCALE(1, 0);
-            gTvViMode.fldRegs[0].origin = ORIGIN(HIGH_RES_SCREEN_WIDTH * 2);
-            gTvViMode.fldRegs[1].origin = ORIGIN(HIGH_RES_SCREEN_WIDTH * 2);
-            osViSetMode(&gTvViMode);
-            break;
-        case VIDEO_MODE_HIGHRES_HPN:
-            stubbed_printf("640 by 480 Point sampled, Interlaced.\n");
-            osViSetMode(&osViModeTable[viModeTableIndex + OS_VI_NTSC_HPN1]);
-            break;
-        case VIDEO_MODE_HIGHRES_HAN:
-            stubbed_printf("640 by 480 Anti-aliased, Interlaced.\n");
-            osViSetMode(&osViModeTable[viModeTableIndex + OS_VI_NTSC_HAN1]);
-            break;
-        case VIDEO_MODE_HIGHRES_HPF:
-            stubbed_printf("640 by 480 Point sampled, Interlaced, De-flickered.\n");
-            osViSetMode(&osViModeTable[viModeTableIndex + OS_VI_NTSC_HPF1]);
-            break;
-        case VIDEO_MODE_HIGHRES_HAF:
-            stubbed_printf("640 by 480 Anti-aliased, Interlaced, De-flickered.\n");
-            osViSetMode(&osViModeTable[viModeTableIndex + OS_VI_NTSC_HAF1]);
-            break;
-    }
-    // Could have just called this once like in JFG:
-    // osViSetSpecialFeatures(OS_VI_DIVOT_ON | OS_VI_DITHER_FILTER_ON | OS_VI_GAMMA_OFF);
-    osViSetSpecialFeatures(OS_VI_DIVOT_ON);
-    osViSetSpecialFeatures(OS_VI_DITHER_FILTER_ON);
-    osViSetSpecialFeatures(OS_VI_GAMMA_OFF);
+    // The N64 programmed the video interface's timing registers here. The host
+    // draws the display list itself at whatever size the window has, so the
+    // mode only decides the framebuffer size the game lays out.
+    stubbed_printf("%s.\n", sModeNames[gVideoModeIndex & NUM_RESOLUTION_MODES]);
 }
 
 /**
@@ -282,47 +200,14 @@ s32 fb_update(s32 mesg) {
     tempUpdateRate = LOGIC_60FPS;
     if (sBlackScreenTimer) {
         sBlackScreenTimer--;
-        if (sBlackScreenTimer == 0) {
-            osViBlack(FALSE);
-        }
     }
     if (mesg != MESG_SKIP_BUFFER_SWAP) {
         fb_swap();
     }
-    {
-        // No VI retrace interrupts on PC. pc_retrace_wait (linux/main.c)
-        // paces to the 60Hz wall clock and returns how many retrace periods
-        // elapsed — same meaning as the scheduler's queued vblank messages.
-        extern s32 pc_retrace_wait(void);
-        tempUpdateRate = pc_retrace_wait();
-        osViSwapBuffer(gVideoLastFramebuffer);
-        return tempUpdateRate;
-    }
-    while (osRecvMesg(gVideoMesgQueue, NULL, OS_MESG_NOBLOCK) != -1) {
-        tempUpdateRate++;
-    }
-
-    if (tempUpdateRate < gVideoDeltaTime) {
-        if (gVideoDeltaCounter < 20) {
-            gVideoDeltaCounter++;
-        }
-        if (gVideoDeltaCounter == 20) {
-            gVideoDeltaTime = tempUpdateRate;
-            gVideoDeltaCounter = 0;
-        }
-    } else {
-        gVideoDeltaCounter = 0;
-        if ((gVideoDeltaTime < tempUpdateRate) && (gVideoMaxUpdateRate >= tempUpdateRate)) {
-            gVideoDeltaTime = tempUpdateRate;
-        }
-    }
-    while (tempUpdateRate < gVideoDeltaTime) {
-        osRecvMesg(gVideoMesgQueue, NULL, OS_MESG_BLOCK);
-        tempUpdateRate++;
-    }
-
-    osViSwapBuffer(gVideoLastFramebuffer);
-    osRecvMesg(gVideoMesgQueue, NULL, OS_MESG_BLOCK);
+    // The N64 blocked on the video interface's retrace messages here. The host
+    // paces the frame to the 60 Hz clock and returns how many retrace periods
+    // it covered, which is what the game used the message count for.
+    tempUpdateRate = pc_retrace_wait();
     return tempUpdateRate;
 }
 

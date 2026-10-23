@@ -88,8 +88,6 @@ extern u16 *gVideoLastFramebuffer;
 extern u16 *gVideoCurrDepthBuffer;
 extern u16 *gVideoLastDepthBuffer;
 
-extern OSViMode osViModeNtscLpn1, osViModePalLpn1, osViModeMpalLpn1, osViModePalLan1, osViModeNtscLan1, osViModeMpalLan1;
-
 /* Size: 0x08 bytes */
 typedef struct VideoModeResolution {
     /* 0x00 */ s32 width;
@@ -98,7 +96,7 @@ typedef struct VideoModeResolution {
 
 extern VideoModeResolution gVideoModeResolutions[8];
 
-void video_init(s32 videoModeIndex, OSSched *sc);
+void video_init(s32 videoModeIndex);
 void fb_mode_set(s32 videoModeIndex);
 s32 fb_size(void);
 void fb_init_vi(void);

@@ -1,5 +1,4 @@
 #include "objects.h"
-#include "memory.h"
 #include "asset_enums.h"
 #include "asset_loading.h"
 #include "audio_spatial.h"
@@ -11,15 +10,18 @@
 #include "game_text.h"
 #include "game_ui.h"
 #include "gzip.h"
+#include "host.h"
 #include "joypad.h"
 #include "level_object_entries.h"
 #include "lights.h"
 #include "macros.h"
 #include "math_util.h"
+#include "memory.h"
 #include "menu.h"
 #include "object_functions.h"
 #include "object_models.h"
 #include "particles.h"
+#include "pc_swap.h"
 #include "PR/os_cont.h"
 #include "PR/os_convert.h"
 #include "PR/os_system.h"
@@ -31,7 +33,6 @@
 #include "save_data.h"
 #include "structs.h"
 #include "textures_sprites.h"
-#include "thread0_epc.h"
 #include "thread3_main.h"
 #include "tracks.h"
 #include "types.h"
@@ -39,7 +40,6 @@
 #include "video.h"
 #include "waves.h"
 #include "weather.h"
-#include "pc_swap.h"
 
 #define OBJECT_MAP_SIZE 0x3000
 #define MAX_CHECKPOINTS 60
@@ -11175,6 +11175,16 @@ void run_object_loop_func(Object *obj, s32 updateRate) {
     update_object_stack_trace(OBJECT_UPDATE, OBJECT_CLEAR);
 }
 
+s32 gObjectStackTrace[3] = { OBJECT_CLEAR, OBJECT_CLEAR, OBJECT_CLEAR };
+
+/**
+ * Note which object is being spawned, updated or drawn, for the readout log.
+ */
+void update_object_stack_trace(s32 index, s32 value) {
+    if (index >= OBJECT_SPAWN && index <= OBJECT_DRAW) {
+        gObjectStackTrace[index] = value;
+    }
+}
 
 /** A ring of the last 128 readout values, kept for the crash screen and audio diagnostics. */
 s16 *readout_log_get(s32 *currentCount, s32 *maxCount) {

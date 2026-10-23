@@ -16,10 +16,10 @@
 #include "game_text.h"
 #include "game_ui.h"
 #include "gzip.h"
+#include "host.h"
 #include "joypad.h"
 #include "lights.h"
 #include "macros.h"
-#include "main.h"
 #include "math_util.h"
 #include "memory.h"
 #include "menu.h"
@@ -34,10 +34,8 @@
 #include "save_data.h"
 #include "save_layout.h"
 #include "set_rsp_segment.h"
-#include "stacks.h"
 #include "structs.h"
 #include "textures_sprites.h"
-#include "thread0_epc.h"
 #include "thread30_bgload.h"
 #include "tracks.h"
 #include "types.h"
@@ -105,8 +103,6 @@ Vertex *gGameCurrVertexList;
 Triangle *gTriangleHeap[2];
 Triangle *gGameCurrTriList;
 s8 gLevelSettings[16];
-OSSched gMainSched; // 0x288 / 648 bytes
-u64 gSchedStack[STACKSIZE(STACK_SCHED)];
 s32 gSPTaskNum;
 s32 gGameMode;
 s32 gRenderMenu; // I don't think this is ever not 1
@@ -131,10 +127,6 @@ s32 gCurrNumF3dCmdsPerPlayer;
 s32 gCurrNumHudMatPerPlayer;
 s32 gCurrNumHudTrisPerPlayer;
 s32 gCurrNumHudVertsPerPlayer;
-OSScClient *gNMISched[3];
-OSMesg gNMIOSMesg;
-OSMesgQueue gNMIMesgQueue;
-s32 gNMIMesgBuf;          // Official Name: resetPressed
 
 /******************************/
 
@@ -148,20 +140,7 @@ void thread3_main(UNUSED void *unused) {
     sBootDelayTimer = 0;
     gGameMode = GAMEMODE_INTRO;
     while (1) {
-        if (is_reset_pressed()) {
-            rumble_kill();
-            audioStopThread();
-            bgload_kill();
-            __osSpSetStatus(SP_SET_HALT | SP_CLR_INTR_BREAK | SP_CLR_YIELD | SP_CLR_YIELDED | SP_CLR_TASKDONE |
-                            SP_CLR_RSPSIGNAL | SP_CLR_CPUSIGNAL | SP_CLR_SIG5 | SP_CLR_SIG6 | SP_CLR_SIG7);
-            osDpSetStatus(DPC_SET_XBUS_DMEM_DMA | DPC_CLR_FREEZE | DPC_CLR_FLUSH | DPC_CLR_TMEM_CTR | DPC_CLR_PIPE_CTR |
-                          DPC_CLR_CMD_CTR | DPC_CLR_CMD_CTR);
-            while (1) {
-                ; // Infinite loop
-            }
-        }
         main_game_loop();
-        thread3_verify_stack();
     }
 }
 
@@ -171,7 +150,6 @@ void thread3_main(UNUSED void *unused) {
  * Official Name: mainInitGame
  */
 void init_game(void) {
-    s32 viMode;
 
     stubbed_printf(sDebugRomBuildInfo[0]);
     mempool_init_main();
@@ -185,14 +163,6 @@ void init_game(void) {
     gIsLoading = FALSE;
     gLevelDefaultVehicleID = VEHICLE_CAR;
 
-    if (osTvType == OS_TV_TYPE_PAL) {
-        viMode = OS_VI_PAL_LPN1;
-    } else if (osTvType == OS_TV_TYPE_NTSC) {
-        viMode = OS_VI_NTSC_LPN1;
-    } else if (osTvType == OS_TV_TYPE_MPAL) {
-        viMode = OS_VI_MPAL_LPN1;
-    }
-    osCreateScheduler(&gMainSched, &gSchedStack[STACKSIZE(STACK_SCHED)], /*priority*/ 13, viMode, 1);
 #ifdef ANTI_TAMPER
     // Antipiracy measure.
     gDmemInvalid = FALSE;
@@ -200,10 +170,10 @@ void init_game(void) {
         gDmemInvalid = TRUE;
     }
 #endif
-    video_init(VIDEO_MODE_LOWRES_LPN, &gMainSched);
+    video_init(VIDEO_MODE_LOWRES_LPN);
     pi_init();
-    gfxtask_init(&gMainSched);
-    audio_init(&gMainSched);
+    gfxtask_init();
+    audio_init();
     audspat_init();
     sControllerStatus = input_init();
     tex_init_textures();
@@ -219,9 +189,6 @@ void init_game(void) {
     init_controller_paks();
     init_save_data();
     bgload_init();
-    osCreateMesgQueue(&gNMIMesgQueue, &gNMIOSMesg, 1);
-    osScAddClient(&gMainSched, (OSScClient *) gNMISched, &gNMIMesgQueue, OS_SC_ID_PRENMI);
-    gNMIMesgBuf = 0;
     gGameCurrentEntrance = 0;
     gGameCurrentCutscene = 0;
     gSPTaskNum = 0;
@@ -229,8 +196,6 @@ void init_game(void) {
     gCurrDisplayList = gDisplayLists[gSPTaskNum];
     gDPFullSync(gCurrDisplayList++);
     gSPEndDisplayList(gCurrDisplayList++);
-
-    osSetTime(0);
 }
 
 /**
@@ -241,8 +206,6 @@ void main_game_loop(void) {
     s32 debugLoopCounter;
     s32 framebufferSize;
     s32 tempLogicUpdateRate, tempLogicUpdateRateMax;
-
-    osSetTime(0);
 
     if (gScreenStatus == MESG_SKIP_BUFFER_SWAP) {
         gCurrDisplayList = gDisplayLists[gSPTaskNum];
@@ -273,10 +236,6 @@ void main_game_loop(void) {
     rdp_init(&gCurrDisplayList);
     bgdraw_render(&gCurrDisplayList, &gGameCurrMatrix, TRUE);
     gSaveDataFlags = input_update(gSaveDataFlags, sLogicUpdateRate);
-    if (get_lockup_status()) {
-        render_epc_lock_up_display();
-        gGameMode = GAMEMODE_LOCKUP;
-    }
     if (gDmemInvalid) {
         debugLoopCounter = 0;
         while (debugLoopCounter != 10000000) {
@@ -296,9 +255,6 @@ void main_game_loop(void) {
             break;
         case GAMEMODE_INGAME: // In game (Controlling a character)
             mode_game(sLogicUpdateRate);
-            break;
-        case GAMEMODE_LOCKUP: // EPC (lockup display)
-            mode_lockup(sLogicUpdateRate);
             break;
     }
 
@@ -383,7 +339,6 @@ void load_level_game(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle v
     hud_init(cam_get_viewport_layout());
     init_particle_buffers(8, 16, 150, 100, 50);
     ainode_update();
-    osSetTime(0);
     mempool_free_timer(2);
     rumble_init(TRUE);
 }
@@ -891,7 +846,6 @@ void load_level_menu(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle v
     hud_init(cam_get_viewport_layout());
     init_particle_buffers(4, 4, 110, 48, 32);
     ainode_update();
-    osSetTime(0);
     mempool_free_timer(2);
 }
 
@@ -1264,14 +1218,12 @@ s8 is_postrace_viewport_active(void) {
 }
 
 /**
- * Sets and returns (nonzero) the message set when pressing the reset button.
+ * The N64 reported the console's reset button here (a pre-NMI message); the
+ * host has no equivalent, so it is never pressed.
  * Official name: mainResetPressed
  */
 s32 is_reset_pressed(void) {
-    if (gNMIMesgBuf == 0) {
-        gNMIMesgBuf = (s32) ((osRecvMesg(&gNMIMesgQueue, NULL, OS_MESG_NOBLOCK) + 1) != 0);
-    }
-    return gNMIMesgBuf;
+    return FALSE;
 }
 
 /**

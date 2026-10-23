@@ -8,42 +8,26 @@ s32 sNoControllerPluggedIn =
     FALSE; // Looks to be a boolean for whether a controller is plugged in. FALSE if plugged in, and TRUE if not.
 u16 gButtonMask = 0xFFFF; // Used when anti-cheat/anti-tamper has failed in level_global_init()
 
-OSMesgQueue sSIMesgQueue;
-OSMesg sSIMesgBuf;
-OSMesg gSIMesg;
-OSContStatus gControllerStatus[MAXCONTROLLERS];
-OSContPad gControllerCurrData[MAXCONTROLLERS];
-OSContPad gControllerPrevData[MAXCONTROLLERS];
+PcContStatus gControllerStatus[MAXCONTROLLERS];
+PcContPad gControllerCurrData[MAXCONTROLLERS];
+PcContPad gControllerPrevData[MAXCONTROLLERS];
 u16 gControllerButtonsPressed[MAXCONTROLLERS];
 u16 gControllerButtonsReleased[MAXCONTROLLERS];
 u8 sPlayerID[16];
-
-/**
- * Return the serial interface message queue.
- * Official name: joyMessageQ
- */
-OSMesgQueue *si_mesg(void) {
-    return &sSIMesgQueue;
-}
 
 /**
  * Initialise the player controllers, and return the status when finished.
  * Official name: joyInit
  */
 s32 input_init(void) {
-    UNUSED s32 *temp1;
     u8 bitpattern;
-    UNUSED s32 *temp2;
 
-    osCreateMesgQueue(&sSIMesgQueue, &sSIMesgBuf, 1);
-    osSetEventMesg(OS_EVENT_SI, &sSIMesgQueue, gSIMesg);
-    osContInit(&sSIMesgQueue, &bitpattern, gControllerStatus);
-    osContStartReadData(&sSIMesgQueue);
+    bitpattern = pc_controllers_init(gControllerStatus);
     input_assign_players();
 
     sNoControllerPluggedIn = FALSE;
 
-    if ((bitpattern & CONT_ABSOLUTE) && (!(gControllerStatus[0].errno & CONT_NO_RESPONSE_ERROR))) {
+    if ((bitpattern & 1) && (!(gControllerStatus[0].error & CONT_NO_RESPONSE_ERROR))) {
         return CONTROLLER_EXISTS;
     }
 
@@ -61,16 +45,15 @@ s32 input_init(void) {
  */
 s32 input_update(s32 saveDataFlags, s32 updateRate) {
     Settings **allSaves;
-    OSMesg unusedMsg;
     Settings *settings;
     s32 i;
 
-    if (osRecvMesg(&sSIMesgQueue, &unusedMsg, OS_MESG_NOBLOCK) == 0) {
+    {
         // Back up old controller data
         for (i = 0; i < MAXCONTROLLERS; i++) {
             gControllerPrevData[i] = gControllerCurrData[i];
         }
-        osContGetReadData(gControllerCurrData);
+        pc_controllers_read(gControllerCurrData);
         if (saveDataFlags != 0) {
             settings = get_settings();
             if (SAVE_DATA_FLAG_READ_EEPROM_INDEX(saveDataFlags)) {
@@ -106,7 +89,6 @@ s32 input_update(s32 saveDataFlags, s32 updateRate) {
             saveDataFlags = 0;
         }
         rumble_update(updateRate);
-        osContStartReadData(&sSIMesgQueue);
     }
     for (i = 0; i < MAXCONTROLLERS; i++) {
         if (sNoControllerPluggedIn) {

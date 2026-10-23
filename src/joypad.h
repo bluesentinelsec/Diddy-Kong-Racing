@@ -2,7 +2,7 @@
 #define _JOYPAD_H_
 
 #include "types.h"
-#include "PR/os_message.h"
+#include "host.h"
 
 #define CONTROLLER_MISSING -1
 #define CONTROLLER_EXISTS   0
@@ -10,7 +10,6 @@
 #define JOYSTICK_DEADZONE 8
 #define JOYSTICK_MAX_RANGE 70
 
-OSMesgQueue *si_mesg(void);
 s32 input_init(void);
 s32 input_update(s32 saveDataFlags, s32 updateRate);
 void input_assign_players(void);

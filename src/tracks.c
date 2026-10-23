@@ -22,6 +22,7 @@
 #include "textures_sprites.h"
 #include "thread3_main.h"
 #include "types.h"
+#include "host.h"
 #include "video.h"
 #include "waves.h"
 #include "weather.h"
@@ -3045,7 +3046,7 @@ void generate_track(s32 modelId) {
     }
     temp_s4 = (s32) (j - (ptrint_t) gCurrentLevelModel);
     if (temp_s4 > LEVEL_MODEL_MAX_SIZE) {
-        rmonPrintf("ERROR!! TrackMem overflow .. %d\n", temp_s4);
+        pc_log("ERROR!! TrackMem overflow .. %d\n", temp_s4);
     }
     mempool_free_timer(0);
     mempool_free(gTrackModelHeap);

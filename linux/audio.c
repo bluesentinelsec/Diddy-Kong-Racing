@@ -47,14 +47,14 @@ void pc_audio_set_mix_rate(int hz) {
 }
 
 // ---------------------------------------------------------------------------
-// AI shims (replacing libultra/src/io/ai.c, aigetlen.c, aisetfreq.c,
+// AI shims (standing in for the N64 audio interface: ai.c, aigetlen.c, aisetfreq.c,
 // aisetnextbuf.c — all dropped from the PC build, they only poke MMIO)
 // ---------------------------------------------------------------------------
 
 // Called once from amCreateAudioMgr with OUTPUT_RATE. Returns the rate actually
 // achieved; the manager derives its whole frame-size schedule from the value we
 // return here, so it must be the truth.
-s32 osAiSetFrequency(u32 frequency) {
+s32 pc_ai_set_frequency(u32 frequency) {
     SDL_AudioSpec spec;
     u32 rate = frequency;
     const char *dump;
@@ -105,7 +105,7 @@ s32 osAiSetFrequency(u32 frequency) {
 // The game hands us the PCM the mixer produced for the *previous* frame.
 // Returns 0 like the libultra original (os_ai.h declares it s32; on wasm a
 // caller and callee disagreeing on the signature is a trap, not a warning).
-s32 osAiSetNextBuffer(void *buf, u32 size) {
+s32 pc_ai_set_next_buffer(void *buf, u32 size) {
     if (buf != NULL && size != 0) {
         pc_trace_audio(buf, size);
         pc_trace_pcm(buf, size);
@@ -140,15 +140,15 @@ static u32 pc_audio_queued(void) {
 // Bytes still to play. This is the feedback signal __amHandleFrameMsg uses to size
 // the next chunk:
 //
-//     frameSamples = (16 + (frameSize - osAiGetLength()/4 + 96)) & ~0xf
+//     frameSamples = (16 + (frameSize - pc_ai_get_length()/4 + 96)) & ~0xf
 //
 // On N64 the AI holds at most two buffers — one playing, one pending — and
-// osAiGetLength() returns what is left of the *playing* one, so it is never more
+// pc_ai_get_length() returns what is left of the *playing* one, so it is never more
 // than a single frame. Our queue is deeper than that, and reporting the whole
 // backlog makes (frameSize - samplesLeft) go negative, which the game's unsigned
 // clamp lets through as a huge length. So: saturate at one frame, exactly like the
 // hardware. Total latency is governed by the pump's target below, not by this.
-u32 osAiGetLength(void) {
+u32 pc_ai_get_length(void) {
     u32 used = pc_audio_queued();
     u32 oneFrame;
 

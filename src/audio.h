@@ -46,7 +46,7 @@ extern void alCSPSetFadeIn(ALCSPlayer *seqp, u8 chan, ALPan pan); // cspsetfadei
 extern void alFxReverbSet(u8 setting); // reverb.c
 extern u8 alCSPGetFadeIn(ALCSPlayer *seqp, u8 chan); // cspgetfadein.c
 
-void audio_init(OSSched *sc);
+void audio_init(void);
 void sound_volume_reset(u8 skipReset);
 void sound_volume_change(s32 behaviour);
 void music_change_off(void);
