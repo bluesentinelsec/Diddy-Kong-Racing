@@ -1,5 +1,21 @@
 #include "menu_internal.h"
 
+static s32 gTitleDemoIndex;
+
+static s16 gTitleDemoTimer;
+
+static s32 gTitleRevealTimer;
+
+static f32 gTitleAudioCounter;
+
+static s8 *sTitleScreenDemoIds; // Misc Asset 66 - title_screen_demo_ids.bin - 12 or 13 values.
+
+static unk80126878 sIntroNameEntries[8];
+
+static f32 sIntroNameTimer;
+
+static s32 gOpeningNameID;
+
 static s32 gTitleScreenCurrentOption = 0; // 0 = "Start", 1 = "Options"
 
 // Title screen cinematic text

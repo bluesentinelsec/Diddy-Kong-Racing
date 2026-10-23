@@ -1,5 +1,19 @@
 #include "menu_internal.h"
 
+static s32 gAdventureSaveGhost;
+
+static s8 sCurrentMenuID;
+
+static s8 gDialogueOptionYOffset;
+
+static s8 gDialogueItemSelection;
+
+static s8 unused_800DF4D8 = TRUE;
+
+static s8 gNextTajChallengeMenu = FALSE;
+
+static s8 gNeedToCloseDialogueBox = FALSE;
+
 // Array of booleans, set to TRUE when you are done talking to an NPC.
 // This has (atleast) 5 elements, not 4!
 static s8 gDoneTalkingToNPC[5] = {

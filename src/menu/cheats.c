@@ -1,5 +1,19 @@
 #include "menu_internal.h"
 
+static s16 gCheatInputCurrentRow;
+
+static s16 gCheatInputCurrentColumn;
+
+static s16 gCheatInputStringLength;
+
+static s16 gNewCheatID;
+
+static char gCheatInput[20];
+
+static s32 gNumOnscreenMagicCodes;
+
+static s16 gUnlockedCheatIDs[32];
+
 #define CHEATS_ALLOWED_IN_ADVENTURE_AND_TIME_TRIAL                                                                   \
     (CHEAT_CONTROL_TT | CHEAT_CONTROL_DRUMSTICK | CHEAT_BIG_CHARACTERS | CHEAT_SMALL_CHARACTERS | CHEAT_HORN_CHEAT | \
      CHEAT_SELECT_SAME_PLAYER | CHEAT_TWO_PLAYER_ADVENTURE | CHEAT_ULTIMATE_AI | CHEAT_EPC_LOCK_UP_DISPLAY |         \

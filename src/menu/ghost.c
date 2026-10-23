@@ -1,5 +1,27 @@
 #include "menu_internal.h"
 
+static s32 gGhostMenuOption;
+
+static s32 gGhostMenuTotal;
+
+static u8 gGhostLevelIDsPak[6];
+
+static u8 gGhostCharacterIDsPak[6];
+
+static u8 gGhostVehicleIDsPak[6];
+
+static u16 gGhostChecksumIDsPak[6];
+
+static u8 gGhostLevelIDsMenu[6];
+
+static u8 gGhostCharacterIDsMenu[6];
+
+static u8 gGhostVehicleIDsMenu[6];
+
+static u16 gGhostChecksumIDsMenu[6];
+
+static u8 gGhostWorldIDs[8];
+
 // DrawTextures for Dino Domain ghost background.
 static DrawTexture gDrawTexDinoDomainGhostBg[] = { { NULL, 0, 0 },    { NULL, 64, 0 },   { NULL, 128, 0 }, { NULL, 192, 0 },
                                             { NULL, 256, 0 },  { NULL, 0, 32 },   { NULL, 64, 32 }, { NULL, 128, 32 },

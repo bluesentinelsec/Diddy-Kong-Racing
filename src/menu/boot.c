@@ -1,5 +1,16 @@
 #include "menu_internal.h"
 
+static s32 sControllerPakMenuNumberOfRows;                           // 8 if PAL, 7 if not
+
+static s32 gCpakWriteTimer;
+
+static s32 gBootMenuTimer;
+
+static s32 gBootMenuPhase;
+
+static FadeTransition sMenuTransitionFadeInFast =
+    FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 10, FADE_STAY);
+
 s32 gShowControllerPakMenu = FALSE;
 
 #define PAKMENU_JP_OFFSET 0

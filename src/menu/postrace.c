@@ -1,5 +1,39 @@
 #include "menu_internal.h"
 
+static s32 gMenuElementScaleTimer;
+
+static s32 gPostraceScaleIn;
+
+static s32 gPostraceScaleMiddle;
+
+static s32 gPostraceScaleOut;
+
+static s32 gPostRace1Player;
+
+static s32 gPostRaceTimer;
+
+static s32 gTracksSaveGhost;
+
+static TextureHeader *gMenuMosaic1;
+
+static TextureHeader *gMenuMosaic2;
+
+static s32 gMenuMosaicShift;
+
+static char **gPostRaceMessage;
+
+static s32 gPostRaceLineCount;
+
+static s8 gPostraceFinishState;
+
+static s32 gPostraceState = POSTRACE_SLIDE_END;
+
+static MenuElement *gTrophyRankingsMenuElements = NULL;
+
+static s32 sFilenameEntryArg = 0;
+
+static char gCheckAdvEnterInitials[] = "DKR"; // Default file name
+
 static s16 sPostRaceRowOffsets[2] = { 0x0000, 0x0000 };
 
 static s16 gRaceResultsObjectIndices[14] = { 0x0005, 0x003B, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036,

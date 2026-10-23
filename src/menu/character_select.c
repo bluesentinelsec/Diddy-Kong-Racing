@@ -1,5 +1,13 @@
 #include "menu_internal.h"
 
+static CharacterVoiceChannel sSoundOptionsState;
+
+static CharacterVoiceChannel gMenuCurrentCharacter;
+
+static s8 gCharselectStatus[MAXCONTROLLERS];
+
+static s8 gCharacterIdSlots[8];
+
 static s16 gCharSelectObjectIndices[2] = { -1, 0 };
 static s16 gCharSelectImageIndices[2] = { -1, 0 };
 

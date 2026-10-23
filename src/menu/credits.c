@@ -1,5 +1,15 @@
 #include "menu_internal.h"
 
+static s32 gCreditsControlDataIndex;
+
+static s32 sCreditsPage;
+
+static s32 sCreditsSkipped;
+
+static s32 sCreditsFinished;
+
+static s32 sCreditsTextOffset;
+
 static Gfx dCreditsFade[11] = {
     gsDPPipeSync(),
     gsDPSetCycleType(G_CYC_1CYCLE),

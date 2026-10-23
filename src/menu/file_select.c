@@ -1,5 +1,43 @@
 #include "menu_internal.h"
 
+static s32 gFileCopy;
+
+static s32 gFileErase;
+
+static s32 gSaveFileIndex3;
+
+static s32 gSaveFileIndex2;
+
+static s32 gFileConfirm;
+
+static s32 gNameEntryStickHeld;
+
+static s32 gNameEntryStickX;
+
+static s32 gNameSelectionDone;
+
+static f32 gNameEntryOffsetX;
+
+static s32 *gNameEntryTargetX;
+
+static char *gNameEntryString;
+
+static s32 gNameEntryAllowedLength;
+
+static char gCurFilenameCharBeingDrawn = '\0';
+
+static s32 gEnterInitalsY = 192;
+
+static s32 gFilenameX = 160;
+
+static s32 gFilenameY = 120;
+
+static s32 gFilenameFont = ASSET_FONTS_BIGFONT;
+
+static s32 gNameEntryLength = 0;
+
+static s32 gIndexOfCurInputCharacter = 0;
+
 static SavefileInfo gSavefileInfo[4];
 
 static s16 gFileSelectObjectIndices[6] = { 0x00, 0x43, 0x40, 0x41, 0x42, -1 };

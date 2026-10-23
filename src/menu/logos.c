@@ -1,5 +1,7 @@
 #include "menu_internal.h"
 
+static f32 sBootScreenTimer;
+
 // Fade transition from the logo screen to the title screen.
 static FadeTransition gFadeLogoToTitleScreen =
     FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 120, FADE_STAY);

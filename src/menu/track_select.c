@@ -1,5 +1,77 @@
 #include "menu_internal.h"
 
+static s32 gTrackmenuLoadedLevel;              // Compared for equality to gTrackIdForPreview
+
+static s32 gMultiplayerSelectedNumberOfRacersCopy; // Saved version gMultiplayerSelectedNumberOfRacers?
+
+static s32 gTrackmenuType;
+
+static SoundHandle gTrackTTSoundMask;
+
+static SoundHandle sMenuSoundHandle;
+
+static s32 gTrackSelectVertsFlip;
+
+static TrackRenderDetails gTrackSelectRenderDetails[9];
+
+static s8 gPlayerSelectConfirm[4];
+
+static s32 gTrackSelectCursorX;
+
+static f32 gTrackSelectX;
+
+static f32 gTrackSelectY;
+
+static f32 gTrackSelectTargetX;
+
+static f32 gTrackSelectTargetY;
+
+static s32 gSelectedTrackX;
+
+static s32 gSelectedTrackY;
+
+static DrawTexture gRaceSelectionTTOn[3] = { { NULL, 0, 0 }, { NULL, 0, 32 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionTTOff[3] = { { NULL, 0, 0 }, { NULL, 0, 32 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionCarOptHighlight[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionCarOpt[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionHoverOptHighlight[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionHoverOpt[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionPlaneOptHighlight[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionPlaneOpt[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionTTOnOptHighlight[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionTTOffOptHighlight[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionTTOnOpt[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionTTOffOpt[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionPlayer1Texture[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionPlayer2Texture[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionPlayer3Texture[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionPlayer4Texture[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionVehicleTitleTexture[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionTTTitleTexture[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+
+static DrawTexture sTrackMenuFrameTexturesA[4] = { { NULL, 0, -48 }, { NULL, 0, -16 }, { NULL, 0, 16 }, { NULL, 0, 0 } };
+
+static DrawTexture sTrackMenuFrameTexturesB[4] = { { NULL, 0, -48 }, { NULL, 0, -16 }, { NULL, 0, 16 }, { NULL, 0, 0 } };
+
+static DrawTexture gRaceSelectionTTTexture[2] = { { NULL, -16, -16 }, { NULL, 0, 0 } };
+
 // Highlighted option index for time trial in tracks mode.
 //   0 = Time Trial off
 //   1 = Time Trial on

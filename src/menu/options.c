@@ -1,5 +1,7 @@
 #include "menu_internal.h"
 
+static SoundHandle gSoundOptionMask;
+
 static s16 gOptionMenuTextures[] = { 0x3D, 0x3C, 0x3F, 0x3E, 0x44, -1 };
 static s16 gOptionMenuImageIndices[] = { -1 };
 

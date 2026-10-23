@@ -1,5 +1,53 @@
 #include "menu_internal.h"
 
+static s32 gSaveMenuOptionCountLower;
+
+static SaveFileData *gSaveMenuFilesDest;
+
+static s32 gSaveMenuOptionCountUpper;
+
+static SaveFileData *gSaveMenuFilesSource;
+
+static s32 gSaveMenuRumbleNag;
+
+static s32 gSaveMenuRumbleConnected;
+
+static s32 gSaveMenuSourceState;
+
+static s32 gSaveMenuDestState;
+
+static u8 sControllerPakIssueNotFound[MAXCONTROLLERS];   // Bool to see if there's no known issues for the given controller pak
+
+static u8 sControllerPakFatalErrorFound[MAXCONTROLLERS]; // Bool to see if there's a fatal error for the given controller pak
+
+static u8 sControllerPakNoFreeSpace[MAXCONTROLLERS];     // Bool to see if there's no free space for the given controller pak
+
+static u8 sControllerPakBadData[MAXCONTROLLERS];         // Bool to see if there's bad data for the given controller pak
+
+static char *sSaveMenuFilenames;
+
+static s32 gSaveMenuRumbleNagSet;
+
+static char **gDeviceStatusStrings;
+
+static s32 gSaveMenuMessageLines;
+
+static s32 gSaveMenuMessageOption;
+
+static unk80126A80 *gSaveMenuText[4];
+
+static char *sCurrentControllerPakAllFileNames[MAX_CPAK_FILES];      // Every file name on the controller pak
+
+static char *sCurrentControllerPakAllFileExtensions[MAX_CPAK_FILES]; // Every file extension on the controller pak
+
+static s32 gSaveMenuOptionSource;
+
+static f32 gSaveMenuScrollSource;
+
+static s32 gSaveMenuOptionDest;
+
+static f32 gSaveMenuScrollDest;
+
 // This is used for RGBA colors for the save options Controller Pak BG.
 static u32 gContPakSaveBgColours[MAXCONTROLLERS] = {
     COLOUR_RGBA32(64, 64, 255, 255),  // Blue for controller 1

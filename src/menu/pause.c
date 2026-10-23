@@ -1,5 +1,7 @@
 #include "menu_internal.h"
 
+static char *gMenuOptionText[8];                         // Menu Text
+
 // Index of the last player who paused.
 static s32 gLastPlayerWhoPaused = 0;
 

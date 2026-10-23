@@ -14,7 +14,6 @@
 
 char gCourseInitials[4]; // course initials
 char gFLapInitials[4];   // flap initials
-s32 gAdventureSaveGhost;
 #if VERSION >= VERSION_80
 // For some reason these BSS vars swapped places in different versions
 Gfx *sMenuCurrDisplayList;
@@ -30,26 +29,15 @@ Mtx *sMenuCurrHudMat;
 Vertex *sMenuCurrHudVerts;
 Triangle *sMenuCurrHudTris;
 CharacterVoiceChannel gMenuSelectedCharacter;
-CharacterVoiceChannel sSoundOptionsState;
 s32 gOptionBlinkTimer;
-CharacterVoiceChannel gMenuCurrentCharacter;
 
 s32 gIgnorePlayerInputTime;  // A set amount of time to ignore player input.
 UNUSED s32 sUnused_801263C8; // Set to 0 in menu_init, and never again.
 CharacterSelectData (*gCurrCharacterSelectData)[10];
-s32 gTrackmenuLoadedLevel;              // Compared for equality to gTrackIdForPreview
 s8 gActivePlayersArray[MAXCONTROLLERS]; // Boolean value for each controller if it's active with a player.
 s32 gOpacityDecayTimer;
-s8 gCharselectStatus[MAXCONTROLLERS];
 s32 gMenuStage;
 s8 gPlayersCharacterArray[8]; // -1 = Non active player, or character id if >= 0
-s8 gCharacterIdSlots[8];
-s32 gRankingsPoints[8];
-u8 gResultsPlayers[8];
-u8 gRankingsPlayers[8];
-u8 gResultsPlayerIDs[8];
-u8 gRankingsPlayerIDs[8]; // Contains the order of racer indices that tell you what place they are in.
-s8 gRankingsPortraitIDs[16];
 
 // Eeeprom save data bits stored at address 0xF
 // bit 0      = Adventure Two is Unlocked
@@ -65,11 +53,9 @@ s8 gRankingsPortraitIDs[16];
 //              bits 24/25 being high.
 u64 sEepromSettings;
 
-f32 sBootScreenTimer;
 s8 gControllersXAxisDelay[4];
 s8 gControllersYAxisDelay[4];
 s8 gControllersXAxisDirection[4]; // X axis (-1 = left, 1 = right) for controller
-MenuElement *gGameSelectElements;
 s8 gControllersYAxisDirection[4]; // Y axis (-1 = down, 1 = up) for controller
 s8 gControllersXAxis[4];
 s8 gControllersYAxis[4];
@@ -78,61 +64,20 @@ s32 gTrackSelectViewPortHalfX;
 s32 gTrackSelectViewPortHalfY;
 s32 gTrackSelectViewPortX;
 s32 gTrackSelectViewportY;
-s32 gFileCopy;
-s32 gFileErase;
-s32 gSaveFileIndex3;
-s32 gSaveFileIndex2;
-s32 gFileConfirm;
-s32 gGhostMenuOption;
 
 s32 gCpakGhostData;
-s32 gGhostMenuTotal;
 s8 gDialogueSubmenu;
-u8 gGhostLevelIDsPak[6];
-s8 sCurrentMenuID;
-u8 gGhostCharacterIDsPak[6];
-u8 gGhostVehicleIDsPak[6];
-u16 gGhostChecksumIDsPak[6];
 s8 sDialogueOptionMax;
-u8 gGhostLevelIDsMenu[6];
-s8 gDialogueOptionYOffset;
-u8 gGhostCharacterIDsMenu[6];
-s8 gDialogueItemSelection;
-u8 gGhostVehicleIDsMenu[6];
-u16 gGhostChecksumIDsMenu[6];
 Settings *gSavefileData[4];
-u8 gGhostWorldIDs[8];
-s32 gMultiplayerSelectedNumberOfRacersCopy; // Saved version gMultiplayerSelectedNumberOfRacers?
 void *gMenuAssets[128]; // lookup table? Contains Textures, Objects, and Sprites. Need to change name and type.
 u8 gMenuAssetActive[128];
-s32 gTrackmenuType;
 s32 gMenuButtons[5]; // Buttons pressed per player plus an an extra containing each collective input.
-s8 *gCinematicParams;
 s32 buttonsPressed[5];
-s8 *gCinematicPortraits;
 SoundHandle gMenuSoundMasks[MAXCONTROLLERS]; // Soundmask values
 s16 gMenuStickX[5];
-s32 gCinematicEnd;
 UNUSED s8 sUnused_80126828; // Set to 0 in menu_init, and never used again.
 s16 gMenuStickY[5];
-s32 gCinematicSkipA;
-SoundHandle gTrackTTSoundMask;
-s32 gCinematicSkipB;
-SoundHandle sMenuSoundHandle;
-s32 gCinematicMusicChangeOff;
 s32 *sMenuNullElement; // Never set, but it's read? Is it part of a larger struct being set?
-s32 gMenuElementScaleTimer;
-s32 gPostraceScaleIn;
-s32 gPostraceScaleMiddle;
-s32 gPostraceScaleOut;
-s32 gTitleDemoIndex;
-s16 gTitleDemoTimer;
-s32 gTitleRevealTimer;
-f32 gTitleAudioCounter;
-s8 *sTitleScreenDemoIds; // Misc Asset 66 - title_screen_demo_ids.bin - 12 or 13 values.
-unk80126878 sIntroNameEntries[8];
-f32 sIntroNameTimer;
-s32 gOpeningNameID;
 //!@bug: menu_track_select_init() fills this with a `for (i = 0; i < 5; i++)`
 // loop, so it writes five rows into a four-row array. Retail really is 48 bytes
 // (gTrackSelectIDs = 0x801268E8, gFFLUnlocked = 0x80126918), so the console
@@ -143,103 +88,35 @@ s32 gOpeningNameID;
 // of its own is behaviour-neutral and keeps the stray store in bounds.
 s16 gTrackSelectIDs[5][6]; // Track Select values?
 s16 gFFLUnlocked;
-s32 gTrackSelectVertsFlip;
-TrackRenderDetails gTrackSelectRenderDetails[9];
 s8 gPlayerSelectVehicle[4];
-s8 gPlayerSelectConfirm[4];
-s32 gTrackSelectCursorX;
 s32 gTrackSelectCursorY;
 char *gAudioOutputStrings[3];
-f32 gTrackSelectX;
 char *gMusicTestString;
-f32 gTrackSelectY;
-f32 gTrackSelectTargetX;
-f32 gTrackSelectTargetY;
 char *gTrackMenuHubName;
-s32 gSelectedTrackX;
-s32 gSelectedTrackY;
-SoundHandle gSoundOptionMask;
-s32 gSaveMenuOptionCountLower;
-SaveFileData *gSaveMenuFilesDest;
-s32 gSaveMenuOptionCountUpper;
-SaveFileData *gSaveMenuFilesSource;
-s32 gSaveMenuRumbleNag;
-s32 gSaveMenuRumbleConnected;
-s32 gSaveMenuSourceState;
-s32 gSaveMenuDestState;
 s32 sControllerPakNotesFree[MAXCONTROLLERS];      // Number notes free in each controller memory pak
-u8 sControllerPakIssueNotFound[MAXCONTROLLERS];   // Bool to see if there's no known issues for the given controller pak
-u8 sControllerPakFatalErrorFound[MAXCONTROLLERS]; // Bool to see if there's a fatal error for the given controller pak
-u8 sControllerPakNoFreeSpace[MAXCONTROLLERS];     // Bool to see if there's no free space for the given controller pak
-u8 sControllerPakBadData[MAXCONTROLLERS];         // Bool to see if there's bad data for the given controller pak
-char *gMenuOptionText[8];                         // Menu Text
 u8 sControllerPakDataPresent[MAXCONTROLLERS];     // Bool to see if there's data present for the given controller pak
-char *sSaveMenuFilenames;
 s32 gMenuOption;
-s32 gSaveMenuRumbleNagSet;
-char **gDeviceStatusStrings;
-s32 gSaveMenuMessageLines;
-s32 gSaveMenuMessageOption;
-unk80126A80 *gSaveMenuText[4];
-s32 gPostRace1Player;
-s32 gPostRaceTimer;
-s32 gTracksSaveGhost;
 char *gBootPakData[MAX_CPAK_FILES];                           // Text to render
-char *sCurrentControllerPakAllFileNames[MAX_CPAK_FILES];      // Every file name on the controller pak
-char *sCurrentControllerPakAllFileExtensions[MAX_CPAK_FILES]; // Every file extension on the controller pak
 u8 sCurrentControllerPakAllFileTypes[MAX_CPAK_FILES];         // File type of all files on controller pak
 u32 sCurrentControllerPakNumberOfPages[MAX_CPAK_FILES];       // Number of pages for each file on controller pak
 u32 sCurrentControllerPakFreePages;                           // Pages available in current controller pak
-s32 sControllerPakMenuNumberOfRows;                           // 8 if PAL, 7 if not
-TextureHeader *gMenuMosaic1;
-TextureHeader *gMenuMosaic2;
-s32 gMenuMosaicShift;
-s32 gCreditsControlDataIndex;
 PakError sControllerPakError; // 0 = no error, 1 = fatal error, 2 = no free space, 3 = bad data
-s32 sCreditsPage;
-s32 gSaveMenuOptionSource;
-s32 sCreditsSkipped;
-f32 gSaveMenuScrollSource;
-s32 sCreditsFinished;
-s32 gSaveMenuOptionDest;
-s32 sCreditsTextOffset;
-f32 gSaveMenuScrollDest;
 char *gResultOptionText[8];
-s32 gCpakWriteTimer;
 s32 gResultOptionCount;
-s32 gBootMenuTimer;
-char **gPostRaceMessage;
-s32 gBootMenuPhase;
-s32 gPostRaceLineCount;
-s8 gPostraceFinishState;
 unk80080BC8 *gMenuGeometry;
 u16 (*gCheatsAssetData)[30]; // Cheat table.
-s32 gNameEntryStickHeld;
 s32 gNumberOfCheats;
-s32 gNameEntryStickX;
-s16 gCheatInputCurrentRow;
-s16 gCheatInputCurrentColumn;
-s16 gCheatInputStringLength;
 s16 gOptionsMenuItemIndex;
-s32 gNameSelectionDone;
-s16 gNewCheatID;
-f32 gNameEntryOffsetX;
 #if VERSION >= VERSION_79
 // Created a replacement for this var in v2?
 PostRaceLoadState gPostRaceOld;
 #else
 PostRaceLoadState gPostRace;
 #endif
-char gCheatInput[20];
-s32 *gNameEntryTargetX;
 #if VERSION >= VERSION_79
 // Created a replacement for this var in v2?
 PostRaceLoadState gPostRace;
 #endif
-s32 gNumOnscreenMagicCodes;
-char *gNameEntryString;
-s32 gNameEntryAllowedLength;
-s16 gUnlockedCheatIDs[32];
 s32 gFileNew;
 
 // END OF US/PAL BSS ORDER
@@ -299,9 +176,6 @@ s32 gTrackSelectRow = 0; // 1 = Dino Domain, 2 = Sherbet Island, etc.
 s32 gSaveFileIndex = 0;
 s32 unused_800DF4D0 = 0;
 s32 gTrackIdToLoad = 0;
-s8 unused_800DF4D8 = TRUE;
-s8 gNextTajChallengeMenu = FALSE;
-s8 gNeedToCloseDialogueBox = FALSE;
 
 s32 unused_800DF4F0[] = { 0x4000, 0x8000, 0x1000, 0x2000, 0x8000, 0x10, 0x400, 0x00 };
 
@@ -344,8 +218,6 @@ s32 sMenuMusicVolume = 0x7F;
 s32 sMenuGuiOpacity = 0xFF;
 s32 unused_800DF768 = 1;
 
-FadeTransition sMenuTransitionFadeInFast =
-    FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 10, FADE_STAY);
 FadeTransition sMenuTransitionFadeIn =
     FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 18, FADE_STAY);
 FadeTransition sMenuTransitionFadeOut = FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_OUT, FADE_COLOR_BLACK, 18, 0);
@@ -354,8 +226,6 @@ UNUSED FadeTransition sMenuTransitionFadeInWhite =
 UNUSED FadeTransition sMenuTransitionFadeOutWhite =
     FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_OUT, FADE_COLOR_WHITE, 18, 0);
 
-s32 gPostraceState = POSTRACE_SLIDE_END;
-MenuElement *gTrophyRankingsMenuElements = NULL;
 s32 gPostraceTextOffset = 0;
 s32 gPostraceTimestampOffset = 0;
 
@@ -517,27 +387,6 @@ DrawTexture gMenuSelectionArrowRight[2] = { { NULL, -8, -12 }, { NULL, 0, 0 } };
 DrawTexture gRaceSelectionCarTex[3] = { { NULL, 0, 0 }, { NULL, 0, 32 }, { NULL, 0, 0 } };
 DrawTexture gRaceSelectionHoverTex[3] = { { NULL, 0, 0 }, { NULL, 0, 32 }, { NULL, 0, 0 } };
 DrawTexture gRaceSelectionPlaneTex[3] = { { NULL, 0, 0 }, { NULL, 0, 32 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionTTOn[3] = { { NULL, 0, 0 }, { NULL, 0, 32 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionTTOff[3] = { { NULL, 0, 0 }, { NULL, 0, 32 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionCarOptHighlight[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionCarOpt[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionHoverOptHighlight[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionHoverOpt[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionPlaneOptHighlight[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionPlaneOpt[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionTTOnOptHighlight[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionTTOffOptHighlight[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionTTOnOpt[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionTTOffOpt[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionPlayer1Texture[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionPlayer2Texture[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionPlayer3Texture[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionPlayer4Texture[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionVehicleTitleTexture[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionTTTitleTexture[2] = { { NULL, 0, 0 }, { NULL, 0, 0 } };
-DrawTexture sTrackMenuFrameTexturesA[4] = { { NULL, 0, -48 }, { NULL, 0, -16 }, { NULL, 0, 16 }, { NULL, 0, 0 } };
-DrawTexture sTrackMenuFrameTexturesB[4] = { { NULL, 0, -48 }, { NULL, 0, -16 }, { NULL, 0, 16 }, { NULL, 0, 0 } };
-DrawTexture gRaceSelectionTTTexture[2] = { { NULL, -16, -16 }, { NULL, 0, 0 } };
 
 DrawTexture *gMenuSelectionArrows[4] = { gMenuSelectionArrowUp, gMenuSelectionArrowLeft, gMenuSelectionArrowDown,
                                          gMenuSelectionArrowRight };
@@ -711,36 +560,12 @@ MenuElement gRecordTimesMenuElements[9] = {
     { 578, 212, 258, 212, -62, 212, 255, 128, 255, 96, 255, ASSET_FONTS_FUNFONT, 12, 0, { &gFLapInitials }, { { 0, 0, 0, 0 } } }, {NULL}
 };
 
-char gCurFilenameCharBeingDrawn = '\0';
-s32 gEnterInitalsY = 192;
-s32 gFilenameX = 160;
-s32 gFilenameY = 120;
-s32 gFilenameFont = ASSET_FONTS_BIGFONT;
-s32 gNameEntryLength = 0;
-s32 sFilenameEntryArg = 0;
-char gCheckAdvEnterInitials[] = "DKR"; // Default file name
 s32 sFilenameEntryPending = FALSE;
-s32 gIndexOfCurInputCharacter = 0;
 
-s32 gRankingPlayerCount = 8; // Number of racers in trophy race? (1 to 8)
 s32 gTrophyRaceWorldId = 0;
 s32 gTrophyRaceRound = 0; // Rounds 1 - 4 (as 0 - 3)
-s32 gPrevTrophyRaceRound = 0;
 
 u32 unused_800E0FF4[4] = { 0x01FFFFFF, 0x0012FFFF, 0x81FFFFFF, 0x00120000 };
-
-s16 gTrophyRankingsRawIconPositions[] = {
-    0x0040, 0x0020, 0x0082, 0x0040, 0x0020, 0x0082, 0x0040, 0x0020, 0x0082, 0x0040, 0x0020, 0x0082, 0x00DC, 0x00BC,
-    0x011E, 0x00DC, 0x00BC, 0x011E, 0x00DC, 0x00BC, 0x011E, 0x00DC, 0x00BC, 0x011E, 0x0030, 0x0030, 0x0044, 0x005A,
-    0x005A, 0x006E, 0x0084, 0x0084, 0x0098, 0x00AE, 0x00AE, 0x00C2, 0x0030, 0x0030, 0x0044, 0x005A, 0x005A, 0x006E,
-    0x0084, 0x0084, 0x0098, 0x00AE, 0x00AE, 0x00C2, 0x0038, 0x0038, 0x0040, 0x006A, 0x006A, 0x0072, 0x009C, 0x009C,
-    0x00A4, 0x00CE, 0x00CE, 0x00D6, 0x0038, 0x0038, 0x0040, 0x006A, 0x006A, 0x0072, 0x009C, 0x009C, 0x00A4, 0x00CE,
-    0x00CE, 0x00D6, 0x0040, 0x0020, 0x0082, 0x0040, 0x0020, 0x0082, 0x0040, 0x0020, 0x0082, 0x00DC, 0x00BC, 0x011E,
-    0x00DC, 0x00BC, 0x011E, 0x00DC, 0x00BC, 0x011E, 0x0034, 0x0034, 0x0048, 0x006F, 0x006F, 0x0083, 0x00AA, 0x00AA,
-    0x00BE, 0x0034, 0x0034, 0x0048, 0x006F, 0x006F, 0x0083, 0x00AA, 0x00AA, 0x00BE, 0x004C, 0x004C, 0x0054, 0x007E,
-    0x007E, 0x0086, 0x00B0, 0x00B0, 0x00B8, 0x004C, 0x004C, 0x0054, 0x007E, 0x007E, 0x0086, 0x00B0, 0x00B0, 0x00B8,
-    0x008C, 0x006C, 0x00CE, 0x008C, 0x006C, 0x00CE, 0x008C, 0x006C, 0x00CE, 0x008C, 0x006C, 0x00CE
-};
 
 // clang-format on
 

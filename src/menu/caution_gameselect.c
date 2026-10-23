@@ -1,5 +1,7 @@
 #include "menu_internal.h"
 
+static MenuElement *gGameSelectElements;
+
 /**
  * Initialises the timer and transition for the controller pak warning screen.
  * Only seen once per game session, as set by gPlayerHasSeenCautionMenu.

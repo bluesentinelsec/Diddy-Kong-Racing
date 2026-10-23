@@ -1,5 +1,17 @@
 #include "menu_internal.h"
 
+static s8 *gCinematicParams;
+
+static s8 *gCinematicPortraits;
+
+static s32 gCinematicEnd;
+
+static s32 gCinematicSkipA;
+
+static s32 gCinematicSkipB;
+
+static s32 gCinematicMusicChangeOff;
+
 static s16 gCinematicObjectIndices[12] = { 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, -1, 0 };
 
 /**
