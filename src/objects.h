@@ -252,13 +252,13 @@ typedef struct CheckpointNode {
 } CheckpointNode;
 
 /* Size: 0x40 bytes */
-typedef struct unk800179D0 {
+typedef struct CollisionPair {
     s32 ttl;
     Object *objA;
     Object *objB;
     f32 prevLocalPoints[12];
     u32 unused3C;
-} unk800179D0;
+} CollisionPair;
 
 typedef struct TTGhostTable {
     u8 mapId;
@@ -463,8 +463,8 @@ void anim_objects_prepare(void);
 void racerfx_alloc(s32 numberOfVertices, s32 numberOfTriangles);
 s32 func_80014B50(s32 arg0, s32 arg1, f32 arg2, u32 arg3);
 s32 ainode_find_next(s32 nodeId, s32 nextNodeId, s32 direction);
-unk800179D0 *collision_pair_take(Object *arg0, Object *arg1);
-unk800179D0 *collision_pair_add(Object *obj1, Object *obj2);
+CollisionPair *collision_pair_take(Object *arg0, Object *arg1);
+CollisionPair *collision_pair_add(Object *obj1, Object *obj2);
 s8 anim_actor_update(Object *obj, s32 updateRate);
 f32 lerp_and_get_derivative(f32 *data, u32 index, f32 t, f32 *derivative);
 void race_check_finish(s32 updateRate);

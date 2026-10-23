@@ -157,7 +157,7 @@ void material_load_simple(Gfx **dList, s32 flags);
 
 // There might be a file boundary here.
 void tex_animate_texture(TextureHeader *texture, u32 *triangleBatchInfoFlags, s32 *arg2, s32 updateRate);
-void pulse_light_reset(LevelHeader_70 *arg0);
+void pulse_light_reset(ColourCycle *arg0);
 void init_pulsating_light_data(PulsatingLightData *data);
 void update_pulsating_light_data(PulsatingLightData *data, s32 timeDelta);
 TextureHeader *set_animated_texture_header(TextureHeader *texHead, s32 offset);

@@ -9,7 +9,7 @@
 enum ShadowUpdate { SHADOW_NONE, SHADOW_SCENERY, SHADOW_ACTORS };
 
 /* Size: 0x10 bytes */
-typedef struct unk8011C8B8 {
+typedef struct ShadowPlane {
     /* 0x00 */ f32 x;
     /* 0x04 */ f32 y;
     /* 0x08 */ f32 z;
@@ -20,27 +20,27 @@ typedef struct unk8011C8B8 {
             /* 0x0E */ s16 unkE;
         } s;
     } unkC_union;
-} unk8011C8B8;
+} ShadowPlane;
 
 /* Size: 0x10 bytes */
 typedef struct unk8011B120 {
     /* 0x00 */ f32 x;
     /* 0x04 */ f32 y;
     /* 0x08 */ f32 z;
-    /* 0x0C */ unk8011C8B8 *unkC;
+    /* 0x0C */ ShadowPlane *unkC;
 } unk8011B120;
 
 /* Size: 0x20 bytes */
-typedef struct unk8011B330 {
+typedef struct ShadowClipVertex {
     /* 0x00 */ f32 x;
     /* 0x04 */ f32 y;
     /* 0x08 */ f32 z;
-    /* 0x0C */ unk8011C8B8 *plane;
+    /* 0x0C */ ShadowPlane *plane;
     /* 0x10 */ f32 edgeStartX;
     /* 0x14 */ f32 edgeStartZ;
     /* 0x18 */ f32 edgeEndX;
     /* 0x1C */ f32 edgeEndZ;
-} unk8011B330;
+} ShadowClipVertex;
 
 /* Size: 0x10 bytes */
 typedef struct VoidMesh {
@@ -48,21 +48,21 @@ typedef struct VoidMesh {
     Vertex *verts[2];
 } VoidMesh;
 
-typedef struct unk8011C238 {
+typedef struct ShadowPolygon {
     u8 vertexCount;
     u8 bucketVertexMask;
     u8 vertexIndices[8];
     s16 lightLevel;
-} unk8011C238;
+} ShadowPolygon;
 
 /* Size: 0x8 bytes */
-typedef struct unk8011D478 {
+typedef struct VoidCheckPoint {
     s16 sideOffset;
     s16 height;
     s16 unused4;
     s8 flags;
     s8 pairIndex;
-} unk8011D478;
+} VoidCheckPoint;
 
 /* Size: 0x14 bytes */
 typedef struct unk8011C3B8 {
@@ -168,7 +168,7 @@ void ttcam_update(s32);
 void trackbg_render_flashy(void);
 void initialise_player_viewport_vars(s32);
 void compute_frustum_planes(void);
-void update_colour_cycle(LevelHeader_70 *arg0, s32 updateRate);
+void update_colour_cycle(ColourCycle *arg0, s32 updateRate);
 void waves_update(s32);
 void waves_render(Gfx **, Mtx **, s32);
 void shadow_find_surface_under_object(Object *);
@@ -184,9 +184,9 @@ void init_track(u32 geometry, u32 skybox, s32 numberOfPlayers, Vehicle vehicle, 
 void waves_init(LevelModel *, LevelHeader *, s32);
 void void_init(s32);
 void generate_track(s32 modelId);
-void shadow_check_centre_in_triangle(unk8011C8B8 arg0[3]);
+void shadow_check_centre_in_triangle(ShadowPlane arg0[3]);
 s32 void_generate_primitive(f32 *arg0, f32 *arg1, f32 arg2, f32 arg3);
-s32 clip_polygon_to_rect(s32, unk8011C8B8 *, s32, Vec2f *);
-s32 wave_cells_in_rect(s32, unk8011C3B8 *, unk8011C8B8 *, f32, f32, f32, f32);
+s32 clip_polygon_to_rect(s32, ShadowPlane *, s32, Vec2f *);
+s32 wave_cells_in_rect(s32, unk8011C3B8 *, ShadowPlane *, f32, f32, f32, f32);
 
 #endif

@@ -240,13 +240,13 @@ typedef struct Racer {
 } Racer;
 
 /* Unknown Size */
-typedef struct Settings4C {
+typedef struct LevelTransitionSettings {
     u8 courseID; // courseId?
     u8 unk1;     // This value + 8 is cutsceneId index? gGameCurrentCutscene = gLevelSettings[gLevelSettings[1] + 8];
     s8 mapID;    // mapId?
     u8 pad3[0xC];
     u8 entranceID; // entranceId?
-} Settings4C;
+} LevelTransitionSettings;
 
 #define TAJ_FLAGS_CAR_CHAL_UNLOCKED 0x01
 #define TAJ_FLAGS_HOVER_CHAL_UNLOCKED 0x02
@@ -365,7 +365,7 @@ typedef struct Settings {
     /* 0x0049 */ u8 courseId;
     /* 0x004A */ u8 gNumRacers;
     /* 0x004B */ u8 newGame;
-    /* 0x004C */ Settings4C *levelTransition;
+    /* 0x004C */ LevelTransitionSettings *levelTransition;
     /* 0x0050 */ u32 filename;
     /* 0x0054 */ Racer racers[8];
     /* 0x0114 */ s8 timeTrialRacer;
@@ -374,13 +374,13 @@ typedef struct Settings {
 } Settings;
 
 /* Size: 8 bytes */
-typedef struct LevelHeader_70_18 {
+typedef struct ColourCycleKeyframe {
     s32 duration; // 0x0000001E
     u8 red;   // 0xFF
     u8 green; // 0x70
     u8 blue;  // 0x00
     u8 alpha; // 0xFF
-} LevelHeader_70_18;
+} ColourCycleKeyframe;
 
 typedef struct {
     union {
@@ -395,15 +395,15 @@ typedef struct {
 } ColourRGBA;
 
 /* Unknown size */
-typedef struct LevelHeader_70 {
+typedef struct ColourCycle {
     /* 0x00 */ s32 numKeyframes;    // 0x00000004
     /* 0x04 */ s32 currentKeyframe; // 0x00000000
     /* 0x08 */ s32 keyframeTimer;   // 0x00000000
     /* 0x0C */ s32 totalDuration;   // 0x00000000
     /* 0x10 */ ColourRGBA rgba;
     /* 0x14 */ ColourRGBA rgba2;
-    /* 0x18 */ LevelHeader_70_18 keyframes[1]; // Actual length depends on numKeyframes
-} LevelHeader_70;
+    /* 0x18 */ ColourCycleKeyframe keyframes[1]; // Actual length depends on numKeyframes
+} ColourCycle;
 
 // Used to update the pulsating lights in Spaceport Alpha
 typedef struct PulsatingLightDataFrame {
@@ -487,14 +487,14 @@ typedef struct LevelHeader {
 
     // waves_init_header Seems to use this struct, and it differs on colourCyclesByFlagIndex only.
     union {
-        /* 0x70 */ LevelHeader_70 *colourCyclesByFlagIndex[1]; // unknown size, however only size of 1 matches
+        /* 0x70 */ ColourCycle *colourCyclesByFlagIndex[1]; // unknown size, however only size of 1 matches
         struct {
             /* 0x70 */ u8 wavesXlu;          // always 1 except in Hot Top Volcano where it's 0
             /* 0x71 */ u8 waveDoubleDensity; // possible values: 0,1
         };
     };
 
-    /* 0x74 */ LevelHeader_70 *colourCycles[7];
+    /* 0x74 */ ColourCycle *colourCycles[7];
 
     // Weather related?
     /* 0x90 */ s16 weatherEnable; // This affects snow density, but for rain, it simply needs to be nonzero.

@@ -316,7 +316,7 @@ ShadeProperties gWorldShading;
 Object_MidiFade *gCurrentMidiFade;
 TexCoords gTexCoordScratch[32];
 Vec3s gEnvmapPos[2];
-unk800179D0 *gCollisionPairs;
+CollisionPair *gCollisionPairs;
 s32 gBoostVertCount;
 s32 gNumOfBoostVerts;
 s32 gBoostTriCount;
@@ -725,7 +725,7 @@ void allocate_object_pools(void) {
     gRacersByPosition = mempool_alloc_safe(sizeof(uintptr_t) * 10, COLOUR_TAG_BLUE);
     gAINodes = mempool_alloc_safe(sizeof(uintptr_t) * AINODE_COUNT, COLOUR_TAG_BLUE);
     gDrawbridgeTimers = mempool_alloc_safe(8, COLOUR_TAG_BLUE);
-    gCollisionPairs = mempool_alloc_safe(sizeof(unk800179D0) * 16, COLOUR_TAG_BLUE);
+    gCollisionPairs = mempool_alloc_safe(sizeof(CollisionPair) * 16, COLOUR_TAG_BLUE);
     gAssetsLvlObjTranslationTable = (s16 *) asset_table_load(ASSET_LEVEL_OBJECT_TRANSLATION_TABLE);
     {
         // Big-endian asset offset tables (helpers in linux/reimpl.c).
@@ -5293,7 +5293,7 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
     Object *sp158;
     ObjectModel *sp154;
     f32 temp;
-    unk800179D0 *sp14C;
+    CollisionPair *sp14C;
     f32 sp13C[4];
     f32 sp12C[4];
     f32 sp11C[4];
@@ -5433,8 +5433,8 @@ s32 collision_objectmodel(Object *obj, s32 arg1, s32 *arg2, Vec3f *arg3, f32 *ar
 }
 
 /** Recent collision pairs, each with a two-tick cooldown so a contact is handled once. */
-unk800179D0 *collision_pair_take(Object *arg0, Object *arg1) {
-    unk800179D0 *entry;
+CollisionPair *collision_pair_take(Object *arg0, Object *arg1) {
+    CollisionPair *entry;
     s16 i;
 
     for (i = 0; i < 16; i++) {
@@ -5447,8 +5447,8 @@ unk800179D0 *collision_pair_take(Object *arg0, Object *arg1) {
     return NULL;
 }
 
-unk800179D0 *collision_pair_add(Object *obj1, Object *obj2) {
-    unk800179D0 *entry;
+CollisionPair *collision_pair_add(Object *obj1, Object *obj2) {
+    CollisionPair *entry;
     s16 i;
 
     for (i = 0; i < 16; i++) {
@@ -5466,7 +5466,7 @@ unk800179D0 *collision_pair_add(Object *obj1, Object *obj2) {
 u32 collision_pairs_tick(void) {
     s16 i = 0;
     while (i < 16) {
-        unk800179D0 *temp = &gCollisionPairs[i];
+        CollisionPair *temp = &gCollisionPairs[i];
         if (temp->ttl != 0) {
             temp->ttl--;
         }

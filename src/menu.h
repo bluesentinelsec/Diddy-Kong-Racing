@@ -337,7 +337,7 @@ typedef struct unk80126460 {
     MenuElement elem[2];
 } unk80126460;
 
-typedef struct unk801263C0 {
+typedef struct CharacterVoiceChannel {
     s8 channelIndex;
     s8 switchDelay;
     union {
@@ -347,9 +347,9 @@ typedef struct unk801263C0 {
         };
         s16 volume;
     };
-} unk801263C0;
+} CharacterVoiceChannel;
 
-typedef struct unk80126C54 {
+typedef struct PostRaceLoadState {
     union {
         struct {
             u8 unused0;
@@ -359,10 +359,10 @@ typedef struct unk80126C54 {
         };
         s32 assetLoadStep;
     };
-} unk80126C54;
+} PostRaceLoadState;
 
 /* Size: 0x30 bytes */
-typedef struct unk800DF83C {
+typedef struct TitleCinematicName {
     char *text; // Pointer to ascii text.
     f32 slideInStartTime;
     f32 slideInEndTime;
@@ -374,7 +374,7 @@ typedef struct unk800DF83C {
     f32 centreY;
     f32 endX;
     f32 endY;
-} unk800DF83C;
+} TitleCinematicName;
 
 typedef struct unk800DFA3C {
  /* 0x00 */ s16 x;

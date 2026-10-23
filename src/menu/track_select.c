@@ -1662,7 +1662,7 @@ void adventuretrack_render(UNUSED s32 updateRate, s32 arg1, s32 arg2) {
     if (osTvType == OS_TV_TYPE_PAL) {
         yOffset = 12;
     }
-    mapID = ((Settings4C *) ((u8 *) settings->levelTransition + gTrackIdForPreview))->mapID;
+    mapID = ((LevelTransitionSettings *) ((u8 *) settings->levelTransition + gTrackIdForPreview))->mapID;
     gSPClearGeometryMode(sMenuCurrDisplayList++, G_CULL_FRONT);
     menu_camera_centre();
     mtx_ortho(&sMenuCurrDisplayList, &sMenuCurrHudMat);
@@ -1711,7 +1711,7 @@ void adventuretrack_render(UNUSED s32 updateRate, s32 arg1, s32 arg2) {
 #define ADVENTURETRACK_YPOS3 72
 #define ADVENTURETRACK_RED 26
 #define ADVENTURETRACK_ALIGN ALIGN_MIDDLE_CENTER
-#define ADVENTURETRACK_MAPID ((Settings4C *) ((u8 *) settings->levelTransition + gTrackIdForPreview))->mapID
+#define ADVENTURETRACK_MAPID ((LevelTransitionSettings *) ((u8 *) settings->levelTransition + gTrackIdForPreview))->mapID
 #endif
                         draw_text(&sMenuCurrDisplayList, ADVENTURETRACK_XPOS1, yOffset + ADVENTURETRACK_YPOS1,
                                   gMenuText[ASSET_MENU_TEXT_BESTTIME], ADVENTURETRACK_ALIGN);
@@ -1824,7 +1824,7 @@ s32 menu_adventure_track_loop(s32 updateRate) {
         return gTrackIdForPreview | MENU_RESULT_FLAGS_80;
     }
     settings = get_settings();
-    mapId = ((Settings4C *) ((u8 *) settings->levelTransition + gTrackIdForPreview))->mapID;
+    mapId = ((LevelTransitionSettings *) ((u8 *) settings->levelTransition + gTrackIdForPreview))->mapID;
     challenge = FALSE;
     sp1C = 0;
     if (settings->courseFlagsPtr[mapId] & RACE_CLEARED) {
