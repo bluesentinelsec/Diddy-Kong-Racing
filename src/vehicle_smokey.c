@@ -5,7 +5,7 @@
 #include "camera.h"
 #include "macros.h"
 #include "math_util.h"
-#include "object_functions.h"
+#include "behaviours.h"
 #include "objects.h"
 #include "particles.h"
 #include "racer.h"

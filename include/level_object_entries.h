@@ -1,6 +1,8 @@
 #ifndef _LEVEL_OBJECT_ENTRIES_H_
 #define _LEVEL_OBJECT_ENTRIES_H_
 
+#include "types.h"
+
 
 /**
  * Only used in the DKR asset tool to help it figure out how to parse certain struct members.
@@ -961,6 +963,7 @@ typedef struct LevelObjectEntry {
         LevelObjectEntry_WizpigShip wizpigShip;
         LevelObjectEntry_SilverCoin silverCoin;
         LevelObjectEntry_Boost boost;
+        LevelObjectEntry_Boost2 boost2;
         LevelObjectEntry_WardenSmoke tajSmoke;
         LevelObjectEntry_Unknown94 unk94;
         LevelObjectEntry_Unknown96 unk96;

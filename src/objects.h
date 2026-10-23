@@ -1,11 +1,11 @@
 #ifndef _OBJECTS_H_
 #define _OBJECTS_H_
 
-#include "structs.h"
+#include "behaviours.h"
 #include "f3ddkr.h"
-#include "object_functions.h"
 #include "particles.h"
 #include "save_data.h"
+#include "structs.h"
 
 #define NEW_OBJECT_ENTRY(entryVar, entryId, entrySize, xPos, yPos, zPos) \
     {                                                                    \
@@ -148,7 +148,8 @@ enum ObjectBehaviours {
     BHV_UNK_7C,
     BHV_UNK_7D,
     BHV_UNK_7E,
-    BHV_UNK_7F
+    BHV_UNK_7F,
+    BHV_COUNT
 };
 
 enum ObjectInteractionFlags {
@@ -388,7 +389,11 @@ s8 is_taj_challenge(void);
 s32 boss_race_number(void);
 s8 obj_door_override(void);
 void obj_door_open(s32 setting);
-void run_object_init_func(Object *obj, void *entry, s32 param);
+void run_object_init_func(Object *obj, LevelObjectEntry *entry, s32 param);
+extern Object *gOverridePosObjects[10];
+extern s8 gOverridePosCount;
+extern Object **gObjPtrList;
+extern s32 gObjectCount;
 void run_object_loop_func(Object *obj, s32 updateRate);
 s16 *readout_log_get(s32 *currentCount, s32 *maxCount);
 enum ObjectStackTraceID { OBJECT_CLEAR = -1, OBJECT_SPAWN, OBJECT_UPDATE, OBJECT_DRAW };

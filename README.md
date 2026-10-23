@@ -404,7 +404,12 @@ additive, so a real gamepad still works too.
   controllers, the clock), `pc_asset.c` (64-bit-safe asset unpacking),
   `pc_asset_override.c`, `shaders/`.
 - `src/`, `include/` - the game; `src/host.h` is the whole surface between it
-  and the host, and `include/asset_enums.h` names every asset. `libultra/`
+  and the host, and `include/asset_enums.h` names every asset. Level objects
+  are driven by the behaviour registry: `src/behaviours.c` is a table with one
+  named row per behaviour id (init, loop, destroy, render and fade hooks, the
+  spawn flags and the size of the behaviour's data), and `src/behaviours/`
+  holds one file per behaviour. Adding an object kind means writing its hooks
+  in a new file there and adding a row to the table. `libultra/`
   keeps only the parts of the N64 SDK the game still runs as code: the audio
   synthesizer and sequence player, and the matrix helpers.
 - `android/` - the Android app (Gradle + SDL activity) that builds the game as

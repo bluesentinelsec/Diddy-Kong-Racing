@@ -87,7 +87,7 @@ void waves_init_level(LevelModel *level, LevelHeader *header);
 void wave_gens_update(s32 updateRate);
 void waves_init_header(LevelHeader *header);
 void waves_find_water_texture(LevelModel *level, LevelHeader *header);
-void obj_loop_wavepower(Object *obj);
+void obj_loop_wavepower(Object *obj, s32 updateRate);
 void wavegen_scale(WaveGen *gen, f32 radiusAdd, f32 arg2, f32 arg3, f32 arg4);
 void wavegen_destroy(Object *obj);
 f32 obj_wave_height(Object_Log *log, s32 updateRate);
