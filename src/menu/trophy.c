@@ -1,5 +1,34 @@
 #include "menu_internal.h"
 
+static s32 gRankingsPoints[8];
+
+static u8 gResultsPlayers[8];
+
+static u8 gRankingsPlayers[8];
+
+static u8 gResultsPlayerIDs[8];
+
+static u8 gRankingsPlayerIDs[8]; // Contains the order of racer indices that tell you what place they are in.
+
+static s8 gRankingsPortraitIDs[16];
+
+static s32 gRankingPlayerCount = 8; // Number of racers in trophy race? (1 to 8)
+
+static s32 gPrevTrophyRaceRound = 0;
+
+static s16 gTrophyRankingsRawIconPositions[] = {
+    0x0040, 0x0020, 0x0082, 0x0040, 0x0020, 0x0082, 0x0040, 0x0020, 0x0082, 0x0040, 0x0020, 0x0082, 0x00DC, 0x00BC,
+    0x011E, 0x00DC, 0x00BC, 0x011E, 0x00DC, 0x00BC, 0x011E, 0x00DC, 0x00BC, 0x011E, 0x0030, 0x0030, 0x0044, 0x005A,
+    0x005A, 0x006E, 0x0084, 0x0084, 0x0098, 0x00AE, 0x00AE, 0x00C2, 0x0030, 0x0030, 0x0044, 0x005A, 0x005A, 0x006E,
+    0x0084, 0x0084, 0x0098, 0x00AE, 0x00AE, 0x00C2, 0x0038, 0x0038, 0x0040, 0x006A, 0x006A, 0x0072, 0x009C, 0x009C,
+    0x00A4, 0x00CE, 0x00CE, 0x00D6, 0x0038, 0x0038, 0x0040, 0x006A, 0x006A, 0x0072, 0x009C, 0x009C, 0x00A4, 0x00CE,
+    0x00CE, 0x00D6, 0x0040, 0x0020, 0x0082, 0x0040, 0x0020, 0x0082, 0x0040, 0x0020, 0x0082, 0x00DC, 0x00BC, 0x011E,
+    0x00DC, 0x00BC, 0x011E, 0x00DC, 0x00BC, 0x011E, 0x0034, 0x0034, 0x0048, 0x006F, 0x006F, 0x0083, 0x00AA, 0x00AA,
+    0x00BE, 0x0034, 0x0034, 0x0048, 0x006F, 0x006F, 0x0083, 0x00AA, 0x00AA, 0x00BE, 0x004C, 0x004C, 0x0054, 0x007E,
+    0x007E, 0x0086, 0x00B0, 0x00B0, 0x00B8, 0x004C, 0x004C, 0x0054, 0x007E, 0x007E, 0x0086, 0x00B0, 0x00B0, 0x00B8,
+    0x008C, 0x006C, 0x00CE, 0x008C, 0x006C, 0x00CE, 0x008C, 0x006C, 0x00CE, 0x008C, 0x006C, 0x00CE
+};
+
 // Number of points to award in trophy race for each place.
 static s32 gTrophyRacePointsArray[8] = { 9, 7, 5, 3, 1, 0, 0, 0 };
 
@@ -81,12 +110,12 @@ static s16 *gTrophyRankingsIconPositions[32] = { NULL,
  */
 void trophyround_adventure(void) {
     Settings *settings = get_settings();
-    gTrophyRaceWorldId = settings->worldId;
-    gTrophyRaceRound = 0;
+    gRaceSetup.trophyRaceWorldId = settings->worldId;
+    gRaceSetup.trophyRaceRound = 0;
     settings->levelTransition->courseID = settings->courseId;
     settings->levelTransition->entranceID = 0;
     settings->levelTransition->unk1 = 0;
-    gInAdvModeTrophyRace = TRUE;
+    gRaceSetup.inAdvModeTrophyRace = TRUE;
     set_time_trial_enabled(0);
 }
 
@@ -103,7 +132,7 @@ void menu_trophy_race_round_init(void) {
     settings = get_settings();
     levelIds = (s8 *) get_misc_asset(ASSET_MISC_TRACKS_MENU_IDS); // Returns level ids array.
 
-    if (gTrophyRaceRound == 0) {
+    if (gRaceSetup.trophyRaceRound == 0) {
         for (index = 0; index < 8; index++) {
             settings->racers[index].trophy_points = 0;
         }
@@ -111,22 +140,22 @@ void menu_trophy_race_round_init(void) {
 
     // Is this a fakematch? I can't tell.
     do {
-        index = levelIds[((gTrophyRaceWorldId - 1) * 6) + gTrophyRaceRound];
+        index = levelIds[((gRaceSetup.trophyRaceWorldId - 1) * 6) + gRaceSetup.trophyRaceRound];
         if (index != -1) {
             continue;
         }
         index = (index + 1) & 3;
     } while (index == -1);
 
-    for (i = 0; i < gNumberOfActivePlayers; i++) {
-        gPlayerSelectVehicle[i] = leveltable_vehicle_default(index);
+    for (i = 0; i < gRaceSetup.numberOfActivePlayers; i++) {
+        gRaceSetup.playerVehicles[i] = leveltable_vehicle_default(index);
     }
 
     set_level_default_vehicle(leveltable_vehicle_default(index));
     load_level_for_menu(index, -1, 1);
 
-    gMenuDelay = 0;
-    gTrackNameVoiceDelay = 10;
+    gMenuInput.delay = 0;
+    gTrackSelect.nameVoiceDelay = 10;
     load_font(ASSET_FONTS_BIGFONT);
     music_voicelimit_set(24);
     music_play(SEQUENCE_MAIN_MENU);
@@ -150,23 +179,23 @@ void trophyround_render(UNUSED s32 updateRate) {
         yPos = 0;
     }
 
-    worldName = level_name(level_world_id(gTrophyRaceWorldId));
-    levelName = level_name(levelIds[((gTrophyRaceWorldId - 1) * 6) + gTrophyRaceRound]);
+    worldName = level_name(level_world_id(gRaceSetup.trophyRaceWorldId));
+    levelName = level_name(levelIds[((gRaceSetup.trophyRaceWorldId - 1) * 6) + gRaceSetup.trophyRaceRound]);
     set_text_background_colour(0, 0, 0, 0);
     set_text_font(ASSET_FONTS_BIGFONT);
     // Text Shadows first
     set_text_colour(0, 0, 0, 255, 128);
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF + 1, 35, (char *) worldName, ALIGN_MIDDLE_CENTER);
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF + 1, 67, gMenuText[ASSET_MENU_TEXT_TROPHYRACE],
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 1, 35, (char *) worldName, ALIGN_MIDDLE_CENTER);
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 1, 67, gMenuLoaded.text[ASSET_MENU_TEXT_TROPHYRACE],
               ALIGN_MIDDLE_CENTER); // TROPHY RACE
     set_text_colour(255, 255, 255, 0, 255);
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, 32, (char *) worldName, ALIGN_MIDDLE_CENTER);
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, 64, gMenuText[ASSET_MENU_TEXT_TROPHYRACE],
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, 32, (char *) worldName, ALIGN_MIDDLE_CENTER);
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, 64, gMenuLoaded.text[ASSET_MENU_TEXT_TROPHYRACE],
               ALIGN_MIDDLE_CENTER); // TROPHY RACE
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, yPos + 176,
-              gMenuText[ASSET_MENU_TEXT_ROUNDONE + gTrophyRaceRound],
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, yPos + 176,
+              gMenuLoaded.text[ASSET_MENU_TEXT_ROUNDONE + gRaceSetup.trophyRaceRound],
               ALIGN_MIDDLE_CENTER); // ROUND ONE / ROUND TWO / ROUND THREE / ROUND FOUR
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, yPos + 208, (char *) levelName, ALIGN_MIDDLE_CENTER);
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, yPos + 208, (char *) levelName, ALIGN_MIDDLE_CENTER);
 }
 
 /**
@@ -179,39 +208,40 @@ s32 menu_trophy_race_round_loop(s32 updateRate) {
     s32 temp;
 
     trackMenuIds = (s8 *) get_misc_asset(ASSET_MISC_TRACKS_MENU_IDS); // tracks_menu_ids
-    if (gTrackNameVoiceDelay != 0) {
-        gTrackNameVoiceDelay -= updateRate;
-        if (gTrackNameVoiceDelay <= 0) {
+    if (gTrackSelect.nameVoiceDelay != 0) {
+        gTrackSelect.nameVoiceDelay -= updateRate;
+        if (gTrackSelect.nameVoiceDelay <= 0) {
             // This is mostly likely supposed to be a multi dimensional array
-            temp = trackMenuIds[(((gTrophyRaceWorldId - 1) * 6) + gTrophyRaceRound)];
+            temp = trackMenuIds[(((gRaceSetup.trophyRaceWorldId - 1) * 6) + gRaceSetup.trophyRaceRound)];
             ttVoiceLine = gTTVoiceLines[temp];
             if (ttVoiceLine != -1) {
                 sound_play(ttVoiceLine, NULL);
             }
-            gTrackNameVoiceDelay = 0;
+            gTrackSelect.nameVoiceDelay = 0;
         }
     }
-    if (gMenuDelay != 0) {
-        gMenuDelay += updateRate;
+    if (gMenuInput.delay != 0) {
+        gMenuInput.delay += updateRate;
     }
-    if (gMenuDelay < 22) {
+    if (gMenuInput.delay < 22) {
         trophyround_render(updateRate);
     }
-    if ((gIgnorePlayerInputTime == 0) && (gMenuDelay == 0)) {
+    if ((gMenuInput.ignoreInputTime == 0) && (gMenuInput.delay == 0)) {
         menu_input();
-        if ((gMenuButtons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) != 0) {
+        if ((gMenuInput.buttons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) != 0) {
             transition_begin(&sMenuTransitionFadeIn);
-            gMenuDelay = 1;
+            gMenuInput.delay = 1;
             music_fade(-128);
         }
     }
-    if (gMenuDelay > 30) {
+    if (gMenuInput.delay > 30) {
         trophyround_free();
-        gTrackIdToLoad = trackMenuIds[(((gTrophyRaceWorldId - 1) * 6) + gTrophyRaceRound)];
-        gTrackSpecifiedWithTrackIdToLoad = 1;
-        return gNumberOfActivePlayers;
+        gRaceSetup.trackIdToLoad =
+            trackMenuIds[(((gRaceSetup.trophyRaceWorldId - 1) * 6) + gRaceSetup.trophyRaceRound)];
+        gRaceSetup.trackSpecified = 1;
+        return gRaceSetup.numberOfActivePlayers;
     }
-    gIgnorePlayerInputTime = 0;
+    gMenuInput.ignoreInputTime = 0;
     return MENU_RESULT_CONTINUE;
 }
 
@@ -235,7 +265,7 @@ void trophy_rankings_init(s32 isRankings) {
     char *titleText;
 
     settings = get_settings();
-    titleText = (isRankings) ? gMenuText[ASSET_MENU_TEXT_RANKINGS] : gMenuText[ASSET_MENU_TEXT_RACEORDER];
+    titleText = (isRankings) ? gMenuLoaded.text[ASSET_MENU_TEXT_RANKINGS] : gMenuLoaded.text[ASSET_MENU_TEXT_RACEORDER];
     gTrophyRankingsTitle[0].t.asciiText = titleText;
     gTrophyRankingsTitle[1].t.asciiText = titleText;
     racerIndex = (gRankingPlayerCount - 1);
@@ -311,34 +341,34 @@ void menu_trophy_race_rankings_init(void) {
 
     settings = get_settings();
     trackMenuIds = (s8 *) get_misc_asset(ASSET_MISC_TRACKS_MENU_IDS);
-    gMenuStage = RANKINGS_ENTER;
-    gMenuDelay = 0;
-    gOptionBlinkTimer = 0;
-    gOpacityDecayTimer = 0;
+    gMenuFlow.stage = RANKINGS_ENTER;
+    gMenuInput.delay = 0;
+    gMenuFlow.blinkTimer = 0;
+    gMenuFlow.opacityDecayTimer = 0;
     reset_controller_sticks();
     menu_assetgroup_load(gTrophyRankingsObjectIndices);
     menu_imagegroup_load(gTrophyRaceImageIndices);
-    gPrevTrophyRaceRound = gTrophyRaceRound;
+    gPrevTrophyRaceRound = gRaceSetup.trophyRaceRound;
     do {
-        if (++gTrophyRaceRound >= 4) {
+        if (++gRaceSetup.trophyRaceRound >= 4) {
             break;
         }
-    } while (trackMenuIds[((gTrophyRaceWorldId - 1) * 6) + gTrophyRaceRound] == -1);
+    } while (trackMenuIds[((gRaceSetup.trophyRaceWorldId - 1) * 6) + gRaceSetup.trophyRaceRound] == -1);
 
-    if (gTrophyRaceRound < 4) {
-        gResultOptionText[0] = gMenuText[ASSET_MENU_TEXT_CONTINUE];
-        gResultOptionText[1] = gMenuText[ASSET_MENU_TEXT_QUITTROPHYRACE];
-        gResultOptionCount = 3;
+    if (gRaceSetup.trophyRaceRound < 4) {
+        gResults.optionText[0] = gMenuLoaded.text[ASSET_MENU_TEXT_CONTINUE];
+        gResults.optionText[1] = gMenuLoaded.text[ASSET_MENU_TEXT_QUITTROPHYRACE];
+        gResults.optionCount = 3;
     } else {
-        gResultOptionText[0] = gMenuText[ASSET_MENU_TEXT_TROPHYCEREMONY];
-        gResultOptionCount = 1;
+        gResults.optionText[0] = gMenuLoaded.text[ASSET_MENU_TEXT_TROPHYCEREMONY];
+        gResults.optionCount = 1;
     }
-    gMenuOption = 0;
+    gMenuFlow.option = 0;
     menu_racer_portraits();
 
-    if (gNumberOfActivePlayers > 2) {
-        gRankingPlayerCount = gNumberOfActivePlayers;
-    } else if ((gNumberOfActivePlayers == 2) || (is_in_two_player_adventure())) {
+    if (gRaceSetup.numberOfActivePlayers > 2) {
+        gRankingPlayerCount = gRaceSetup.numberOfActivePlayers;
+    } else if ((gRaceSetup.numberOfActivePlayers == 2) || (is_in_two_player_adventure())) {
         gRankingPlayerCount = get_multiplayer_racer_count();
     } else {
         gRankingPlayerCount = 8;
@@ -347,7 +377,7 @@ void menu_trophy_race_rankings_init(void) {
         for (j = 0; j < gRankingPlayerCount; j++) {
             if (i == settings->racers[j].starting_position) {
                 gResultsPlayerIDs[i] = j;
-                if (j < gNumberOfActivePlayers) {
+                if (j < gRaceSetup.numberOfActivePlayers) {
                     gResultsPlayers[i] = TRUE;
                 } else {
                     gResultsPlayers[i] = FALSE;
@@ -379,7 +409,7 @@ void menu_trophy_race_rankings_init(void) {
     if (is_in_two_player_adventure()) {
         j = 2;
     } else {
-        j = gNumberOfActivePlayers;
+        j = gRaceSetup.numberOfActivePlayers;
     }
     for (i = 0; i < gRankingPlayerCount; i++) {
         if (gRankingsPlayerIDs[i] < j) {
@@ -407,16 +437,16 @@ void rankings_render_order(s32 updateRate) {
     s32 i;
     UNUSED s32 pad;
 
-    gOptionBlinkTimer = (gOptionBlinkTimer + updateRate) & 0x3F;
-    highlight = gOptionBlinkTimer * 8;
+    gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
+    highlight = gMenuFlow.blinkTimer * 8;
     if (highlight > 255) {
         highlight = 511 - highlight;
     }
     for (i = 0; i < gRankingPlayerCount; i++) {
         fade = 255;
         // Highlight human players if there are fewer than four.
-        if (gNumberOfActivePlayers < 3 && ((gMenuStage == POSTRACE_ENTER && gResultsPlayers[i]) ||
-                                           (gMenuStage != POSTRACE_ENTER && gRankingsPlayers[i]))) {
+        if (gRaceSetup.numberOfActivePlayers < 3 && ((gMenuFlow.stage == POSTRACE_ENTER && gResultsPlayers[i]) ||
+                                                     (gMenuFlow.stage != POSTRACE_ENTER && gRankingsPlayers[i]))) {
             fade = (highlight >> 1) + 128;
         }
 #ifdef AVOID_UB
@@ -429,7 +459,7 @@ void rankings_render_order(s32 updateRate) {
         gTrophyRankingsRacers[i * 3].filterBlue = fade;
 #endif
     }
-    stage = gMenuStage;
+    stage = gMenuFlow.stage;
     if (stage == RANKINGS_ORDER || stage == RANKINGS_EXIT) {
         draw_menu_elements(1, gTrophyRankingsTitle, 1.0f);
     }
@@ -455,28 +485,28 @@ s32 menu_trophy_race_rankings_loop(s32 updateRate) {
 
     ret = MENU_RESULT_CONTINUE;
     settings = get_settings();
-    if (gMenuDelay > -20 && gMenuDelay < 20) {
+    if (gMenuInput.delay > -20 && gMenuInput.delay < 20) {
         rankings_render_order(updateRate);
     }
     update_controller_sticks();
-    switch (gMenuStage) { // gMenuStage = current Trophy Race Rankings state?
+    switch (gMenuFlow.stage) { // gMenuFlow.stage = current Trophy Race Rankings state?
         case POSTRACE_ENTER:
             if (postrace_render(updateRate)) {
-                gMenuStage = RANKINGS_SWAP;
+                gMenuFlow.stage = RANKINGS_SWAP;
                 trophy_rankings_init(1);
                 postrace_offsets(gTrophyRankingsTitle, 0.5f, 0.0f, 0.0f, 0, 0);
             }
             break;
         case RANKINGS_SWAP:
             if (postrace_render(updateRate)) {
-                gMenuStage = RANKINGS_ORDER;
+                gMenuFlow.stage = RANKINGS_ORDER;
                 draw_menu_elements(1, gTrophyRankingsTitle, 1.0f);
             }
             break;
         case RANKINGS_ORDER:
-            gOpacityDecayTimer += updateRate;
-            if (gOpacityDecayTimer > 10) {
-                gOpacityDecayTimer -= 10;
+            gMenuFlow.opacityDecayTimer += updateRate;
+            if (gMenuFlow.opacityDecayTimer > 10) {
+                gMenuFlow.opacityDecayTimer -= 10;
                 playSound = FALSE;
                 for (i = 0; i < gRankingPlayerCount; i++) {
                     if (gRankingsPoints[i] > 0) {
@@ -491,41 +521,41 @@ s32 menu_trophy_race_rankings_loop(s32 updateRate) {
             }
 
             buttonsPressed = 0;
-            prevOption = gMenuOption;
-            for (i = 0; i < gNumberOfActivePlayers; i++) {
+            prevOption = gMenuFlow.option;
+            for (i = 0; i < gRaceSetup.numberOfActivePlayers; i++) {
                 buttonsPressed |= input_pressed(i);
-                if (gControllersYAxisDirection[i] < 0) {
-                    gMenuOption++;
+                if (gMenuInput.yAxisDirection[i] < 0) {
+                    gMenuFlow.option++;
                 }
-                if (gControllersYAxisDirection[i] > 0) {
-                    gMenuOption--;
+                if (gMenuInput.yAxisDirection[i] > 0) {
+                    gMenuFlow.option--;
                 }
             }
-            if (gMenuOption < 0) {
-                gMenuOption = 0;
+            if (gMenuFlow.option < 0) {
+                gMenuFlow.option = 0;
             }
-            if (gMenuOption >= gResultOptionCount) {
-                gMenuOption = gResultOptionCount - 1;
+            if (gMenuFlow.option >= gResults.optionCount) {
+                gMenuFlow.option = gResults.optionCount - 1;
             }
-            if (prevOption != gMenuOption) {
+            if (prevOption != gMenuFlow.option) {
                 sound_play(SOUND_MENU_PICK2, NULL);
             }
             if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
                 music_fade(-128);
                 transition_begin(&sMenuTransitionFadeIn);
-                gMenuStage = RANKINGS_EXIT;
+                gMenuFlow.stage = RANKINGS_EXIT;
                 for (i = 0; i < gRankingPlayerCount; i++) {
                     settings->racers[i].trophy_points += gRankingsPoints[i];
                 }
             }
             break;
         case RANKINGS_EXIT:
-            gMenuDelay += updateRate;
-            if (gMenuDelay > 30) {
+            gMenuInput.delay += updateRate;
+            if (gMenuInput.delay > 30) {
                 rankings_free();
                 dialogue_close(7);
                 dialogue_clear(7);
-                if (gTrophyRaceRound < 4) {
+                if (gRaceSetup.trophyRaceRound < 4) {
                     menu_init(MENU_TROPHY_RACE_ROUND);
                 } else {
 #ifdef AVOID_UB
@@ -547,11 +577,11 @@ s32 menu_trophy_race_rankings_loop(s32 updateRate) {
                         }
                     }
 
-                    if (gNumberOfActivePlayers == 1 && !is_in_two_player_adventure()) {
+                    if (gRaceSetup.numberOfActivePlayers == 1 && !is_in_two_player_adventure()) {
                         temp6 = 0;
                     }
                     gRankingsPortraitIDs[temp6] = -1;
-                    if (gIsInTracksMode == TRUE) {
+                    if (gRaceSetup.isInTracksMode == TRUE) {
                         if (sp34 >= 3) {
                             menu_init(MENU_TRACK_SELECT);
                         } else {
@@ -560,8 +590,8 @@ s32 menu_trophy_race_rankings_loop(s32 updateRate) {
                     } else {
                         ret = MENU_RESULT_RETURN_TO_GAME;
                         settings->courseId = level_world_id(settings->worldId);
-                        if (gInAdvModeTrophyRace) {
-                            gInAdvModeTrophyRace = FALSE;
+                        if (gRaceSetup.inAdvModeTrophyRace) {
+                            gRaceSetup.inAdvModeTrophyRace = FALSE;
                             ret = settings->courseId | MENU_RESULT_FLAGS_200;
                             if (sp34 < 3) {
                                 temp0 = settings->worldId - 1;
@@ -578,17 +608,17 @@ s32 menu_trophy_race_rankings_loop(s32 updateRate) {
                     }
                     if (sp34 < 3) {
                         params = (s8 *) get_misc_asset(ASSET_MISC_CINEMATIC_TROPHY);
-                        temp0 = ((gTrophyRaceWorldId * 3) + sp34) - 3;
+                        temp0 = ((gRaceSetup.trophyRaceWorldId * 3) + sp34) - 3;
                         cinematic_start(params, temp0, ret, 0, 0, gRankingsPortraitIDs);
                         ret = MENU_RESULT_CONTINUE;
                         menu_init(MENU_NEWGAME_CINEMATIC);
                     }
-                    gTrophyRaceWorldId = 0;
+                    gRaceSetup.trophyRaceWorldId = 0;
                 }
             }
             break;
     }
-    gIgnorePlayerInputTime = 0;
+    gMenuInput.ignoreInputTime = 0;
     return ret;
 }
 
@@ -604,5 +634,5 @@ void rankings_free(void) {
  * Return the hub world ID of the trophy race.
  */
 s32 get_trophy_race_world_id(void) {
-    return gTrophyRaceWorldId;
+    return gRaceSetup.trophyRaceWorldId;
 }

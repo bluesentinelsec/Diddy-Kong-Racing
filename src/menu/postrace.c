@@ -1,5 +1,39 @@
 #include "menu_internal.h"
 
+static s32 gMenuElementScaleTimer;
+
+static s32 gPostraceScaleIn;
+
+static s32 gPostraceScaleMiddle;
+
+static s32 gPostraceScaleOut;
+
+static s32 gPostRace1Player;
+
+static s32 gPostRaceTimer;
+
+static s32 gTracksSaveGhost;
+
+static TextureHeader *gMenuMosaic1;
+
+static TextureHeader *gMenuMosaic2;
+
+static s32 gMenuMosaicShift;
+
+static char **gPostRaceMessage;
+
+static s32 gPostRaceLineCount;
+
+static s8 gPostraceFinishState;
+
+static s32 gPostraceState = POSTRACE_SLIDE_END;
+
+static MenuElement *gTrophyRankingsMenuElements = NULL;
+
+static s32 sFilenameEntryArg = 0;
+
+static char gCheckAdvEnterInitials[] = "DKR"; // Default file name
+
 static s16 sPostRaceRowOffsets[2] = { 0x0000, 0x0000 };
 
 static s16 gRaceResultsObjectIndices[14] = { 0x0005, 0x003B, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036,
@@ -22,8 +56,8 @@ void postrace_offsets(MenuElement *elements, f32 in, f32 mid, f32 out, s32 textO
     gPostraceScaleMiddle = mid * 60.0f;
     gPostraceScaleOut = out * 60.0f;
     gMenuElementScaleTimer = 0;
-    gPostraceTextOffset = textOffset;
-    gPostraceTimestampOffset = timestampOffset;
+    gResults.textOffset = textOffset;
+    gResults.timestampOffset = timestampOffset;
     if (gPostraceScaleIn > 0) {
         sound_play(SOUND_WHOOSH1, NULL);
     }
@@ -43,8 +77,8 @@ s32 postrace_render(s32 updateRate) {
     scale = -1.0f;
     buttonsPressedAllPlayers = 0;
     if (gPostraceState != POSTRACE_SLIDE_END) {
-        if (gIgnorePlayerInputTime == 0) {
-            for (i = 0; i < gNumberOfActivePlayers; i++) {
+        if (gMenuInput.ignoreInputTime == 0) {
+            for (i = 0; i < gRaceSetup.numberOfActivePlayers; i++) {
                 buttonsPressedAllPlayers |= input_pressed(i);
             }
         }
@@ -111,16 +145,16 @@ s32 postrace_render(s32 updateRate) {
  * Set the racer portrait element textures for their respective characters.
  */
 void menu_racer_portraits(void) {
-    gMenuPortraitKrunch[0].texture = gMenuAssets[TEXTURE_ICON_PORTRAIT_KRUNCH];
-    gMenuPortraitDiddy[0].texture = gMenuAssets[TEXTURE_ICON_PORTRAIT_DIDDY];
-    gMenuPortraitDrumstick[0].texture = gMenuAssets[TEXTURE_ICON_PORTRAIT_DRUMSTICK];
-    gMenuPortraitBanjo[0].texture = gMenuAssets[TEXTURE_ICON_PORTRAIT_BANJO];
-    gMenuPortraitBumper[0].texture = gMenuAssets[TEXTURE_ICON_PORTRAIT_BUMPER];
-    gMenuPortraitConker[0].texture = gMenuAssets[TEXTURE_ICON_PORTRAIT_CONKER];
-    gMenuPortraitTiptup[0].texture = gMenuAssets[TEXTURE_ICON_PORTRAIT_TIPTUP];
-    gMenuPortraitTT[0].texture = gMenuAssets[TEXTURE_ICON_PORTRAIT_TT];
-    gMenuPortraitPipsy[0].texture = gMenuAssets[TEXTURE_ICON_PORTRAIT_PIPSY];
-    gMenuPortraitTimber[0].texture = gMenuAssets[TEXTURE_ICON_PORTRAIT_TIMBER];
+    gMenuPortraitKrunch[0].texture = gMenuLoaded.assets[TEXTURE_ICON_PORTRAIT_KRUNCH];
+    gMenuPortraitDiddy[0].texture = gMenuLoaded.assets[TEXTURE_ICON_PORTRAIT_DIDDY];
+    gMenuPortraitDrumstick[0].texture = gMenuLoaded.assets[TEXTURE_ICON_PORTRAIT_DRUMSTICK];
+    gMenuPortraitBanjo[0].texture = gMenuLoaded.assets[TEXTURE_ICON_PORTRAIT_BANJO];
+    gMenuPortraitBumper[0].texture = gMenuLoaded.assets[TEXTURE_ICON_PORTRAIT_BUMPER];
+    gMenuPortraitConker[0].texture = gMenuLoaded.assets[TEXTURE_ICON_PORTRAIT_CONKER];
+    gMenuPortraitTiptup[0].texture = gMenuLoaded.assets[TEXTURE_ICON_PORTRAIT_TIPTUP];
+    gMenuPortraitTT[0].texture = gMenuLoaded.assets[TEXTURE_ICON_PORTRAIT_TT];
+    gMenuPortraitPipsy[0].texture = gMenuLoaded.assets[TEXTURE_ICON_PORTRAIT_PIPSY];
+    gMenuPortraitTimber[0].texture = gMenuLoaded.assets[TEXTURE_ICON_PORTRAIT_TIMBER];
 }
 
 /**
@@ -139,70 +173,70 @@ void postrace_start(s32 finishState, s32 worldID) {
         set_scene_viewport_num(VIEWPORT_LAYOUT_1_PLAYER);
     }
     gPostRace1Player = FALSE;
-    if (gNumberOfActivePlayers == 1 && gTrophyRaceWorldId == 0) {
+    if (gRaceSetup.numberOfActivePlayers == 1 && gRaceSetup.trophyRaceWorldId == 0) {
         if (is_in_tracks_mode() == TRUE) {
-            gResultOptionText[0] = gMenuText[ASSET_MENU_TEXT_TRYAGAIN];
-            gResultOptionText[1] = gMenuText[ASSET_MENU_TEXT_SELECTTRACK];
-            gResultOptionText[2] = gMenuText[ASSET_MENU_TEXT_SELECTCHARACTER];
-            gResultOptionCount = 3;
+            gResults.optionText[0] = gMenuLoaded.text[ASSET_MENU_TEXT_TRYAGAIN];
+            gResults.optionText[1] = gMenuLoaded.text[ASSET_MENU_TEXT_SELECTTRACK];
+            gResults.optionText[2] = gMenuLoaded.text[ASSET_MENU_TEXT_SELECTCHARACTER];
+            gResults.optionCount = 3;
             gPostRace1Player = TRUE;
         } else {
             if (finishState == FALSE) {
-                gResultOptionText[0] = gMenuText[ASSET_MENU_TEXT_TRYAGAIN];
-                gResultOptionCount = 1;
+                gResults.optionText[0] = gMenuLoaded.text[ASSET_MENU_TEXT_TRYAGAIN];
+                gResults.optionCount = 1;
             } else {
-                gResultOptionCount = 0;
+                gResults.optionCount = 0;
             }
-            gResultOptionText[gResultOptionCount] = gMenuText[ASSET_MENU_TEXT_RETURNTOLOBBY];
-            gResultOptionCount++;
+            gResults.optionText[gResults.optionCount] = gMenuLoaded.text[ASSET_MENU_TEXT_RETURNTOLOBBY];
+            gResults.optionCount++;
         }
-        gResultOptionText[gResultOptionCount] = gMenuText[ASSET_MENU_TEXT_QUIT];
-        gResultOptionCount++;
-        gMenuStage = POSTRACE_STAGE_BEGIN;
+        gResults.optionText[gResults.optionCount] = gMenuLoaded.text[ASSET_MENU_TEXT_QUIT];
+        gResults.optionCount++;
+        gMenuFlow.stage = POSTRACE_STAGE_BEGIN;
     } else {
-        gMenuStage = POSTRACE_STAGE_FADE_OUT;
+        gMenuFlow.stage = POSTRACE_STAGE_FADE_OUT;
     }
-    gFileNew = FALSE;
-    gOptionBlinkTimer = 0;
-    gOpacityDecayTimer = 0;
-    gMenuDelay = 0;
-    gMenuCurIndex = 0;
-    gMenuOption = 0;
-    gIgnorePlayerInputTime = 1;
-    gPostRace.assetLoadStep = -1;
-    gMenuSubOption = 0;
+    gRaceSetup.fileNew = FALSE;
+    gMenuFlow.blinkTimer = 0;
+    gMenuFlow.opacityDecayTimer = 0;
+    gMenuInput.delay = 0;
+    gMenuFlow.curIndex = 0;
+    gMenuFlow.option = 0;
+    gMenuInput.ignoreInputTime = 1;
+    gResults.load.assetLoadStep = -1;
+    gMenuFlow.subOption = 0;
     gPostRaceMessage = NULL;
     gTracksSaveGhost = FALSE;
     if (header->race_type & RACETYPE_CHALLENGE) {
-        gIgnorePlayerInputTime = normalise_time(240); // 4 seconds
+        gMenuInput.ignoreInputTime = normalise_time(240); // 4 seconds
     }
     if (gPostraceFinishState) {
-        gMenuStage = POSTRACE_STAGE_END;
-        gMenuDelay = 100;
+        gMenuFlow.stage = POSTRACE_STAGE_END;
+        gMenuInput.delay = 100;
     }
     if (get_game_mode() != GAMEMODE_INGAME) {
-        gMenuStage = POSTRACE_STAGE_FADE_OUT;
+        gMenuFlow.stage = POSTRACE_STAGE_FADE_OUT;
     }
     reset_controller_sticks();
     race_postrace_type(finishState);
-    gTrackSelectViewPortX = fb_size();
-    gTrackSelectViewportY = GET_VIDEO_HEIGHT(gTrackSelectViewPortX) & 0xFFFF;
-    gTrackSelectViewPortX = GET_VIDEO_WIDTH(gTrackSelectViewPortX);
-    gTrackSelectViewPortHalfX = gTrackSelectViewPortX >> 1;
-    gTrackSelectViewPortHalfY = gTrackSelectViewportY >> 1;
-    if (gNumberOfActivePlayers == 1 && gTrophyRaceWorldId == 0) {
-        gPostRace.assetLoadStep = 0;
+    gTrackSelect.viewportX = fb_size();
+    gTrackSelect.viewportY = GET_VIDEO_HEIGHT(gTrackSelect.viewportX) & 0xFFFF;
+    gTrackSelect.viewportX = GET_VIDEO_WIDTH(gTrackSelect.viewportX);
+    gTrackSelect.viewportHalfX = gTrackSelect.viewportX >> 1;
+    gTrackSelect.viewportHalfY = gTrackSelect.viewportY >> 1;
+    if (gRaceSetup.numberOfActivePlayers == 1 && gRaceSetup.trophyRaceWorldId == 0) {
+        gResults.load.assetLoadStep = 0;
         worldID = header->world - 1;
         var_v1 = &gTracksMenuBgTextureIndices[worldID * 3];
         if (var_v1[0] != -1) {
             menu_asset_load(var_v1[0]);
-            gMenuMosaic1 = gMenuAssets[var_v1[0]];
+            gMenuMosaic1 = gMenuLoaded.assets[var_v1[0]];
         } else {
             gMenuMosaic1 = 0;
         }
         if (var_v1[1] != -1) {
             menu_asset_load(var_v1[1]);
-            gMenuMosaic2 = gMenuAssets[var_v1[1]];
+            gMenuMosaic2 = gMenuLoaded.assets[var_v1[1]];
         } else {
             gMenuMosaic2 = 0;
         }
@@ -211,7 +245,7 @@ void postrace_start(s32 finishState, s32 worldID) {
             bgdraw_texture_init(gMenuMosaic1, gMenuMosaic2, gMenuMosaicShift);
         }
         camEnableUserView(0, TRUE);
-        viewport_menu_set(0, 0, 0, gTrackSelectViewPortX, gTrackSelectViewportY);
+        viewport_menu_set(0, 0, 0, gTrackSelect.viewportX, gTrackSelect.viewportY);
     }
     sound_volume_change(VOLUME_LOWER_AMBIENT);
 }
@@ -227,15 +261,15 @@ void postrace_load(void) {
     s32 i;
     s32 j;
 
-    if (gPostRace.assetLoadStep >= 0) {
-        if (gPostRace.assetLoadStep < 10) {
-            gPostRace.assetLoadStep++;
+    if (gResults.load.assetLoadStep >= 0) {
+        if (gResults.load.assetLoadStep < 10) {
+            gResults.load.assetLoadStep++;
             return;
         }
 #ifdef AVOID_UB
-        temp_a0 = gRaceResultsObjectIndices[gPostRace.assetLoadStep - 10];
+        temp_a0 = gRaceResultsObjectIndices[gResults.load.assetLoadStep - 10];
 #else // This relies on the data laid out as is in memory, since the var itself is only 2 entries big.
-        temp_a0 = sPostRaceRowOffsets[gPostRace.unk0_s32];
+        temp_a0 = sPostRaceRowOffsets[gResults.load.unk0_s32];
 #endif
         if (temp_a0 == -1) {
             menu_imagegroup_load(gRaceResultsImageIndices);
@@ -258,11 +292,11 @@ void postrace_load(void) {
                     gRaceOrderMenuElements[0].t.element = &sMenuNullElement;
                 }
             }
-            gPostRace.assetLoadStep = -1;
+            gResults.load.assetLoadStep = -1;
             return;
         }
         menu_asset_load(temp_a0);
-        gPostRace.assetLoadStep++;
+        gResults.load.assetLoadStep++;
     }
 }
 
@@ -271,27 +305,27 @@ void postrace_load(void) {
  * Slowly fade out the current music, then fade in the menu music.
  */
 void postrace_music_fade(s32 updateRate) {
-    gOptionBlinkTimer = (gOptionBlinkTimer + updateRate) & 0x3F;
+    gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
     gPostRaceTimer += updateRate;
-    if (gOpacityDecayTimer >= 0) {
-        gOpacityDecayTimer += updateRate;
-        switch (gMenuCurIndex) {
+    if (gMenuFlow.opacityDecayTimer >= 0) {
+        gMenuFlow.opacityDecayTimer += updateRate;
+        switch (gMenuFlow.curIndex) {
             case 0:
-                if (normalise_time(240) < gOpacityDecayTimer) {
+                if (normalise_time(240) < gMenuFlow.opacityDecayTimer) {
                     music_fade(-256);
-                    gMenuCurIndex = 1;
+                    gMenuFlow.curIndex = 1;
                 }
                 break;
             case 1:
-                if (normalise_time(300) < gOpacityDecayTimer) {
+                if (normalise_time(300) < gMenuFlow.opacityDecayTimer) {
                     music_voicelimit_set(24);
                     music_play(SEQUENCE_MAIN_MENU);
                     music_fade(256);
                 }
                 break;
         }
-        if (normalise_time(300) < gOpacityDecayTimer) {
-            gOpacityDecayTimer = -1;
+        if (normalise_time(300) < gMenuFlow.opacityDecayTimer) {
+            gMenuFlow.opacityDecayTimer = -1;
         }
     }
 }
@@ -313,29 +347,29 @@ void postrace_viewport(UNUSED s32 updateRate) {
     s32 var_v0;
 
     settings = get_settings();
-    if (gNumberOfActivePlayers == 1) {
-        mtx_ortho(&sMenuCurrDisplayList, &sMenuCurrHudMat);
+    if (gRaceSetup.numberOfActivePlayers == 1) {
+        mtx_ortho(&gMenuFrame.displayList, &gMenuFrame.hudMat);
     }
     camDisableUserView(0, TRUE);
-    var_s3 = gOptionBlinkTimer * 8;
+    var_s3 = gMenuFlow.blinkTimer * 8;
     if (var_s3 > 255) {
         var_s3 = 511 - var_s3;
     }
-    switch (gMenuStage) {
+    switch (gMenuFlow.stage) {
         case 1:
             var_s0 = gPostRaceTimer;
             if (var_s0 > 60) {
                 var_s0 = 60;
             }
-            var_s2 = ((gTrackSelectViewPortHalfY - ((gTrackSelectViewPortHalfY * 4) / 5)) * var_s0) / 60;
+            var_s2 = ((gTrackSelect.viewportHalfY - ((gTrackSelect.viewportHalfY * 4) / 5)) * var_s0) / 60;
             temp = var_s2;
-            sp50 =
-                gTrackSelectViewportY - (((gTrackSelectViewPortHalfY - (gTrackSelectViewPortHalfY / 5)) * var_s0) / 60);
+            sp50 = gTrackSelect.viewportY -
+                   (((gTrackSelect.viewportHalfY - (gTrackSelect.viewportHalfY / 5)) * var_s0) / 60);
             var_v0 = (var_s0 * 80) / 60;
             viewport_menu_set(0, var_v0, temp, SCREEN_WIDTH - var_v0, sp50);
-            gMenuImages[4].trans.x_position = 0.0f;
-            gMenuImages[4].trans.y_position = gTrackSelectViewPortHalfY - ((var_s2 + sp50) >> 1);
-            gMenuImages[4].trans.scale = sMenuImageProperties[4].trans.scale * (2.0f - (var_s0 / 60.0f));
+            gMenuLoaded.images[4].trans.x_position = 0.0f;
+            gMenuLoaded.images[4].trans.y_position = gTrackSelect.viewportHalfY - ((var_s2 + sp50) >> 1);
+            gMenuLoaded.images[4].trans.scale = sMenuImageProperties[4].trans.scale * (2.0f - (var_s0 / 60.0f));
             break;
         case 2:
             for (i = 0; i < 3; i++) {
@@ -406,7 +440,7 @@ void postrace_viewport(UNUSED s32 updateRate) {
             } else if (gPostRaceMessage != NULL) {
                 var_s0 = gPostRaceLineCount;
             } else {
-                var_s0 = gResultOptionCount;
+                var_s0 = gResults.optionCount;
             }
             if (var_s0 >= 5) {
                 var_v0 = 2;
@@ -425,7 +459,8 @@ void postrace_viewport(UNUSED s32 updateRate) {
             set_current_dialogue_background_colour(7, 64, 64, 255, 0);
             set_current_text_colour(7, 255, 0, 255, 64, 255);
             if (gTracksSaveGhost != 0) {
-                render_dialogue_text(7, POS_CENTRED, 12, gMenuText[ASSET_MENU_TEXT_PLEASEWAIT], 1, ALIGN_MIDDLE_CENTER);
+                render_dialogue_text(7, POS_CENTRED, 12, gMenuLoaded.text[ASSET_MENU_TEXT_PLEASEWAIT], 1,
+                                     ALIGN_MIDDLE_CENTER);
             } else if (gPostRaceMessage != NULL) {
                 var_s2 = 12;
                 for (var_s0 = 0; var_s0 < gPostRaceLineCount; var_s0++) {
@@ -434,31 +469,31 @@ void postrace_viewport(UNUSED s32 updateRate) {
                 }
             } else {
                 var_s2 -= 24;
-                if (gMenuSubOption != 0) {
-                    render_dialogue_text(7, POS_CENTRED, var_s2 + 8, gMenuText[ASSET_MENU_TEXT_QUITGAMETITLE], 1,
+                if (gMenuFlow.subOption != 0) {
+                    render_dialogue_text(7, POS_CENTRED, var_s2 + 8, gMenuLoaded.text[ASSET_MENU_TEXT_QUITGAMETITLE], 1,
                                          ALIGN_MIDDLE_CENTER);
                     var_s0 = 0;
-                    if (gMenuSubOption == 1) {
+                    if (gMenuFlow.subOption == 1) {
                         var_s0 = var_s3;
                     }
                     set_current_text_colour(7, 255, 255, 255, var_s0, 255);
-                    render_dialogue_text(7, POS_CENTRED, var_s2 + 26, gMenuText[ASSET_MENU_TEXT_OK], 1,
+                    render_dialogue_text(7, POS_CENTRED, var_s2 + 26, gMenuLoaded.text[ASSET_MENU_TEXT_OK], 1,
                                          ALIGN_MIDDLE_CENTER);
                     var_s0 = 0;
-                    if (gMenuSubOption == 2) {
+                    if (gMenuFlow.subOption == 2) {
                         var_s0 = var_s3;
                     }
                     set_current_text_colour(7, 255, 255, 255, var_s0, 255);
-                    render_dialogue_text(7, POS_CENTRED, var_s2 + 42, gMenuText[ASSET_MENU_TEXT_CANCEL], 1,
+                    render_dialogue_text(7, POS_CENTRED, var_s2 + 42, gMenuLoaded.text[ASSET_MENU_TEXT_CANCEL], 1,
                                          ALIGN_MIDDLE_CENTER);
                 } else {
-                    for (var_s2 = 12, var_s0 = 0; var_s0 < gResultOptionCount; var_s0++) {
-                        if (var_s0 == gMenuOption) {
+                    for (var_s2 = 12, var_s0 = 0; var_s0 < gResults.optionCount; var_s0++) {
+                        if (var_s0 == gMenuFlow.option) {
                             set_current_text_colour(7, 255, 255, 255, var_s3, 255);
                         } else {
                             set_current_text_colour(7, 255, 255, 255, 0, 255);
                         }
-                        render_dialogue_text(7, SCREEN_WIDTH_HALF, var_s2, gResultOptionText[var_s0], 1,
+                        render_dialogue_text(7, SCREEN_WIDTH_HALF, var_s2, gResults.optionText[var_s0], 1,
                                              ALIGN_MIDDLE_CENTER);
                         var_s2 += sp50;
                     }
@@ -467,16 +502,16 @@ void postrace_viewport(UNUSED s32 updateRate) {
             open_dialogue_box(7);
             break;
     }
-    if (get_game_mode() == GAMEMODE_INGAME && gNumberOfActivePlayers == 1) {
-        if (gTrophyRaceWorldId == 0) {
+    if (get_game_mode() == GAMEMODE_INGAME && gRaceSetup.numberOfActivePlayers == 1) {
+        if (gRaceSetup.trophyRaceWorldId == 0) {
             camEnableUserView(0, TRUE);
             if (osTvType == OS_TV_TYPE_PAL) {
-                gTrackSelectWoodFrameHeightScale = 1.2f;
+                gTrackSelect.woodFrameHeightScale = 1.2f;
             }
-            if (gMenuStage > 0) {
+            if (gMenuFlow.stage > 0) {
                 menu_element_render(4);
             }
-            gTrackSelectWoodFrameHeightScale = 1.0f;
+            gTrackSelect.woodFrameHeightScale = 1.0f;
         }
     }
 }
@@ -542,9 +577,9 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
     sp50 = 0;
     sp4C = 0;
     ret = POSTRACE_NONE;
-    sMenuCurrDisplayList = *dList;
-    sMenuCurrHudMat = *matrices;
-    sMenuCurrHudVerts = *vertices;
+    gMenuFrame.displayList = *dList;
+    gMenuFrame.hudMat = *matrices;
+    gMenuFrame.hudVerts = *vertices;
     settings = get_settings();
     if (osTvType == OS_TV_TYPE_PAL) {
         textOffsetY = 26;
@@ -553,22 +588,22 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
         textOffsetY = 0;
         timeOffsetY = 0;
     }
-    numPlayers = gNumberOfActivePlayers;
+    numPlayers = gRaceSetup.numberOfActivePlayers;
     if (is_in_two_player_adventure()) {
         numPlayers = 2;
     }
     if (gPostRace1Player) {
         if (has_ghost_to_save()) {
-            gResultOptionText[gResultOptionCount - 1] = gMenuText[ASSET_MENU_TEXT_SAVEGHOST];
-            gResultOptionText[gResultOptionCount] = gMenuText[ASSET_MENU_TEXT_QUIT];
-            gResultOptionCount++;
+            gResults.optionText[gResults.optionCount - 1] = gMenuLoaded.text[ASSET_MENU_TEXT_SAVEGHOST];
+            gResults.optionText[gResults.optionCount] = gMenuLoaded.text[ASSET_MENU_TEXT_QUIT];
+            gResults.optionCount++;
         }
         gPostRace1Player = FALSE;
     }
     postrace_load();
     postrace_music_fade(updateRate);
-    if (gMenuDelay < 20 && gPostraceFinishState == 0) {
-        if (gPostRace.assetLoadStep < 0) {
+    if (gMenuInput.delay < 20 && gPostraceFinishState == 0) {
+        if (gResults.load.assetLoadStep < 0) {
             postrace_viewport(updateRate);
         }
     } else {
@@ -576,30 +611,30 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
     }
     update_controller_sticks();
     buttonsPressed = 0;
-    if (gIgnorePlayerInputTime == FALSE && gPostRace.assetLoadStep < 0) {
+    if (gMenuInput.ignoreInputTime == FALSE && gResults.load.assetLoadStep < 0) {
         for (i = 0; i < numPlayers; i++) {
             buttonsPressed |= input_pressed(i);
         }
     }
-    switch (gMenuStage) {
+    switch (gMenuFlow.stage) {
         case POSTRACE_STAGE_BEGIN:
             if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
-                gMenuStage = POSTRACE_STAGE_SHRINK_VIEWPORT;
+                gMenuFlow.stage = POSTRACE_STAGE_SHRINK_VIEWPORT;
                 gPostRaceTimer = 0;
             }
             break;
         case POSTRACE_STAGE_SHRINK_VIEWPORT:
             if (gPostRaceTimer > 60 || buttonsPressed & (A_BUTTON | START_BUTTON)) {
-                viewport_menu_set(0, 80, gTrackSelectViewPortHalfY - ((gTrackSelectViewPortHalfY * 4) / 5),
-                                  SCREEN_HEIGHT, (gTrackSelectViewPortHalfY / 5) + gTrackSelectViewPortHalfY);
-                gMenuImages[4].trans.x_position = 0.0f;
-                gMenuImages[4].trans.y_position = 36.0f;
-                gMenuImages[4].trans.scale = sMenuImageProperties[4].trans.scale;
+                viewport_menu_set(0, 80, gTrackSelect.viewportHalfY - ((gTrackSelect.viewportHalfY * 4) / 5),
+                                  SCREEN_HEIGHT, (gTrackSelect.viewportHalfY / 5) + gTrackSelect.viewportHalfY);
+                gMenuLoaded.images[4].trans.x_position = 0.0f;
+                gMenuLoaded.images[4].trans.y_position = 36.0f;
+                gMenuLoaded.images[4].trans.scale = sMenuImageProperties[4].trans.scale;
                 if (leveltable_type(settings->courseId) & RACETYPE_CHALLENGE) {
-                    gMenuStage = POSTRACE_STAGE_OPTIONS;
+                    gMenuFlow.stage = POSTRACE_STAGE_OPTIONS;
                 } else if (!settings->display_times) {
                     postrace_offsets(gRaceOrderMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
-                    gMenuStage = POSTRACE_STAGE_RACE_ORDER;
+                    gMenuFlow.stage = POSTRACE_STAGE_RACE_ORDER;
                 } else {
                     racer = &settings->racers[settings->timeTrialRacer];
                     gRaceResultsMenuElements[3].t.numberU16 = &racer->lap_times[0];
@@ -607,69 +642,69 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
                     gRaceResultsMenuElements[5].t.numberU16 = &racer->lap_times[2];
                     gRaceResultsMenuElements[6].t.numberU16 = &racer->course_time;
                     postrace_offsets(gRaceResultsMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
-                    gMenuStage = POSTRACE_STAGE_RACE_TIMES;
+                    gMenuFlow.stage = POSTRACE_STAGE_RACE_TIMES;
                 }
             }
             break;
         case POSTRACE_STAGE_RACE_TIMES:
             if (postrace_render(updateRate) != 0) {
-                if (gTrophyRaceWorldId != 0) {
+                if (gRaceSetup.trophyRaceWorldId != 0) {
                     music_fade(-128);
                     transition_begin(&sMenuTransitionFadeIn);
-                    gMenuStage = POSTRACE_STAGE_END;
+                    gMenuFlow.stage = POSTRACE_STAGE_END;
                 } else if (settings->display_times) {
                     gRecordTimesMenuElements[3].t.numberU16 =
-                        &settings->courseTimesPtr[*gPlayerSelectVehicle][settings->courseId];
+                        &settings->courseTimesPtr[*gRaceSetup.playerVehicles][settings->courseId];
                     gRecordTimesMenuElements[6].t.numberU16 =
-                        &settings->flapTimesPtr[*gPlayerSelectVehicle][settings->courseId];
-                    filename_decompress(settings->courseInitialsPtr[*gPlayerSelectVehicle][settings->courseId],
-                                        gCourseInitials, MAX_INITIALS_LENGTH);
-                    filename_decompress(settings->flapInitialsPtr[*gPlayerSelectVehicle][settings->courseId],
-                                        gFLapInitials, MAX_INITIALS_LENGTH);
+                        &settings->flapTimesPtr[*gRaceSetup.playerVehicles][settings->courseId];
+                    filename_decompress(settings->courseInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId],
+                                        gResults.courseInitials, MAX_INITIALS_LENGTH);
+                    filename_decompress(settings->flapInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId],
+                                        gResults.flapInitials, MAX_INITIALS_LENGTH);
                     if (settings->racers[0].best_times != 0) {
-                        gMenuStage = POSTRACE_STAGE_ENTER_INITIALS;
-                        if (gIsInTracksMode == FALSE && sFilenameEntryPending != FALSE) {
+                        gMenuFlow.stage = POSTRACE_STAGE_ENTER_INITIALS;
+                        if (gRaceSetup.isInTracksMode == FALSE && gResults.filenameEntryPending != FALSE) {
                             filename_decompress(settings->filename, gCheckAdvEnterInitials, MAX_INITIALS_LENGTH);
-                            sFilenameEntryPending = FALSE;
+                            gResults.filenameEntryPending = FALSE;
                         }
                         filename_init(textOffsetY + 196, 160, textOffsetY + 120, 2, &sFilenameEntryArg, gCheckAdvEnterInitials,
                                       MAX_INITIALS_LENGTH);
                     } else {
                         postrace_offsets(gRecordTimesMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
-                        gMenuStage = POSTRACE_STAGE_RACE_RECORDS;
+                        gMenuFlow.stage = POSTRACE_STAGE_RACE_RECORDS;
                     }
                 } else {
-                    gMenuStage = POSTRACE_STAGE_RACE_ORDER;
+                    gMenuFlow.stage = POSTRACE_STAGE_RACE_ORDER;
                     postrace_offsets(gRaceOrderMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
                 }
             }
             break;
         case POSTRACE_STAGE_RACE_ORDER:
             if (postrace_render(updateRate)) {
-                gMenuStage = POSTRACE_STAGE_OPTIONS;
+                gMenuFlow.stage = POSTRACE_STAGE_OPTIONS;
             }
             break;
         case POSTRACE_STAGE_ENTER_INITIALS:
             if (filename_enter(updateRate)) {
                 if (settings->racers[0].best_times & 0x7F) {
-                    settings->flapInitialsPtr[*gPlayerSelectVehicle][settings->courseId] =
+                    settings->flapInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId] =
                         filename_compress(gCheckAdvEnterInitials, MAX_INITIALS_LENGTH);
-                    filename_decompress(settings->flapInitialsPtr[*gPlayerSelectVehicle][settings->courseId],
-                                        gFLapInitials, MAX_INITIALS_LENGTH);
+                    filename_decompress(settings->flapInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId],
+                                        gResults.flapInitials, MAX_INITIALS_LENGTH);
                 }
                 if (settings->racers[0].best_times & 0x80) {
-                    settings->courseInitialsPtr[*gPlayerSelectVehicle][settings->courseId] =
+                    settings->courseInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId] =
                         filename_compress(gCheckAdvEnterInitials, MAX_INITIALS_LENGTH);
-                    filename_decompress(settings->courseInitialsPtr[*gPlayerSelectVehicle][settings->courseId],
-                                        gCourseInitials, MAX_INITIALS_LENGTH);
+                    filename_decompress(settings->courseInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId],
+                                        gResults.courseInitials, MAX_INITIALS_LENGTH);
                 }
                 postrace_offsets(gRecordTimesMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
-                gMenuStage = POSTRACE_STAGE_RACE_RECORDS;
+                gMenuFlow.stage = POSTRACE_STAGE_RACE_RECORDS;
             }
             break;
         case POSTRACE_STAGE_RACE_RECORDS:
             if (postrace_render(updateRate)) {
-                gMenuStage = POSTRACE_STAGE_OPTIONS;
+                gMenuFlow.stage = POSTRACE_STAGE_OPTIONS;
             }
             break;
         case POSTRACE_STAGE_OPTIONS:
@@ -691,9 +726,9 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
                         } else {
                             gPostRaceMessage = NULL;
                         }
-                        gResultOptionText[gMenuOption] = gMenuText[28];
-                        gMenuOption = 0;
-                        gResultOptionCount -= 1;
+                        gResults.optionText[gMenuFlow.option] = gMenuLoaded.text[28];
+                        gMenuFlow.option = 0;
+                        gResults.optionCount -= 1;
                     }
                     gTracksSaveGhost = FALSE;
                 }
@@ -710,63 +745,63 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
                     sp54 = 1;
                 }
             } else {
-                if (gMenuSubOption != 0) {
+                if (gMenuFlow.subOption != 0) {
                     if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
-                        if (gMenuSubOption == 1) {
+                        if (gMenuFlow.subOption == 1) {
                             sp50 = 1;
                             music_fade(-128);
                             transition_begin(&sMenuTransitionFadeIn);
-                            gMenuStage = POSTRACE_STAGE_END;
+                            gMenuFlow.stage = POSTRACE_STAGE_END;
                         } else {
                             sp54 = 1;
-                            gMenuSubOption = 0;
+                            gMenuFlow.subOption = 0;
                         }
                     } else {
-                        prevMenuOption = gMenuSubOption;
+                        prevMenuOption = gMenuFlow.subOption;
                         if (buttonsPressed & B_BUTTON) {
                             sp54 = 1;
-                            gMenuSubOption = 0;
+                            gMenuFlow.subOption = 0;
                         } else {
                             for (i = 0; i < numPlayers; i++) {
-                                if ((gControllersYAxisDirection[i] > 0) && (gMenuSubOption == 2)) {
-                                    gMenuSubOption = 1;
+                                if ((gMenuInput.yAxisDirection[i] > 0) && (gMenuFlow.subOption == 2)) {
+                                    gMenuFlow.subOption = 1;
                                 }
-                                if ((gControllersYAxisDirection[i] < 0) && (gMenuSubOption == 1)) {
-                                    gMenuSubOption = 2;
+                                if ((gMenuInput.yAxisDirection[i] < 0) && (gMenuFlow.subOption == 1)) {
+                                    gMenuFlow.subOption = 2;
                                 }
                             }
-                            if (prevMenuOption != gMenuSubOption) {
+                            if (prevMenuOption != gMenuFlow.subOption) {
                                 sp4C = 1;
                             }
                         }
                     }
                 } else if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
                     sp50 = 1;
-                    chosenOption = gResultOptionText[gMenuOption];
-                    if (chosenOption == gMenuText[ASSET_MENU_TEXT_SAVEGHOST]) {
+                    chosenOption = gResults.optionText[gMenuFlow.option];
+                    if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_SAVEGHOST]) {
                         gTracksSaveGhost = TRUE;
-                    } else if (chosenOption == gMenuText[ASSET_MENU_TEXT_QUIT]) {
-                        gMenuSubOption = 2;
+                    } else if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_QUIT]) {
+                        gMenuFlow.subOption = 2;
                     } else {
                         music_fade(-128);
                         transition_begin(&sMenuTransitionFadeIn);
-                        gMenuStage = POSTRACE_STAGE_END;
+                        gMenuFlow.stage = POSTRACE_STAGE_END;
                     }
                 } else {
-                    prevMenuOption = gMenuOption;
+                    prevMenuOption = gMenuFlow.option;
                     for (i = 0; i < numPlayers; i++) {
-                        if (gControllersYAxisDirection[i] < 0) {
-                            if (gMenuOption < (gResultOptionCount - 1)) {
-                                gMenuOption++;
+                        if (gMenuInput.yAxisDirection[i] < 0) {
+                            if (gMenuFlow.option < (gResults.optionCount - 1)) {
+                                gMenuFlow.option++;
                             }
                         }
-                        if (gControllersYAxisDirection[i] > 0) {
-                            if (gMenuOption > 0) {
-                                gMenuOption--;
+                        if (gMenuInput.yAxisDirection[i] > 0) {
+                            if (gMenuFlow.option > 0) {
+                                gMenuFlow.option--;
                             }
                         }
                     }
-                    if (prevMenuOption != gMenuOption) {
+                    if (prevMenuOption != gMenuFlow.option) {
                         sp4C = 1;
                     }
                 }
@@ -783,12 +818,12 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
             if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
                 music_fade(-128);
                 transition_begin(&sMenuTransitionFadeIn);
-                gMenuStage = POSTRACE_STAGE_END;
+                gMenuFlow.stage = POSTRACE_STAGE_END;
             }
             break;
         case POSTRACE_STAGE_END:
-            gMenuDelay += updateRate;
-            if (gMenuDelay > 30) {
+            gMenuInput.delay += updateRate;
+            if (gMenuInput.delay > 30) {
                 if (settings->display_times) {
                     if (settings->racers[0].best_times & 0x7F) {
                         mark_to_write_flap_times();
@@ -812,22 +847,22 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
                                         MENU_RESULT_FLAGS_100 | MENU_RESULT_FLAGS_1, 0, 0, NULL);
                     }
                     ret = POSTRACE_OPT_13;
-                } else if (gTrophyRaceWorldId != 0) {
+                } else if (gRaceSetup.trophyRaceWorldId != 0) {
                     ret = POSTRACE_OPT_10;
-                } else if (gNumberOfActivePlayers >= 2) {
+                } else if (gRaceSetup.numberOfActivePlayers >= 2) {
                     ret = POSTRACE_OPT_8;
                 } else {
-                    chosenOption = gResultOptionText[gMenuOption];
-                    if (chosenOption == gMenuText[ASSET_MENU_TEXT_TRYAGAIN]) {
-                        if (!gIsInTracksMode && gTTVoiceLines[get_ingame_map_id()] != -1) {
+                    chosenOption = gResults.optionText[gMenuFlow.option];
+                    if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_TRYAGAIN]) {
+                        if (!gRaceSetup.isInTracksMode && gTTVoiceLines[get_ingame_map_id()] != -1) {
                             sound_play_delayed(gTTVoiceLines[get_ingame_map_id()], NULL, 1.0f);
                         }
                         ret = POSTRACE_OPT_2;
-                    } else if (chosenOption == gMenuText[ASSET_MENU_TEXT_SELECTTRACK]) {
+                    } else if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_SELECTTRACK]) {
                         ret = POSTRACE_OPT_5;
-                    } else if (chosenOption == gMenuText[ASSET_MENU_TEXT_SELECTCHARACTER]) {
+                    } else if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_SELECTCHARACTER]) {
                         ret = POSTRACE_OPT_12;
-                    } else if (chosenOption == gMenuText[ASSET_MENU_TEXT_RETURNTOLOBBY]) {
+                    } else if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_RETURNTOLOBBY]) {
                         ret = POSTRACE_OPT_1;
                     } else {
                         ret = POSTRACE_OPT_4;
@@ -836,15 +871,15 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
             }
             break;
     }
-    if (gIgnorePlayerInputTime > 0) {
-        gIgnorePlayerInputTime -= updateRate;
-        if (gIgnorePlayerInputTime < 0) {
-            gIgnorePlayerInputTime = 0;
+    if (gMenuInput.ignoreInputTime > 0) {
+        gMenuInput.ignoreInputTime -= updateRate;
+        if (gMenuInput.ignoreInputTime < 0) {
+            gMenuInput.ignoreInputTime = 0;
         }
     }
-    *dList = sMenuCurrDisplayList;
-    *matrices = sMenuCurrHudMat;
-    *vertices = sMenuCurrHudVerts;
+    *dList = gMenuFrame.displayList;
+    *matrices = gMenuFrame.hudMat;
+    *vertices = gMenuFrame.hudVerts;
     return ret;
 }
 
@@ -884,12 +919,12 @@ void menu_results_init(void) {
     s8 startPos;
 
     settings = get_settings();
-    gResultOptionText[0] = gMenuText[ASSET_MENU_TEXT_SELECTTRACK];
-    gResultOptionText[1] = gMenuText[ASSET_MENU_TEXT_TRYAGAIN];
-    gResultOptionText[2] = gMenuText[ASSET_MENU_TEXT_QUIT];
-    gResultOptionCount = 3;
+    gResults.optionText[0] = gMenuLoaded.text[ASSET_MENU_TEXT_SELECTTRACK];
+    gResults.optionText[1] = gMenuLoaded.text[ASSET_MENU_TEXT_TRYAGAIN];
+    gResults.optionText[2] = gMenuLoaded.text[ASSET_MENU_TEXT_QUIT];
+    gResults.optionCount = 3;
 
-    for (i = 0; i < gNumberOfActivePlayers; i++) {
+    for (i = 0; i < gRaceSetup.numberOfActivePlayers; i++) {
         startPos = settings->racers[i].starting_position;
         if (startPos < 4) {
             placements = settings->racers[i].placements;
@@ -897,13 +932,13 @@ void menu_results_init(void) {
         }
     }
 
-    gMenuStage = RESULTS_ENTER;
-    gOptionBlinkTimer = 0;
-    gOpacityDecayTimer = 0;
-    gMenuDelay = 0;
-    gMenuOption = 0;
-    gIgnorePlayerInputTime = 1;
-    gMenuSubOption = 0;
+    gMenuFlow.stage = RESULTS_ENTER;
+    gMenuFlow.blinkTimer = 0;
+    gMenuFlow.opacityDecayTimer = 0;
+    gMenuInput.delay = 0;
+    gMenuFlow.option = 0;
+    gMenuInput.ignoreInputTime = 1;
+    gMenuFlow.subOption = 0;
     menu_assetgroup_load(gRaceResultsObjectIndices);
     menu_imagegroup_load(gRaceResultsImageIndices);
     menu_racer_portraits();
@@ -940,41 +975,42 @@ void results_render(UNUSED s32 updateRate, f32 opacity) {
     if (osTvType == OS_TV_TYPE_PAL) {
         offsetY = 12;
     }
-    mtx_ortho(&sMenuCurrDisplayList, &sMenuCurrHudMat);
+    mtx_ortho(&gMenuFrame.displayList, &gMenuFrame.hudMat);
     if (opacity < 0.0f) {
         opacity = 0.0f;
     }
     if (opacity > 1.0f) {
         opacity = 1.0f;
     }
-    sMenuGuiOpacity = (1 - opacity) * 255;
+    gMenuFrame.guiOpacity = (1 - opacity) * 255;
     set_text_font(ASSET_FONTS_BIGFONT);
     set_text_background_colour(0, 0, 0, 0);
-    set_text_colour(255, 255, 255, 0, sMenuGuiOpacity);
-    draw_text(&sMenuCurrDisplayList, POS_CENTRED, 34, gMenuText[ASSET_MENU_TEXT_RANKINGS], ALIGN_MIDDLE_CENTER);
-    sMenuGuiOpacity = 255;
+    set_text_colour(255, 255, 255, 0, gMenuFrame.guiOpacity);
+    draw_text(&gMenuFrame.displayList, POS_CENTRED, 34, gMenuLoaded.text[ASSET_MENU_TEXT_RANKINGS],
+              ALIGN_MIDDLE_CENTER);
+    gMenuFrame.guiOpacity = 255;
 #if VERSION >= VERSION_79
     offsetX2 = 64;
-    if (gNumberOfActivePlayers == 4) {
+    if (gRaceSetup.numberOfActivePlayers == 4) {
         offsetX2 = 56;
     }
-    offsetX = 160 - ((gNumberOfActivePlayers - 1) * (offsetX2 >> 1));
+    offsetX = 160 - ((gRaceSetup.numberOfActivePlayers - 1) * (offsetX2 >> 1));
 #else
-    offsetX = 160 - ((gNumberOfActivePlayers - 1) << 5);
+    offsetX = 160 - ((gRaceSetup.numberOfActivePlayers - 1) << 5);
 #endif
     x2 = offsetX;
 
-    for (i = 0; i < gNumberOfActivePlayers; i++) {
+    for (i = 0; i < gRaceSetup.numberOfActivePlayers; i++) {
         if (settings->racers[i].starting_position == 0) {
-            if (gOptionBlinkTimer < 32) {
-                spA0 = (gOptionBlinkTimer * 4) + 128;
+            if (gMenuFlow.blinkTimer < 32) {
+                spA0 = (gMenuFlow.blinkTimer * 4) + 128;
             } else {
-                spA0 = 0x17F - (gOptionBlinkTimer * 4);
+                spA0 = 0x17F - (gMenuFlow.blinkTimer * 4);
             }
         } else {
             spA0 = 255;
         }
-        texrect_draw(&sMenuCurrDisplayList, gRacerPortraits[settings->racers[i].character], x2 - 20,
+        texrect_draw(&gMenuFrame.displayList, gRacerPortraits[settings->racers[i].character], x2 - 20,
                      54 - (s32) (240 * opacity), spA0, spA0, spA0, 255);
 #if VERSION >= VERSION_79
         x2 += offsetX2;
@@ -995,20 +1031,22 @@ void results_render(UNUSED s32 updateRate, f32 opacity) {
         time = offsetX;
         x2 = offsetX;
         set_text_colour(0, 0, 0, 255, 255);
-        draw_text(&sMenuCurrDisplayList, time - 32, y2 + offsetY + 4, gRacePlacementsArray[spA0], ALIGN_MIDDLE_CENTER);
+        draw_text(&gMenuFrame.displayList, time - 32, y2 + offsetY + 4, gRacePlacementsArray[spA0],
+                  ALIGN_MIDDLE_CENTER);
         set_text_colour(255, 255, 192, 96, 255);
-        draw_text(&sMenuCurrDisplayList, time - 34, y2 + offsetY + 2, gRacePlacementsArray[spA0], ALIGN_MIDDLE_CENTER);
-        rendermode_reset(&sMenuCurrDisplayList);
+        draw_text(&gMenuFrame.displayList, time - 34, y2 + offsetY + 2, gRacePlacementsArray[spA0],
+                  ALIGN_MIDDLE_CENTER);
+        rendermode_reset(&gMenuFrame.displayList);
         cam_set_sprite_anim_mode(SPRITE_ANIM_FRAME_INDEX);
         sprite_opaque(FALSE);
-        sMenuGuiColourR = 255;
-        sMenuGuiColourG = 255 - 64 * spA0;
-        sMenuGuiColourB = 255;
-        sMenuGuiColourBlendFactor = 255;
+        gMenuFrame.guiColourR = 255;
+        gMenuFrame.guiColourG = 255 - 64 * spA0;
+        gMenuFrame.guiColourB = 255;
+        gMenuFrame.guiColourBlendFactor = 255;
 #if VERSION >= VERSION_79
-        for (i = 0; i < gNumberOfActivePlayers; i++, x2 += offsetX2) {
+        for (i = 0; i < gRaceSetup.numberOfActivePlayers; i++, x2 += offsetX2) {
 #else
-        for (i = 0; i < gNumberOfActivePlayers; i++, x2 += 64) {
+        for (i = 0; i < gRaceSetup.numberOfActivePlayers; i++, x2 += 64) {
 #endif
             time = settings->racers[i].placements[spA0]; // Is this local var name correct?
             if (time > 999) {
@@ -1019,36 +1057,36 @@ void results_render(UNUSED s32 updateRate, f32 opacity) {
             tens = time / 10;
             time -= tens * 10;
 
-            // I'm 99% sure these need to be gMenuImages[0]
-            // Changing it to gMenuImages[spA0] or gMenuImages[i] makes the score worse.
-            gMenuImages[0].trans.y_position = (SCREEN_HEIGHT_HALF - y2);
+            // I'm 99% sure these need to be gMenuLoaded.images[0]
+            // Changing it to gMenuLoaded.images[spA0] or gMenuLoaded.images[i] makes the score worse.
+            gMenuLoaded.images[0].trans.y_position = (SCREEN_HEIGHT_HALF - y2);
             if (hundredths > 0) {
-                gMenuImages[0].trans.x_position = (x2 - 172);
-                gMenuImages[0].spriteOffset = hundredths;
+                gMenuLoaded.images[0].trans.x_position = (x2 - 172);
+                gMenuLoaded.images[0].spriteOffset = hundredths;
                 menu_element_render(0);
-                gMenuImages[0].trans.x_position += 12.0f;
-                gMenuImages[0].spriteOffset = tens;
+                gMenuLoaded.images[0].trans.x_position += 12.0f;
+                gMenuLoaded.images[0].spriteOffset = tens;
                 menu_element_render(0);
-                gMenuImages[0].trans.x_position += 12.0f;
+                gMenuLoaded.images[0].trans.x_position += 12.0f;
             } else if (tens > 0) {
-                gMenuImages[0].trans.x_position = (x2 - 166);
-                gMenuImages[0].spriteOffset = tens;
+                gMenuLoaded.images[0].trans.x_position = (x2 - 166);
+                gMenuLoaded.images[0].spriteOffset = tens;
                 menu_element_render(0);
-                gMenuImages[0].trans.x_position += 12.0f;
+                gMenuLoaded.images[0].trans.x_position += 12.0f;
             } else {
-                gMenuImages[0].trans.x_position = (x2 - 160);
+                gMenuLoaded.images[0].trans.x_position = (x2 - 160);
             }
-            gMenuImages[0].spriteOffset = time;
+            gMenuLoaded.images[0].spriteOffset = time;
             menu_element_render(0);
         }
         y2 += 17;
         cam_set_sprite_anim_mode(SPRITE_ANIM_NORMALIZED);
         sprite_opaque(TRUE);
-        sMenuGuiColourG = 255;
-        sMenuGuiColourBlendFactor = 0;
+        gMenuFrame.guiColourG = 255;
+        gMenuFrame.guiColourBlendFactor = 0;
     }
-    if (gMenuStage >= RESULTS_OPTIONS) {
-        y2 = gResultOptionCount * 8;
+    if (gMenuFlow.stage >= RESULTS_OPTIONS) {
+        y2 = gResults.optionCount * 8;
         clear_dialogue_box_open_flag(7);
         dialogue_clear(7);
         set_current_dialogue_box_coords(7, SCREEN_WIDTH_HALF - 80, (offsetY - y2) + 196, SCREEN_WIDTH_HALF + 80,
@@ -1056,35 +1094,37 @@ void results_render(UNUSED s32 updateRate, f32 opacity) {
         set_current_dialogue_background_colour(7, 64, 64, 255, 0);
         set_dialogue_font(7, 0);
         set_current_text_background_colour(7, 0, 0, 0, 0);
-        spA0 = gOptionBlinkTimer * 8;
+        spA0 = gMenuFlow.blinkTimer * 8;
         if (spA0 > 255) {
             spA0 = 511 - spA0;
         }
-        if (gMenuSubOption != 0) {
+        if (gMenuFlow.subOption != 0) {
             y2 -= 24;
-            render_dialogue_text(7, POS_CENTRED, y2 + 8, gMenuText[ASSET_MENU_TEXT_QUITGAMETITLE], 1,
+            render_dialogue_text(7, POS_CENTRED, y2 + 8, gMenuLoaded.text[ASSET_MENU_TEXT_QUITGAMETITLE], 1,
                                  ALIGN_MIDDLE_CENTER);
-            if (gMenuSubOption == 1) {
+            if (gMenuFlow.subOption == 1) {
                 set_current_text_colour(7, 255, 255, 255, spA0, 255);
             } else {
                 set_current_text_colour(7, 255, 255, 255, 0, 255);
             }
-            render_dialogue_text(7, POS_CENTRED, y2 + 0x1A, gMenuText[ASSET_MENU_TEXT_OK], 1, ALIGN_MIDDLE_CENTER);
-            if (gMenuSubOption == 2) {
+            render_dialogue_text(7, POS_CENTRED, y2 + 0x1A, gMenuLoaded.text[ASSET_MENU_TEXT_OK], 1,
+                                 ALIGN_MIDDLE_CENTER);
+            if (gMenuFlow.subOption == 2) {
                 set_current_text_colour(7, 255, 255, 255, spA0, 255);
             } else {
                 set_current_text_colour(7, 255, 255, 255, 0, 255);
             }
-            render_dialogue_text(7, POS_CENTRED, y2 + 0x2A, gMenuText[ASSET_MENU_TEXT_CANCEL], 1, ALIGN_MIDDLE_CENTER);
+            render_dialogue_text(7, POS_CENTRED, y2 + 0x2A, gMenuLoaded.text[ASSET_MENU_TEXT_CANCEL], 1,
+                                 ALIGN_MIDDLE_CENTER);
         } else {
 
-            for (i = 0, y2 = 12; i < gResultOptionCount;) {
-                if (i == gMenuOption) {
+            for (i = 0, y2 = 12; i < gResults.optionCount;) {
+                if (i == gMenuFlow.option) {
                     set_current_text_colour(7, 255, 255, 255, spA0, 255);
                 } else {
                     set_current_text_colour(7, 255, 255, 255, 0, 255);
                 }
-                render_dialogue_text(7, 80, y2, gResultOptionText[i], 1, ALIGN_MIDDLE_CENTER);
+                render_dialogue_text(7, 80, y2, gResults.optionText[i], 1, ALIGN_MIDDLE_CENTER);
                 i++;
                 y2 += 16;
             }
@@ -1106,76 +1146,76 @@ s32 menu_results_loop(s32 updateRate) {
     playBackSound = FALSE;
     playSelectSound = FALSE;
     playPickSound = FALSE;
-    gOptionBlinkTimer = (gOptionBlinkTimer + updateRate) & 0x3F;
+    gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
     menu_input();
-    if (gMenuStage <= RESULTS_SCORE) {
-        gOpacityDecayTimer += updateRate;
-        if (gOpacityDecayTimer >= 60) {
-            gMenuStage = RESULTS_OPTIONS;
-        } else if (gMenuStage < 0 && gOpacityDecayTimer > 20) {
-            gMenuStage = RESULTS_SCORE;
+    if (gMenuFlow.stage <= RESULTS_SCORE) {
+        gMenuFlow.opacityDecayTimer += updateRate;
+        if (gMenuFlow.opacityDecayTimer >= 60) {
+            gMenuFlow.stage = RESULTS_OPTIONS;
+        } else if (gMenuFlow.stage < 0 && gMenuFlow.opacityDecayTimer > 20) {
+            gMenuFlow.stage = RESULTS_SCORE;
             sound_play(SOUND_WHOOSH1, NULL);
         }
     }
 
-    if (gMenuDelay < 20) {
-        if (gMenuStage <= RESULTS_SCORE) {
-            if (gOpacityDecayTimer >= 20) {
-                results_render(updateRate, 1.0f - ((f32) (gOpacityDecayTimer - 20) / 40.0f));
+    if (gMenuInput.delay < 20) {
+        if (gMenuFlow.stage <= RESULTS_SCORE) {
+            if (gMenuFlow.opacityDecayTimer >= 20) {
+                results_render(updateRate, 1.0f - ((f32) (gMenuFlow.opacityDecayTimer - 20) / 40.0f));
             }
         } else {
             results_render(updateRate, 0.0f);
         }
     }
-    if (gMenuDelay == 0) {
-        if (gMenuStage == RESULTS_SCORE) {
-            if (gMenuButtons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
-                gMenuStage = RESULTS_OPTIONS;
+    if (gMenuInput.delay == 0) {
+        if (gMenuFlow.stage == RESULTS_SCORE) {
+            if (gMenuInput.buttons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
+                gMenuFlow.stage = RESULTS_OPTIONS;
             }
-        } else if (gMenuSubOption != 0) {
-            if (gMenuButtons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
-                if (gMenuSubOption == 1) {
+        } else if (gMenuFlow.subOption != 0) {
+            if (gMenuInput.buttons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
+                if (gMenuFlow.subOption == 1) {
                     playSelectSound = TRUE;
                     music_fade(-128);
                     transition_begin(&sMenuTransitionFadeIn);
-                    gMenuDelay = 1;
+                    gMenuInput.delay = 1;
                 } else {
                     playBackSound = TRUE;
-                    gMenuSubOption = 0;
+                    gMenuFlow.subOption = 0;
                 }
-            } else if (gMenuButtons[PLAYER_MENU] & B_BUTTON) {
+            } else if (gMenuInput.buttons[PLAYER_MENU] & B_BUTTON) {
                 playBackSound = TRUE;
-                gMenuSubOption = 0;
+                gMenuFlow.subOption = 0;
             } else {
-                prevOption = gMenuSubOption;
-                if (gMenuStickY[PLAYER_MENU] > 0 && gMenuSubOption == 2) {
-                    gMenuSubOption = 1;
+                prevOption = gMenuFlow.subOption;
+                if (gMenuInput.stickY[PLAYER_MENU] > 0 && gMenuFlow.subOption == 2) {
+                    gMenuFlow.subOption = 1;
                 }
-                if (gMenuStickY[PLAYER_MENU] < 0 && gMenuSubOption == 1) {
-                    gMenuSubOption = 2;
+                if (gMenuInput.stickY[PLAYER_MENU] < 0 && gMenuFlow.subOption == 1) {
+                    gMenuFlow.subOption = 2;
                 }
-                if (prevOption != gMenuSubOption) {
+                if (prevOption != gMenuFlow.subOption) {
                     playPickSound = TRUE;
                 }
             }
-        } else if (gMenuButtons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
+        } else if (gMenuInput.buttons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
             playSelectSound = TRUE;
-            if (gResultOptionText[gMenuOption] == gMenuText[ASSET_MENU_TEXT_QUIT]) {
-                gMenuSubOption = 2;
+            if (gResults.optionText[gMenuFlow.option] == gMenuLoaded.text[ASSET_MENU_TEXT_QUIT]) {
+                gMenuFlow.subOption = 2;
             } else {
-                gMenuDelay = 1;
+                gMenuInput.delay = 1;
                 transition_begin(&sMenuTransitionFadeIn);
                 music_fade(-128);
             }
         } else {
-            prevOption = gMenuOption;
-            if (gMenuStickY[PLAYER_MENU] < 0 && gMenuOption < (gResultOptionCount - 1)) {
-                gMenuOption++;
+            prevOption = gMenuFlow.option;
+            if (gMenuInput.stickY[PLAYER_MENU] < 0 && gMenuFlow.option < (gResults.optionCount - 1)) {
+                gMenuFlow.option++;
             }
-            if (gMenuStickY[PLAYER_MENU] > 0 && gMenuOption > 0) {
-                gMenuOption--;
+            if (gMenuInput.stickY[PLAYER_MENU] > 0 && gMenuFlow.option > 0) {
+                gMenuFlow.option--;
             }
-            if (prevOption != gMenuOption) {
+            if (prevOption != gMenuFlow.option) {
                 playPickSound = TRUE;
             }
         }
@@ -1188,16 +1228,16 @@ s32 menu_results_loop(s32 updateRate) {
         }
 
     } else {
-        gMenuDelay += updateRate;
-        if (gMenuDelay > 30) {
+        gMenuInput.delay += updateRate;
+        if (gMenuInput.delay > 30) {
             results_free();
             dialogue_close(7);
             dialogue_clear(7);
-            if (gResultOptionText[gMenuOption] == gMenuText[ASSET_MENU_TEXT_TRYAGAIN]) {
+            if (gResults.optionText[gMenuFlow.option] == gMenuLoaded.text[ASSET_MENU_TEXT_TRYAGAIN]) {
                 return (MENU_RESULT_FLAGS_100 | MENU_RESULT_FLAGS_2); // This gets parsed in mode_menu as a flag
                                                                       // and an ID from the bottom 7 bits.
             }
-            if (gResultOptionText[gMenuOption] == gMenuText[ASSET_MENU_TEXT_SELECTTRACK]) {
+            if (gResults.optionText[gMenuFlow.option] == gMenuLoaded.text[ASSET_MENU_TEXT_SELECTTRACK]) {
                 load_level_for_menu(SPECIAL_MAP_ID_NO_LEVEL, -1, 0);
                 menu_init(MENU_TRACK_SELECT);
                 return MENU_RESULT_CONTINUE;
@@ -1205,7 +1245,7 @@ s32 menu_results_loop(s32 updateRate) {
             return (MENU_RESULT_FLAGS_100 | MENU_RESULT_FLAGS_4);
         }
     }
-    gIgnorePlayerInputTime = 0;
+    gMenuInput.ignoreInputTime = 0;
     return MENU_RESULT_CONTINUE;
 }
 

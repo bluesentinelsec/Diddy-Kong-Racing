@@ -1,5 +1,27 @@
 #include "menu_internal.h"
 
+static s32 gGhostMenuOption;
+
+static s32 gGhostMenuTotal;
+
+static u8 gGhostLevelIDsPak[6];
+
+static u8 gGhostCharacterIDsPak[6];
+
+static u8 gGhostVehicleIDsPak[6];
+
+static u16 gGhostChecksumIDsPak[6];
+
+static u8 gGhostLevelIDsMenu[6];
+
+static u8 gGhostCharacterIDsMenu[6];
+
+static u8 gGhostVehicleIDsMenu[6];
+
+static u16 gGhostChecksumIDsMenu[6];
+
+static u8 gGhostWorldIDs[8];
+
 // DrawTextures for Dino Domain ghost background.
 static DrawTexture gDrawTexDinoDomainGhostBg[] = { { NULL, 0, 0 },    { NULL, 64, 0 },   { NULL, 128, 0 }, { NULL, 192, 0 },
                                             { NULL, 256, 0 },  { NULL, 0, 32 },   { NULL, 64, 32 }, { NULL, 128, 32 },
@@ -107,7 +129,7 @@ s32 ghostmenu_erase(s32 id) {
     if (id >= 0 && id < gGhostMenuTotal) {
         sound_play(SOUND_SELECT2, NULL);
         temp_s0 = gGhostWorldIDs[id];
-        result = ghost_delete_for_world(gCpakGhostData, temp_s0);
+        result = ghost_delete_for_world(gRaceSetup.cpakGhostData, temp_s0);
         if (result == CONTROLLER_PAK_GOOD) {
             gGhostLevelIDsPak[temp_s0] = 0xFF;
             gGhostMenuTotal--;
@@ -132,8 +154,8 @@ void menu_ghost_data_init(void) {
     s32 i;
     SIDeviceStatus pakStatus;
 
-    pakStatus = ghost_list(gCpakGhostData, gGhostLevelIDsPak, gGhostVehicleIDsPak, gGhostCharacterIDsPak,
-                              gGhostChecksumIDsPak);
+    pakStatus = ghost_list(gRaceSetup.cpakGhostData, gGhostLevelIDsPak, gGhostVehicleIDsPak, gGhostCharacterIDsPak,
+                           gGhostChecksumIDsPak);
     if (pakStatus == CONTROLLER_PAK_GOOD) {
         ghostmenu_generate();
     }
@@ -142,33 +164,36 @@ void menu_ghost_data_init(void) {
     load_font(ASSET_FONTS_BIGFONT);
 
     for (i = 0; i < 5; i++) {
-        gDrawTexDinoDomainGhostBg[i].texture = gMenuAssets[TEXTURE_BACKGROUND_DINO_DOMAIN_TOP];
-        gDrawTexDinoDomainGhostBg[i + 5].texture = gMenuAssets[TEXTURE_BACKGROUND_DINO_DOMAIN_BOTTOM];
-        gDrawTexSherbetIslandGhostBg[i + ((i & 1) * 5)].texture = gMenuAssets[TEXTURE_BACKGROUND_SHERBERT_ISLAND_TOP];
+        gDrawTexDinoDomainGhostBg[i].texture = gMenuLoaded.assets[TEXTURE_BACKGROUND_DINO_DOMAIN_TOP];
+        gDrawTexDinoDomainGhostBg[i + 5].texture = gMenuLoaded.assets[TEXTURE_BACKGROUND_DINO_DOMAIN_BOTTOM];
+        gDrawTexSherbetIslandGhostBg[i + ((i & 1) * 5)].texture =
+            gMenuLoaded.assets[TEXTURE_BACKGROUND_SHERBERT_ISLAND_TOP];
         gDrawTexSherbetIslandGhostBg[i + (((i & 1) ^ 1) * 5)].texture =
-            gMenuAssets[TEXTURE_BACKGROUND_SHERBERT_ISLAND_BOTTOM];
-        gDrawTexSnowflakeMountainGhostBg[i].texture = gMenuAssets[TEXTURE_BACKGROUND_SNOWFLAKE_MOUNTAIN_TOP];
-        gDrawTexSnowflakeMountainGhostBg[i + 5].texture = gMenuAssets[TEXTURE_BACKGROUND_SNOWFLAKE_MOUNTAIN_BOTTOM];
-        gDrawTexDragonForestGhostBg[i].texture = gMenuAssets[TEXTURE_BACKGROUND_DRAGON_FOREST_TOP];
-        gDrawTexDragonForestGhostBg[i + 5].texture = gMenuAssets[TEXTURE_BACKGROUND_DRAGON_FOREST_BOTTOM];
-        gDrawTexFutureFunLandGhostBg[i + ((i & 1) * 5)].texture = gMenuAssets[TEXTURE_BACKGROUND_FUTURE_FUN_LAND_TOP];
+            gMenuLoaded.assets[TEXTURE_BACKGROUND_SHERBERT_ISLAND_BOTTOM];
+        gDrawTexSnowflakeMountainGhostBg[i].texture = gMenuLoaded.assets[TEXTURE_BACKGROUND_SNOWFLAKE_MOUNTAIN_TOP];
+        gDrawTexSnowflakeMountainGhostBg[i + 5].texture =
+            gMenuLoaded.assets[TEXTURE_BACKGROUND_SNOWFLAKE_MOUNTAIN_BOTTOM];
+        gDrawTexDragonForestGhostBg[i].texture = gMenuLoaded.assets[TEXTURE_BACKGROUND_DRAGON_FOREST_TOP];
+        gDrawTexDragonForestGhostBg[i + 5].texture = gMenuLoaded.assets[TEXTURE_BACKGROUND_DRAGON_FOREST_BOTTOM];
+        gDrawTexFutureFunLandGhostBg[i + ((i & 1) * 5)].texture =
+            gMenuLoaded.assets[TEXTURE_BACKGROUND_FUTURE_FUN_LAND_TOP];
         gDrawTexFutureFunLandGhostBg[i + (((i & 1) ^ 1) * 5)].texture =
-            gMenuAssets[TEXTURE_BACKGROUND_FUTURE_FUN_LAND_BOTTOM];
+            gMenuLoaded.assets[TEXTURE_BACKGROUND_FUTURE_FUN_LAND_BOTTOM];
     }
 
     menu_init_vehicle_textures();
     menu_racer_portraits();
     menu_init_arrow_textures();
-    gOptionBlinkTimer = 0;
-    gMenuStage = 0;
-    gOpacityDecayTimer = 0;
-    gMenuDelay = 0;
+    gMenuFlow.blinkTimer = 0;
+    gMenuFlow.stage = 0;
+    gMenuFlow.opacityDecayTimer = 0;
+    gMenuInput.delay = 0;
     gGhostMenuOption = 0;
     if (pakStatus == CONTROLLER_PAK_GOOD) {
         transition_begin(&sMenuTransitionFadeOut);
         return;
     }
-    gMenuDelay = 30;
+    gMenuInput.delay = 30;
 }
 
 /**
@@ -189,29 +214,30 @@ void ghostmenu_render(UNUSED s32 updateRate) {
     char *levelName;
     char textBuffer[64];
 
-    mtx_ortho(&sMenuCurrDisplayList, &sMenuCurrHudMat);
+    mtx_ortho(&gMenuFrame.displayList, &gMenuFrame.hudMat);
     if (osTvType == OS_TV_TYPE_PAL) {
         heightAdjust = 12;
     } else {
         heightAdjust = 0;
     }
-    scroll = gOpacityDecayTimer;
+    scroll = gMenuFlow.opacityDecayTimer;
     set_text_font(FONT_LARGE);
     set_text_background_colour(0, 0, 0, 0);
     set_text_colour(0, 0, 0, 255, 128);
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF + 1, 35, gMenuText[ASSET_MENU_TEXT_GHOSTDATA],
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 1, 35, gMenuLoaded.text[ASSET_MENU_TEXT_GHOSTDATA],
               ALIGN_MIDDLE_CENTER);
     set_text_colour(255, 255, 255, 0, 255);
-    draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, 32, gMenuText[ASSET_MENU_TEXT_GHOSTDATA], ALIGN_MIDDLE_CENTER);
+    draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, 32, gMenuLoaded.text[ASSET_MENU_TEXT_GHOSTDATA],
+              ALIGN_MIDDLE_CENTER);
     y = 56;
     if (gGhostMenuTotal <= 0) {
         set_text_colour(255, 255, 255, 0, 255);
-        draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, heightAdjust + SCREEN_HEIGHT_HALF,
-                  gMenuText[ASSET_MENU_TEXT_NOGHOSTSSAVED], ALIGN_MIDDLE_CENTER);
+        draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, heightAdjust + SCREEN_HEIGHT_HALF,
+                  gMenuLoaded.text[ASSET_MENU_TEXT_NOGHOSTSSAVED], ALIGN_MIDDLE_CENTER);
         return;
     }
     numToDraw = 3;
-    highlight = gOptionBlinkTimer * 8;
+    highlight = gMenuFlow.blinkTimer * 8;
     if (highlight > 255) {
         highlight = 511 - highlight;
     }
@@ -233,23 +259,25 @@ void ghostmenu_render(UNUSED s32 updateRate) {
             }
         }
         textBuffer[i] = '\0'; // Set NULL terminator
-        texrect_draw_scaled(&sMenuCurrDisplayList, gDrawTexWorldBgs[currentWorldId], x, y, 0.75f, 0.8125f,
+        texrect_draw_scaled(&gMenuFrame.displayList, gDrawTexWorldBgs[currentWorldId], x, y, 0.75f, 0.8125f,
                             COLOUR_RGBA32(255, 255, 255, 255), 0);
-        menu_panel_draw_bordered(&sMenuCurrDisplayList, 40, y, 240, 52, 4, 4, 32, 80, 176, 128);
+        menu_panel_draw_bordered(&gMenuFrame.displayList, 40, y, 240, 52, 4, 4, 32, 80, 176, 128);
         if (scroll == gGhostMenuOption) {
-            menu_panel_draw_bordered(&sMenuCurrDisplayList, 40, y, 240, 52, 4, 4, highlight, highlight, highlight, highlight);
+            menu_panel_draw_bordered(&gMenuFrame.displayList, 40, y, 240, 52, 4, 4, highlight, highlight, highlight,
+                                     highlight);
         }
 #define GHOSTMENU_TEXT_OFFSET 40
         set_text_colour(0, 0, 0, 255, 255);
         for (i = 0; i < 4; i++) {
-            draw_text(&sMenuCurrDisplayList,
+            draw_text(&gMenuFrame.displayList,
                       gGhostDataElementPositions[0] + GHOSTMENU_TEXT_OFFSET + sGhostMenuIconOffsets[(i << 1)],
-                      y + gGhostDataElementPositions[1] + sGhostMenuIconOffsets[(i << 1) + 1], textBuffer, ALIGN_MIDDLE_CENTER);
+                      y + gGhostDataElementPositions[1] + sGhostMenuIconOffsets[(i << 1) + 1], textBuffer,
+                      ALIGN_MIDDLE_CENTER);
         }
         set_text_colour(200, 228, 80, 255, 255);
-        draw_text(&sMenuCurrDisplayList, gGhostDataElementPositions[0] + GHOSTMENU_TEXT_OFFSET,
+        draw_text(&gMenuFrame.displayList, gGhostDataElementPositions[0] + GHOSTMENU_TEXT_OFFSET,
                   gGhostDataElementPositions[1] + y, textBuffer, ALIGN_MIDDLE_CENTER);
-        texrect_draw(&sMenuCurrDisplayList, gRacerPortraits[gGhostCharacterIDsMenu[scroll]],
+        texrect_draw(&gMenuFrame.displayList, gRacerPortraits[gGhostCharacterIDsMenu[scroll]],
                      gGhostDataElementPositions[2] + 40, gGhostDataElementPositions[3] + y, 255, 255, 255, 255);
         switch (gGhostVehicleIDsMenu[scroll]) {
             case 1:
@@ -262,19 +290,20 @@ void ghostmenu_render(UNUSED s32 updateRate) {
                 vehicleSelectTex = gRaceSelectionCarTex;
                 break;
         }
-        texrect_draw_scaled(&sMenuCurrDisplayList, vehicleSelectTex, (gGhostDataElementPositions[4] + 40),
+        texrect_draw_scaled(&gMenuFrame.displayList, vehicleSelectTex, (gGhostDataElementPositions[4] + 40),
                             (gGhostDataElementPositions[5] + y), 0.625f, 0.625f, COLOUR_RGBA32(255, 255, 255, 255), 0);
-        rendermode_reset(&sMenuCurrDisplayList);
-        gMenuImages[7].trans.x_position = (gGhostDataElementPositions[6] - SCREEN_HEIGHT_HALF);
-        gMenuImages[7].trans.y_position = ((-gGhostDataElementPositions[7] - y) + heightAdjust + SCREEN_HEIGHT_HALF);
-        gMenuImages[7].trans.scale = 0.075f;
+        rendermode_reset(&gMenuFrame.displayList);
+        gMenuLoaded.images[7].trans.x_position = (gGhostDataElementPositions[6] - SCREEN_HEIGHT_HALF);
+        gMenuLoaded.images[7].trans.y_position =
+            ((-gGhostDataElementPositions[7] - y) + heightAdjust + SCREEN_HEIGHT_HALF);
+        gMenuLoaded.images[7].trans.scale = 0.075f;
         menu_element_render(7);
-        sMenuGuiOpacity = 128;
+        gMenuFrame.guiOpacity = 128;
         // Timestamp Shadow gets drawn first
         menu_timestamp_render(gGhostChecksumIDsMenu[scroll], gGhostDataElementPositions[8] - (SCREEN_HEIGHT_HALF - 1),
                               (-gGhostDataElementPositions[9] - y) + heightAdjust + (SCREEN_HEIGHT_HALF - 1), 0, 0, 0,
                               FONT_COLOURFUL);
-        sMenuGuiOpacity = 255;
+        gMenuFrame.guiOpacity = 255;
         menu_timestamp_render(gGhostChecksumIDsMenu[scroll], gGhostDataElementPositions[8] - (SCREEN_HEIGHT_HALF + 1),
                               (-gGhostDataElementPositions[9] - y) + heightAdjust + (SCREEN_HEIGHT_HALF + 1), 255, 192,
                               255, FONT_COLOURFUL);
@@ -283,7 +312,7 @@ void ghostmenu_render(UNUSED s32 updateRate) {
         y += 54;
     }
     highlight &= 0xFF;
-    if (gMenuStage > GHOSTMENU_CHOOSE) {
+    if (gMenuFlow.stage > GHOSTMENU_CHOOSE) {
         clear_dialogue_box_open_flag(7);
         dialogue_clear(7);
 #if VERSION == VERSION_80
@@ -294,31 +323,31 @@ void ghostmenu_render(UNUSED s32 updateRate) {
         set_current_dialogue_background_colour(7, 0, 0, 0, 192);
         set_dialogue_font(7, 0);
         set_current_text_background_colour(7, 0, 0, 0, 0);
-        if (gMenuStage == GHOSTMENU_ERASE) {
+        if (gMenuFlow.stage == GHOSTMENU_ERASE) {
             set_current_text_colour(7, 255, 255, 255, highlight, 255);
         } else {
             set_current_text_colour(7, 255, 255, 255, 0, 255);
         }
-        render_dialogue_text(7, POS_CENTRED, 12, gMenuText[ASSET_MENU_TEXT_ERASEGHOST], 1, ALIGN_MIDDLE_CENTER);
-        if (gMenuStage == GHOSTMENU_CONFIRM) {
+        render_dialogue_text(7, POS_CENTRED, 12, gMenuLoaded.text[ASSET_MENU_TEXT_ERASEGHOST], 1, ALIGN_MIDDLE_CENTER);
+        if (gMenuFlow.stage == GHOSTMENU_CONFIRM) {
             set_current_text_colour(7, 255, 255, 255, highlight, 255);
         } else {
             set_current_text_colour(7, 255, 255, 255, 0, 255);
         }
-        render_dialogue_text(7, POS_CENTRED, 28, gMenuText[ASSET_MENU_TEXT_CANCEL], 1, ALIGN_MIDDLE_CENTER);
-        render_dialogue_box(&sMenuCurrDisplayList, NULL, NULL, 7);
+        render_dialogue_text(7, POS_CENTRED, 28, gMenuLoaded.text[ASSET_MENU_TEXT_CANCEL], 1, ALIGN_MIDDLE_CENTER);
+        render_dialogue_box(&gMenuFrame.displayList, NULL, NULL, 7);
     }
-    if (gOptionBlinkTimer & 0x10) {
-        if ((gOpacityDecayTimer + 3) < gGhostMenuTotal) {
-            texrect_draw(&sMenuCurrDisplayList, gMenuSelectionArrowDown, SCREEN_WIDTH_HALF + 1, y + 3, 0, 0, 0, 128);
-            texrect_draw(&sMenuCurrDisplayList, gMenuSelectionArrowDown, SCREEN_WIDTH_HALF - 1, y + 1, 255, 255, 255,
+    if (gMenuFlow.blinkTimer & 0x10) {
+        if ((gMenuFlow.opacityDecayTimer + 3) < gGhostMenuTotal) {
+            texrect_draw(&gMenuFrame.displayList, gMenuSelectionArrowDown, SCREEN_WIDTH_HALF + 1, y + 3, 0, 0, 0, 128);
+            texrect_draw(&gMenuFrame.displayList, gMenuSelectionArrowDown, SCREEN_WIDTH_HALF - 1, y + 1, 255, 255, 255,
                          255);
         }
-        if (gOpacityDecayTimer > 0) {
-            texrect_draw(&sMenuCurrDisplayList, gMenuSelectionArrowUp, SCREEN_WIDTH_HALF + 1, 54, 0, 0, 0, 128);
-            texrect_draw(&sMenuCurrDisplayList, gMenuSelectionArrowUp, SCREEN_WIDTH_HALF - 1, 52, 255, 255, 255, 255);
+        if (gMenuFlow.opacityDecayTimer > 0) {
+            texrect_draw(&gMenuFrame.displayList, gMenuSelectionArrowUp, SCREEN_WIDTH_HALF + 1, 54, 0, 0, 0, 128);
+            texrect_draw(&gMenuFrame.displayList, gMenuSelectionArrowUp, SCREEN_WIDTH_HALF - 1, 52, 255, 255, 255, 255);
         }
-        rendermode_reset(&sMenuCurrDisplayList);
+        rendermode_reset(&gMenuFrame.displayList);
     }
 }
 
@@ -333,53 +362,53 @@ s32 menu_ghost_data_loop(s32 updateRate) {
     s32 prevOption;
     UNUSED s32 unused;
 
-    gOptionBlinkTimer = (gOptionBlinkTimer + updateRate) & 0x3F;
+    gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
 
-    if (gMenuDelay > -20 && gMenuDelay < 20) {
+    if (gMenuInput.delay > -20 && gMenuInput.delay < 20) {
         ghostmenu_render(updateRate);
     }
 
     pressedButtons = 0;
-    if (gMenuDelay) {
-        if (gMenuDelay < 0) {
-            gMenuDelay -= updateRate;
+    if (gMenuInput.delay) {
+        if (gMenuInput.delay < 0) {
+            gMenuInput.delay -= updateRate;
         } else {
-            gMenuDelay += updateRate;
+            gMenuInput.delay += updateRate;
         }
     }
 
     xStick = 0;
     yStick = 0;
-    if (!gIgnorePlayerInputTime && gMenuDelay == 0) {
+    if (!gMenuInput.ignoreInputTime && gMenuInput.delay == 0) {
         for (i = 0; i < MAXCONTROLLERS; i++) {
             pressedButtons |= input_pressed(i);
-            xStick += gControllersXAxisDirection[i];
-            yStick += gControllersYAxisDirection[i];
+            xStick += gMenuInput.xAxisDirection[i];
+            yStick += gMenuInput.yAxisDirection[i];
         }
     }
 
-    switch (gMenuStage) {
+    switch (gMenuFlow.stage) {
         case GHOSTMENU_CHOOSE:
             if ((pressedButtons & (START_BUTTON | A_BUTTON)) && gGhostMenuTotal > 0) {
-                gMenuStage = GHOSTMENU_CONFIRM;
+                gMenuFlow.stage = GHOSTMENU_CONFIRM;
                 sound_play(SOUND_SELECT2, NULL);
             } else if (pressedButtons & B_BUTTON ||
                        (pressedButtons & (START_BUTTON | A_BUTTON) && gGhostMenuTotal == 0)) {
-                gMenuDelay = 1;
+                gMenuInput.delay = 1;
                 transition_begin(&sMenuTransitionFadeIn);
                 sound_play(SOUND_MENU_BACK3, NULL);
             } else {
                 prevOption = gGhostMenuOption;
                 if (yStick < 0 && gGhostMenuOption < gGhostMenuTotal - 1) {
                     gGhostMenuOption++;
-                    if (gGhostMenuOption >= gOpacityDecayTimer + 3) {
-                        gOpacityDecayTimer = gGhostMenuOption - 2;
+                    if (gGhostMenuOption >= gMenuFlow.opacityDecayTimer + 3) {
+                        gMenuFlow.opacityDecayTimer = gGhostMenuOption - 2;
                     }
                 }
                 if (yStick > 0 && gGhostMenuOption > 0) {
                     gGhostMenuOption--;
-                    if (gGhostMenuOption < gOpacityDecayTimer) {
-                        gOpacityDecayTimer = gGhostMenuOption;
+                    if (gGhostMenuOption < gMenuFlow.opacityDecayTimer) {
+                        gMenuFlow.opacityDecayTimer = gGhostMenuOption;
                     }
                 }
                 if (prevOption != gGhostMenuOption) {
@@ -389,7 +418,7 @@ s32 menu_ghost_data_loop(s32 updateRate) {
             break;
         case GHOSTMENU_ERASE:
             if (pressedButtons & B_BUTTON) {
-                gMenuStage = GHOSTMENU_CHOOSE;
+                gMenuFlow.stage = GHOSTMENU_CHOOSE;
                 sound_play(SOUND_MENU_BACK3, NULL);
             } else {
                 if (pressedButtons & (START_BUTTON | A_BUTTON)) {
@@ -400,35 +429,35 @@ s32 menu_ghost_data_loop(s32 updateRate) {
                         if (gGhostMenuOption < 0) {
                             gGhostMenuOption = 0;
                         }
-                        if (gGhostMenuOption < gOpacityDecayTimer) {
-                            gOpacityDecayTimer = gGhostMenuOption;
+                        if (gGhostMenuOption < gMenuFlow.opacityDecayTimer) {
+                            gMenuFlow.opacityDecayTimer = gGhostMenuOption;
                         }
                         sound_play(SOUND_SELECT2, NULL);
                     } else {
-                        gMenuDelay = 1;
+                        gMenuInput.delay = 1;
                         transition_begin(&sMenuTransitionFadeIn);
                         sound_play(SOUND_MENU_BACK3, NULL);
                     }
-                    gMenuStage = GHOSTMENU_CHOOSE;
+                    gMenuFlow.stage = GHOSTMENU_CHOOSE;
                 } else if (yStick < 0) {
-                    gMenuStage = GHOSTMENU_CONFIRM;
+                    gMenuFlow.stage = GHOSTMENU_CONFIRM;
                     sound_play(SOUND_MENU_PICK2, NULL);
                 }
             }
             break;
         case GHOSTMENU_CONFIRM:
             if (pressedButtons & (START_BUTTON | A_BUTTON | B_BUTTON)) {
-                gMenuStage = GHOSTMENU_CHOOSE;
+                gMenuFlow.stage = GHOSTMENU_CHOOSE;
                 sound_play(SOUND_MENU_BACK3, NULL);
             } else if (yStick > 0) {
-                gMenuStage = GHOSTMENU_ERASE;
+                gMenuFlow.stage = GHOSTMENU_ERASE;
                 sound_play(SOUND_MENU_PICK2, NULL);
             }
             break;
     }
 
-    gIgnorePlayerInputTime = FALSE;
-    if (gMenuDelay > 30) {
+    gMenuInput.ignoreInputTime = FALSE;
+    if (gMenuInput.delay > 30) {
         ghostmenu_free();
         menu_init(MENU_SAVE_OPTIONS);
     }

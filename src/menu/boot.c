@@ -1,5 +1,16 @@
 #include "menu_internal.h"
 
+static s32 sControllerPakMenuNumberOfRows; // 8 if PAL, 7 if not
+
+static s32 gCpakWriteTimer;
+
+static s32 gBootMenuTimer;
+
+static s32 gBootMenuPhase;
+
+static FadeTransition sMenuTransitionFadeInFast =
+    FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 10, FADE_STAY);
+
 s32 gShowControllerPakMenu = FALSE;
 
 #define PAKMENU_JP_OFFSET 0
@@ -17,7 +28,7 @@ void menu_boot_init(void) {
 
     // Sets up the 11 texture pointers for the "Diddy Kong Racing" logo.
     for (i = 0; i < ARRAY_COUNT(sGameTitleTileOffsets) - 1; i++) {
-        sGameTitleTileOffsets[i].texture = gMenuAssets[sGameTitleTileTextures[i]];
+        sGameTitleTileOffsets[i].texture = gMenuLoaded.assets[sGameTitleTileTextures[i]];
     }
 
     // Reset variables for menu_boot_loop()
@@ -70,7 +81,7 @@ s32 menu_boot_loop(s32 updateRate) {
             }
             break;
         case 2:
-            if (gMenuDelay && check_fadeout_transition() == 0) {
+            if (gMenuInput.delay && check_fadeout_transition() == 0) {
                 transition_begin(&sMenuTransitionFadeInFast);
             }
             y = 300;
@@ -79,8 +90,8 @@ s32 menu_boot_loop(s32 updateRate) {
     }
 
     if (y < 300) {
-        texrect_draw(&sMenuCurrDisplayList, sGameTitleTileOffsets, SCREEN_WIDTH_HALF, y, 255, 255, 255, 255);
-        rendermode_reset(&sMenuCurrDisplayList);
+        texrect_draw(&gMenuFrame.displayList, sGameTitleTileOffsets, SCREEN_WIDTH_HALF, y, 255, 255, 255, 255);
+        rendermode_reset(&gMenuFrame.displayList);
     }
 
     return out;
@@ -101,33 +112,34 @@ void bootscreen_init_cpak(void) {
     s32 i;
 
     // Starting point
-    gBootPakData[0] = mempool_alloc_safe(CPAK_HEAP_SIZE, COLOUR_TAG_WHITE);
+    gControllerPak.fileText[0] = mempool_alloc_safe(CPAK_HEAP_SIZE, COLOUR_TAG_WHITE);
 
     // Fills in the table.
-    for (i = 1; i < ARRAY_COUNT(gBootPakData); i++) {
-        gBootPakData[i] = (char *) (((uintptr_t) gBootPakData[0]) + (i * (CPAK_HEAP_SIZE / ARRAY_COUNT(gBootPakData))));
+    for (i = 1; i < ARRAY_COUNT(gControllerPak.fileText); i++) {
+        gControllerPak.fileText[i] = (char *) (((uintptr_t) gControllerPak.fileText[0]) +
+                                               (i * (CPAK_HEAP_SIZE / ARRAY_COUNT(gControllerPak.fileText))));
     }
 
     // Only check cpak 0
     for (i = 0; i <= 0; i++) {
-        sControllerPakDataPresent[i] = FALSE;
+        gControllerPak.dataPresent[i] = FALSE;
     }
 
     gCpakWriteTimer = 0;
-    gMenuStage = PAKMENU_CHOOSE;
-    gOptionBlinkTimer = 0;
-    gMenuOption = -1;
+    gMenuFlow.stage = PAKMENU_CHOOSE;
+    gMenuFlow.blinkTimer = 0;
+    gMenuFlow.option = -1;
     load_menu_text(get_language());
-    if (menu_find_usable_pak(&gMenuOption, 0) == CONTROLLER_PAK_GOOD) {
-        gMenuDelay = 0;
+    if (menu_find_usable_pak(&gMenuFlow.option, 0) == CONTROLLER_PAK_GOOD) {
+        gMenuInput.delay = 0;
     } else if (check_for_controller_pak_errors() == PAK_ERROR_NONE) {
-        gMenuDelay = 20;
+        gMenuInput.delay = 20;
     }
-    if (sControllerPakError == PAK_ERROR_NONE && !gShowControllerPakMenu) {
-        gMenuDelay = 20;
+    if (gControllerPak.error == PAK_ERROR_NONE && !gShowControllerPakMenu) {
+        gMenuInput.delay = 20;
     }
-    gMenuCurIndex = 0;
-    gOpacityDecayTimer = 0;
+    gMenuFlow.curIndex = 0;
+    gMenuFlow.opacityDecayTimer = 0;
     menu_asset_load(63);
     menu_init_arrow_textures();
     if (osTvType == OS_TV_TYPE_PAL) {
@@ -157,19 +169,19 @@ void pakmenu_render(UNUSED s32 updateRate) {
     s32 yPos = 0;
 
     set_text_background_colour(0, 0, 0, 0);
-    highlight = gOptionBlinkTimer << 3;
+    highlight = gMenuFlow.blinkTimer << 3;
     if (highlight >= 256) {
         highlight = 511 - highlight;
     }
-    if (sControllerPakError != PAK_ERROR_NONE) {
+    if (gControllerPak.error != PAK_ERROR_NONE) {
         draw_menu_elements(1, gControllerPakMenuElement, 1.0f);
     } else if (gShowControllerPakMenu != 0) {
         set_text_font(ASSET_FONTS_BIGFONT);
         set_text_colour(0, 0, 0, 255, 128);
-        draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF + 1, 33, gMenuText[ASSET_MENU_TEXT_CONTPAK],
+        draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 1, 33, gMenuLoaded.text[ASSET_MENU_TEXT_CONTPAK],
                   ALIGN_MIDDLE_CENTER); // CONTROLLER PAK - Drop Shadow
         set_text_colour(255, 255, 255, 0, 255);
-        draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, 30, gMenuText[ASSET_MENU_TEXT_CONTPAK],
+        draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, 30, gMenuLoaded.text[ASSET_MENU_TEXT_CONTPAK],
                   ALIGN_MIDDLE_CENTER); // CONTROLLER PAK - Main Text
 
         yPos += 48;
@@ -177,7 +189,7 @@ void pakmenu_render(UNUSED s32 updateRate) {
         dialogue_clear(6);
         set_current_dialogue_box_coords(6, 58, yPos, 262, yPos + 30);
 
-        if (gMenuCurIndex == -1) {
+        if (gMenuFlow.curIndex == -1) {
             set_current_dialogue_background_colour(6, 255, 255, 255, (highlight >> 1) + 128);
         } else {
             set_current_dialogue_background_colour(6, 96, 192, 92, 224);
@@ -186,11 +198,12 @@ void pakmenu_render(UNUSED s32 updateRate) {
         set_dialogue_font(6, ASSET_FONTS_FUNFONT);
         set_current_text_colour(6, 255, 255, 255, 0, 255);
         set_current_text_background_colour(6, 0, 0, 0, 0);
-        render_dialogue_text(6, POS_CENTRED, 2 - PAKMENU_JP_OFFSET, gMenuText[ASSET_MENU_TEXT_CONTPAK1 + gMenuOption],
-                             1, HORZ_ALIGN_CENTER); // CONTROLLER PAK 1 / 2 / 3 / 4
-        render_dialogue_text(6, POS_CENTRED, 16 - PAKMENU_JP_OFFSET, gMenuText[ASSET_MENU_TEXT_FREEPAGESX],
-                             sCurrentControllerPakFreePages, HORZ_ALIGN_CENTER); // FREE PAGES: ~
-        render_dialogue_box(&sMenuCurrDisplayList, NULL, NULL, 6);
+        render_dialogue_text(6, POS_CENTRED, 2 - PAKMENU_JP_OFFSET,
+                             gMenuLoaded.text[ASSET_MENU_TEXT_CONTPAK1 + gMenuFlow.option], 1,
+                             HORZ_ALIGN_CENTER); // CONTROLLER PAK 1 / 2 / 3 / 4
+        render_dialogue_text(6, POS_CENTRED, 16 - PAKMENU_JP_OFFSET, gMenuLoaded.text[ASSET_MENU_TEXT_FREEPAGESX],
+                             gControllerPak.freePages, HORZ_ALIGN_CENTER); // FREE PAGES: ~
+        render_dialogue_box(&gMenuFrame.displayList, NULL, NULL, 6);
 
         yPos += 34; // To 82
 
@@ -203,12 +216,12 @@ void pakmenu_render(UNUSED s32 updateRate) {
                 // Red background for table header
                 set_current_dialogue_background_colour(6, 224, 48, 48, 224);
                 set_current_text_colour(6, 224, 224, 48, 255, 255);
-                noteText = gMenuText[ASSET_MENU_TEXT_NOTE];         // NOTE
-                fileNameText = gMenuText[ASSET_MENU_TEXT_FILENAME]; // FILENAME
-                pagesText = gMenuText[ASSET_MENU_TEXT_PAGES];       // PAGES
+                noteText = gMenuLoaded.text[ASSET_MENU_TEXT_NOTE];         // NOTE
+                fileNameText = gMenuLoaded.text[ASSET_MENU_TEXT_FILENAME]; // FILENAME
+                pagesText = gMenuLoaded.text[ASSET_MENU_TEXT_PAGES];       // PAGES
                 numberOfPages = 1;
             } else {
-                if (gMenuCurIndex == (i + gOpacityDecayTimer)) {
+                if (gMenuFlow.curIndex == (i + gMenuFlow.opacityDecayTimer)) {
                     // White background for currently selected row
                     set_current_dialogue_background_colour(6, 255, 255, 255, (highlight >> 1) + 128);
                 } else {
@@ -217,38 +230,38 @@ void pakmenu_render(UNUSED s32 updateRate) {
                 }
                 set_current_text_colour(6, 16, 16, 160, 255, 255);
                 pagesText = noteText = "~";
-                fileNameText = gBootPakData[gOpacityDecayTimer + i];
-                numberOfPages = sCurrentControllerPakNumberOfPages[gOpacityDecayTimer + i];
+                fileNameText = gControllerPak.fileText[gMenuFlow.opacityDecayTimer + i];
+                numberOfPages = gControllerPak.filePages[gMenuFlow.opacityDecayTimer + i];
             }
-            render_dialogue_text(6, 26, 2, noteText, gOpacityDecayTimer + i + 1, HORZ_ALIGN_CENTER);
+            render_dialogue_text(6, 26, 2, noteText, gMenuFlow.opacityDecayTimer + i + 1, HORZ_ALIGN_CENTER);
             render_dialogue_text(6, 56, 2, fileNameText, 1, HORZ_ALIGN_LEFT);
             render_dialogue_text(6, 240, 2, pagesText, numberOfPages, HORZ_ALIGN_CENTER);
 #if VERSION >= VERSION_79
             set_kerning(TRUE);
 #endif
-            render_dialogue_box(&sMenuCurrDisplayList, NULL, NULL, 6);
+            render_dialogue_box(&gMenuFrame.displayList, NULL, NULL, 6);
             yPos += 16;
 #if VERSION >= VERSION_79
             set_kerning(FALSE);
 #endif
         }
-        if (gOpacityDecayTimer < (16 - sControllerPakMenuNumberOfRows)) {
-            if ((gOptionBlinkTimer & 8) != 0) {
-                texrect_draw(&sMenuCurrDisplayList, gMenuSelectionArrowDown, SCREEN_WIDTH_HALF, yPos + 8, 255, 255, 255,
-                             255);
-                rendermode_reset(&sMenuCurrDisplayList);
+        if (gMenuFlow.opacityDecayTimer < (16 - sControllerPakMenuNumberOfRows)) {
+            if ((gMenuFlow.blinkTimer & 8) != 0) {
+                texrect_draw(&gMenuFrame.displayList, gMenuSelectionArrowDown, SCREEN_WIDTH_HALF, yPos + 8, 255, 255,
+                             255, 255);
+                rendermode_reset(&gMenuFrame.displayList);
             }
         } else {
             set_text_font(ASSET_FONTS_FUNFONT);
-            if (gMenuCurIndex == 16) {
+            if (gMenuFlow.curIndex == 16) {
                 set_text_colour(255, 255, 255, highlight, 255);
             } else {
                 set_text_colour(255, 255, 255, 0, 255);
             }
-            draw_text(&sMenuCurrDisplayList, POS_CENTRED, yPos, gMenuText[ASSET_MENU_TEXT_EXIT],
+            draw_text(&gMenuFrame.displayList, POS_CENTRED, yPos, gMenuLoaded.text[ASSET_MENU_TEXT_EXIT],
                       ALIGN_TOP_CENTER); // EXIT
         }
-        if (gMenuStage != PAKMENU_CHOOSE && gCpakWriteTimer == 0) {
+        if (gMenuFlow.stage != PAKMENU_CHOOSE && gCpakWriteTimer == 0) {
             if (osTvType == OS_TV_TYPE_PAL) {
                 yPos = 134;
             } else {
@@ -263,7 +276,7 @@ void pakmenu_render(UNUSED s32 updateRate) {
             for (i = 0; i <= 2; i++) {
                 if (i == 0) {
                     set_current_text_colour(6, 255, 0, 255, 64, 255);
-                } else if (i == gMenuStage) {
+                } else if (i == gMenuFlow.stage) {
                     set_current_text_colour(6, 255, 255, 255, highlight, 255);
                 } else {
                     set_current_text_colour(6, 255, 255, 255, 0, 255);
@@ -273,8 +286,8 @@ void pakmenu_render(UNUSED s32 updateRate) {
                 // ASSET_MENU_TEXT_DELETENOTEX  - DELETE NOTE ~ ?
                 // ASSET_MENU_TEXT_DELETE       - DELETE
                 // ASSET_MENU_TEXT_CANCELDELETE - CANCEL
-                render_dialogue_text(6, POS_CENTRED, yPos, gMenuText[ASSET_MENU_TEXT_DELETENOTEX + i],
-                                     gMenuCurIndex + 1, HORZ_ALIGN_CENTER);
+                render_dialogue_text(6, POS_CENTRED, yPos, gMenuLoaded.text[ASSET_MENU_TEXT_DELETENOTEX + i],
+                                     gMenuFlow.curIndex + 1, HORZ_ALIGN_CENTER);
 
                 if (i != 0) {
                     yPos += 16;
@@ -282,13 +295,13 @@ void pakmenu_render(UNUSED s32 updateRate) {
                     yPos += 20;
                 }
             }
-            render_dialogue_box(&sMenuCurrDisplayList, NULL, NULL, 6);
+            render_dialogue_box(&gMenuFrame.displayList, NULL, NULL, 6);
         }
         // Deleting File
         if (gCpakWriteTimer != 0) {
             set_text_colour(255, 255, 255, 0, 255);
             set_text_font(ASSET_FONTS_BIGFONT);
-            draw_text(&sMenuCurrDisplayList, SCREEN_WIDTH_HALF, 128, gMenuText[ASSET_MENU_TEXT_PLEASEWAIT],
+            draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, 128, gMenuLoaded.text[ASSET_MENU_TEXT_PLEASEWAIT],
                       ALIGN_MIDDLE_CENTER);
         }
     }
@@ -311,99 +324,99 @@ s32 menu_controller_pak_loop(s32 updateRate) {
     UNUSED s32 pad;
     s32 temp_v1_2;
 
-    gOptionBlinkTimer = (gOptionBlinkTimer + updateRate) & 0x3F;
-    if (gMenuDelay < 20) {
+    gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
+    if (gMenuInput.delay < 20) {
         pakmenu_render(updateRate);
     }
-    if (gMenuDelay == 0) {
+    if (gMenuInput.delay == 0) {
         pressedButtons = 0;
         xStick = 0;
         yStick = 0;
         for (i = 0; i < MAXCONTROLLERS; i++) {
             pressedButtons |= input_pressed(i);
-            xStick += gControllersXAxisDirection[i];
-            yStick += gControllersYAxisDirection[i];
+            xStick += gMenuInput.xAxisDirection[i];
+            yStick += gMenuInput.yAxisDirection[i];
         }
-        if (sControllerPakError != PAK_ERROR_NONE) {
-            if (sControllerPakError != PAK_ERROR_FATAL && pressedButtons & (A_BUTTON | START_BUTTON)) {
+        if (gControllerPak.error != PAK_ERROR_NONE) {
+            if (gControllerPak.error != PAK_ERROR_FATAL && pressedButtons & (A_BUTTON | START_BUTTON)) {
                 sound_play(SOUND_SELECT2, NULL);
-                if (menu_find_usable_pak(&gMenuOption, 0) == CONTROLLER_PAK_GOOD) {
-                    sControllerPakError = PAK_ERROR_NONE;
+                if (menu_find_usable_pak(&gMenuFlow.option, 0) == CONTROLLER_PAK_GOOD) {
+                    gControllerPak.error = PAK_ERROR_NONE;
                 } else if (check_for_controller_pak_errors() == PAK_ERROR_NONE) {
                     gShowControllerPakMenu = 0;
                 }
-                if (sControllerPakError == PAK_ERROR_NONE && gShowControllerPakMenu == 0) {
+                if (gControllerPak.error == PAK_ERROR_NONE && gShowControllerPakMenu == 0) {
                     playCancelSound = TRUE;
-                    gMenuDelay = 1;
+                    gMenuInput.delay = 1;
                     transition_begin(&sMenuTransitionFadeIn);
                 }
             }
         } else {
-            if (gMenuStage != PAKMENU_CHOOSE) {
+            if (gMenuFlow.stage != PAKMENU_CHOOSE) {
                 if (gCpakWriteTimer != 0) {
                     gCpakWriteTimer--;
                     if (gCpakWriteTimer == 0) {
-                        if (delete_file(gMenuOption, gMenuCurIndex) != CONTROLLER_PAK_GOOD) {
+                        if (delete_file(gMenuFlow.option, gMenuFlow.curIndex) != CONTROLLER_PAK_GOOD) {
                             // Failed to delete the file
                             playCancelSound = TRUE;
-                            gMenuDelay = 1;
+                            gMenuInput.delay = 1;
                             transition_begin(&sMenuTransitionFadeIn);
                         } else {
                             // File deleted successfully
                             playSelectedSound = TRUE;
-                            if (menu_find_usable_pak(&gMenuOption, xStick) != CONTROLLER_PAK_GOOD) {
+                            if (menu_find_usable_pak(&gMenuFlow.option, xStick) != CONTROLLER_PAK_GOOD) {
                                 playCancelSound = TRUE;
-                                gMenuDelay = 1;
+                                gMenuInput.delay = 1;
                                 transition_begin(&sMenuTransitionFadeIn);
                             }
                         }
-                        gMenuStage = PAKMENU_CHOOSE;
+                        gMenuFlow.stage = PAKMENU_CHOOSE;
                     }
                 } else if (pressedButtons & B_BUTTON) {
                     playCancelSound = TRUE;
-                    gMenuStage = PAKMENU_CHOOSE;
+                    gMenuFlow.stage = PAKMENU_CHOOSE;
                 } else if (pressedButtons & (A_BUTTON | START_BUTTON)) {
-                    if (gMenuStage == PAKMENU_CONFIRM) {
+                    if (gMenuFlow.stage == PAKMENU_CONFIRM) {
                         gCpakWriteTimer = 3;
                     } else {
                         playCancelSound = TRUE;
-                        gMenuStage = PAKMENU_CHOOSE;
+                        gMenuFlow.stage = PAKMENU_CHOOSE;
                     }
-                } else if (yStick > 0 && gMenuStage > PAKMENU_CONFIRM) {
-                    gMenuStage = PAKMENU_CONFIRM;
+                } else if (yStick > 0 && gMenuFlow.stage > PAKMENU_CONFIRM) {
+                    gMenuFlow.stage = PAKMENU_CONFIRM;
                     playMoveSound = TRUE;
-                } else if (yStick < 0 && gMenuStage < PAKMENU_WRITE) {
-                    gMenuStage = PAKMENU_WRITE;
+                } else if (yStick < 0 && gMenuFlow.stage < PAKMENU_WRITE) {
+                    gMenuFlow.stage = PAKMENU_WRITE;
                     playMoveSound = TRUE;
                 }
             } else if (pressedButtons & B_BUTTON ||
-                       (gMenuCurIndex == 16 && pressedButtons & (A_BUTTON | START_BUTTON))) {
+                       (gMenuFlow.curIndex == 16 && pressedButtons & (A_BUTTON | START_BUTTON))) {
                 playCancelSound = 1;
-                gMenuDelay = 1;
+                gMenuInput.delay = 1;
                 transition_begin(&sMenuTransitionFadeIn);
             } else {
-                // gMenuCurIndex = selected menu index?
-                switch (gMenuCurIndex) {
+                // gMenuFlow.curIndex = selected menu index?
+                switch (gMenuFlow.curIndex) {
                     case -1:
                         if (yStick < 0) {
                             if (!xStick) {} // Fakematch
-                            gMenuCurIndex = 0;
+                            gMenuFlow.curIndex = 0;
                             playMoveSound = TRUE;
                         }
                         break;
                     case 16:
                         if (yStick > 0) {
-                            gMenuCurIndex = 15;
+                            gMenuFlow.curIndex = 15;
                             playMoveSound = TRUE;
                         }
                         break;
                     default:
                         if (pressedButtons & (A_BUTTON | START_BUTTON)) {
                             // Check if the selected menu item is a file or blank
-                            if ((sCurrentControllerPakAllFileTypes[gMenuCurIndex] >= SAVE_FILE_TYPE_CPAK_SAVE) &&
-                                (sCurrentControllerPakAllFileTypes[gMenuCurIndex] <= SAVE_FILE_TYPE_CPAK_OTHER)) {
+                            if ((gControllerPak.fileTypes[gMenuFlow.curIndex] >= SAVE_FILE_TYPE_CPAK_SAVE) &&
+                                (gControllerPak.fileTypes[gMenuFlow.curIndex] <= SAVE_FILE_TYPE_CPAK_OTHER)) {
                                 gCpakWriteTimer = 0;
-                                gMenuStage = PAKMENU_WRITE;
+                                gMenuFlow.stage = PAKMENU_WRITE;
                                 playSelectedSound = TRUE;
                             } else {
                                 // If it's not, just play the "back" sound
@@ -411,29 +424,29 @@ s32 menu_controller_pak_loop(s32 updateRate) {
                             }
                         } else {
                             if (yStick > 0) {
-                                gMenuCurIndex--;
-                                if (gMenuCurIndex < 0) {
-                                    gMenuCurIndex = 0;
+                                gMenuFlow.curIndex--;
+                                if (gMenuFlow.curIndex < 0) {
+                                    gMenuFlow.curIndex = 0;
                                 } else {
                                     playMoveSound = TRUE;
                                 }
                             } else if (yStick < 0) {
-                                gMenuCurIndex++;
+                                gMenuFlow.curIndex++;
                                 playMoveSound = TRUE;
                             }
                         }
-                        if (gMenuCurIndex >= (gOpacityDecayTimer + sControllerPakMenuNumberOfRows)) {
-                            gOpacityDecayTimer = (gMenuCurIndex - sControllerPakMenuNumberOfRows) + 1;
+                        if (gMenuFlow.curIndex >= (gMenuFlow.opacityDecayTimer + sControllerPakMenuNumberOfRows)) {
+                            gMenuFlow.opacityDecayTimer = (gMenuFlow.curIndex - sControllerPakMenuNumberOfRows) + 1;
                         }
-                        if (gMenuCurIndex < gOpacityDecayTimer) {
-                            gOpacityDecayTimer = gMenuCurIndex;
+                        if (gMenuFlow.curIndex < gMenuFlow.opacityDecayTimer) {
+                            gMenuFlow.opacityDecayTimer = gMenuFlow.curIndex;
                         }
                         temp_v1_2 = 16 - sControllerPakMenuNumberOfRows;
-                        if (temp_v1_2 < gOpacityDecayTimer) {
-                            gOpacityDecayTimer = temp_v1_2;
+                        if (temp_v1_2 < gMenuFlow.opacityDecayTimer) {
+                            gMenuFlow.opacityDecayTimer = temp_v1_2;
                         }
-                        if (gOpacityDecayTimer < 0) {
-                            gOpacityDecayTimer = 0;
+                        if (gMenuFlow.opacityDecayTimer < 0) {
+                            gMenuFlow.opacityDecayTimer = 0;
                         }
                         break;
                 }
@@ -450,8 +463,8 @@ s32 menu_controller_pak_loop(s32 updateRate) {
             sound_play(SOUND_MENU_PICK2, NULL);
         }
     } else {
-        gMenuDelay += updateRate;
-        if (gMenuDelay >= 36) {
+        gMenuInput.delay += updateRate;
+        if (gMenuInput.delay >= 36) {
 
             pakmenu_free();
             menu_init(MENU_LOGOS);
@@ -466,7 +479,7 @@ s32 menu_controller_pak_loop(s32 updateRate) {
  */
 void pakmenu_free(void) {
     menu_asset_free(TEXTURE_ICON_ARROW_DOWN);
-    mempool_free(gBootPakData[0]);
+    mempool_free(gControllerPak.fileText[0]);
     unload_font(ASSET_FONTS_BIGFONT);
 #if VERSION >= VERSION_79
     rumble_enable(TRUE);

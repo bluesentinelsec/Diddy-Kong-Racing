@@ -4,7 +4,7 @@
  * Return the address of the game settings bitfield.
  */
 u64 *get_eeprom_settings_pointer(void) {
-    return &sEepromSettings;
+    return &gRaceSetup.eepromSettings;
 }
 
 /**
@@ -12,7 +12,7 @@ u64 *get_eeprom_settings_pointer(void) {
  * Return nonzero when done.
  */
 s32 set_eeprom_settings_value(u64 valueToSet) {
-    sEepromSettings |= valueToSet;
+    gRaceSetup.eepromSettings |= valueToSet;
     mark_write_eeprom_settings();
     return TRUE;
 }
@@ -22,7 +22,7 @@ s32 set_eeprom_settings_value(u64 valueToSet) {
  * Return nonzero when done.
  */
 s32 unset_eeprom_settings_value(u64 valueToUnset) {
-    sEepromSettings &= ~valueToUnset;
+    gRaceSetup.eepromSettings &= ~valueToUnset;
     mark_write_eeprom_settings();
     return TRUE;
 }
@@ -31,7 +31,7 @@ s32 unset_eeprom_settings_value(u64 valueToUnset) {
  * Return the game settings bitfield.
  */
 u64 get_eeprom_settings(void) {
-    return sEepromSettings;
+    return gRaceSetup.eepromSettings;
 }
 
 /**
@@ -41,7 +41,7 @@ u64 get_eeprom_settings(void) {
  */
 s32 get_language(void) {
     s32 language = LANGUAGE_ENGLISH;
-    switch (sEepromSettings & 0xC) {
+    switch (gRaceSetup.eepromSettings & 0xC) {
         case 4:
             language = LANGUAGE_GERMAN;
             break;
@@ -75,8 +75,8 @@ void set_language(s32 language) {
             break;
     }
 
-    sEepromSettings &= ~0xC;     // Set bits 3 and 4 low first
-    sEepromSettings |= langFlag; // Then set them according to the selected lang
+    gRaceSetup.eepromSettings &= ~0xC;     // Set bits 3 and 4 low first
+    gRaceSetup.eepromSettings |= langFlag; // Then set them according to the selected lang
 
     load_menu_text(language);
     mark_write_eeprom_settings();
@@ -86,14 +86,14 @@ void set_language(s32 language) {
  * Returns TRUE if the player has adventure two unlocked.
  */
 s32 is_adventure_two_unlocked(void) {
-    return sEepromSettings & 1;
+    return gRaceSetup.eepromSettings & 1;
 }
 
 /**
  * Returns 1 if the player is in adventure 2
  */
 s32 is_in_adventure_two(void) {
-    return gIsInAdventureTwo;
+    return gRaceSetup.isInAdventureTwo;
 }
 
 /**
@@ -104,19 +104,19 @@ s32 is_in_two_player_adventure(void) {
     if (is_in_tracks_mode()) {
         return FALSE;
     }
-    return gIsInTwoPlayerAdventure;
+    return gRaceSetup.isInTwoPlayerAdventure;
 }
 
 /**
  * Returns 1 if T.T. is available to use, or 0 if not.
  */
 s32 is_tt_unlocked(void) {
-    return gActiveMagicCodes & CHEAT_CONTROL_TT;
+    return gRaceSetup.activeMagicCodes & CHEAT_CONTROL_TT;
 }
 
 /**
  * Returns 1 if Drumstick is available to use, or 0 if not.
  */
 s32 is_drumstick_unlocked(void) {
-    return gActiveMagicCodes & CHEAT_CONTROL_DRUMSTICK;
+    return gRaceSetup.activeMagicCodes & CHEAT_CONTROL_DRUMSTICK;
 }
