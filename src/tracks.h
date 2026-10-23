@@ -16,19 +16,20 @@ typedef struct ShadowPlane {
     union {
         /* 0x0C */ f32 w;
         struct {
-            /* 0x0C */ s16 unkC;
-            /* 0x0E */ s16 unkE;
-        } s;
-    } unkC_union;
+            /* 0x0C */ s16 unusedC;
+            /* 0x0E */ s16
+                bucketVertexIndex; // -1: an original triangle vertex; else an index into gShadowBucketVertices
+        } clip;
+    } planeD; // as a plane: d in ax + by + cz + d = 0; as a clip-polygon vertex: its bucket index
 } ShadowPlane;
 
 /* Size: 0x10 bytes */
-typedef struct unk8011B120 {
+typedef struct ShadowVertex {
     /* 0x00 */ f32 x;
     /* 0x04 */ f32 y;
     /* 0x08 */ f32 z;
-    /* 0x0C */ ShadowPlane *unkC;
-} unk8011B120;
+    /* 0x0C */ ShadowPlane *plane;
+} ShadowVertex;
 
 /* Size: 0x20 bytes */
 typedef struct ShadowClipVertex {
@@ -65,7 +66,7 @@ typedef struct VoidCheckPoint {
 } VoidCheckPoint;
 
 /* Size: 0x14 bytes */
-typedef struct unk8011C3B8 {
+typedef struct ShadowWaveTri {
     /* 0x00 */ s16 x1;
     /* 0x02 */ s16 y1;
     /* 0x04 */ s16 z1;
@@ -75,8 +76,8 @@ typedef struct unk8011C3B8 {
     /* 0x0C */ s16 x3;
     /* 0x0E */ s16 y3;
     /* 0x10 */ s16 z3;
-    /* 0x12 */ s16 unk12;
-} unk8011C3B8;
+    /* 0x12 */ s16 unused12;
+} ShadowWaveTri;
 
 // In this struct, data is rightshifted 16 bytes, so make the smooth transition more precise.
 typedef struct EnvironmentFog {
@@ -187,6 +188,6 @@ void generate_track(s32 modelId);
 void shadow_check_centre_in_triangle(ShadowPlane arg0[3]);
 s32 void_generate_primitive(f32 *arg0, f32 *arg1, f32 arg2, f32 arg3);
 s32 clip_polygon_to_rect(s32, ShadowPlane *, s32, Vec2f *);
-s32 wave_cells_in_rect(s32, unk8011C3B8 *, ShadowPlane *, f32, f32, f32, f32);
+s32 wave_cells_in_rect(s32, ShadowWaveTri *, ShadowPlane *, f32, f32, f32, f32);
 
 #endif

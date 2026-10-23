@@ -1113,7 +1113,7 @@ void init_racer_headers(void) {
         } else {
             gSettingsPtr->racers[i].starting_position = 7 - i;
         }
-        gSettingsPtr->racers[i].unk7 = 0;
+        gSettingsPtr->racers[i].unused7 = 0;
         for (j = 0; j < 4; j++) {
             gSettingsPtr->racers[i].placements[j] = 0;
         }

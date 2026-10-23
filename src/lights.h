@@ -60,7 +60,7 @@ typedef struct ObjectLight {
     u16 targetIntensityDiff;
     union {
         SubMiscAssetObjectHeader24 *keyframes;
-        MiscAssetObjectHeader24 *unk44_asset;
+        MiscAssetObjectHeader24 *colourAnim;
     };
     u16 keyframeCount;
     u16 keyframeIndex;

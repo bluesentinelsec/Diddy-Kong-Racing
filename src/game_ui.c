@@ -456,7 +456,7 @@ void hud_init_element(void) {
             gCurrentHud->entry[k].timer.minutes = gHudElementBase[k].timer.minutes;
             gCurrentHud->entry[k].timer.seconds = gHudElementBase[k].timer.seconds;
             gCurrentHud->entry[k].timer.hundredths = gHudElementBase[k].timer.hundredths;
-            gCurrentHud->entry[k].timer.unk1D = gHudElementBase[k].timer.unk1D;
+            gCurrentHud->entry[k].timer.targetPos = gHudElementBase[k].timer.targetPos;
         }
         gCurrentHud->entry[HUD_SILVER_COIN_TALLY].silverCoinTally.offsetY = 5;
         if (gHUDNumPlayers == TWO_PLAYERS) {
@@ -2630,25 +2630,25 @@ void hud_race_finish_multiplayer(Object_Racer *racer, s32 updateRate) {
                 case 0:
                 case 1:
                     gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.targetPos = -20;
-                    gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.unk1D = -15;
-                    gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.unk1D = -15;
+                    gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.targetPos = -15;
+                    gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.targetPos = -15;
                     break;
                 default:
                     if (racer->playerIndex == PLAYER_ONE || racer->playerIndex == PLAYER_THREE) {
                         gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.targetPos = -90;
-                        gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.unk1D = -85;
-                        gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.unk1D = -85;
+                        gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.targetPos = -85;
+                        gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.targetPos = -85;
                     } else {
                         gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.targetPos = 55;
-                        gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.unk1D = 60;
-                        gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.unk1D = 60;
+                        gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.targetPos = 60;
+                        gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.targetPos = 60;
                     }
                     break;
             }
             if (osTvType == OS_TV_TYPE_PAL) {
                 gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.targetPos -= 4;
-                gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.unk1D -= 4;
-                gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.unk1D -= 4;
+                gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.targetPos -= 4;
+                gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.targetPos -= 4;
             }
             if (racer->finishPosition < 4) {
                 gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_2].spriteOffset = racer->finishPosition - 1;
@@ -2755,20 +2755,20 @@ void hud_race_finish_multiplayer(Object_Racer *racer, s32 updateRate) {
             gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_2].pos.x += var_v1;
             if (gNumActivePlayers != 1) {
                 if (gCurrentHud->entry[HUD_RACE_TIME_NUMBER].pos.x >
-                    (gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.unk1D + temp_v0_4 + 160)) {
+                    (gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.targetPos + temp_v0_4 + 160)) {
                     var_v1 = temp_v0_4;
                     var_a2 = FALSE;
                 } else {
                     var_v1 = gCurrentHud->entry[HUD_RACE_TIME_NUMBER].pos.x -
-                             (gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.unk1D + 160);
+                             (gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.targetPos + 160);
                 }
                 gCurrentHud->entry[HUD_RACE_TIME_NUMBER].pos.x -= var_v1;
                 var_v1 = temp_v0_4;
                 if (gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.x <
-                    (gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.unk1D - var_v1) + 160) {
+                    (gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.targetPos - var_v1) + 160) {
                     var_a2 = FALSE;
                 } else {
-                    var_v1 = (gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.unk1D + 160) -
+                    var_v1 = (gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.targetPos + 160) -
                              gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.x;
                 }
                 gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.x += var_v1;
@@ -3890,7 +3890,7 @@ void hud_element_render(Gfx **dList, Mtx **mtx, Vertex **vtxList, HudElement *hu
             sp88.drawTexture.texture = textureHeader;
             sp88.drawTexture.xOffset = hud->pos.x;
             sp88.drawTexture.yOffset = hud->pos.y;
-            sp88.unk8 = 0;
+            sp88.terminator = 0;
             if (osTvType == OS_TV_TYPE_PAL) {
                 if (hud->spriteID == HUD_BATTLE_BANANA_X) {
                     if (alpha == 255) {
@@ -3917,7 +3917,7 @@ void hud_element_render(Gfx **dList, Mtx **mtx, Vertex **vtxList, HudElement *hu
             sp70.drawTexture.texture = textureHeader;
             sp70.drawTexture.xOffset = 0;
             sp70.drawTexture.yOffset = 0;
-            sp70.unk8 = 0;
+            sp70.terminator = 0;
             texrect_draw_scaled(&gHudDL, &sp70.drawTexture, hud->pos.x, hud->pos.y, hud->scale, hud->scale * 1.1,
                                 gHudColour, TEXRECT_POINT);
         } else if (hud->scale == 1.0) {
@@ -3933,7 +3933,7 @@ void hud_element_render(Gfx **dList, Mtx **mtx, Vertex **vtxList, HudElement *hu
                 sp58.drawTexture.texture = textureHeader2;
                 sp58.drawTexture.xOffset = hud->pos.x;
                 sp58.drawTexture.yOffset = hud->pos.y;
-                sp58.unk8 = 0;
+                sp58.terminator = 0;
                 texrect_draw(&gHudDL, &sp58.drawTexture, 0, 0, (gHudColour >> 24) & 0xFF, (gHudColour >> 16) & 0xFF,
                              (gHudColour >> 8) & 0xFF, gHudColour & 0xFF);
                 rendermode_reset(&gHudDL);
@@ -3944,7 +3944,7 @@ void hud_element_render(Gfx **dList, Mtx **mtx, Vertex **vtxList, HudElement *hu
             sp48.drawTexture.texture = textureHeader;
             sp48.drawTexture.xOffset = 0;
             sp48.drawTexture.yOffset = 0;
-            sp48.unk8 = 0;
+            sp48.terminator = 0;
             texrect_draw_scaled(&gHudDL, &sp48.drawTexture, hud->pos.x, hud->pos.y, hud->scale, hud->scale, gHudColour,
                                 TEXRECT_POINT);
             rendermode_reset(&gHudDL);

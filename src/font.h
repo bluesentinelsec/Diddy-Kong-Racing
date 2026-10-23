@@ -36,39 +36,40 @@ typedef struct FontCharData {
 
 /* Size: 0x400 bytes */
 typedef struct FontData {
-/* 0x000 */ s32 unk0; // Unused
-/* 0x004 */ char name[28];
-/* 0x020 */ u16 x;
-/* 0x022 */ u16 y;
-/* 0x024 */ u16 charWidth;
-/* 0x026 */ u16 charHeight;
-/* 0x028 */ u8 loadedFonts[24];
-/* 0x040 */ s16 textureID[32];
-/* 0x080 */ TextureHeader *texturePointers[32];
-/* 0x100 */ FontCharData letter[96];
+    /* 0x000 */ s32 unused0; // Unused
+    /* 0x004 */ char name[28];
+    /* 0x020 */ u16 x;
+    /* 0x022 */ u16 y;
+    /* 0x024 */ u16 charWidth;
+    /* 0x026 */ u16 charHeight;
+    /* 0x028 */ u8 loadedFonts[24];
+    /* 0x040 */ s16 textureID[32];
+    /* 0x080 */ TextureHeader *texturePointers[32];
+    /* 0x100 */ FontCharData letter[96];
 } FontData;
 
 /* Size: 0x20 bytes */
 //Dialogue Box text linked list (Including background struct)
 typedef struct DialogueBox {
-/* 0x00 */ u8 unk00; // Unused
-/* 0x01 */ u8 textNum; // A number that is drawn with the text, like a balloon door telling you how many more you need.
-/* 0x02 */ char *text; // Pointer to the text array
-/* 0x06 */ s16 x1; // Left position of the text
-/* 0x08 */ s16 y1; // Top portion of the text
-/* 0x0A */ s16 x2; // Right portion of the text
-/* 0x0C */ s16 y2; // Bottom portion of the text
-/* 0x0E */ u8 textColourR;
-/* 0x0F */ u8 textColourG;
-/* 0x10 */ u8 textColourB;
-/* 0x11 */ u8 textColourA;
-/* 0x12 */ u8 textBGColourR;
-/* 0x13 */ u8 textBGColourG;
-/* 0x14 */ u8 textBGColourB;
-/* 0x15 */ u8 textBGColourA;
-/* 0x16 */ u8 opacity;
-/* 0x17 */ u8 font;
-/* 0x18 */ struct DialogueBox *nextBox;
+    /* 0x00 */ u8 unused00; // Unused
+    /* 0x01 */ u8
+        textNum; // A number that is drawn with the text, like a balloon door telling you how many more you need.
+    /* 0x02 */ char *text; // Pointer to the text array
+    /* 0x06 */ s16 x1;     // Left position of the text
+    /* 0x08 */ s16 y1;     // Top portion of the text
+    /* 0x0A */ s16 x2;     // Right portion of the text
+    /* 0x0C */ s16 y2;     // Bottom portion of the text
+    /* 0x0E */ u8 textColourR;
+    /* 0x0F */ u8 textColourG;
+    /* 0x10 */ u8 textColourB;
+    /* 0x11 */ u8 textColourA;
+    /* 0x12 */ u8 textBGColourR;
+    /* 0x13 */ u8 textBGColourG;
+    /* 0x14 */ u8 textBGColourB;
+    /* 0x15 */ u8 textBGColourA;
+    /* 0x16 */ u8 opacity;
+    /* 0x17 */ u8 font;
+    /* 0x18 */ struct DialogueBox *nextBox;
 } DialogueBox;
 
 

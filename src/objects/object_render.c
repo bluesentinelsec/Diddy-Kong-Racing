@@ -96,7 +96,7 @@ void render_3d_billboard(Object *obj) {
         objTrans.trans.z_position = 0.0f;
         objTrans.trans.y_position = 12.0f;
         objTrans.animFrame = obj->animFrame;
-        objTrans.unk1A = 32;
+        objTrans.cameraOffset = 32;
         if (bubbleTrap == NULL) {
             bubbleTrap = obj->weapon->target;
             if (bubbleTrap == NULL) {
@@ -181,7 +181,7 @@ static void model_render_attachments(Object *obj, ObjectModel *objModel, Object_
         if (attached->trans.flags & OBJ_FLAGS_INVISIBLE) {
             continue;
         }
-        index = obj->attachPoints->unk2C[i];
+        index = obj->attachPoints->attachIndices[i];
         if (index < 0 || index >= objModel->numberOfAttachPoints) {
             continue;
         }
@@ -662,7 +662,7 @@ void unset_temp_model_transforms(Object *obj) {
 void render_boost_effect(Object *boostObj) {
     Vertex *vtx;
     Triangle *tri;
-    ObjectTransform_800135B8 objTransform;
+    SpriteBillboardTransform objTransform;
     Object_Boost_Inner *boostData;
     Object_Boost *boost;
     Object_Boost *asset;
@@ -701,7 +701,7 @@ void render_boost_effect(Object *boostObj) {
     objTransform.trans.rotation.z_rotation = 0;
     objTransform.trans.rotation.x_rotation = 0;
     objTransform.trans.rotation.y_rotation = 0;
-    objTransform.unk18 = 0;
+    objTransform.animFrame = 0;
     gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, 255, 255, 255, 255);
     gDPSetEnvColor(gObjectCurrDisplayList++, 255, 255, 255, 0);
     render_sprite_billboard(&gObjectCurrDisplayList, &gObjectCurrMatrix, &gObjectCurrVertexList,

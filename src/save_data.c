@@ -1255,24 +1255,18 @@ s32 ghost_load(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharac
     return pakStatus;
 }
 
-typedef struct GhostHeaderAltUnk0 {
+typedef struct GhostLevelVehicle {
     u8 levelID;
     u8 vehicleID; // 0 = Car, 1 = Hovercraft, 2 = Plane
-} GhostHeaderAltUnk0;
+} GhostLevelVehicle;
 
-/* Size: 4 bytes */
+/* Size: 4 bytes: one entry of the ghost file's directory. */
 typedef struct GhostHeaderAlt {
     union {
-        GhostHeaderAltUnk0 unk0;
-        s16 checksum;
+        GhostLevelVehicle levelVehicle; // a directory entry
+        s16 checksum;                   // the same word read as a header's checksum
     };
-    union {
-        struct {
-            u8 characterID; // 9 = T.T.
-            u8 unk3;
-        };
-        s16 unk2;
-    };
+    s16 dataOffset; // where this ghost's header sits in the file data
 } GhostHeaderAlt;
 
 typedef struct GhostData {
@@ -1517,16 +1511,16 @@ SIDeviceStatus ghost_list(s32 controllerIndex, u8 *levelIDs, u8 *vehicleIDs, u8 
             ret = read_data_from_controller_pak(controllerIndex, fileNumber, (u8 *) fileData, fileSize);
             if (ret == CONTROLLER_PAK_GOOD) {
                 for (i = 0, var_s1 = (GhostHeaderAlt *) (&fileData[4]); i < 6; i++) {
-                    if (var_s1[i].unk0.levelID != 0xFF) {
-                        if (calculate_ghost_header_checksum((GhostHeader *) &fileData[var_s1[i].unk2]) !=
-                            ((GhostHeaderAlt *) &fileData[var_s1[i].unk2])->checksum) {
+                    if (var_s1[i].levelVehicle.levelID != 0xFF) {
+                        if (calculate_ghost_header_checksum((GhostHeader *) &fileData[var_s1[i].dataOffset]) !=
+                            ((GhostHeaderAlt *) &fileData[var_s1[i].dataOffset])->checksum) {
                             ret = CONTROLLER_PAK_BAD_DATA;
                             break;
                         } else {
-                            levelIDs[i] = var_s1[i].unk0.levelID;
-                            vehicleIDs[i] = var_s1[i].unk0.vehicleID;
-                            characterIDs[i] = fileData[var_s1[i].unk2 + 2];
-                            checksumIDs[i] = ((GhostHeaderAlt *) &fileData[var_s1[i].unk2] + 1)->checksum;
+                            levelIDs[i] = var_s1[i].levelVehicle.levelID;
+                            vehicleIDs[i] = var_s1[i].levelVehicle.vehicleID;
+                            characterIDs[i] = fileData[var_s1[i].dataOffset + 2];
+                            checksumIDs[i] = ((GhostHeaderAlt *) &fileData[var_s1[i].dataOffset] + 1)->checksum;
                         }
                     }
                 }

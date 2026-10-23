@@ -103,7 +103,7 @@ VehicleSoundData *racer_sound_init(s32 characterId, s32 vehicleId) {
     soundData->engineIdleMaxVolume = asset->engineIdleMaxVolume;
     soundData->engineIdleMaxPitch = asset->engineIdleMaxPitch;
     soundData->engineIdleMinPitch = asset->engineIdleMinPitch;
-    soundData->unk64_unused = asset->unk3A_unused;
+    soundData->reserved64 = asset->reserved3A;
 
     soundData->thrustPitchMax = asset->thrustPitchMax / 10000.0f;
     soundData->thrustPitchVel = asset->thrustPitchVel / 10000.0f;
@@ -111,7 +111,7 @@ VehicleSoundData *racer_sound_init(s32 characterId, s32 vehicleId) {
     soundData->rollAnglePitchScale = asset->rollAnglePitchScale / 10000.0f;
     soundData->pitchAnglePitchScale = asset->pitchAnglePitchScale / 10000.0f;
     soundData->pitchLateralSpeedScale = asset->pitchLateralSpeedScale / 10000.0f;
-    soundData->unkB8_unused = asset->unk3B_unused;
+    soundData->reservedB8 = asset->reserved3B;
     soundData->thrustPitchSpeedScale = asset->thrustPitchSpeedScale / 10000.0f;
     soundData->spinoutSoundOn = FALSE;
 
@@ -386,7 +386,7 @@ void racer_sound_car(Object *obj, u32 buttonsPressed, u32 buttonsHeld, s32 ticks
     gRacerSound->engine_intensity = intensity;
 
     if (buttonsHeld & A_BUTTON) {
-        gRacerSound->unk98_unused = gRacerSound->baseVolume[0];
+        gRacerSound->throttleVolumeLatch = gRacerSound->baseVolume[0];
     }
 }
 

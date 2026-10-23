@@ -148,7 +148,7 @@ void load_fonts(void) {
         // texturePointers[32] are runtime pointers (wider on the host). Unpack into
         // a host-layout array and drop the raw image.
         static const PcField sFontFields[] = {
-            PCU_FIELD(FontData, unk0, 0x000, 1, PCU_U32),
+            PCU_FIELD(FontData, unused0, 0x000, 1, PCU_U32),
             PCU_FIELD(FontData, name, 0x004, 28, PCU_BYTES),
             PCU_FIELD(FontData, x, 0x020, 4, PCU_U16), // x, y, charWidth, charHeight
             PCU_FIELD(FontData, loadedFonts, 0x028, 24, PCU_BYTES),

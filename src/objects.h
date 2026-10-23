@@ -269,14 +269,14 @@ typedef struct TTGhostTable {
 typedef struct ObjectTransformExt {
     ObjectTransform trans;
     s16 animFrame;
-    s16 unk1A;
+    s16 cameraOffset;
 } ObjectTransformExt;
 
 /* Size: 0x1A bytes */
-typedef struct ObjectTransform_800135B8 {
+typedef struct SpriteBillboardTransform {
     ObjectTransform trans;
-    s16 unk18;
-} ObjectTransform_800135B8;
+    s16 animFrame;
+} SpriteBillboardTransform;
 
 typedef struct RacerFXData {
     u8 unused0;

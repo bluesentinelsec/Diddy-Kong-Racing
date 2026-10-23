@@ -1394,7 +1394,7 @@ s32 obj_init_attachpoint(Object *obj) {
         }
         return TRUE;
     }
-    attachPoint->unk2C = obj->header->vehiclePartIndices;
+    attachPoint->attachIndices = obj->header->vehiclePartIndices;
     return FALSE;
 }
 

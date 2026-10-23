@@ -70,10 +70,10 @@ typedef struct Camera {
     /* 0x0038 */ s16 pitch;
     /* 0x003A */ s8 shakeTimer;
     /* 0x003B */ u8 zoom;
-    /* 0x003C */ u8 unk3C;
-    /* 0x003D */ u8 unk3D;
-    /* 0x003E */ u8 unk3E;
-    /* 0x003F */ u8 unk3F;
+    /* 0x003C */ u8 unused3C; // set to 0xFF when the player racer is created, never read
+    /* 0x003D */ u8 unused3D;
+    /* 0x003E */ u8 unused3E;
+    /* 0x003F */ u8 unused3F;
     /* 0x0040 */ ObjectHeader *header;
   } Camera;
 

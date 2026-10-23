@@ -100,12 +100,12 @@ s32 gTTCamSmoothTimer;
 s32 gTrackTexAnimOffset;
 u32 gTrackTexAnimFlags;
 s32 gShadowVertexCount;
-unk8011B120 gShadowVertices[32]; // Struct sizeof(0x10) / sizeof(16)
+ShadowVertex gShadowVertices[32]; // Struct sizeof(0x10) / sizeof(16)
 s32 gShadowBucketCounts[4];
 ShadowClipVertex gShadowBucketVertices[120]; // Struct sizeof(0x20) / sizeof(32)
 s32 gShadowTriCount;
 ShadowPolygon gShadowTris[32]; // Struct sizeof(0xC) / sizeof(12)
-unk8011C3B8 gShadowWaveCells[64];
+ShadowWaveTri gShadowWaveCells[64];
 ShadowPlane gShadowWavePlanes[128];
 s32 gShadowWavePlaneCount;
 ShadowPlane *gShadowCurrentPlane;
@@ -3831,7 +3831,7 @@ void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
                             for (i = 0; i < 3; i++) {
                                 sp100[i].x = vertices[triangles->verticesArray[i + 1]].x;
                                 sp100[i].z = vertices[triangles->verticesArray[i + 1]].z;
-                                sp100[i].unkC_union.s.unkE = -1;
+                                sp100[i].planeD.clip.bucketVertexIndex = -1;
                             }
                             // @note while the cast to Vec4f is incorrect, polygon_overlaps_rect x uses unk0 and z which
                             // are both floats so this is fine as the size is the same
@@ -3846,7 +3846,7 @@ void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
                                     if (someCount >= 3) {
                                         gShadowTris[gShadowTriCount].bucketVertexMask = 0;
                                         for (i2 = 0; i2 < someCount; i2++) {
-                                            if (sp100[i2].unkC_union.s.unkE < 0) {
+                                            if (sp100[i2].planeD.clip.bucketVertexIndex < 0) {
                                                 foundIndex = -1;
                                                 i = 0;
                                                 while ((i < gShadowVertexCount) && (foundIndex == -1)) {
@@ -3858,14 +3858,15 @@ void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
                                                 }
                                                 if (foundIndex == -1) {
                                                     gShadowVertices[gShadowVertexCount].x = sp100[i2].x;
-                                                    gShadowVertices[gShadowVertexCount].unkC = gShadowCurrentPlane;
+                                                    gShadowVertices[gShadowVertexCount].plane = gShadowCurrentPlane;
                                                     gShadowVertices[gShadowVertexCount].z = sp100[i2].z;
                                                     gShadowTris[gShadowTriCount].vertexIndices[i2] = gShadowVertexCount++;
                                                 } else {
                                                     gShadowTris[gShadowTriCount].vertexIndices[i2] = foundIndex;
                                                 }
                                             } else {
-                                                gShadowTris[gShadowTriCount].vertexIndices[i2] = sp100[i2].unkC_union.s.unkE;
+                                                gShadowTris[gShadowTriCount].vertexIndices[i2] =
+                                                    sp100[i2].planeD.clip.bucketVertexIndex;
                                                 gShadowTris[gShadowTriCount].bucketVertexMask |= 1 << i2;
                                             }
                                         }
@@ -3942,7 +3943,7 @@ void shadow_add_wave_triangles(s32 arg0) {
                 spA8[2].z = gShadowWaveCells[var_s4].z3;
 
                 for (var_v0 = 0; var_v0 != 3; var_v0++) {
-                    spA8[var_v0].unkC_union.s.unkE = -1;
+                    spA8[var_v0].planeD.clip.bucketVertexIndex = -1;
                 }
 
                 gShadowCurrentPlane = &gShadowWavePlanes[gShadowWavePlaneCount + var_s4];
@@ -3951,7 +3952,7 @@ void shadow_add_wave_triangles(s32 arg0) {
                     tempIdx = gShadowTriCount;
                     gShadowTris[tempIdx].bucketVertexMask = 0;
                     for (var_t1 = 0; var_t1 < temp_v0_3; var_t1++) {
-                        if (spA8[var_t1].unkC_union.s.unkE < 0) {
+                        if (spA8[var_t1].planeD.clip.bucketVertexIndex < 0) {
                             var_a1 = -1;
                             var_v1 = 0;
                             while (var_v1 < gShadowVertexCount && var_a1 == -1) {
@@ -3963,14 +3964,14 @@ void shadow_add_wave_triangles(s32 arg0) {
                             }
                             if (var_a1 == -1) {
                                 gShadowVertices[gShadowVertexCount].x = spA8[var_t1].x;
-                                gShadowVertices[gShadowVertexCount].unkC = gShadowCurrentPlane;
+                                gShadowVertices[gShadowVertexCount].plane = gShadowCurrentPlane;
                                 gShadowVertices[gShadowVertexCount].z = spA8[var_t1].z;
                                 gShadowTris[tempIdx].vertexIndices[var_t1] = gShadowVertexCount++;
                             } else {
                                 gShadowTris[tempIdx].vertexIndices[var_t1] = var_a1;
                             }
                         } else {
-                            gShadowTris[tempIdx].vertexIndices[var_t1] = spA8[var_t1].unkC_union.s.unkE;
+                            gShadowTris[tempIdx].vertexIndices[var_t1] = spA8[var_t1].planeD.clip.bucketVertexIndex;
                             gShadowTris[tempIdx].bucketVertexMask |= 1 << var_t1;
                         }
                     }
@@ -3995,10 +3996,10 @@ void shadow_project_vertices(void) {
     ShadowClipVertex *curr;
 
     for (i = 0; i < gShadowVertexCount; i++) {
-        var_v0 = gShadowVertices[i].unkC;
+        var_v0 = gShadowVertices[i].plane;
         temp_f16 = gShadowVertices[i].x * var_v0->x;
         temp_f12 = gShadowVertices[i].z * var_v0->z;
-        gShadowVertices[i].y = (f32) (-(temp_f16 + temp_f12 + var_v0->unkC_union.w) / var_v0->y);
+        gShadowVertices[i].y = (f32) (-(temp_f16 + temp_f12 + var_v0->planeD.w) / var_v0->y);
     }
 
     for (i = 0; i < ARRAY_COUNT(gShadowBucketCounts); i++) {
@@ -4008,7 +4009,7 @@ void shadow_project_vertices(void) {
             var_v0 = gShadowBucketVertices[k].plane;
             temp_f16 = gShadowBucketVertices[k].x * var_v0->x;
             temp_f12 = gShadowBucketVertices[k].z * var_v0->z;
-            gShadowBucketVertices[k].y = (f32) (-(temp_f16 + temp_f12 + var_v0->unkC_union.w) / var_v0->y);
+            gShadowBucketVertices[k].y = (f32) (-(temp_f16 + temp_f12 + var_v0->planeD.w) / var_v0->y);
         }
     }
 }
@@ -4282,7 +4283,7 @@ s32 clip_polygon_to_rect(s32 arg0, ShadowPlane *arg1, s32 arg2, Vec2f *arg3) {
                     var_v1_3++;
                 }
                 if (var_a1 >= 0) {
-                    var_s0[var_t2].unkC_union.s.unkE = var_a1;
+                    var_s0[var_t2].planeD.clip.bucketVertexIndex = var_a1;
                     var_s0[var_t2].x = gShadowBucketVertices[var_a1].x;
                     var_s0[var_t2].z = gShadowBucketVertices[var_a1].z;
                     var_t2++;
@@ -4302,12 +4303,12 @@ s32 clip_polygon_to_rect(s32 arg0, ShadowPlane *arg1, s32 arg2, Vec2f *arg3) {
                     gShadowBucketVertices[var_v1_3].z = var_s0[var_t2].z;
                     gShadowBucketVertices[var_v1_3].plane = gShadowCurrentPlane;
                     gShadowBucketCounts[var_v0]++;
-                    var_s0[var_t2].unkC_union.s.unkE = var_v1_3;
+                    var_s0[var_t2].planeD.clip.bucketVertexIndex = var_v1_3;
                     var_t2++;
                 }
             }
             if (temp_f22 <= 0.0f) {
-                var_s0[var_t2].unkC_union.s.unkE = var_s3[var_v1].unkC_union.s.unkE;
+                var_s0[var_t2].planeD.clip.bucketVertexIndex = var_s3[var_v1].planeD.clip.bucketVertexIndex;
                 var_s0[var_t2].x = var_s3[var_v1].x;
                 var_s0[var_t2].z = var_s3[var_v1].z;
                 var_t2++;
@@ -4326,7 +4327,7 @@ s32 clip_polygon_to_rect(s32 arg0, ShadowPlane *arg1, s32 arg2, Vec2f *arg3) {
             for (var_t1 = 0; var_t1 < var_s2; var_t1++) {
                 arg1[var_t1].x = var_s3[var_t1].x;
                 arg1[var_t1].z = var_s3[var_t1].z;
-                arg1[var_t1].unkC_union.s.unkE = var_s3[var_t1].unkC_union.s.unkE;
+                arg1[var_t1].planeD.clip.bucketVertexIndex = var_s3[var_t1].planeD.clip.bucketVertexIndex;
             }
         }
     } else {
@@ -4379,7 +4380,8 @@ void shadow_check_centre_in_triangle(ShadowPlane arg0[3]) {
         return;
     }
 
-    diff = -(gShadowCurrentPlane->x * shadowX + gShadowCurrentPlane->z * shadowZ + gShadowCurrentPlane->unkC_union.w) / gShadowCurrentPlane->y;
+    diff = -(gShadowCurrentPlane->x * shadowX + gShadowCurrentPlane->z * shadowZ + gShadowCurrentPlane->planeD.w) /
+           gShadowCurrentPlane->y;
     if (gShadowMinY < diff) {
         gShadowMinY = diff;
     }

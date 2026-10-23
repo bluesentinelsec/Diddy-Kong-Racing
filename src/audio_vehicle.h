@@ -29,7 +29,7 @@ typedef struct VehicleSoundData {
     /* 0x50 */ SoundHandle engineIdleSoundHandle;
     /* 0x54 */ f32 baseVolume[2];
     /* 0x5C */ f32 basePitch[2];
-    /* 0x64 */ u8 unk64_unused;
+    /* 0x64 */ u8 reserved64;
     /* 0x68 */ f32 dopplerPitch;
     /* 0x6C */ f32 prevDistance[2];
     /* 0x74 */ u8 backgroundState;
@@ -40,7 +40,7 @@ typedef struct VehicleSoundData {
     /* 0x90 */ s8 engineJitter;
     /* 0x91 */ u8 pan;
     /* 0x94 */ f32 enginePitch; // Engine noise for the car.
-    /* 0x98 */ u8 unk98_unused;
+    /* 0x98 */ u8 throttleVolumeLatch;
     /* 0x99 */ u8 pad99[0x7];
     /* 0xA0 */ u8 engine_intensity;
     /* 0xA4 */ f32 thrustPitch; // Engine noise for the hovercraft and plane.
@@ -48,7 +48,7 @@ typedef struct VehicleSoundData {
     /* 0xAC */ u16 brakeSoundVolume;
     /* 0xB0 */ f32 thrustPitchVel;
     /* 0xB4 */ f32 thrustPitchDecay;
-    /* 0xB8 */ u8 unkB8_unused;
+    /* 0xB8 */ u8 reservedB8;
     /* 0xBC */ f32 pitchLateralSpeedScale;
     /* 0xC0 */ f32 rollAnglePitchScale;
     /* 0xC4 */ f32 pitchAnglePitchScale;
@@ -71,8 +71,8 @@ typedef struct VehicleSoundAsset {
     /* 0x37 */ u8 engineIdleMaxVolume;
     /* 0x38 */ u8 engineIdleMaxPitch;
     /* 0x39 */ u8 engineIdleMinPitch;
-    /* 0x3A */ u8 unk3A_unused;
-    /* 0x3B */ u8 unk3B_unused;
+    /* 0x3A */ u8 reserved3A;
+    /* 0x3B */ u8 reserved3B;
     /* 0x3C */ s16 pitchLateralSpeedScale;      // 10000 = 1.0
     /* 0x3E */ s16 thrustPitchVel;              // 10000 = 1.0
     /* 0x40 */ s16 thrustPitchDecay;            // 10000 = 1.0

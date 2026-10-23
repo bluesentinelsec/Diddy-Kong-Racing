@@ -233,7 +233,7 @@ typedef struct Racer {
     /* 0x04 */ s8 best_times;
     /* 0x05 */ s8 character;
     /* 0x06 */ s8 starting_position;
-    /* 0x07 */ s8 unk7;
+    /* 0x07 */ s8 unused7;
     /* 0x08 */ u16 placements[4];
     /* 0x10 */ u16 course_time;
     /* 0x12 */ u16 lap_times[3];
@@ -920,7 +920,7 @@ typedef struct ObjectCollision {
 typedef struct AttachPoint {
     s32 count;              // Number of active attach points.
     struct Object *obj[10]; // Object Ptr List for attachments.
-    s8 *unk2C;              // Attachment indices.
+    s8 *attachIndices;      // Attachment indices.
 } AttachPoint;
 
 typedef struct Object_LaserGun {
@@ -1053,15 +1053,7 @@ typedef struct Object_AudioLine {
     /* 0x02 */ u16 soundID;
     /* 0x04 */ u16 range;
     /* 0x06 */ u16 unused6;
-    /* 0x08 */ union {
-        struct {
-            u8 unk8;
-            u8 unk9;
-            u8 unkA;
-            u8 padB;
-        } unk_struct;
-        s32 unk8_word;
-    } unk_union;
+    /* 0x08 */ s32 unused8; // zeroed at init, never read
     /* 0x0C */ u8 lineID;
     /* 0x0D */ u8 vertexIndex;
     /* 0x0E */ u8 volume;
@@ -1357,9 +1349,9 @@ typedef struct Object_Trigger {
     /* 0x08 */ f32 directionZ;
     /* 0x0C */ f32 rotationDiff; // Rotational offset, to test intersection when the exit is rotated.
     /* 0x10 */ s32 radius;
-    union {
-        /* 0x14 */ u8 vehicleID;
-        /* 0x14 */ u8 unk14;
+    /* 0x14 */ union {
+        u8 vehicleID;        // mode-change triggers: the vehicle to switch to
+        u8 racerFilterFlags; // triggers: bit 0 ignores AI racers, bit 1 ignores human players
     };
 } Object_Trigger;
 
@@ -1369,7 +1361,7 @@ typedef struct Object_Audio {
     /* 0x04 */ u8 volume;
     /* 0x05 */ u8 minVolume;
     /* 0x06 */ u8 pitch;
-    /* 0x07 */ u8 unk7;
+    /* 0x07 */ u8 unused7;
     /* 0x08 */ struct AudioPoint *soundMask;
     /* 0x0C */ u8 fastFalloff;
     /* 0x0D */ u8 priority;
@@ -1385,7 +1377,7 @@ typedef struct Object_MidiFade {
     /* 0x01 */ u8 progress;  // 0..254 through the fade
     /* 0x02 */ u8 duration;  // seconds
     /* 0x04 */ u16 timer;    // frames since the crossing
-    /* 0x06 */ s16 unk6;
+    /* 0x06 */ s16 unused6;
     /* 0x08 */ f32 planeX;
     /* 0x0C */ f32 planeY;
     /* 0x10 */ f32 planeZ;
@@ -1636,31 +1628,18 @@ typedef struct ObjectSegment {
     /* 0x001C */ f32 x_velocity;
     /* 0x0020 */ f32 y_velocity;
     /* 0x0024 */ f32 z_velocity;
-    /* 0x0028 */ f32 unk28;
+    /* 0x0028 */ f32 unused28;
     /* 0x002C */ SegmentPropertiesObject object;
     /* 0x003C */ LevelObjectEntry *level_entry;
     /* 0x0040 */ ObjectHeader *header;
 } ObjectSegment;
 
 // Unused
-typedef struct GhostHeaderUnk0 {
-    u8 levelID;
-    u8 vehicleID; // 0 = Car, 1 = Hovercraft, 2 = Plane
-} GhostHeaderUnk0;
-
 /* Size: 8 bytes */
 typedef struct GhostHeader {
-    union {
-        GhostHeaderUnk0 unk0;
-        s16 checksum;
-    };
-    union {
-        struct {
-            u8 characterID; // 9 = T.T.
-            u8 unused3;
-        };
-        s16 unk2;
-    };
+    s16 checksum;
+    u8 characterID; // 9 = T.T.
+    u8 unused3;
     union {
         struct {
             u8 unused4;

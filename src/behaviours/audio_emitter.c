@@ -75,7 +75,7 @@ void obj_init_audioline(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 pa
     audLine->soundID = entry->soundID;
     audLine->lineID = entry->lineID;
     audLine->vertexIndex = entry->vertexIndex;
-    audLine->unk_union.unk8_word = 0;
+    audLine->unused8 = 0;
     audLine->range = entry->range;
     audLine->fastFalloff = entry->fastFalloff;
     audLine->pitch = entry->pitch;
