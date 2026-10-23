@@ -415,7 +415,11 @@ additive, so a real gamepad still works too.
   state the screens share, declared in `menu_internal.h`; `src/menu.h` is the
   interface the rest of the game uses. `libultra/`
   keeps only the parts of the N64 SDK the game still runs as code: the audio
-  synthesizer and sequence player, and the matrix helpers.
+  synthesizer and sequence player, and the matrix helpers. `include/PR/` is
+  down to the formats those need (display-list and audio command macros, the
+  SDK types) plus a two-call `os.h` shim; the controller, pak and video
+  constants the game uses live in `src/joypad.h`, `src/save_data.h` and
+  `src/video.h`.
 - `android/` - the Android app (Gradle + SDL activity) that builds the game as
   `libmain.so` through the root CMakeLists and packages the assets into the APK.
 - `ios/` - the iOS app's own source, Info.plist template, asset catalog (app

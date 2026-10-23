@@ -1,3 +1,4 @@
+#include "libc/string.h"
 #include <stddef.h>
 
 #include "asset_loading.h"
@@ -174,22 +175,6 @@ void amCreateAudioMgr(ALSynConfig *c) {
     }
     /* last buffer already linked, but still needs buffer */
     dmaBuffs[i].ptr = alHeapAlloc(c->heap, 1, DMA_BUFFER_LENGTH);
-#ifdef ANTI_TAMPER
-    // Antipiracy measure
-    gAntiPiracyCRCStart = DMA_BUFFER_LENGTH;
-    checksum = (s32) &race_check_finish - gAntiPiracyCRCStart;
-    crc_region_start = (u8 *) checksum;
-    crc_region = &crc_region_start[gAntiPiracyCRCStart];
-    gAntiPiracyAudioFreq = FALSE;
-    i = 0;
-    for (checksum = 0; i < gRaceCheckFinishFuncLength; i++) {
-        checksum += crc_region[i];
-        gAntiPiracyCRCStart++;
-    }
-    if (checksum != gRaceCheckFinishChecksum) {
-        gAntiPiracyAudioFreq = TRUE;
-    }
-#endif
 
     for (i = 0; i < NUM_ACMD_LISTS; i++) {
         // AUDBUF_SIZE is a byte count for the N64's 8-byte Acmd. A host Acmd holds
@@ -289,12 +274,6 @@ static u32 __amHandleFrameMsg(AudioInfo *info, AudioInfo *lastInfo) {
         gLastAudioPtr = outputDataPointer = lastInfo->data;
         gLastAudioFrameSamples = frameSamples = lastInfo->frameSamples << 2;
         pc_ai_set_next_buffer(outputDataPointer, frameSamples);
-#ifdef ANTI_TAMPER
-        // Antipiracy measure
-        if (gAntiPiracyAudioFreq) {
-            pc_ai_set_frequency(rand_range(0, 10000) + OUTPUT_RATE);
-        }
-#endif
     }
 
     /* calculate how many samples needed for this frame to keep the DAC full */

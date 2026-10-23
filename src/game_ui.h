@@ -2,7 +2,6 @@
 #define _GAME_UI_H_
 
 #include "structs.h"
-#include "PR/sptask.h"
 
 #define ASSET_MASK_MODEL       0x0000
 #define ASSET_MASK_OBJECT      0x4000
@@ -399,8 +398,6 @@ typedef struct HudDrawTexture {
     // pointer-sized too, or texrect_draw reads uninitialised stack (crashed on C-right in the hub).
     uintptr_t unk8;
 } HudDrawTexture;
-
-extern u8 gGfxTaskYieldData[OS_YIELD_DATA_SIZE];
 
 u8 race_starting(void);
 void hud_audio_init(void);

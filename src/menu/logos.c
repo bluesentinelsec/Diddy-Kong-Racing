@@ -1,3 +1,4 @@
+#include "host.h"
 #include "menu_internal.h"
 
 static f32 sBootScreenTimer;

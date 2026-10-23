@@ -1,7 +1,7 @@
 #include "gzip.h"
 #include "asset_loading.h"
+#include "libc/string.h"
 #include "memory.h"
-#include "PR/os_libc.h"
 
 /************ .data ************/
 

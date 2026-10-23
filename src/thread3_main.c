@@ -1,4 +1,5 @@
 #include "thread3_main.h"
+#include "libc/string.h"
 
 #include "asset_enums.h"
 #include "asset_loading.h"
@@ -26,8 +27,6 @@
 #include "object_models.h"
 #include "objects.h"
 #include "particles.h"
-#include "PR/os_internal.h"
-#include "PRinternal/viint.h"
 #include "printf.h"
 #include "racer.h"
 #include "rcp_dkr.h"
@@ -42,8 +41,6 @@
 #include "video.h"
 #include "weather.h"
 #include <PR/gu.h>
-#include <PR/os_cont.h>
-#include <PR/os_time.h>
 
 /************ .rodata ************/
 
@@ -154,22 +151,9 @@ void init_game(void) {
     stubbed_printf(sDebugRomBuildInfo[0]);
     mempool_init_main();
     gzip_init();
-#ifdef ANTI_TAMPER
-    sAntiPiracyTriggered = TRUE;
-    if (drm_validate_imem()) {
-        sAntiPiracyTriggered = FALSE;
-    }
-#endif
     gIsLoading = FALSE;
     gLevelDefaultVehicleID = VEHICLE_CAR;
 
-#ifdef ANTI_TAMPER
-    // Antipiracy measure.
-    gDmemInvalid = FALSE;
-    if (drm_validate_dmem() == FALSE) {
-        gDmemInvalid = TRUE;
-    }
-#endif
     video_init(VIDEO_MODE_LOWRES_LPN);
     pi_init();
     gfxtask_init();
@@ -383,12 +367,6 @@ void mode_game(s32 updateRate) {
         buttonHeldInputs |= input_held(i);
         buttonPressedInputs |= input_pressed(i);
     }
-#ifdef ANTI_TAMPER
-    // Spam the start button, making the game unplayable because it's constantly paused.
-    if (sAntiPiracyTriggered) {
-        buttonPressedInputs |= START_BUTTON;
-    }
-#endif
     // Update all objects
     if (!gIsPaused) {
         obj_update(updateRate);
@@ -1390,18 +1368,6 @@ void alloc_displaylist_heap(s32 numberOfPlayers) {
     gSPEndDisplayList(gCurrDisplayList++);
 }
 
-#ifdef ANTI_TAMPER
-/**
- * Returns FALSE if dmem doesn't begin with a -1. This is checked on every main game loop iteration.
- */
-s32 drm_validate_dmem(void) {
-    if (IO_READ(SP_DMEM_START) != -1U) {
-        return FALSE;
-    }
-    return TRUE;
-}
-#endif
-
 /**
  * Defaults allocations for 4 players
  */
@@ -1566,18 +1532,3 @@ s32 is_controller_missing(void) {
         return FALSE;
     }
 }
-
-#ifdef ANTI_TAMPER
-/**
- * Ran on boot, will make sure the CIC chip (CIC6103) is to spec. Will return true if it's all good, otherwise it
- * returns false. The intention of this function, is an attempt to check that the cartridge is a legitimate copy. A
- * false read, meaning you're caught running an illegitimate copy, will force the game to pause when you enter the
- * world.
- */
-s32 drm_validate_imem(void) {
-    if (IO_READ(SP_IMEM_START) != CIC_ID) {
-        return FALSE;
-    }
-    return TRUE;
-}
-#endif

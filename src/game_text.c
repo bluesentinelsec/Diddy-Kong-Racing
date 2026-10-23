@@ -3,11 +3,11 @@
 #include "camera.h"
 #include "common.h"
 #include "game.h"
+#include "host.h"
 #include "joypad.h"
 #include "memory.h"
 #include "menu.h"
 #include "objects.h"
-#include "PRinternal/viint.h"
 #include "racer.h"
 #include "thread3_main.h"
 

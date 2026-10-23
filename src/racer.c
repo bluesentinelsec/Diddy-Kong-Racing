@@ -1,4 +1,5 @@
 #include "racer.h"
+#include "host.h"
 #include "memory.h"
 #include "menu.h"
 #include "video.h"
@@ -16,15 +17,12 @@
 #include "game.h"
 #include "game_ui.h"
 #include "joypad.h"
+#include "libc/string.h"
 #include "macros.h"
 #include "math_util.h"
 #include "object_models.h"
 #include "objects.h"
 #include "particles.h"
-#include "PR/os_cont.h"
-#include "PR/os_libc.h"
-#include "PR/os_system.h"
-#include "PRinternal/viint.h"
 #include "printf.h"
 #include "save_data.h"
 #include "structs.h"
@@ -4770,15 +4768,7 @@ void update_player_racer(Object *obj, s32 updateRate) {
 
         tempVar = ((tempRacer->headAngleTarget - tempRacer->headAngle) * updateRate) >> 3;
         CLAMP(tempVar, -0x800, 0x800);
-#ifdef ANTI_TAMPER
-        if (gAntiPiracyHeadroll) {
-            tempRacer->headAngle += gAntiPiracyHeadroll;
-        } else {
-            tempRacer->headAngle += tempVar;
-        }
-#else
         tempRacer->headAngle += tempVar;
-#endif
         if ((gCurrentButtonsPressed & R_TRIG) && tempRacer->tapTimerR) {
             tempRacer->tappedR = TRUE;
             tempRacer->tapTimerR = 0;
@@ -8946,26 +8936,6 @@ void racer_set_dialogue_camera(void) {
     gRacerDialogueCamera = TRUE;
 }
 
-#ifdef ANTI_TAMPER
-/**
- * Antipiracy function that loops over an address of a function a number of times.
- * It compares the number it gets to a generated checksum to determine if the game has been tampered with at all.
- */
-void drm_checksum_balloon(void) {
-    s32 i;
-    s32 count = 0;
-    u8 *temp = (u8 *) &obj_loop_goldenballoon;
-
-    for (i = 0; i < gObjLoopGoldenBalloonLength; i++) {
-        count += temp[i];
-    }
-    // Antipiracy measure that makes every racer's head spin.
-    if (count != gObjLoopGoldenBalloonChecksum) {
-        gAntiPiracyHeadroll = 0x800;
-    }
-}
-#endif
-
 /**
  * When you enter a door, take control away from the player.
  * Get the angle to the door object, and drive towards it.
@@ -9285,15 +9255,7 @@ void update_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, f32 updat
     }
     var_t2 = ((racer->headAngleTarget - racer->headAngle) * updateRate) >> 3;
     CLAMP(var_t2, -0x800, 0x800)
-#ifdef ANTI_TAMPER
-    if (gAntiPiracyHeadroll) {
-        racer->headAngle += gAntiPiracyHeadroll;
-    } else {
-        racer->headAngle += var_t2;
-    }
-#else
     racer->headAngle += var_t2;
-#endif
     if (racer->shieldTimer > 0) {
         if (racer->shieldTimer > 60) {
             if (racer->shieldSoundMask) {
@@ -9603,17 +9565,6 @@ void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f3
     obj->particleEmittersEnabled = OBJ_EMIT_NONE;
     update_vehicle_particles(obj, updateRate);
 }
-
-#ifdef ANTI_TAMPER
-// This gets called if an anti-piracy checksum fails in allocate_object_model_pools.
-/**
- * Triggered upon failure of an anti-tamper test. Sets the first index of the surface speed
- * table to an unreasonable value, wrecking drivability while on it.
- */
-void drm_vehicle_traction(void) {
-    gSurfaceTractionTable[SURFACE_DEFAULT] = 0.05f;
-}
-#endif
 
 /**
  * Updates the racer's progress in the race when they cross a checkpoint. The racer

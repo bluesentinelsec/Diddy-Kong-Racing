@@ -1,9 +1,57 @@
 #ifndef _SAVE_DATA_H_
 #define _SAVE_DATA_H_
 
-#include "structs.h"
-#include "PR/os_pfs.h"
+#include "types.h"
+
+// --- Controller pak files, as the save code sees them (the N64 layout) ----------
+#define PFS_FILE_NAME_LEN 16
+#define PFS_FILE_EXT_LEN 4
+#define BLOCKSIZE 32   // bytes
+#define PFS_ONE_PAGE 8 // blocks
+#define PFS_READ 0
+#define PFS_WRITE 1
+#define PFS_CREATE 2
+#define PFS_INITIALIZED 1
+#define PFS_ERR_NOPACK 1
+#define PFS_ERR_NEW_PACK 2
+#define PFS_ERR_INCONSISTENT 3
+#define PFS_ERR_CONTRFAIL 4
+#define PFS_ERR_INVALID 5
+#define PFS_ERR_BAD_DATA 6
+#define PFS_DATA_FULL 7
+#define PFS_DIR_FULL 8
+#define PFS_ERR_EXIST 9
+#define PFS_ERR_ID_FATAL 10
+#define PFS_ERR_DEVICE 11
+#define PFS_ERR_NO_GBCART 12
+#define PFS_ERR_NEW_GBCART 13
+
+typedef struct {
+    int status;
+    void *queue; // the message queue the N64 driver used; unused on the host
+    int channel;
+    u8 id[32];
+    u8 label[32];
+    int version;
+    int dir_size;
+    int inode_table;      /* block location */
+    int minode_table;     /* mirroring inode_table */
+    int dir_table;        /* block location */
+    int inode_start_page; /* page # */
+    u8 banks;
+    u8 activebank;
+} OSPfs;
+
+typedef struct {
+    u32 file_size; /* bytes */
+    u32 game_code;
+    u16 company_code;
+    char ext_name[4];
+    char game_name[16];
+} OSPfsState;
+
 #include "common.h"
+#include "structs.h"
 
 #define GAMD 0x47414D44 // 'GAMD' ASCII - Game Data?
 #define TIMD 0x54494D44 // 'TIMD' ASCII - Time Data?

@@ -1,7 +1,6 @@
 #include "set_rsp_segment.h"
 #include "PR/gbi.h"
 #include "PR/mbi.h"
-#include "PR/R4300.h"
 #include <PR/ultratypes.h>
 
 /**
@@ -9,6 +8,9 @@
  * This is used for the colour and depth buffers.
  * Official name: segSetBase
  */
+// The segment base carries the KSEG0 bit the display-list interpreter expects.
+#define K0BASE 0x80000000
+
 void rsp_segment(Gfx **dList, s32 segment, ptrint_t base) {
     gSPSegment((*dList)++, segment, base + K0BASE)
 }

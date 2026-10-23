@@ -1,3 +1,4 @@
+#include "joypad.h"
 #include "vehicle_misc.h"
 
 #include "audio.h"

@@ -1,4 +1,5 @@
 #include "tracks.h"
+#include "libc/string.h"
 
 #include "asset_loading.h"
 #include "camera.h"
@@ -18,7 +19,6 @@
 #include "particles.h"
 #include "pc_swap.h"
 #include "PR/gu.h"
-#include "PRinternal/viint.h"
 #include "racer.h"
 #include "structs.h"
 #include "textures_sprites.h"
@@ -339,12 +339,6 @@ void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 upd
     if (get_filtered_cheats() & CHEAT_MIRRORED_TRACKS) {
         flip = TRUE;
     }
-#ifdef ANTI_TAMPER
-    // Antipiracy measure
-    if (IO_READ(0x200) != 0xAC290000) {
-        flip = TRUE;
-    }
-#endif
     rendermode_reset(&gTrackDL);
     gDkrDisableBillboard(gTrackDL++);
     gSPClearGeometryMode(gTrackDL++, G_CULL_FRONT);
@@ -1343,10 +1337,6 @@ void track_tex_anim(s32 updateRate) {
 void skydome_spawn(s32 objectID) {
     LevelObjectEntryCommon spawnObject;
 
-#ifdef ANTI_TAMPER
-    // Antipiracy measure
-    drm_checksum_balloon();
-#endif
     if (objectID == -1) {
         gSkydomeSegment = NULL;
         return;

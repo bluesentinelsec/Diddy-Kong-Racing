@@ -1,3 +1,4 @@
+#include "host.h"
 #include "menu_internal.h"
 
 static s32 gTrackmenuLoadedLevel; // Compared for equality to gTrackSelect.previewTrackId

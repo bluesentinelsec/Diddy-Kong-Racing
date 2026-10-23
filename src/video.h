@@ -1,8 +1,7 @@
 #ifndef _VIDEO_H_
 #define _VIDEO_H_
 
-#include "PR/os_vi.h"
-#include "sched.h"
+#include "types.h"
 
 #define REFRESH_50HZ 50
 #define REFRESH_60HZ 60
@@ -40,6 +39,10 @@
  * This will cause there to be visible noise on the bottom row.
 */
 #define VI_OFFSET (SCREEN_WIDTH * sizeof(u16) * 2)
+
+// What fb_update is told about the frame just drawn.
+#define OSMESG_SWAP_BUFFER 0
+#define MESG_SKIP_BUFFER_SWAP 8
 
 /**
  * The video width is the lower 16 bits of the returned 32 bit value
