@@ -10,10 +10,10 @@ typedef enum AnimType {
 } AnimType ;
 
 /* 8 Bytes */
-typedef struct unk8011D624 {
+typedef struct ModelCacheEntry {
     s32 modelId;
     ObjectModel *model;
-} unk8011D624;
+} ModelCacheEntry;
 
 extern s32 gRenderSceneChecksum;
 extern s32 gRenderSceneFuncLength;

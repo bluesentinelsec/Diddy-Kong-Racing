@@ -1093,7 +1093,7 @@ void calc_and_alloc_heap_for_settings(void) {
     gSettingsPtr->courseTimesPtr[0] = (u16 *) ((u8 *) gSettingsPtr + sizes[11]);
     gSettingsPtr->courseTimesPtr[1] = (u16 *) ((u8 *) gSettingsPtr + sizes[12]);
     gSettingsPtr->courseTimesPtr[2] = (u16 *) ((u8 *) gSettingsPtr + sizes[13]);
-    gSettingsPtr->levelTransition = (Settings4C *) &gLevelSettings;
+    gSettingsPtr->levelTransition = (LevelTransitionSettings *) &gLevelSettings;
     gSaveDataFlags = // Set bits 0/1/2/8 and wipe out all others
         SAVE_DATA_FLAG_READ_FLAP_TIMES | SAVE_DATA_FLAG_READ_COURSE_TIMES | SAVE_DATA_FLAG_READ_SAVE_DATA |
         SAVE_DATA_FLAG_READ_EEPROM_SETTINGS;

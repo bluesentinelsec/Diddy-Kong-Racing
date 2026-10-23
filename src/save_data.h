@@ -91,7 +91,7 @@ enum RumbleTypes {
 };
 
 // 4 bytes
-typedef struct unk80075000_body {
+typedef struct GhostPakDirEntry {
     union {
         struct {
             u8 levelID;
@@ -106,12 +106,12 @@ typedef struct unk80075000_body {
         };
         s16 dataOffset;
     };
-} unk80075000_body;
+} GhostPakDirEntry;
 
-typedef struct unk80075000 {
+typedef struct GhostPakFile {
     s32 signature;
-    unk80075000_body data[1];
-} unk80075000;
+    GhostPakDirEntry data[1];
+} GhostPakFile;
 
 u8 input_get_id(s32 controllerIndex);
 void rumble_init(u8 canRumble);
@@ -163,12 +163,12 @@ SIDeviceStatus get_file_extension(s32 controllerIndex, s32 fileType, char *fileE
 void save_unpack_records(Settings *settings, u8 *saveData, u8 arg2);
 void save_pack_progress(Settings *settings, u8 *saveData);
 void save_pack_records(Settings *settings, u8 *saveData);
-s32 ghost_load(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharacterId, s16 *ghostTime, s16 *ghostNodeCount, unk80075000 *ghostData);
+s32 ghost_load(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharacterId, s16 *ghostTime, s16 *ghostNodeCount, GhostPakFile *ghostData);
 char *string_to_font_codes(char *inString, char *outString, s32 stringLength);
 SIDeviceStatus ghost_file_create(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
                              s16 ghostNodeCount, u8 *dest);
 SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
-                             s16 ghostNodeCount, unk80075000_body *ghostData);
+                             s16 ghostNodeCount, GhostPakDirEntry *ghostData);
 s32 ghost_delete_for_world(s32 controllerIndex, s32 worldId);
 void rumble_enable(s32 enable);
 

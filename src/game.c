@@ -509,13 +509,13 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     for (var_s0 = 0; var_s0 < 7; var_s0++) {
         if ((s32) gCurrentLevelHeader->colourCycles[var_s0] != -1) {
             gCurrentLevelHeader->colourCycles[var_s0] =
-                (LevelHeader_70 *) get_misc_asset((s32) gCurrentLevelHeader->colourCycles[var_s0]);
+                (ColourCycle *) get_misc_asset((s32) gCurrentLevelHeader->colourCycles[var_s0]);
             // The colour loop is a big-endian misc asset. Only the subset shared
             // with a particle behaviour is swapped in init_particle_assets; swap
             // the rest here (shared swap-once table, so no double-swap) or
             // pulse_light_reset's count below reads big-endian and walks off the pool.
             pc_swap_colour_loop_shared(gCurrentLevelHeader->colourCycles[var_s0]);
-            pulse_light_reset((LevelHeader_70 *) gCurrentLevelHeader->colourCycles[var_s0]);
+            pulse_light_reset((ColourCycle *) gCurrentLevelHeader->colourCycles[var_s0]);
         }
     }
 

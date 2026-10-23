@@ -48,13 +48,13 @@ typedef struct unk800E3184 {
     u8 unk0[8];
 } unk800E3184;
 
-typedef struct unk8012A5E8 {
+typedef struct WaveVisibleBlock {
     s16 blockID;
     s16 quadrant;
     s16 tileOffsetX;
     s16 tileOffsetZ;
     s32 detailLevelIndex;
-} unk8012A5E8;
+} WaveVisibleBlock;
 
 typedef struct WaveControlSine {
     s32 sineStep;   // Amount the sine angle increases by.

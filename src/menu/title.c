@@ -3,7 +3,7 @@
 static s32 gTitleScreenCurrentOption = 0; // 0 = "Start", 1 = "Options"
 
 // Title screen cinematic text
-static unk800DF83C gTitleCinematicText[10] = {
+static TitleCinematicName gTitleCinematicText[10] = {
     { "TIMBER", 14.0f, 14.5f, 16.5f, 17.0f, -80.0f, SCREEN_HEIGHT_FLOAT - 32.0f, SCREEN_WIDTH_FLOAT_HALF,
       SCREEN_HEIGHT_FLOAT - 32.0f, SCREEN_WIDTH_FLOAT + 80.0f, SCREEN_HEIGHT_FLOAT - 32.0f },
     { "BUMPER", 19.0f, 19.5f, 21.5f, 22.0f, -80.0f, SCREEN_HEIGHT_FLOAT - 32.0f, SCREEN_WIDTH_FLOAT_HALF,
@@ -70,7 +70,7 @@ void menu_intro_names_update(f32 updateRateF) {
     s32 i;
     s32 j;
     char *text;
-    unk800DF83C *introCharData;
+    TitleCinematicName *introCharData;
 
     didUpdate = FALSE;
     xPos = 0;

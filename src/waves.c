@@ -46,7 +46,7 @@ s16 gWaveCellIndexLookupDouble[26] = { 0, 1, 1, 1, 2, 3, 4, 4, 4, 5, 3, 4, 4, 4,
 
 u8 *gWaveDetailLevels = NULL;
 s32 gWaveTileTotal = 0; // some sort of count? Relative to gWaveController.subdivisions
-LevelHeader_70 *gWavePulseLight = NULL;
+ColourCycle *gWavePulseLight = NULL;
 unk800E3184 *gWaveGenSlots = NULL; // tracks an index into gWaveGenList
 s32 gWaveGenCount = 0;      // counter for something, incremented in wavegen_register, decremented in wavegen_destroy
 s32 gWaveTileGridCount = 0; // used in mempool_alloc_safe size calculation, multiplied with 8
@@ -104,7 +104,7 @@ s16 gWaveBlockIDs[512]; // used to index gWaveModel and as arg0 for wave_block_b
 // (the k walk in wave_block_build_vertices/wave_block_build_vertices_depth_shaded only stops at a -1 sentinel).
 // Split declarations only worked by layout luck; merged so adjacency is
 // guaranteed on every compiler.
-unk8012A5E8 gWaveVisibleBlocks[26];
+WaveVisibleBlock gWaveVisibleBlocks[26];
 #define gWaveVisibleBlocksBody (gWaveVisibleBlocks + 2)
 #define D_8012A600_COUNT 24
 f32 gWavePowerBase;
@@ -1879,7 +1879,7 @@ void waves_init_collision(LevelModel *model) {
     stubbed_printf("waves_init_collision end\n");
 }
 
-s32 wave_cells_in_rect(s32 arg0, unk8011C3B8 *arg1, unk8011C8B8 *arg2, f32 shadowXNegPosition, f32 shadowZNegPosition,
+s32 wave_cells_in_rect(s32 arg0, unk8011C3B8 *arg1, ShadowPlane *arg2, f32 shadowXNegPosition, f32 shadowZNegPosition,
                   f32 shadowXPosition, f32 shadowZPosition) {
     s32 colCount;
     s32 startCol;

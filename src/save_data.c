@@ -1166,9 +1166,9 @@ s32 get_ghost_data_file_size(void) {
 
 /** Loads a time-trial ghost for a level and vehicle from the controller pak. */
 s32 ghost_load(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharacterId, s16 *ghostTime,
-                  s16 *ghostNodeCount, unk80075000 *ghostData) {
-    unk80075000_body *ghostDataBody;
-    unk80075000 *cPakFile;
+                  s16 *ghostNodeCount, GhostPakFile *ghostData) {
+    GhostPakDirEntry *ghostDataBody;
+    GhostPakFile *cPakFile;
     s32 pakStatus;
     s32 fileNumber;
     s32 i;
@@ -1286,8 +1286,8 @@ typedef struct GhostData {
 
 SIDeviceStatus ghost_file_create(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
                              s16 ghostNodeCount, u8 *dest) {
-    unk80075000_body *ghostBody;
-    unk80075000 *ghost = NULL;
+    GhostPakDirEntry *ghostBody;
+    GhostPakFile *ghost = NULL;
     s32 i;
     s32 sp30 = 0x1000;
     s32 sp24;
@@ -1318,16 +1318,16 @@ SIDeviceStatus ghost_file_create(s32 controllerIndex, s16 levelId, s16 vehicleId
 
 /** Saves a time-trial ghost to the controller pak, replacing an older one for the same track. */
 SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
-                             s16 ghostNodeCount, unk80075000_body *ghostData) {
-    unk80075000 *fileData;
-    unk80075000_body *sp70;
-    unk80075000_body *ghostFileData;
-    unk80075000 *fileDataToWrite;
+                             s16 ghostNodeCount, GhostPakDirEntry *ghostData) {
+    GhostPakFile *fileData;
+    GhostPakDirEntry *sp70;
+    GhostPakDirEntry *ghostFileData;
+    GhostPakFile *fileDataToWrite;
     s32 ghostSize;
 
     // This is a stupid hack.
     union {
-        unk80075000 *ptr;
+        GhostPakFile *ptr;
         s32 w;
     } i;
 
@@ -1375,7 +1375,7 @@ SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 g
                         }
                     }
                     if (ghostIndex != -1) {
-                        i.ptr = ((unk80075000 *) (AS_BYTES(fileData) + ghostFileData[ghostIndex].dataOffset));
+                        i.ptr = ((GhostPakFile *) (AS_BYTES(fileData) + ghostFileData[ghostIndex].dataOffset));
                         i.w = i.ptr->data->checksum;
                         if (i.w < ghostTime) {
                             ghostIndex = -2;
@@ -1432,9 +1432,9 @@ SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 g
 }
 
 s32 ghost_delete_for_world(s32 controllerIndex, s32 worldId) {
-    unk80075000_body *tempData;
-    unk80075000 *data;
-    unk80075000 *data2;
+    GhostPakDirEntry *tempData;
+    GhostPakFile *data;
+    GhostPakFile *data2;
     s32 pakStatus;
     s32 i;
     s32 sizeDiff;

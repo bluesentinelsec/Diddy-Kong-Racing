@@ -1765,7 +1765,7 @@ void tex_animate_texture(TextureHeader *texture, u32 *triangleBatchInfoFlags, s3
     }
 }
 
-void pulse_light_reset(LevelHeader_70 *arg0) {
+void pulse_light_reset(ColourCycle *arg0) {
     s32 i;
 
     arg0->currentKeyframe = 0;
@@ -1783,7 +1783,7 @@ void pulse_light_reset(LevelHeader_70 *arg0) {
 /**
  * Official name: updateColourCycle
  */
-void update_colour_cycle(LevelHeader_70 *arg0, s32 updateRate) {
+void update_colour_cycle(ColourCycle *arg0, s32 updateRate) {
     s32 temp;
     s32 curIndex;
     s32 nextIndex;
@@ -1795,8 +1795,8 @@ void update_colour_cycle(LevelHeader_70 *arg0, s32 updateRate) {
     u32 cur_green;
     u32 cur_blue;
     u32 cur_alpha;
-    LevelHeader_70 *cur;
-    LevelHeader_70 *next;
+    ColourCycle *cur;
+    ColourCycle *next;
 
     if (arg0->numKeyframes >= 2) {
         arg0->keyframeTimer += updateRate;
@@ -1818,14 +1818,14 @@ void update_colour_cycle(LevelHeader_70 *arg0, s32 updateRate) {
             nextIndex = 0;
         }
 
-        cur = (LevelHeader_70 *) (&((LevelHeader_70_18 *) arg0)[curIndex]);
+        cur = (ColourCycle *) (&((ColourCycleKeyframe *) arg0)[curIndex]);
         temp = (arg0->keyframeTimer << 16) / (cur->keyframes->duration);
         cur_red = cur->rgba2.r;
         cur_green = cur->rgba2.g;
         cur_blue = cur->rgba2.b;
         cur_alpha = cur->rgba2.a;
 
-        next = (LevelHeader_70 *) (&((LevelHeader_70_18 *) arg0)[nextIndex]);
+        next = (ColourCycle *) (&((ColourCycleKeyframe *) arg0)[nextIndex]);
         next_red = next->rgba2.r;
         next_green = next->rgba2.g;
         next_blue = next->rgba2.b;

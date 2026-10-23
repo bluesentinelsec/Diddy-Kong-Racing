@@ -102,13 +102,13 @@ u32 gTrackTexAnimFlags;
 s32 gShadowVertexCount;
 unk8011B120 gShadowVertices[32]; // Struct sizeof(0x10) / sizeof(16)
 s32 gShadowBucketCounts[4];
-unk8011B330 gShadowBucketVertices[120]; // Struct sizeof(0x20) / sizeof(32)
+ShadowClipVertex gShadowBucketVertices[120]; // Struct sizeof(0x20) / sizeof(32)
 s32 gShadowTriCount;
-unk8011C238 gShadowTris[32]; // Struct sizeof(0xC) / sizeof(12)
+ShadowPolygon gShadowTris[32]; // Struct sizeof(0xC) / sizeof(12)
 unk8011C3B8 gShadowWaveCells[64];
-unk8011C8B8 gShadowWavePlanes[128];
+ShadowPlane gShadowWavePlanes[128];
 s32 gShadowWavePlaneCount;
-unk8011C8B8 *gShadowCurrentPlane;
+ShadowPlane *gShadowCurrentPlane;
 TextureHeader *gNewShadowTexture;
 Object *gNewShadowObj;
 f32 gShadowYOffset;
@@ -151,7 +151,7 @@ u32 gWaveBlockCount;
 FogData gFogData[4];
 Vec3i gScenePerspectivePos;
 VoidMesh *gVoidMesh;     // 0x10 bytes struct?
-unk8011D478 *gVoidCheckPoints; // 0xC bytes struct?
+VoidCheckPoint *gVoidCheckPoints; // 0xC bytes struct?
 s8 *gVoidCheckPairs;
 Vertex *gVoidVerts[2];
 Vertex *gVoidCurrVerts;
@@ -473,7 +473,7 @@ void void_init(s32 viewportCount) {
         gVoidPrimLimit >>= 1;
     }
 
-    sp30 = (gVoidCheckMaxPoints + 6) * sizeof(unk8011D478);
+    sp30 = (gVoidCheckMaxPoints + 6) * sizeof(VoidCheckPoint);
     sp2C = gVoidCheckMaxPoints + 5;
     vtxLimit = (gVoidPrimLimit + 5) * 4 * sizeof(Vertex);
     triLimit = (gVoidPrimLimit + 5) * 2 * sizeof(Triangle);
@@ -484,7 +484,7 @@ void void_init(s32 viewportCount) {
     ptr = gVoidData;
 
     if (ptr != NULL) {
-        gVoidCheckPoints = (unk8011D478 *) ptr;
+        gVoidCheckPoints = (VoidCheckPoint *) ptr;
         ptr += sp30;
 
         gVoidCheckPairs = (s8 *) ptr;
@@ -914,8 +914,8 @@ void void_check_insert_point(s16 arg0, s16 arg1, s32 arg2) {
  * be tested against the camera.
  */
 void void_check_sort_points(s16 arg0, s8 *arg1, f32 arg2, f32 arg3) {
-    unk8011D478 *next;
-    unk8011D478 *curr;
+    VoidCheckPoint *next;
+    VoidCheckPoint *curr;
     s16 temp3;
     s16 temp4;
     f32 curr_unk0;
@@ -1402,9 +1402,9 @@ void trackbg_render_flashy(void) {
     s16 vertY;
     s16 vTempCoord;
     s16 uTempCoord;
-    LevelHeader_70 *pad2;
-    LevelHeader_70 *var_t2;
-    LevelHeader_70 *levelHeader;
+    ColourCycle *pad2;
+    ColourCycle *var_t2;
+    ColourCycle *levelHeader;
     TextureHeader *texHeader;
     s32 pad[4];
 
@@ -1972,10 +1972,10 @@ void render_level_segment(s32 segmentId, s32 nonOpaque) {
         if (levelHeaderIndex != (batchInfo->verticesOffset * 0)) {
             gDPSetEnvColor(
                 gTrackDL++,
-                ((LevelHeader_70 *) ((u8 **) (&((LevelHeader **) gCurrentLevelHeader2)[levelHeaderIndex]))[28])->rgba.r,
-                ((LevelHeader_70 *) ((u8 **) (&((LevelHeader **) gCurrentLevelHeader2)[levelHeaderIndex]))[28])->rgba.g,
-                ((LevelHeader_70 *) ((u8 **) (&((LevelHeader **) gCurrentLevelHeader2)[levelHeaderIndex]))[28])->rgba.b,
-                ((LevelHeader_70 *) ((u8 **) (&((LevelHeader **) gCurrentLevelHeader2)[levelHeaderIndex]))[28])
+                ((ColourCycle *) ((u8 **) (&((LevelHeader **) gCurrentLevelHeader2)[levelHeaderIndex]))[28])->rgba.r,
+                ((ColourCycle *) ((u8 **) (&((LevelHeader **) gCurrentLevelHeader2)[levelHeaderIndex]))[28])->rgba.g,
+                ((ColourCycle *) ((u8 **) (&((LevelHeader **) gCurrentLevelHeader2)[levelHeaderIndex]))[28])->rgba.b,
+                ((ColourCycle *) ((u8 **) (&((LevelHeader **) gCurrentLevelHeader2)[levelHeaderIndex]))[28])
                     ->rgba.a);
         } else {
             gDPSetEnvColor(gTrackDL++, 255, 255, 255, 0);
@@ -3791,7 +3791,7 @@ void shadow_generate(Object *obj, s32 isWater) {
  * shadow mesh being built, clipped to the rectangle.
  */
 void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
-    unk8011C8B8 sp100[8];
+    ShadowPlane sp100[8];
     Vec2f spD0[4];
     s32 spAC;
     Triangle *triangles;
@@ -3847,7 +3847,7 @@ void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
                             // are both floats so this is fine as the size is the same
                             if (polygon_overlaps_rect(spD0[2].x, spD0[2].y, spD0[0].x, spD0[0].y, 3, (Vec4f *) sp100) != 0) {
                                 temp_t6 = arg0->collisionFacets[curFacesOffset].basePlaneIndex * 4;
-                                gShadowCurrentPlane = (unk8011C8B8 *) &(arg0->collisionPlanes)[temp_t6];
+                                gShadowCurrentPlane = (ShadowPlane *) &(arg0->collisionPlanes)[temp_t6];
                                 if (arg0->collisionPlanes[temp_t6 + 1] != 0) {
                                     if (gShadowFadeStart > 0.0f) {
                                         shadow_check_centre_in_triangle(sp100);
@@ -3901,7 +3901,7 @@ void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
  * Adds the wave surface under the shadow rectangle to the water effect mesh.
  */
 void shadow_add_wave_triangles(s32 arg0) {
-    unk8011C8B8 spA8[8];
+    ShadowPlane spA8[8];
     Vec2f sp88[4];
     s32 var_v0;
     s32 var_a0;
@@ -4000,9 +4000,9 @@ void shadow_add_wave_triangles(s32 arg0) {
 void shadow_project_vertices(void) {
     f32 temp_f12;
     f32 temp_f16;
-    unk8011C8B8 *var_v0;
+    ShadowPlane *var_v0;
     s32 i, j, k;
-    unk8011B330 *curr;
+    ShadowClipVertex *curr;
 
     for (i = 0; i < gShadowVertexCount; i++) {
         var_v0 = gShadowVertices[i].unkC;
@@ -4012,7 +4012,7 @@ void shadow_project_vertices(void) {
     }
 
     for (i = 0; i < ARRAY_COUNT(gShadowBucketCounts); i++) {
-        // Bucket stride: the N64 source spells the 32-entry stride as sizeof(unk8011B330),
+        // Bucket stride: the N64 source spells the 32-entry stride as sizeof(ShadowClipVertex),
         // which is 0x20 there but larger on a host with 8-byte pointers.
         for (j = 0, k = i * 0x20; j < gShadowBucketCounts[i]; j++, k++) {
             var_v0 = gShadowBucketVertices[k].plane;
@@ -4223,8 +4223,8 @@ s32 polygon_overlaps_rect(f32 x0, f32 z0, f32 x1, f32 x2, s32 count, Vec4f *arg5
  * Clips a polygon against the four edges of a rectangle (Sutherland-Hodgman),
  * returning the vertex count; the output can hold up to 8 vertices.
  */
-s32 clip_polygon_to_rect(s32 arg0, unk8011C8B8 *arg1, s32 arg2, Vec2f *arg3) {
-    unk8011C8B8 spE0[8];
+s32 clip_polygon_to_rect(s32 arg0, ShadowPlane *arg1, s32 arg2, Vec2f *arg3) {
+    ShadowPlane spE0[8];
     f32 temp_f12;
     f32 temp_f14;
     f32 temp_f16;
@@ -4240,9 +4240,9 @@ s32 clip_polygon_to_rect(s32 arg0, unk8011C8B8 *arg1, s32 arg2, Vec2f *arg3) {
     s32 var_v1;
     s32 var_t1;
     s32 var_s2;
-    unk8011C8B8 *var_s0;
-    unk8011C8B8 *var_s3;
-    unk8011C8B8 *swap; // swap var for var_s0 and var_s3
+    ShadowPlane *var_s0;
+    ShadowPlane *var_s3;
+    ShadowPlane *swap; // swap var for var_s0 and var_s3
 
     var_s3 = arg1;
     var_s0 = spE0;
@@ -4349,7 +4349,7 @@ s32 clip_polygon_to_rect(s32 arg0, unk8011C8B8 *arg1, s32 arg2, Vec2f *arg3) {
  * Marks whether the shadow's centre falls inside the triangle, so the light
  * level and shadow placement can prefer that triangle.
  */
-void shadow_check_centre_in_triangle(unk8011C8B8 arg0[3]) {
+void shadow_check_centre_in_triangle(ShadowPlane arg0[3]) {
     f32 diff;
     f32 shadowX;
     f32 shadowZ;

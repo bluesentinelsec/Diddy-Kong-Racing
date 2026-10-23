@@ -307,7 +307,7 @@ u8 gAdvRaceStartedByP2;
 u8 gMinimapOpacityTarget;
 s32 gStopwatchErrorX;
 s32 gStopwatchErrorY;
-LevelHeader_70 *gHudPulseLight;
+ColourCycle *gHudPulseLight;
 
 /******************************/
 
@@ -373,7 +373,7 @@ void hud_init(UNUSED s32 viewportCount) {
     gRaceStartSoundMask = NULL;
     gHudBalloonSoundMask = NULL;
     gMinimapXlu = 0;
-    gHudPulseLight = (LevelHeader_70 *) get_misc_asset(ASSET_MISC_58);
+    gHudPulseLight = (ColourCycle *) get_misc_asset(ASSET_MISC_58);
     pulse_light_reset(gHudPulseLight);
     sndp_set_group_volume(0, AL_SNDP_GROUP_VOLUME_MAX);
     sndp_set_group_volume(2, AL_SNDP_GROUP_VOLUME_MAX);

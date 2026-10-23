@@ -29,10 +29,10 @@ Mtx *sMenuCurrHudMat;
 #endif
 Vertex *sMenuCurrHudVerts;
 Triangle *sMenuCurrHudTris;
-unk801263C0 gMenuSelectedCharacter;
-unk801263C0 sSoundOptionsState;
+CharacterVoiceChannel gMenuSelectedCharacter;
+CharacterVoiceChannel sSoundOptionsState;
 s32 gOptionBlinkTimer;
-unk801263C0 gMenuCurrentCharacter;
+CharacterVoiceChannel gMenuCurrentCharacter;
 
 s32 gIgnorePlayerInputTime;  // A set amount of time to ignore player input.
 UNUSED s32 sUnused_801263C8; // Set to 0 in menu_init, and never again.
@@ -226,15 +226,15 @@ s16 gNewCheatID;
 f32 gNameEntryOffsetX;
 #if VERSION >= VERSION_79
 // Created a replacement for this var in v2?
-unk80126C54 gPostRaceOld;
+PostRaceLoadState gPostRaceOld;
 #else
-unk80126C54 gPostRace;
+PostRaceLoadState gPostRace;
 #endif
 char gCheatInput[20];
 s32 *gNameEntryTargetX;
 #if VERSION >= VERSION_79
 // Created a replacement for this var in v2?
-unk80126C54 gPostRace;
+PostRaceLoadState gPostRace;
 #endif
 s32 gNumOnscreenMagicCodes;
 char *gNameEntryString;
