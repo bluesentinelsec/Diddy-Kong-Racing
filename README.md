@@ -409,7 +409,11 @@ additive, so a real gamepad still works too.
   named row per behaviour id (init, loop, destroy, render and fade hooks, the
   spawn flags and the size of the behaviour's data), and `src/behaviours/`
   holds one file per behaviour. Adding an object kind means writing its hooks
-  in a new file there and adding a row to the table. `libultra/`
+  in a new file there and adding a row to the table. The menus live in
+  `src/menu/`, one file per screen (title, options, track select, results,
+  credits and so on) with `menu.c` holding the shared drawing helpers and the
+  state the screens share, declared in `menu_internal.h`; `src/menu.h` is the
+  interface the rest of the game uses. `libultra/`
   keeps only the parts of the N64 SDK the game still runs as code: the audio
   synthesizer and sequence player, and the matrix helpers.
 - `android/` - the Android app (Gradle + SDL activity) that builds the game as
