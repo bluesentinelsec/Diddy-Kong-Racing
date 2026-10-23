@@ -3,7 +3,7 @@
 #include "audio.h"
 #include "camera.h"
 #include "macros.h"
-#include "object_functions.h"
+#include "behaviours.h"
 #include "objects.h"
 #include "particles.h"
 #include "racer.h"

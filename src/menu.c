@@ -17,7 +17,7 @@
 #include "macros.h"
 #include "math_util.h"
 #include "memory.h"
-#include "object_functions.h"
+#include "behaviours.h"
 #include "object_models.h"
 #include "objects.h"
 #include "PR/os_cont.h"

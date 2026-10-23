@@ -9,12 +9,14 @@
 #include "game.h"
 #include "game_ui.h"
 #include "gzip.h"
+#include "host.h"
 #include "macros.h"
 #include "math_util.h"
 #include "memory.h"
 #include "menu.h"
 #include "objects.h"
 #include "particles.h"
+#include "pc_swap.h"
 #include "PR/gu.h"
 #include "PRinternal/viint.h"
 #include "racer.h"
@@ -22,11 +24,9 @@
 #include "textures_sprites.h"
 #include "thread3_main.h"
 #include "types.h"
-#include "host.h"
 #include "video.h"
 #include "waves.h"
 #include "weather.h"
-#include "pc_swap.h"
 
 // Maximum size for a level model is 522.5 KiB
 #define LEVEL_MODEL_MAX_SIZE 0xA0000 // host layout adds a header delta plus segment/texture tables
@@ -2373,33 +2373,10 @@ s32 check_if_in_draw_range(Object *obj) {
                 }
             }
         }
-        switch (obj->behaviorId) {
-            case BHV_RACER:
-                racer = obj->racer;
-                obj->opacity = ((racer->transparency + 1) * alpha) >> 8;
-                break;
-            case BHV_TIMETRIAL_GHOST: // Ghost Object?
-                racer = obj->racer;
-                obj->opacity = racer->transparency;
-                break;
-            case BHV_ANIMATED_OBJECT: // Cutscene object?
-            case BHV_CAMERA_ANIMATION:
-            case BHV_CAR_ANIMATION:
-            case BHV_CHARACTER_SELECT:
-            case BHV_VEHICLE_ANIMATION: // Title screen actor
-            case BHV_HIT_TESTER:        // hittester
-            case BHV_HIT_TESTER_2:      // animated objects?
-            case BHV_ANIMATED_OBJECT_2: // space ships
-                animatedObj = obj->animatedObject;
-                obj->opacity = animatedObj->opacity;
-                break;
-            case BHV_PARK_WARDEN:
-            case BHV_GOLDEN_BALLOON:
-            case BHV_PARK_WARDEN_2: // GBParkwarden
-                break;
-            default:
-                obj->opacity = alpha;
-                break;
+        if (obj_behaviour(obj->behaviorId)->fade != NULL) {
+            obj_behaviour(obj->behaviorId)->fade(obj, alpha);
+        } else {
+            obj->opacity = alpha;
         }
         for (i = 0; i < 3; i++) {
             x = gFrustumPlanes[i].x;
@@ -4537,7 +4514,7 @@ void apply_fog(s32 playerID) {
  * @bug: Timer doesn't account for PAL, meaning fog will scroll 20% slower on PAL systems.
  * Official Name: trackChangeFog
  */
-void obj_loop_fogchanger(Object *obj) {
+void obj_loop_fogchanger(Object *obj, UNUSED s32 updateRate) {
     s32 nearTemp;
     s32 fogNear;
     s32 views;

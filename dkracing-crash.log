@@ -1,0 +1,23 @@
+
+=== DKR PC crash: SIGSEGV (segmentation fault) at gfx frame 568 ===
+0   dkracing                            0x00000001048575f0 report + 164
+1   dkracing                            0x0000000104857520 crash_handler + 84
+2   libsystem_platform.dylib            0x0000000188dfd764 _sigtramp + 56
+3   libobjc.A.dylib                     0x00000001889aa520 objc_retainAutoreleaseReturnValue + 52
+4   dkracing                            0x00000001047a6a48 run_object_init_func + 116
+5   dkracing                            0x000000010479faf0 spawn_object + 1280
+6   dkracing                            0x00000001047fa94c skydome_spawn + 84
+7   dkracing                            0x00000001047f9da4 init_track + 532
+8   dkracing                            0x000000010475fd64 level_load + 2892
+9   dkracing                            0x00000001047f8fd8 load_level_menu + 96
+10  dkracing                            0x00000001047f9244 load_level_for_menu + 212
+11  dkracing                            0x0000000104777a64 menu_title_screen_init + 468
+12  dkracing                            0x00000001047775e8 menu_init + 204
+13  dkracing                            0x000000010477a8b8 menu_logo_screen_loop + 352
+14  dkracing                            0x000000010477a190 menu_loop + 164
+15  dkracing                            0x00000001047f7038 mode_menu + 156
+16  dkracing                            0x00000001047f67d4 main_game_loop + 752
+17  dkracing                            0x00000001047f63cc thread3_main + 76
+18  dkracing                            0x0000000104844bd0 main + 1348
+19  dyld                                0x0000000188a29d54 start + 7184
+=== end of crash report (also in dkracing-crash.log) ===

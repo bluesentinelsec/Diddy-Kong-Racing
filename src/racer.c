@@ -9,6 +9,7 @@
 #include "audio_spatial.h"
 #include "audio_vehicle.h"
 #include "audiosfx.h"
+#include "behaviours.h"
 #include "collision.h"
 #include "common.h"
 #include "fade_transition.h"
@@ -17,7 +18,6 @@
 #include "joypad.h"
 #include "macros.h"
 #include "math_util.h"
-#include "object_functions.h"
 #include "object_models.h"
 #include "objects.h"
 #include "particles.h"
@@ -4206,7 +4206,8 @@ void update_carpet(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
  * Initialise the basic properties of each racer object. If it's tied to a human player,
  * will also initialise a camera object.
  */
-void obj_init_racer(Object *obj, LevelObjectEntry_Racer *racer) {
+void obj_init_racer(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param) {
+    LevelObjectEntry_Racer *racer = &levelEntry->racer;
     Object_Racer *tempRacer;
     ActivePlayers player;
     s32 i;
@@ -9632,4 +9633,56 @@ void racer_update_progress(Object_Racer *racer) {
     if (racer->courseCheckpoint > -0x7D00) {
         racer->courseCheckpoint--;
     }
+}
+
+/**
+ * A racer going away takes its sounds with it, and every weapon and fly coin in the level,
+ * and clears the parent link of particles it spawned.
+ */
+void obj_destroy_racer(Object *obj, UNUSED s32 keepAnimTarget) {
+    Object_Racer *racer;
+    s32 j;
+
+    butterfly_forget_target(obj);
+    racer = obj->racer;
+    if (racer->surfaceSoundHandle != NULL) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->surfaceSoundHandle);
+    }
+    if (racer->slideSoundHandle != NULL) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->slideSoundHandle);
+    }
+    if (racer->unusedSoundHandle14 != NULL) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle14);
+    }
+    if (racer->unusedSoundHandle1C != NULL) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->unusedSoundHandle1C);
+    }
+    if (racer->splatSoundHandle != NULL) {
+        sndp_stop((SoundHandle) (uintptr_t) racer->splatSoundHandle);
+    }
+    if (racer->soundMask != NULL) {
+        audspat_point_stop(racer->soundMask);
+    }
+    if (racer->shieldSoundMask != NULL) {
+        audspat_point_stop(racer->shieldSoundMask);
+    }
+    if (racer->magnetSoundMask != NULL) {
+        sndp_stop(racer->magnetSoundMask);
+    }
+    racer_sound_free(obj);
+    for (j = 0; j < gObjectCount; j++) {
+        if ((gObjPtrList[j]->trans.flags & OBJ_FLAGS_PARTICLE) && ((s32) gObjPtrList[j]->level_entry == (s32) obj)) {
+            gObjPtrList[j]->level_entry = NULL;
+        }
+        if (gObjPtrList[j]->behaviorId == BHV_WEAPON_2 || gObjPtrList[j]->behaviorId == BHV_FLY_COIN ||
+            gObjPtrList[j]->behaviorId == BHV_WEAPON) {
+            free_object(gObjPtrList[j]);
+        }
+    }
+}
+
+/** Racers fade with distance on top of their own transparency. */
+void obj_fade_racer(Object *obj, s32 alpha) {
+    Object_Racer *racer = obj->racer;
+    obj->opacity = ((racer->transparency + 1) * alpha) >> 8;
 }

@@ -961,6 +961,7 @@ typedef struct LevelObjectEntry {
         LevelObjectEntry_WizpigShip wizpigShip;
         LevelObjectEntry_SilverCoin silverCoin;
         LevelObjectEntry_Boost boost;
+        LevelObjectEntry_Boost2 boost2;
         LevelObjectEntry_WardenSmoke tajSmoke;
         LevelObjectEntry_Unknown94 unk94;
         LevelObjectEntry_Unknown96 unk96;
