@@ -1684,7 +1684,7 @@ void menu_adventure_track_init(void) {
     gTrackSelect.previewTrackId = ASSET_LEVEL_CENTRALAREAHUB;
     gMenuFlow.blinkTimer = 0;
     gMenuInput.delay = 0;
-    mapId = settings->levelTransition->mapID;
+    mapId = settings->levelExit->destMapId[0];
     gRaceSetup.playerVehicles[PLAYER_ONE] = leveltable_vehicle_default(mapId);
     raceType = leveltable_type(mapId);
     if (raceType == RACETYPE_HUBWORLD || raceType == RACETYPE_BOSS ||
@@ -1757,7 +1757,7 @@ void adventuretrack_render(UNUSED s32 updateRate, s32 arg1, s32 arg2) {
     if (osTvType == OS_TV_TYPE_PAL) {
         yOffset = 12;
     }
-    mapID = ((LevelTransitionSettings *) ((u8 *) settings->levelTransition + gTrackSelect.previewTrackId))->mapID;
+    mapID = settings->levelExit->raw[2 + gTrackSelect.previewTrackId];
     gSPClearGeometryMode(gMenuFrame.displayList++, G_CULL_FRONT);
     menu_camera_centre();
     mtx_ortho(&gMenuFrame.displayList, &gMenuFrame.hudMat);
@@ -1806,8 +1806,7 @@ void adventuretrack_render(UNUSED s32 updateRate, s32 arg1, s32 arg2) {
 #define ADVENTURETRACK_YPOS3 72
 #define ADVENTURETRACK_RED 26
 #define ADVENTURETRACK_ALIGN ALIGN_MIDDLE_CENTER
-#define ADVENTURETRACK_MAPID \
-    ((LevelTransitionSettings *) ((u8 *) settings->levelTransition + gTrackSelect.previewTrackId))->mapID
+#define ADVENTURETRACK_MAPID settings->levelExit->raw[2 + gTrackSelect.previewTrackId]
 #endif
                         draw_text(&gMenuFrame.displayList, ADVENTURETRACK_XPOS1, yOffset + ADVENTURETRACK_YPOS1,
                                   gMenuLoaded.text[ASSET_MENU_TEXT_BESTTIME], ADVENTURETRACK_ALIGN);
@@ -1922,10 +1921,10 @@ s32 menu_adventure_track_loop(s32 updateRate) {
     Settings *settings;
 
     if (gMenuFlow.stage < ADVENTURESETUP_VEHICLE) {
-        return gTrackSelect.previewTrackId | MENU_RESULT_FLAGS_80;
+        return MENU_RESULT_TAKE_EXIT(gTrackSelect.previewTrackId);
     }
     settings = get_settings();
-    mapId = ((LevelTransitionSettings *) ((u8 *) settings->levelTransition + gTrackSelect.previewTrackId))->mapID;
+    mapId = settings->levelExit->raw[2 + gTrackSelect.previewTrackId];
     challenge = FALSE;
     sp1C = 0;
     if (settings->courseFlagsPtr[mapId] & RACE_CLEARED) {
@@ -2012,9 +2011,9 @@ s32 menu_adventure_track_loop(s32 updateRate) {
         if (gMenuInput.delay > 30 || gMenuInput.delay < -30) {
             adventuretrack_free();
             if (gMenuInput.delay > 0) {
-                return gTrackSelect.previewTrackId | 0x80;
+                return MENU_RESULT_TAKE_EXIT(gTrackSelect.previewTrackId);
             }
-            return MENU_RESULT_UNK3 | 0x100;
+            return MENU_RESULT_SWITCH(MENU_RESULT_RESUME_ADVENTURE);
         }
     }
     gMenuInput.ignoreInputTime = 0;

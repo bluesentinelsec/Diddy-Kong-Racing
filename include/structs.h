@@ -239,14 +239,27 @@ typedef struct Racer {
     /* 0x12 */ u16 lap_times[3];
 } Racer;
 
-/* Unknown Size */
-typedef struct LevelTransitionSettings {
-    u8 courseID; // courseId?
-    u8 unk1;     // This value + 8 is cutsceneId index? gGameCurrentCutscene = gLevelSettings[gLevelSettings[1] + 8];
-    s8 mapID;    // mapId?
-    u8 pad3[0xC];
-    u8 entranceID; // entranceId?
-} LevelTransitionSettings;
+/**
+ * What an Exit object leaves behind for the level that follows: where the player came from, the
+ * two destinations the exit offers and the entrances and cutscenes that go with them. The menus
+ * and the level-change code read it back when that level ends. `raw` is the same 16 bytes in the
+ * order the Exit entry stored them.
+ */
+typedef union LevelExitSettings {
+    s8 raw[16];
+    struct {
+        s8 fromMapId;           // the map the exit object was in
+        s8 chosenExit;          // 0 or 1: which of the exit's two destinations was taken
+        s8 destMapId[2];        // exit entry 0x08..0x09
+        s8 destEntrance[2];     // exit entry 0x0A..0x0B: overworld spawn index
+        s8 unusedC[2];          // exit entry 0x0C..0x0D, stored but never read
+        s8 destCutscene[2];     // exit entry 0x0E..0x0F
+        s8 unused12[2];         // exit entry 0x12..0x13, stored but never read
+        s8 destMenuCutscene[2]; // exit entry 0x14..0x15: cutscene when the menu takes the exit
+        s8 unused16;            // exit entry 0x16, stored but never read
+        s8 returnEntrance;      // exit entry 0x17: where to spawn back in the hub
+    };
+} LevelExitSettings;
 
 #define TAJ_FLAGS_CAR_CHAL_UNLOCKED 0x01
 #define TAJ_FLAGS_HOVER_CHAL_UNLOCKED 0x02
@@ -365,7 +378,7 @@ typedef struct Settings {
     /* 0x0049 */ u8 courseId;
     /* 0x004A */ u8 gNumRacers;
     /* 0x004B */ u8 newGame;
-    /* 0x004C */ LevelTransitionSettings *levelTransition;
+    /* 0x004C */ LevelExitSettings *levelExit;
     /* 0x0050 */ u32 filename;
     /* 0x0054 */ Racer racers[8];
     /* 0x0114 */ s8 timeTrialRacer;
