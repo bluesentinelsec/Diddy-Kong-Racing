@@ -41,14 +41,14 @@ u64 get_eeprom_settings(void) {
  */
 s32 get_language(void) {
     s32 language = LANGUAGE_ENGLISH;
-    switch (gRaceSetup.eepromSettings & 0xC) {
-        case 4:
+    switch (gRaceSetup.eepromSettings & EEPROM_LANGUAGE_MASK) {
+        case EEPROM_LANGUAGE_GERMAN:
             language = LANGUAGE_GERMAN;
             break;
-        case 8:
+        case EEPROM_LANGUAGE_FRENCH:
             language = LANGUAGE_FRENCH;
             break;
-        case 12:
+        case EEPROM_LANGUAGE_JAPANESE:
             language = LANGUAGE_JAPANESE;
             break;
     }
@@ -65,17 +65,17 @@ void set_language(s32 language) {
 
     switch (language) {
         case LANGUAGE_GERMAN:
-            langFlag = 4;
+            langFlag = EEPROM_LANGUAGE_GERMAN;
             break;
         case LANGUAGE_FRENCH:
-            langFlag = 8;
+            langFlag = EEPROM_LANGUAGE_FRENCH;
             break;
         case LANGUAGE_JAPANESE:
-            langFlag = 12;
+            langFlag = EEPROM_LANGUAGE_JAPANESE;
             break;
     }
 
-    gRaceSetup.eepromSettings &= ~0xC;     // Set bits 3 and 4 low first
+    gRaceSetup.eepromSettings &= ~EEPROM_LANGUAGE_MASK; // Set bits 3 and 4 low first
     gRaceSetup.eepromSettings |= langFlag; // Then set them according to the selected lang
 
     load_menu_text(language);
@@ -86,7 +86,7 @@ void set_language(s32 language) {
  * Returns TRUE if the player has adventure two unlocked.
  */
 s32 is_adventure_two_unlocked(void) {
-    return gRaceSetup.eepromSettings & 1;
+    return gRaceSetup.eepromSettings & EEPROM_ADVENTURE_TWO_UNLOCKED;
 }
 
 /**

@@ -122,15 +122,14 @@ s32 menu_options_loop(s32 updateRate) {
         }
         sound_play(SOUND_MENU_PICK2, NULL);
     } else if (gMenuFlow.curIndex == 1 && analogueX != 0) {
-        if (gRaceSetup.eepromSettings & 0x2000000) {
-            // 0x2000000 SUBTITLES ENABLED?
+        if (gRaceSetup.eepromSettings & EEPROM_SUBTITLES) {
             sound_play(SOUND_MENU_PICK2, NULL);
-            unset_eeprom_settings_value(0x2000000);
+            unset_eeprom_settings_value(EEPROM_SUBTITLES);
             set_subtitles(0);
             gOptionMenuStrings[1] = gMenuLoaded.text[ASSET_MENU_TEXT_SUBTITLESOFF];
         } else {
             sound_play(SOUND_MENU_PICK2, NULL);
-            set_eeprom_settings_value(0x2000000);
+            set_eeprom_settings_value(EEPROM_SUBTITLES);
             set_subtitles(1);
             gOptionMenuStrings[1] = gMenuLoaded.text[ASSET_MENU_TEXT_SUBTITLESON];
         }

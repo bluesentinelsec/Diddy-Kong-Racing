@@ -61,18 +61,18 @@ static FadeTransition gFadeTitleScreenDemo = FADE_TRANSITION(FADE_FULLSCREEN, FA
  * Sets some things needed after the title screen from the save buffer.
  */
 void init_title_screen_variables(void) {
-    if (gRaceSetup.eepromSettings & 2) {
+    if (gRaceSetup.eepromSettings & EEPROM_DRUMSTICK_UNLOCKED) {
         set_magic_code_flags(CHEAT_CONTROL_DRUMSTICK);
     }
-    if ((gRaceSetup.eepromSettings & 0xFFFFF0) == 0xFFFFF0) {
+    if ((gRaceSetup.eepromSettings & EEPROM_STAFF_TIMES) == EEPROM_STAFF_TIMES) {
         set_magic_code_flags(CHEAT_CONTROL_TT);
     }
-    if (gRaceSetup.eepromSettings & 1) {
+    if (gRaceSetup.eepromSettings & EEPROM_ADVENTURE_TWO_UNLOCKED) {
         gRaceSetup.isInAdventureTwo = TRUE;
     } else {
         gRaceSetup.isInAdventureTwo = FALSE;
     }
-    if ((gRaceSetup.eepromSettings & 0x2000000) == 0) {
+    if ((gRaceSetup.eepromSettings & EEPROM_SUBTITLES) == 0) {
         set_subtitles(0);
     }
     load_menu_text(get_language());

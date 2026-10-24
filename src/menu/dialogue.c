@@ -172,6 +172,10 @@ void set_menu_id_if_option_equal(s32 IDToCheck, s32 IDToSet) {
     }
 }
 
+// Flags on Taj's menu result, with the chosen vehicle or challenge in the low bits.
+#define TAJ_RESULT_VEHICLE 0x80
+#define TAJ_RESULT_CHALLENGE 0x40
+
 /**
  * Draw the title and options of Taj's vehicle and challenge lists (also while the choice
  * is being acted on). Challenges show only once unlocked, greyed out when completed.
@@ -254,7 +258,7 @@ static void taj_menu_root(Settings *settings, s32 pressedButtons, s32 *dialogueR
 }
 
 /**
- * Vehicle choice: the result is the chosen vehicle with 0x80 set.
+ * Vehicle choice: the result is the chosen vehicle with TAJ_RESULT_VEHICLE set.
  */
 static void taj_menu_vehicle_select(s32 pressedButtons, s32 *dialogueResult) {
     handle_menu_joystick_input();
@@ -265,7 +269,7 @@ static void taj_menu_vehicle_select(s32 pressedButtons, s32 *dialogueResult) {
         gDialogue.submenu = 0;
     } else if (pressedButtons & A_BUTTON) {
         if (gDialogueItemSelection != 3) {
-            *dialogueResult = gDialogueItemSelection | 0x80;
+            *dialogueResult = gDialogueItemSelection | TAJ_RESULT_VEHICLE;
             sCurrentMenuID = DIALOGUEPAGE_TAJ_VEHICLE_SELECT_2;
         } else {
             sCurrentMenuID = DIALOGUEPAGE_TAJ_ROOT;
@@ -276,7 +280,7 @@ static void taj_menu_vehicle_select(s32 pressedButtons, s32 *dialogueResult) {
 }
 
 /**
- * Challenge choice: the result is the chosen challenge with 0x40 set.
+ * Challenge choice: the result is the chosen challenge with TAJ_RESULT_CHALLENGE set.
  */
 static void taj_menu_challenges(s32 pressedButtons, s32 *dialogueResult) {
     handle_menu_joystick_input();
@@ -286,7 +290,7 @@ static void taj_menu_challenges(s32 pressedButtons, s32 *dialogueResult) {
         sCurrentMenuID = DIALOGUEPAGE_TAJ_ROOT;
         gDialogue.submenu = 3;
     } else if (pressedButtons & A_BUTTON) {
-        *dialogueResult = gDialogueItemSelection | 0x40;
+        *dialogueResult = gDialogueItemSelection | TAJ_RESULT_CHALLENGE;
         sound_play(SOUND_SELECT2, NULL);
         sCurrentMenuID = DIALOGUEPAGE_TAJ_CHALLENGES_2;
     }
@@ -366,7 +370,7 @@ s32 taj_menu_loop(void) {
             gDialogue.submenu = 0;
             break;
         case DIALOGUEPAGE_TAJ_4:
-            dialogueResult = (gNextTajChallengeMenu - 1) | 0x40;
+            dialogueResult = (gNextTajChallengeMenu - 1) | TAJ_RESULT_CHALLENGE;
             sCurrentMenuID = DIALOGUEPAGE_TAJ_5;
             dialogue_close(1);
             break;
@@ -751,7 +755,7 @@ void dialogue_tt_gamestatus(void) {
         y = 20;
     }
     numOfItem = 8;
-    if (settings->cutsceneFlags & 4) {
+    if (settings->cutsceneFlags & CUTSCENE_ADVENTURE_TWO) {
         numOfItem = 9;
     }
     tempX = -74;

@@ -1,6 +1,10 @@
 #include "host.h"
 #include "menu_internal.h"
 
+// Columns of the track select grid: the four race tracks, then the trophy race and the challenge.
+#define TRACK_COLUMN_TROPHY_RACE 4
+#define TRACK_COLUMN_CHALLENGE 5
+
 static s32 gTrackmenuLoadedLevel; // Compared for equality to gTrackSelect.previewTrackId
 
 static s32 gMultiplayerSelectedNumberOfRacersCopy; // Saved version gRaceSetup.multiplayerRacerCount?
@@ -599,7 +603,7 @@ s32 menu_track_select_loop(s32 updateRate) {
                 settings->racers[cutsceneId].starting_position = cutsceneId;
             }
         }
-        if (gTrackSelectCursorX != 4) {
+        if (gTrackSelectCursorX != TRACK_COLUMN_TROPHY_RACE) {
             gRaceSetup.trackSpecified = 1;
             return gRaceSetup.numberOfActivePlayers;
         }
@@ -973,7 +977,7 @@ void trackmenu_input(s32 updateRate) {
             gIsInTracksMenu = FALSE;
         }
         if (gMenuInput.delay > 30) {
-            if (is_adventure_two_unlocked() && gTrackSelectCursorX != 5) {
+            if (is_adventure_two_unlocked() && gTrackSelectCursorX != TRACK_COLUMN_CHALLENGE) {
                 gMenuFlow.stage = TRACKMENU_MIRROR;
             } else {
                 gMenuFlow.stage = TRACKMENU_OPT_1;
@@ -1006,11 +1010,11 @@ void trackmenu_input(s32 updateRate) {
             if (gMenuInput.stickX[PLAYER_MENU] < 0 && gTrackSelectCursorX > 0) {
                 gTrackSelectCursorX--;
             }
-            if (gMenuInput.stickX[PLAYER_MENU] > 0 && gTrackSelectCursorX < 5) {
+            if (gMenuInput.stickX[PLAYER_MENU] > 0 && gTrackSelectCursorX < TRACK_COLUMN_CHALLENGE) {
                 gTrackSelectCursorX++;
             }
-            if (gTrackSelect.cursorY == 4 && gTrackSelectCursorX == 5) {
-                gTrackSelectCursorX = 4;
+            if (gTrackSelect.cursorY == 4 && gTrackSelectCursorX == TRACK_COLUMN_CHALLENGE) {
+                gTrackSelectCursorX = TRACK_COLUMN_TROPHY_RACE;
             }
             if (gMenuInput.stickX[PLAYER_MENU] == 0) {
                 // Don't allow scrolling down to Future Fun Land if it hasn't been unlocked.
@@ -1020,7 +1024,7 @@ void trackmenu_input(s32 updateRate) {
                 if (gMenuInput.stickY[PLAYER_MENU] > 0 && gTrackSelect.cursorY > 0) {
                     gTrackSelect.cursorY--;
                 }
-                if (gTrackSelectCursorX == 5 && gTrackSelect.cursorY == 4) {
+                if (gTrackSelectCursorX == TRACK_COLUMN_CHALLENGE && gTrackSelect.cursorY == 4) {
                     gTrackSelect.cursorY = 3;
                 }
             }
@@ -1051,9 +1055,9 @@ void trackmenu_timetrial_sound(UNUSED s32 updateRate) {
 static void trackmenu_render_wood_frame(void) {
     s32 frameImage;
 
-    if (gSelectedTrackX == 4) {
+    if (gSelectedTrackX == TRACK_COLUMN_TROPHY_RACE) {
         frameImage = 6;
-    } else if (gSelectedTrackX == 5) {
+    } else if (gSelectedTrackX == TRACK_COLUMN_CHALLENGE) {
         frameImage = 5;
     } else {
         frameImage = 4;
@@ -1418,12 +1422,12 @@ static void trackmenu_render_adventure_flags(Settings *settings) {
  * Draw the "OK?" confirmation once every option has been chosen.
  */
 static void trackmenu_render_ok_prompt(s32 regionOffset, s32 showRacerCount) {
-    if (gTrackSelectCursorX != 5) {
+    if (gTrackSelectCursorX != TRACK_COLUMN_CHALLENGE) {
         if ((gMenuFlow.stage == TRACKMENU_OPT_2 && !showRacerCount) ||
             (gMenuFlow.stage == TRACKMENU_OPT_3 && showRacerCount) || gMenuFlow.stage == TRACKMENU_OPT_4) {
             set_text_font(ASSET_FONTS_BIGFONT);
             set_text_colour(255, 255, 255, 0, gMenuFrame.guiOpacity);
-            if (gTrackSelectCursorX >= 4) {
+            if (gTrackSelectCursorX >= TRACK_COLUMN_TROPHY_RACE) {
                 regionOffset += 24;
             }
             draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, regionOffset + 172, "OK?", ALIGN_MIDDLE_CENTER);
@@ -1449,7 +1453,8 @@ void trackmenu_setup_render(UNUSED s32 updateRate) {
     if (osTvType == OS_TV_TYPE_PAL) {
         regionOffset = 12;
     }
-    if (gRaceSetup.numberOfActivePlayers == 2 && gTrackSelectCursorX < 4 && gMenuFlow.stage > TRACKMENU_CHOOSE) {
+    if (gRaceSetup.numberOfActivePlayers == 2 && gTrackSelectCursorX < TRACK_COLUMN_TROPHY_RACE &&
+        gMenuFlow.stage > TRACKMENU_CHOOSE) {
         showRacerCount = TRUE;
     }
     camDisableUserView(0, TRUE);
@@ -1466,17 +1471,18 @@ void trackmenu_setup_render(UNUSED s32 updateRate) {
         availableVehicleFlags = trackmenu_available_vehicles();
         blinkAlpha = trackmenu_render_track_name();
         if (gMenuFlow.stage == TRACKMENU_MIRROR ||
-            (gMenuFlow.stage == TRACKMENU_OPT_2 && gTrackSelectCursorX == 4 && is_adventure_two_unlocked())) {
+            (gMenuFlow.stage == TRACKMENU_OPT_2 && gTrackSelectCursorX == TRACK_COLUMN_TROPHY_RACE &&
+             is_adventure_two_unlocked())) {
             trackmenu_render_adventure_choice(regionOffset, blinkAlpha);
         }
-        if (gTrackSelectCursorX < 4) {
+        if (gTrackSelectCursorX < TRACK_COLUMN_TROPHY_RACE) {
             trackmenu_render_best_times(settings, regionOffset);
             if (gMenuFlow.stage != TRACKMENU_MIRROR) {
                 trackmenu_render_player_options(settings, regionOffset, availableVehicleFlags, blinkAlpha,
                                                 showRacerCount);
             }
         }
-        if (gTrackSelectCursorX < 4) {
+        if (gTrackSelectCursorX < TRACK_COLUMN_TROPHY_RACE) {
             trackmenu_render_adventure_flags(settings);
         }
         if (gRaceSetup.numberOfActivePlayers == 1 && gMenuFlow.stage > TRACKMENU_MIRROR &&
@@ -1499,9 +1505,9 @@ static void trackmenu_vehicle_select_intro(s32 updateRate) {
         gTrackSelect.nameVoiceDelay += updateRate;
     }
     // Challenge Races
-    if (gTrackSelectCursorX == 5 && gMenuFlow.stage != 2) {
-        gMenuFlow.stage = 2;
-        if (gTrackSelectCursorX == 5) {
+    if (gTrackSelectCursorX == TRACK_COLUMN_CHALLENGE && gMenuFlow.stage != TRACKMENU_OPT_2) {
+        gMenuFlow.stage = TRACKMENU_OPT_2;
+        if (gTrackSelectCursorX == TRACK_COLUMN_CHALLENGE) {
             // One of the following three text messages
             // THE FIRST PLAYER TO HATCH // THE LAST PLAYER REMAINING // THE FIRST PLAYER TO GET 10
             // THREE EGGS WILL WIN!      // WILL WIN!!                // BANANAS INTO THEIR TREASURE
@@ -1510,8 +1516,9 @@ static void trackmenu_vehicle_select_intro(s32 updateRate) {
         }
     }
     // Trophy Races
-    if (gTrackSelectCursorX == 4 && gMenuFlow.stage != -1 && gMenuFlow.stage != 2) {
-        gMenuFlow.stage = 2;
+    if (gTrackSelectCursorX == TRACK_COLUMN_TROPHY_RACE && gMenuFlow.stage != TRACKMENU_MIRROR &&
+        gMenuFlow.stage != TRACKMENU_OPT_2) {
+        gMenuFlow.stage = TRACKMENU_OPT_2;
     }
     if (gTTVoiceLines[gTrackSelect.previewTrackId] != -1 && gTrackSelect.nameVoiceDelay >= 7) {
         sound_play(gTTVoiceLines[gTrackSelect.previewTrackId], NULL);
@@ -1561,21 +1568,21 @@ static void trackmenu_vehicle_select_zoom(s32 updateRate) {
  * up and down move between the two.
  */
 static void trackmenu_adventure_choice_input(s32 *menuBackedOut, s32 *menuSelected, s32 *menuChanged) {
-    if (gMenuInput.buttons[4] & (A_BUTTON | START_BUTTON)) {
-        if (gTrackSelectCursorX == 4) {
-            gMenuFlow.stage = 2;
+    if (gMenuInput.buttons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
+        if (gTrackSelectCursorX == TRACK_COLUMN_TROPHY_RACE) {
+            gMenuFlow.stage = TRACKMENU_OPT_2;
         } else {
-            gMenuFlow.stage = 0;
+            gMenuFlow.stage = TRACKMENU_OPT_1;
         }
         *menuSelected = TRUE;
-    } else if (gMenuInput.buttons[4] & B_BUTTON) {
+    } else if (gMenuInput.buttons[PLAYER_MENU] & B_BUTTON) {
         gMenuInput.delay = -1;
         *menuBackedOut = TRUE;
     } else {
-        if (gMenuInput.stickY[4] > 0 && gTracksMenuAdventureHighlightIndex != 0) {
+        if (gMenuInput.stickY[PLAYER_MENU] > 0 && gTracksMenuAdventureHighlightIndex != 0) {
             gTracksMenuAdventureHighlightIndex = 0;
             *menuChanged = TRUE;
-        } else if ((gMenuInput.stickY[4] < 0) && (gTracksMenuAdventureHighlightIndex == 0)) {
+        } else if ((gMenuInput.stickY[PLAYER_MENU] < 0) && (gTracksMenuAdventureHighlightIndex == 0)) {
             gTracksMenuAdventureHighlightIndex = 1;
             *menuChanged = TRUE;
         }
@@ -1597,7 +1604,7 @@ static void trackmenu_vehicle_choice_input(Settings *settings, s32 availableVehi
             *menuBackedOut = TRUE;
             if (gRaceSetup.numberOfReadyPlayers == 0) {
                 if (is_adventure_two_unlocked()) {
-                    gMenuFlow.stage = -1;
+                    gMenuFlow.stage = TRACKMENU_MIRROR;
                 } else {
                     gMenuInput.delay = -1;
                 }
@@ -1612,7 +1619,8 @@ static void trackmenu_vehicle_choice_input(Settings *settings, s32 availableVehi
                     gRaceSetup.numberOfReadyPlayers++;
                     *menuSelected = TRUE;
                 }
-            } else if (gPlayerSelectConfirm[i] == 0 && settings->courseFlagsPtr[gTrackSelect.previewTrackId] & 2) {
+            } else if (gPlayerSelectConfirm[i] == 0 &&
+                       settings->courseFlagsPtr[gTrackSelect.previewTrackId] & RACE_CLEARED) {
                 origVehicle = gRaceSetup.playerVehicles[i];
                 if (gMenuInput.stickY[i] > 0) {
                     do {
@@ -1641,9 +1649,9 @@ static void trackmenu_vehicle_choice_input(Settings *settings, s32 availableVehi
         *menuSelected = FALSE;
         *menuChanged = FALSE;
         if (gRaceSetup.numberOfActivePlayers >= 2) {
-            gMenuFlow.stage = 2;
+            gMenuFlow.stage = TRACKMENU_OPT_2;
         } else {
-            gMenuFlow.stage = 1;
+            gMenuFlow.stage = TRACKMENU_CHOOSE;
         }
         sound_play(SOUND_CAR_REV2, NULL);
     }
@@ -1655,12 +1663,12 @@ static void trackmenu_vehicle_choice_input(Settings *settings, s32 availableVehi
  */
 static void trackmenu_time_trial_input(s32 *menuBackedOut, s32 *menuSelected, s32 *menuChanged) {
     if (gMenuInput.buttons[0] & (A_BUTTON | START_BUTTON)) {
-        gMenuFlow.stage = 2;
+        gMenuFlow.stage = TRACKMENU_OPT_2;
         *menuSelected = TRUE;
     } else if (gMenuInput.buttons[0] & B_BUTTON) {
         gPlayerSelectConfirm[0] = 0;
         gRaceSetup.numberOfReadyPlayers = 0;
-        gMenuFlow.stage = 0;
+        gMenuFlow.stage = TRACKMENU_OPT_1;
         *menuBackedOut = TRUE;
     }
     if (gMenuInput.stickY[0] > 0 && gTracksMenuTimeTrialHighlightIndex > 0) {
@@ -1693,12 +1701,13 @@ static void trackmenu_time_trial_input(s32 *menuBackedOut, s32 *menuSelected, s3
 static void trackmenu_confirm_input(s32 *menuBackedOut, s32 *menuSelected, s32 *menuChanged) {
     s32 i;
 
-    if (gMenuFlow.stage == 2 && gRaceSetup.numberOfActivePlayers == 2 && gTrackSelectCursorX < 4) {
-        if (gMenuInput.buttons[4] & (A_BUTTON | START_BUTTON)) {
-            gMenuFlow.stage = 3;
+    if (gMenuFlow.stage == TRACKMENU_OPT_2 && gRaceSetup.numberOfActivePlayers == 2 &&
+        gTrackSelectCursorX < TRACK_COLUMN_TROPHY_RACE) {
+        if (gMenuInput.buttons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
+            gMenuFlow.stage = TRACKMENU_OPT_3;
             *menuSelected = TRUE;
-        } else if (gMenuInput.buttons[4] & B_BUTTON) {
-            gMenuFlow.stage = 0;
+        } else if (gMenuInput.buttons[PLAYER_MENU] & B_BUTTON) {
+            gMenuFlow.stage = TRACKMENU_OPT_1;
             gRaceSetup.numberOfReadyPlayers--;
             if (gMenuInput.buttons[0] & B_BUTTON) {
                 gPlayerSelectConfirm[0] = 0;
@@ -1707,44 +1716,44 @@ static void trackmenu_confirm_input(s32 *menuBackedOut, s32 *menuSelected, s32 *
             }
             *menuBackedOut = TRUE;
         } else {
-            if (gMenuInput.stickX[4] < 0 && gRaceSetup.multiplayerRacerCount > 0) {
+            if (gMenuInput.stickX[PLAYER_MENU] < 0 && gRaceSetup.multiplayerRacerCount > 0) {
                 *menuChanged = TRUE;
                 gRaceSetup.multiplayerRacerCount--;
-            } else if (gMenuInput.stickX[4] > 0 && gRaceSetup.multiplayerRacerCount < 2) {
+            } else if (gMenuInput.stickX[PLAYER_MENU] > 0 && gRaceSetup.multiplayerRacerCount < 2) {
                 *menuChanged = TRUE;
                 gRaceSetup.multiplayerRacerCount++;
             }
         }
-    } else if (gMenuInput.buttons[4] & (A_BUTTON | START_BUTTON)) {
+    } else if (gMenuInput.buttons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
         gMenuInput.delay = 1;
         bgdraw_set_func(NULL);
         gIsInTracksMenu = 0;
         disable_new_screen_transitions();
         transition_begin(&sMenuTransitionFadeIn);
-        if (gTrackSelectCursorX == 5) {
+        if (gTrackSelectCursorX == TRACK_COLUMN_CHALLENGE) {
             set_current_text(10000); // Nonsense value. No text.
         }
         *menuSelected = TRUE;
-    } else if (gTrackSelectCursorX >= 4) {
-        if (gMenuInput.buttons[4] & B_BUTTON) {
+    } else if (gTrackSelectCursorX >= TRACK_COLUMN_TROPHY_RACE) {
+        if (gMenuInput.buttons[PLAYER_MENU] & B_BUTTON) {
             *menuBackedOut = TRUE;
-            if ((gTrackSelectCursorX == 4) && (is_adventure_two_unlocked())) {
-                gMenuFlow.stage = -1;
+            if ((gTrackSelectCursorX == TRACK_COLUMN_TROPHY_RACE) && (is_adventure_two_unlocked())) {
+                gMenuFlow.stage = TRACKMENU_MIRROR;
             } else {
                 gMenuInput.delay = -1;
             }
-            if (gTrackSelectCursorX == 5) {
+            if (gTrackSelectCursorX == TRACK_COLUMN_CHALLENGE) {
                 set_current_text(10000); // Nonsense value. No text.
             }
         }
     } else if (gRaceSetup.numberOfActivePlayers == 1) {
         if (gMenuInput.buttons[0] & B_BUTTON) {
-            gMenuFlow.stage = 1;
+            gMenuFlow.stage = TRACKMENU_CHOOSE;
             *menuBackedOut = TRUE;
         }
     } else if (gRaceSetup.numberOfActivePlayers == 2) {
-        if (gMenuInput.buttons[4] & B_BUTTON) {
-            gMenuFlow.stage = 2;
+        if (gMenuInput.buttons[PLAYER_MENU] & B_BUTTON) {
+            gMenuFlow.stage = TRACKMENU_OPT_2;
             *menuBackedOut = TRUE;
         }
     } else {
@@ -1752,7 +1761,7 @@ static void trackmenu_confirm_input(s32 *menuBackedOut, s32 *menuSelected, s32 *
             if (gMenuInput.buttons[i] & B_BUTTON) {
                 gRaceSetup.numberOfReadyPlayers--;
                 gPlayerSelectConfirm[i] = 0;
-                gMenuFlow.stage = 0;
+                gMenuFlow.stage = TRACKMENU_OPT_1;
                 *menuBackedOut = TRUE;
             }
         }
@@ -1805,7 +1814,7 @@ void trackmenu_update_vehicle_select(s32 updateRate) {
             sound_play(SOUND_MENU_PICK2, NULL);
         }
         set_level_default_vehicle((enum Vehicle) * gRaceSetup.playerVehicles);
-        if (gRaceSetup.numberOfActivePlayers >= 2 || gTrackSelectCursorX >= 4) {
+        if (gRaceSetup.numberOfActivePlayers >= 2 || gTrackSelectCursorX >= TRACK_COLUMN_TROPHY_RACE) {
             set_time_trial_enabled(FALSE);
         } else {
             set_time_trial_enabled(gTracksMenuTimeTrialHighlightIndex);

@@ -389,9 +389,9 @@ static void pakmenu_file_list_input(s32 pressedButtons, s32 xStick, s32 yStick, 
                 *playMoveSound = TRUE;
             }
             break;
-        case 16:
+        case MAX_CPAK_FILES:
             if (yStick > 0) {
-                gMenuFlow.curIndex = 15;
+                gMenuFlow.curIndex = MAX_CPAK_FILES - 1;
                 *playMoveSound = TRUE;
             }
             break;
@@ -426,7 +426,7 @@ static void pakmenu_file_list_input(s32 pressedButtons, s32 xStick, s32 yStick, 
             if (gMenuFlow.curIndex < gMenuFlow.opacityDecayTimer) {
                 gMenuFlow.opacityDecayTimer = gMenuFlow.curIndex;
             }
-            maxScroll = 16 - sControllerPakMenuNumberOfRows;
+            maxScroll = MAX_CPAK_FILES - sControllerPakMenuNumberOfRows;
             if (maxScroll < gMenuFlow.opacityDecayTimer) {
                 gMenuFlow.opacityDecayTimer = maxScroll;
             }
@@ -472,7 +472,7 @@ s32 menu_controller_pak_loop(s32 updateRate) {
                 pakmenu_delete_input(pressedButtons, xStick, yStick, &playMoveSound, &playCancelSound,
                                      &playSelectedSound);
             } else if (pressedButtons & B_BUTTON ||
-                       (gMenuFlow.curIndex == 16 && pressedButtons & (A_BUTTON | START_BUTTON))) {
+                       (gMenuFlow.curIndex == MAX_CPAK_FILES && pressedButtons & (A_BUTTON | START_BUTTON))) {
                 playCancelSound = 1;
                 gMenuInput.delay = 1;
                 transition_begin(&sMenuTransitionFadeIn);

@@ -170,7 +170,7 @@ static void savemenu_element_look(SaveFileData *file, char *buffer, SaveMenuElem
                 look->firstDigit = *gRaceSetup.saveFiles[file->controllerIndex]->balloonsPtr / 10;
                 look->secondDigit = *gRaceSetup.saveFiles[file->controllerIndex]->balloonsPtr - (look->firstDigit * 10);
                 // Is Adventure Two?
-                if (gRaceSetup.saveFiles[file->controllerIndex]->cutsceneFlags & 4) {
+                if (gRaceSetup.saveFiles[file->controllerIndex]->cutsceneFlags & CUTSCENE_ADVENTURE_TWO) {
                     look->spriteID = 12;
                 }
             } else {
@@ -552,7 +552,7 @@ SIDeviceStatus savemenu_load_sources(void) {
                                 nameCursor += 2;
                                 gSaveMenuFilesSource[gSaveMenuOptionCountUpper].balloonCount = *settings->balloonsPtr;
                                 gSaveMenuFilesSource[gSaveMenuOptionCountUpper].adventureTwo =
-                                    (settings->cutsceneFlags & 4) != 0; // Is in Adventure Two?
+                                    (settings->cutsceneFlags & CUTSCENE_ADVENTURE_TWO) != 0;
                                 gSaveMenuFilesSource[gSaveMenuOptionCountUpper].compressedFilename = settings->filename;
                             } else {
                                 gSaveMenuOptionCountUpper--;
@@ -727,8 +727,7 @@ SIDeviceStatus savemenu_write(void) {
             } else {
                 clear_lap_records(settings, 3);
                 mark_to_write_flap_and_course_times();
-                unset_eeprom_settings_value(
-                    0xFFFFF0); // Reset most eeprom save data, but keep Adventure 2, and Drumstick.
+                unset_eeprom_settings_value(EEPROM_STAFF_TIMES); // Keep Adventure Two and Drumstick unlocked.
 #if VERSION >= VERSION_79
                 gRaceSetup.activeMagicCodes &= ~CHEAT_CONTROL_TT;
                 gRaceSetup.unlockedMagicCodes &= ~CHEAT_CONTROL_TT;
@@ -741,7 +740,7 @@ SIDeviceStatus savemenu_write(void) {
                     ret = read_game_data_from_controller_pak(
                         gSaveMenuFilesSource[gSaveMenuOptionSource].controllerIndex,
                         gSaveMenuFilesSource[gSaveMenuOptionSource].saveFileExt, settings);
-                    if (settings->cutsceneFlags & 4 && !is_adventure_two_unlocked()) {
+                    if (settings->cutsceneFlags & CUTSCENE_ADVENTURE_TWO && !is_adventure_two_unlocked()) {
                         ret = CONTROLLER_PAK_NEED_SECOND_ADVENTURE;
                     }
                     if (ret == CONTROLLER_PAK_GOOD) {
@@ -826,8 +825,8 @@ SIDeviceStatus savemenu_write(void) {
             break;
         case SAVE_FILE_TYPE_CART_BONUSES:
             if (gSaveMenuFilesDest[gSaveMenuOptionDest].saveFileType == SAVE_FILE_TYPE_ERASE) {
-                unset_eeprom_settings_value(
-                    0xFFFFF3); // Reset most eeprom save data including Adventure Two unlock and Drumstick unlock.
+                unset_eeprom_settings_value(EEPROM_STAFF_TIMES | EEPROM_DRUMSTICK_UNLOCKED |
+                                            EEPROM_ADVENTURE_TWO_UNLOCKED);
                 gRaceSetup.activeMagicCodes &= ~(CHEAT_CONTROL_TT | CHEAT_CONTROL_DRUMSTICK);
                 gRaceSetup.unlockedMagicCodes &= ~(CHEAT_CONTROL_TT | CHEAT_CONTROL_DRUMSTICK);
             }
