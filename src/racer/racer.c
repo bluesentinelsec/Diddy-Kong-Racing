@@ -680,6 +680,125 @@ static void racer_autopilot_solo_throttle(Object_Racer *racer) {
     gCurrentRacerInput |= A_BUTTON;
 }
 
+// How near the hub autopilot gets to an AI node before heading for the next one.
+#define AUTOPILOT_HUB_NODE_REACHED 150.0f
+
+// The AI node the hub autopilot is heading for, the one it came from, and the racer it drives.
+static s32 sAutopilotHubNode = NODE_NONE;
+static s32 sAutopilotHubPrevNode = NODE_NONE;
+static Object *sAutopilotHubRacer = NULL;
+
+/**
+ * Port addition for the trace autopilot: the next node to head for after arriving at a node,
+ * any linked one other than the node it came from, so the racer goes round the loop.
+ */
+static s32 racer_autopilot_hub_next_node(s32 nodeId, s32 prevNodeId) {
+    LevelObjectEntry_AiNode *entry;
+    Object *node;
+    s32 fallback;
+    s32 i;
+
+    node = ainode_get(nodeId);
+    if (node == NULL) {
+        return NODE_NONE;
+    }
+    entry = &node->level_entry->aiNode;
+    fallback = NODE_NONE;
+    for (i = 0; i < 4; i++) {
+        if (entry->adjacent[i] == NODE_NONE || ainode_get(entry->adjacent[i]) == NULL) {
+            continue;
+        }
+        if (entry->adjacent[i] != prevNodeId) {
+            return entry->adjacent[i];
+        }
+        fallback = entry->adjacent[i];
+    }
+    // A dead end turns back.
+    return fallback;
+}
+
+/**
+ * Port addition for the trace autopilot: the nearest AI node with a link to another node,
+ * so a racer starting beside a lone node still finds the hub's loop.
+ */
+static s32 racer_autopilot_hub_nearest_node(Object *obj) {
+    Object *node;
+    f32 xDiff;
+    f32 zDiff;
+    f32 dist;
+    f32 bestDist;
+    s32 best;
+    s32 i;
+
+    best = NODE_NONE;
+    bestDist = 0.0f;
+    // Node ids fit below NODE_NONE; ainode_get gives NULL for ids past the node table.
+    for (i = 0; i < NODE_NONE; i++) {
+        node = ainode_get(i);
+        if (node == NULL || racer_autopilot_hub_next_node(i, NODE_NONE) == NODE_NONE) {
+            continue;
+        }
+        xDiff = node->trans.x_position - obj->trans.x_position;
+        zDiff = node->trans.z_position - obj->trans.z_position;
+        dist = (xDiff * xDiff) + (zDiff * zDiff);
+        if (best == NODE_NONE || dist < bestDist) {
+            best = i;
+            bestDist = dist;
+        }
+    }
+    return best;
+}
+
+/**
+ * Port addition for the trace autopilot. The race AI steers along checkpoints and presses the
+ * accelerator only from its race tactics, so in a hub, where nobody races, it sits still.
+ * The central hub has the checkpoints of Taj's course for the race AI to follow; the other
+ * hubs have none, so the autopilot drives round the loop of AI nodes their characters use.
+ * Either way it holds the throttle, except while it reverses out of a stall.
+ */
+static void racer_autopilot_hub(Object *obj, Object_Racer *racer) {
+    Object *node;
+    f32 xDiff;
+    f32 zDiff;
+    s32 nextNode;
+    s32 angle;
+
+    if (level_type() != RACETYPE_HUBWORLD || racer->aiReverseTimer != 0) {
+        return;
+    }
+    gCurrentRacerInput |= A_BUTTON;
+    if (get_checkpoint_count() != 0) {
+        return;
+    }
+    if (sAutopilotHubRacer != obj) {
+        sAutopilotHubRacer = obj;
+        sAutopilotHubPrevNode = NODE_NONE;
+        sAutopilotHubNode = racer_autopilot_hub_nearest_node(obj);
+    }
+    node = ainode_get(sAutopilotHubNode);
+    if (node == NULL) {
+        return;
+    }
+    xDiff = node->trans.x_position - obj->trans.x_position;
+    zDiff = node->trans.z_position - obj->trans.z_position;
+    if ((xDiff * xDiff) + (zDiff * zDiff) < AUTOPILOT_HUB_NODE_REACHED * AUTOPILOT_HUB_NODE_REACHED) {
+        nextNode = racer_autopilot_hub_next_node(sAutopilotHubNode, sAutopilotHubPrevNode);
+        sAutopilotHubPrevNode = sAutopilotHubNode;
+        sAutopilotHubNode = nextNode;
+        return;
+    }
+    // Steer for the node as the battle AI does (racer_ai_challenge_steer_to_node).
+    angle = ((arctan2_f(xDiff, zDiff) - 0x8000) & 0xFFFF) - (racer->steerVisualRotation & 0xFFFF);
+    if (angle > 0x8000) {
+        angle -= 0xFFFF;
+    }
+    if (angle < -0x8000) {
+        angle += 0xFFFF;
+    }
+    gCurrentStickX = -angle >> 4;
+    CLAMP(gCurrentStickX, -75, 75);
+}
+
 /**
  * Reads this frame's stick and button input from the controller, the trace autopilot, the door exit or the AI,
  * and notes whether the throttle was released.
@@ -688,10 +807,12 @@ static void racer_read_input(Object *obj, Object_Racer *tempRacer, s32 updateRat
     s32 tempVar;
 
     tempVar = tempRacer->playerIndex;
-    if (tempRacer->playerIndex != PLAYER_COMPUTER && pc_trace_autopilot()) {
-        // A scripted trace holding AUTO: the human racer drives itself (linux/input.c).
+    if (tempRacer->playerIndex != PLAYER_COMPUTER && tempRacer->exitObj == 0 && pc_trace_autopilot()) {
+        // A scripted trace holding AUTO: the human racer drives itself (linux/input.c), until a
+        // hub door takes over the steering below.
         racer_AI_pathing_inputs(obj, tempRacer, updateRate);
         racer_autopilot_solo_throttle(tempRacer);
+        racer_autopilot_hub(obj, tempRacer);
     } else if (tempRacer->playerIndex != PLAYER_COMPUTER) {
         if (tempRacer->exitObj == 0) {
             if (is_race_started_by_player_two()) {

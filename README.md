@@ -210,7 +210,8 @@ the port honest:
   out, bananas counted), the Dino Domain trophy race through all four rounds and
   the rankings, an adventure-mode race, Diddy on the character select screen, eight
   more tracks picked by coverage (the loop-de-loop, bridges, lava, snowballs,
-  weapons, the pirate ship), the Future Fun Land hub, Taj's car challenge, the
+  weapons, the pirate ship), an autopilot tour of the Future Fun Land hub (T.T., a door
+  and its vehicle menu), Taj's car challenge, the
   Options and Magic Codes menus (through to the credits), and a drive around the central hub (doors, Taj, the music fade
   zones). Each script's header gives its length (`# frames N`) and, as needed,
   `# save 100` to start from the 100%-completion save image, `# level N` to
@@ -222,7 +223,9 @@ the port honest:
   drive another controller, which plugs it in, and the `AUTO` token hands a
   human racer to the AI's driving so a scene can finish a race (in a time
   trial, where the AI's race tactics never run, the autopilot holds the throttle
-  itself).
+  itself; in a hub it holds the throttle too, and where a hub has no checkpoints
+  it drives round the loop of AI nodes T.T. walks). AUTO overrides the racer's
+  input, so buttons held alongside it (`B,AUTO`) reach only the menus.
   `tests/golden/scenes.sh` runs them all; adding a scene is adding a script
   and recording it.
   `make golden-update` regenerates everything; `tests/golden.sh` takes any
