@@ -331,175 +331,223 @@ void postrace_music_fade(s32 updateRate) {
 }
 
 /**
+ * Shrink the race viewport down towards the middle of the screen over the first second,
+ * scaling the wood frame around it to match.
+ */
+static void postrace_viewport_shrink(void) {
+    s32 shrinkTime;
+    s32 top;
+    s32 viewportTop;
+    s32 viewportBottom;
+    s32 sideInset;
+
+    shrinkTime = gPostRaceTimer;
+    if (shrinkTime > 60) {
+        shrinkTime = 60;
+    }
+    top = ((gTrackSelect.viewportHalfY - ((gTrackSelect.viewportHalfY * 4) / 5)) * shrinkTime) / 60;
+    viewportTop = top;
+    viewportBottom =
+        gTrackSelect.viewportY - (((gTrackSelect.viewportHalfY - (gTrackSelect.viewportHalfY / 5)) * shrinkTime) / 60);
+    sideInset = (shrinkTime * 80) / 60;
+    viewport_menu_set(0, sideInset, viewportTop, SCREEN_WIDTH - sideInset, viewportBottom);
+    gMenuLoaded.images[4].trans.x_position = 0.0f;
+    gMenuLoaded.images[4].trans.y_position = gTrackSelect.viewportHalfY - ((top + viewportBottom) >> 1);
+    gMenuLoaded.images[4].trans.scale = sMenuImageProperties[4].trans.scale * (2.0f - (shrinkTime / 60.0f));
+}
+
+/**
+ * Pulse the lap times and the overall time on the results that set a new best.
+ */
+static void postrace_highlight_race_times(Settings *settings, s32 blinkAlpha) {
+    s32 i;
+
+    for (i = 0; i < 3; i++) {
+        if (settings->display_times && settings->racers[PLAYER_ONE].best_times & (1 << i)) {
+            gRaceResultsMenuElements[i + 3].filterGreen = 192 - ((blinkAlpha * 3) >> 2);
+            gRaceResultsMenuElements[i + 3].filterBlue = 255 - blinkAlpha;
+        } else {
+            gRaceResultsMenuElements[i + 3].filterGreen = 192;
+            gRaceResultsMenuElements[i + 3].filterBlue = 255;
+        }
+    }
+    if (settings->display_times && settings->racers[0].best_times & (1 << 7)) {
+        gRaceResultsMenuElements[6].filterRed = (blinkAlpha >> 1) + 128;
+        gRaceResultsMenuElements[6].filterGreen = 255 - blinkAlpha;
+        gRaceResultsMenuElements[6].filterBlue = 255 - blinkAlpha;
+    } else {
+        gRaceResultsMenuElements[6].filterRed = 128;
+        gRaceResultsMenuElements[6].filterGreen = 255;
+        gRaceResultsMenuElements[6].filterBlue = 255;
+    }
+}
+
+/**
+ * Pulse the human players' portraits in the finishing order.
+ */
+static void postrace_highlight_race_order(Settings *settings, s32 blinkAlpha) {
+    s32 i;
+    s32 position;
+    s32 filterColour;
+
+    for (i = 0; i < ARRAY_COUNT(settings->racers); i++) {
+        filterColour = 255;
+        position = i;
+        if (is_in_two_player_adventure()) {
+            position--;
+            if (position == settings->racers[1].starting_position) {
+                filterColour = (blinkAlpha >> 1) + 128;
+            }
+        }
+        if (position == settings->racers[0].starting_position) {
+            filterColour = (blinkAlpha >> 1) + 128;
+        }
+        gRaceOrderMenuElements[7 - i].filterRed = filterColour;
+        gRaceOrderMenuElements[7 - i].filterGreen = filterColour;
+        gRaceOrderMenuElements[7 - i].filterBlue = filterColour;
+    }
+}
+
+/**
+ * Pulse the course record and best lap on the records screen when they were just set.
+ */
+static void postrace_highlight_records(Settings *settings, s32 blinkAlpha) {
+    if (settings->display_times && settings->racers[0].best_times & (s8) ~(1 << 7)) {
+        gRecordTimesMenuElements[6].filterRed = 255;
+        gRecordTimesMenuElements[6].filterGreen = 192 - ((blinkAlpha * 3) >> 2);
+        gRecordTimesMenuElements[6].filterBlue = 255 - blinkAlpha;
+    } else {
+        gRecordTimesMenuElements[6].filterRed = 255;
+        gRecordTimesMenuElements[6].filterGreen = 192;
+        gRecordTimesMenuElements[6].filterBlue = 255;
+    }
+    if (settings->display_times && settings->racers[0].best_times & (1 << 7)) {
+        gRecordTimesMenuElements[3].filterRed = (blinkAlpha >> 1) + 128;
+        gRecordTimesMenuElements[3].filterGreen = 255 - blinkAlpha;
+        gRecordTimesMenuElements[3].filterBlue = 255 - blinkAlpha;
+    } else {
+        gRecordTimesMenuElements[3].filterRed = 128;
+        gRecordTimesMenuElements[3].filterGreen = 255;
+        gRecordTimesMenuElements[3].filterBlue = 255;
+    }
+}
+
+/**
+ * Draw the options dialogue box: "Please wait" while saving a ghost, the controller pak
+ * message, the quit confirmation, or the list of options with the chosen one pulsing.
+ */
+static void postrace_render_options_box(s32 blinkAlpha) {
+    s32 lineCount;
+    s32 padding;
+    s32 lineHeight;
+    s32 halfHeight;
+    s32 centreY;
+    s32 textY;
+    s32 alpha;
+    s32 i;
+
+    clear_dialogue_box_open_flag(7);
+    dialogue_clear(7);
+    set_dialogue_font(7, FONT_COLOURFUL);
+    set_current_text_background_colour(7, 0, 0, 0, 0);
+
+    if (gTracksSaveGhost != 0) {
+        lineCount = 1;
+    } else if (gPostRaceMessage != NULL) {
+        lineCount = gPostRaceLineCount;
+    } else {
+        lineCount = gResults.optionCount;
+    }
+    if (lineCount >= 5) {
+        padding = 2;
+        lineHeight = 13;
+    } else {
+        padding = 0;
+        lineHeight = 16;
+    }
+    halfHeight = ((lineCount * lineHeight) + 1) >> 1;
+    centreY = 192;
+    if (osTvType == OS_TV_TYPE_PAL) {
+        centreY = 218;
+    }
+    set_current_dialogue_box_coords(7, 0, centreY - halfHeight - padding - 4, SCREEN_WIDTH,
+                                    centreY + halfHeight + padding + 4);
+    set_current_dialogue_background_colour(7, 64, 64, 255, 0);
+    set_current_text_colour(7, 255, 0, 255, 64, 255);
+    if (gTracksSaveGhost != 0) {
+        render_dialogue_text(7, POS_CENTRED, 12, gMenuLoaded.text[ASSET_MENU_TEXT_PLEASEWAIT], 1, ALIGN_MIDDLE_CENTER);
+    } else if (gPostRaceMessage != NULL) {
+        textY = 12;
+        for (i = 0; i < gPostRaceLineCount; i++) {
+            render_dialogue_text(7, POS_CENTRED, textY, gPostRaceMessage[i], 1, ALIGN_MIDDLE_CENTER);
+            textY += lineHeight;
+        }
+    } else {
+        textY = halfHeight - 24;
+        if (gMenuFlow.subOption != 0) {
+            render_dialogue_text(7, POS_CENTRED, textY + 8, gMenuLoaded.text[ASSET_MENU_TEXT_QUITGAMETITLE], 1,
+                                 ALIGN_MIDDLE_CENTER);
+            alpha = 0;
+            if (gMenuFlow.subOption == 1) {
+                alpha = blinkAlpha;
+            }
+            set_current_text_colour(7, 255, 255, 255, alpha, 255);
+            render_dialogue_text(7, POS_CENTRED, textY + 26, gMenuLoaded.text[ASSET_MENU_TEXT_OK], 1,
+                                 ALIGN_MIDDLE_CENTER);
+            alpha = 0;
+            if (gMenuFlow.subOption == 2) {
+                alpha = blinkAlpha;
+            }
+            set_current_text_colour(7, 255, 255, 255, alpha, 255);
+            render_dialogue_text(7, POS_CENTRED, textY + 42, gMenuLoaded.text[ASSET_MENU_TEXT_CANCEL], 1,
+                                 ALIGN_MIDDLE_CENTER);
+        } else {
+            for (textY = 12, i = 0; i < gResults.optionCount; i++) {
+                if (i == gMenuFlow.option) {
+                    set_current_text_colour(7, 255, 255, 255, blinkAlpha, 255);
+                } else {
+                    set_current_text_colour(7, 255, 255, 255, 0, 255);
+                }
+                render_dialogue_text(7, SCREEN_WIDTH_HALF, textY, gResults.optionText[i], 1, ALIGN_MIDDLE_CENTER);
+                textY += lineHeight;
+            }
+        }
+    }
+    open_dialogue_box(7);
+}
+
+/**
  * Resizes the viewport when shrinking it down.
  * Renders race order, lap times and text options beneath.
  */
 void postrace_viewport(UNUSED s32 updateRate) {
-    s32 temp;
-    s32 var_s3;
+    s32 blinkAlpha;
     Settings *settings;
-    s32 sp50;
-    s32 var_s2;
-    s32 var_s0;
-    s32 i;
-    s32 sp40;
-    s32 filterColour;
-    s32 var_v0;
 
     settings = get_settings();
     if (gRaceSetup.numberOfActivePlayers == 1) {
         mtx_ortho(&gMenuFrame.displayList, &gMenuFrame.hudMat);
     }
     camDisableUserView(0, TRUE);
-    var_s3 = gMenuFlow.blinkTimer * 8;
-    if (var_s3 > 255) {
-        var_s3 = 511 - var_s3;
+    blinkAlpha = gMenuFlow.blinkTimer * 8;
+    if (blinkAlpha > 255) {
+        blinkAlpha = 511 - blinkAlpha;
     }
     switch (gMenuFlow.stage) {
-        case 1:
-            var_s0 = gPostRaceTimer;
-            if (var_s0 > 60) {
-                var_s0 = 60;
-            }
-            var_s2 = ((gTrackSelect.viewportHalfY - ((gTrackSelect.viewportHalfY * 4) / 5)) * var_s0) / 60;
-            temp = var_s2;
-            sp50 = gTrackSelect.viewportY -
-                   (((gTrackSelect.viewportHalfY - (gTrackSelect.viewportHalfY / 5)) * var_s0) / 60);
-            var_v0 = (var_s0 * 80) / 60;
-            viewport_menu_set(0, var_v0, temp, SCREEN_WIDTH - var_v0, sp50);
-            gMenuLoaded.images[4].trans.x_position = 0.0f;
-            gMenuLoaded.images[4].trans.y_position = gTrackSelect.viewportHalfY - ((var_s2 + sp50) >> 1);
-            gMenuLoaded.images[4].trans.scale = sMenuImageProperties[4].trans.scale * (2.0f - (var_s0 / 60.0f));
+        case POSTRACE_STAGE_SHRINK_VIEWPORT:
+            postrace_viewport_shrink();
             break;
-        case 2:
-            for (i = 0; i < 3; i++) {
-                if (settings->display_times && settings->racers[PLAYER_ONE].best_times & (1 << i)) {
-                    gRaceResultsMenuElements[i + 3].filterGreen = 192 - ((var_s3 * 3) >> 2);
-                    gRaceResultsMenuElements[i + 3].filterBlue = 255 - var_s3;
-                } else {
-                    gRaceResultsMenuElements[i + 3].filterGreen = 192;
-                    gRaceResultsMenuElements[i + 3].filterBlue = 255;
-                }
-            }
-            if (settings->display_times && settings->racers[0].best_times & (1 << 7)) {
-                gRaceResultsMenuElements[6].filterRed = (var_s3 >> 1) + 128;
-                gRaceResultsMenuElements[6].filterGreen = 255 - var_s3;
-                gRaceResultsMenuElements[6].filterBlue = 255 - var_s3;
-            } else {
-                gRaceResultsMenuElements[6].filterRed = 128;
-                gRaceResultsMenuElements[6].filterGreen = 255;
-                gRaceResultsMenuElements[6].filterBlue = 255;
-            }
+        case POSTRACE_STAGE_RACE_TIMES:
+            postrace_highlight_race_times(settings, blinkAlpha);
             break;
-        case 3:
-            for (i = 0; i < ARRAY_COUNT(settings->racers); i++) {
-                filterColour = 255;
-                sp40 = i;
-                if (is_in_two_player_adventure()) {
-                    sp40--;
-                    if (sp40 == settings->racers[1].starting_position) {
-                        filterColour = (var_s3 >> 1) + 128;
-                    }
-                }
-                if (sp40 == settings->racers[0].starting_position) {
-                    filterColour = (var_s3 >> 1) + 128;
-                }
-                gRaceOrderMenuElements[7 - i].filterRed = filterColour;
-                gRaceOrderMenuElements[7 - i].filterGreen = filterColour;
-                gRaceOrderMenuElements[7 - i].filterBlue = filterColour;
-            }
+        case POSTRACE_STAGE_RACE_ORDER:
+            postrace_highlight_race_order(settings, blinkAlpha);
             break;
-        case 5:
-            if (settings->display_times && settings->racers[0].best_times & (s8) ~(1 << 7)) {
-                gRecordTimesMenuElements[6].filterRed = 255;
-                gRecordTimesMenuElements[6].filterGreen = 192 - ((var_s3 * 3) >> 2);
-                gRecordTimesMenuElements[6].filterBlue = 255 - var_s3;
-            } else {
-                gRecordTimesMenuElements[6].filterRed = 255;
-                gRecordTimesMenuElements[6].filterGreen = 192;
-                gRecordTimesMenuElements[6].filterBlue = 255;
-            }
-            if (settings->display_times && settings->racers[0].best_times & (1 << 7)) {
-                gRecordTimesMenuElements[3].filterRed = (var_s3 >> 1) + 128;
-                gRecordTimesMenuElements[3].filterGreen = 255 - var_s3;
-                gRecordTimesMenuElements[3].filterBlue = 255 - var_s3;
-            } else {
-                gRecordTimesMenuElements[3].filterRed = 128;
-                gRecordTimesMenuElements[3].filterGreen = 255;
-                gRecordTimesMenuElements[3].filterBlue = 255;
-            }
+        case POSTRACE_STAGE_RACE_RECORDS:
+            postrace_highlight_records(settings, blinkAlpha);
             break;
-        case 6:
-            clear_dialogue_box_open_flag(7);
-            dialogue_clear(7);
-            set_dialogue_font(7, FONT_COLOURFUL);
-            set_current_text_background_colour(7, 0, 0, 0, 0);
-
-            if (gTracksSaveGhost != 0) {
-                var_s0 = 1;
-            } else if (gPostRaceMessage != NULL) {
-                var_s0 = gPostRaceLineCount;
-            } else {
-                var_s0 = gResults.optionCount;
-            }
-            if (var_s0 >= 5) {
-                var_v0 = 2;
-                sp50 = 13;
-            } else {
-                var_v0 = 0;
-                sp50 = 16;
-            }
-            var_s2 = ((var_s0 * sp50) + 1) >> 1;
-            var_s0 = 192;
-            if (osTvType == OS_TV_TYPE_PAL) {
-                var_s0 = 218;
-            }
-            set_current_dialogue_box_coords(7, 0, var_s0 - var_s2 - var_v0 - 4, SCREEN_WIDTH,
-                                            var_s0 + var_s2 + var_v0 + 4);
-            set_current_dialogue_background_colour(7, 64, 64, 255, 0);
-            set_current_text_colour(7, 255, 0, 255, 64, 255);
-            if (gTracksSaveGhost != 0) {
-                render_dialogue_text(7, POS_CENTRED, 12, gMenuLoaded.text[ASSET_MENU_TEXT_PLEASEWAIT], 1,
-                                     ALIGN_MIDDLE_CENTER);
-            } else if (gPostRaceMessage != NULL) {
-                var_s2 = 12;
-                for (var_s0 = 0; var_s0 < gPostRaceLineCount; var_s0++) {
-                    render_dialogue_text(7, POS_CENTRED, var_s2, gPostRaceMessage[var_s0], 1, ALIGN_MIDDLE_CENTER);
-                    var_s2 += sp50;
-                }
-            } else {
-                var_s2 -= 24;
-                if (gMenuFlow.subOption != 0) {
-                    render_dialogue_text(7, POS_CENTRED, var_s2 + 8, gMenuLoaded.text[ASSET_MENU_TEXT_QUITGAMETITLE], 1,
-                                         ALIGN_MIDDLE_CENTER);
-                    var_s0 = 0;
-                    if (gMenuFlow.subOption == 1) {
-                        var_s0 = var_s3;
-                    }
-                    set_current_text_colour(7, 255, 255, 255, var_s0, 255);
-                    render_dialogue_text(7, POS_CENTRED, var_s2 + 26, gMenuLoaded.text[ASSET_MENU_TEXT_OK], 1,
-                                         ALIGN_MIDDLE_CENTER);
-                    var_s0 = 0;
-                    if (gMenuFlow.subOption == 2) {
-                        var_s0 = var_s3;
-                    }
-                    set_current_text_colour(7, 255, 255, 255, var_s0, 255);
-                    render_dialogue_text(7, POS_CENTRED, var_s2 + 42, gMenuLoaded.text[ASSET_MENU_TEXT_CANCEL], 1,
-                                         ALIGN_MIDDLE_CENTER);
-                } else {
-                    for (var_s2 = 12, var_s0 = 0; var_s0 < gResults.optionCount; var_s0++) {
-                        if (var_s0 == gMenuFlow.option) {
-                            set_current_text_colour(7, 255, 255, 255, var_s3, 255);
-                        } else {
-                            set_current_text_colour(7, 255, 255, 255, 0, 255);
-                        }
-                        render_dialogue_text(7, SCREEN_WIDTH_HALF, var_s2, gResults.optionText[var_s0], 1,
-                                             ALIGN_MIDDLE_CENTER);
-                        var_s2 += sp50;
-                    }
-                }
-            }
-            open_dialogue_box(7);
+        case POSTRACE_STAGE_OPTIONS:
+            postrace_render_options_box(blinkAlpha);
             break;
     }
     if (get_game_mode() == GAMEMODE_INGAME && gRaceSetup.numberOfActivePlayers == 1) {
@@ -508,7 +556,7 @@ void postrace_viewport(UNUSED s32 updateRate) {
             if (osTvType == OS_TV_TYPE_PAL) {
                 gTrackSelect.woodFrameHeightScale = 1.2f;
             }
-            if (gMenuFlow.stage > 0) {
+            if (gMenuFlow.stage > POSTRACE_STAGE_BEGIN) {
                 menu_element_render(4);
             }
             gTrackSelect.woodFrameHeightScale = 1.0f;

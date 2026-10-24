@@ -309,6 +309,135 @@ void pakmenu_render(UNUSED s32 updateRate) {
 }
 
 /**
+ * On a controller pak error, A or Start checks the paks again; once the error is gone (or
+ * there is no pak to manage), leave the menu.
+ */
+static void pakmenu_error_input(s32 pressedButtons, s32 *playCancelSound) {
+    if (gControllerPak.error != PAK_ERROR_FATAL && pressedButtons & (A_BUTTON | START_BUTTON)) {
+        sound_play(SOUND_SELECT2, NULL);
+        if (menu_find_usable_pak(&gMenuFlow.option, 0) == CONTROLLER_PAK_GOOD) {
+            gControllerPak.error = PAK_ERROR_NONE;
+        } else if (check_for_controller_pak_errors() == PAK_ERROR_NONE) {
+            gShowControllerPakMenu = 0;
+        }
+        if (gControllerPak.error == PAK_ERROR_NONE && gShowControllerPakMenu == 0) {
+            *playCancelSound = TRUE;
+            gMenuInput.delay = 1;
+            transition_begin(&sMenuTransitionFadeIn);
+        }
+    }
+}
+
+/**
+ * The delete confirmation: confirming starts a short countdown, then deletes the file and
+ * looks for a usable pak again. B, or A on "no", returns to the file list.
+ */
+static void pakmenu_delete_input(s32 pressedButtons, s32 xStick, s32 yStick, s32 *playMoveSound, s32 *playCancelSound,
+                                 s32 *playSelectedSound) {
+    if (gCpakWriteTimer != 0) {
+        gCpakWriteTimer--;
+        if (gCpakWriteTimer == 0) {
+            if (delete_file(gMenuFlow.option, gMenuFlow.curIndex) != CONTROLLER_PAK_GOOD) {
+                // Failed to delete the file
+                *playCancelSound = TRUE;
+                gMenuInput.delay = 1;
+                transition_begin(&sMenuTransitionFadeIn);
+            } else {
+                // File deleted successfully
+                *playSelectedSound = TRUE;
+                if (menu_find_usable_pak(&gMenuFlow.option, xStick) != CONTROLLER_PAK_GOOD) {
+                    *playCancelSound = TRUE;
+                    gMenuInput.delay = 1;
+                    transition_begin(&sMenuTransitionFadeIn);
+                }
+            }
+            gMenuFlow.stage = PAKMENU_CHOOSE;
+        }
+    } else if (pressedButtons & B_BUTTON) {
+        *playCancelSound = TRUE;
+        gMenuFlow.stage = PAKMENU_CHOOSE;
+    } else if (pressedButtons & (A_BUTTON | START_BUTTON)) {
+        if (gMenuFlow.stage == PAKMENU_CONFIRM) {
+            gCpakWriteTimer = 3;
+        } else {
+            *playCancelSound = TRUE;
+            gMenuFlow.stage = PAKMENU_CHOOSE;
+        }
+    } else if (yStick > 0 && gMenuFlow.stage > PAKMENU_CONFIRM) {
+        gMenuFlow.stage = PAKMENU_CONFIRM;
+        *playMoveSound = TRUE;
+    } else if (yStick < 0 && gMenuFlow.stage < PAKMENU_WRITE) {
+        gMenuFlow.stage = PAKMENU_WRITE;
+        *playMoveSound = TRUE;
+    }
+}
+
+/**
+ * The file list: move the cursor (scrolling the list to keep it visible), or pick a file to
+ * delete. Picking an empty slot plays the back sound.
+ */
+static void pakmenu_file_list_input(s32 pressedButtons, s32 xStick, s32 yStick, s32 *playMoveSound,
+                                    s32 *playCancelSound, s32 *playSelectedSound) {
+    s32 maxScroll;
+
+    // gMenuFlow.curIndex = selected menu index?
+    switch (gMenuFlow.curIndex) {
+        case -1:
+            if (yStick < 0) {
+                if (!xStick) {} // Fakematch
+                gMenuFlow.curIndex = 0;
+                *playMoveSound = TRUE;
+            }
+            break;
+        case 16:
+            if (yStick > 0) {
+                gMenuFlow.curIndex = 15;
+                *playMoveSound = TRUE;
+            }
+            break;
+        default:
+            if (pressedButtons & (A_BUTTON | START_BUTTON)) {
+                // Check if the selected menu item is a file or blank
+                if ((gControllerPak.fileTypes[gMenuFlow.curIndex] >= SAVE_FILE_TYPE_CPAK_SAVE) &&
+                    (gControllerPak.fileTypes[gMenuFlow.curIndex] <= SAVE_FILE_TYPE_CPAK_OTHER)) {
+                    gCpakWriteTimer = 0;
+                    gMenuFlow.stage = PAKMENU_WRITE;
+                    *playSelectedSound = TRUE;
+                } else {
+                    // If it's not, just play the "back" sound
+                    *playCancelSound = TRUE;
+                }
+            } else {
+                if (yStick > 0) {
+                    gMenuFlow.curIndex--;
+                    if (gMenuFlow.curIndex < 0) {
+                        gMenuFlow.curIndex = 0;
+                    } else {
+                        *playMoveSound = TRUE;
+                    }
+                } else if (yStick < 0) {
+                    gMenuFlow.curIndex++;
+                    *playMoveSound = TRUE;
+                }
+            }
+            if (gMenuFlow.curIndex >= (gMenuFlow.opacityDecayTimer + sControllerPakMenuNumberOfRows)) {
+                gMenuFlow.opacityDecayTimer = (gMenuFlow.curIndex - sControllerPakMenuNumberOfRows) + 1;
+            }
+            if (gMenuFlow.curIndex < gMenuFlow.opacityDecayTimer) {
+                gMenuFlow.opacityDecayTimer = gMenuFlow.curIndex;
+            }
+            maxScroll = 16 - sControllerPakMenuNumberOfRows;
+            if (maxScroll < gMenuFlow.opacityDecayTimer) {
+                gMenuFlow.opacityDecayTimer = maxScroll;
+            }
+            if (gMenuFlow.opacityDecayTimer < 0) {
+                gMenuFlow.opacityDecayTimer = 0;
+            }
+            break;
+    }
+}
+
+/**
  * Handles the controller pak menu accessed from the boot screen.
  * A simple menu that has the list of controller pak notes.
  * Pressing A on a note gives a confirmation box to delete.
@@ -322,7 +451,6 @@ s32 menu_controller_pak_loop(s32 updateRate) {
     s32 playMoveSound = FALSE;
     s32 playCancelSound = FALSE;
     s32 playSelectedSound = FALSE;
-    s32 maxScroll;
 
     gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
     if (gMenuInput.delay < 20) {
@@ -338,118 +466,19 @@ s32 menu_controller_pak_loop(s32 updateRate) {
             yStick += gMenuInput.yAxisDirection[i];
         }
         if (gControllerPak.error != PAK_ERROR_NONE) {
-            if (gControllerPak.error != PAK_ERROR_FATAL && pressedButtons & (A_BUTTON | START_BUTTON)) {
-                sound_play(SOUND_SELECT2, NULL);
-                if (menu_find_usable_pak(&gMenuFlow.option, 0) == CONTROLLER_PAK_GOOD) {
-                    gControllerPak.error = PAK_ERROR_NONE;
-                } else if (check_for_controller_pak_errors() == PAK_ERROR_NONE) {
-                    gShowControllerPakMenu = 0;
-                }
-                if (gControllerPak.error == PAK_ERROR_NONE && gShowControllerPakMenu == 0) {
-                    playCancelSound = TRUE;
-                    gMenuInput.delay = 1;
-                    transition_begin(&sMenuTransitionFadeIn);
-                }
-            }
+            pakmenu_error_input(pressedButtons, &playCancelSound);
         } else {
             if (gMenuFlow.stage != PAKMENU_CHOOSE) {
-                if (gCpakWriteTimer != 0) {
-                    gCpakWriteTimer--;
-                    if (gCpakWriteTimer == 0) {
-                        if (delete_file(gMenuFlow.option, gMenuFlow.curIndex) != CONTROLLER_PAK_GOOD) {
-                            // Failed to delete the file
-                            playCancelSound = TRUE;
-                            gMenuInput.delay = 1;
-                            transition_begin(&sMenuTransitionFadeIn);
-                        } else {
-                            // File deleted successfully
-                            playSelectedSound = TRUE;
-                            if (menu_find_usable_pak(&gMenuFlow.option, xStick) != CONTROLLER_PAK_GOOD) {
-                                playCancelSound = TRUE;
-                                gMenuInput.delay = 1;
-                                transition_begin(&sMenuTransitionFadeIn);
-                            }
-                        }
-                        gMenuFlow.stage = PAKMENU_CHOOSE;
-                    }
-                } else if (pressedButtons & B_BUTTON) {
-                    playCancelSound = TRUE;
-                    gMenuFlow.stage = PAKMENU_CHOOSE;
-                } else if (pressedButtons & (A_BUTTON | START_BUTTON)) {
-                    if (gMenuFlow.stage == PAKMENU_CONFIRM) {
-                        gCpakWriteTimer = 3;
-                    } else {
-                        playCancelSound = TRUE;
-                        gMenuFlow.stage = PAKMENU_CHOOSE;
-                    }
-                } else if (yStick > 0 && gMenuFlow.stage > PAKMENU_CONFIRM) {
-                    gMenuFlow.stage = PAKMENU_CONFIRM;
-                    playMoveSound = TRUE;
-                } else if (yStick < 0 && gMenuFlow.stage < PAKMENU_WRITE) {
-                    gMenuFlow.stage = PAKMENU_WRITE;
-                    playMoveSound = TRUE;
-                }
+                pakmenu_delete_input(pressedButtons, xStick, yStick, &playMoveSound, &playCancelSound,
+                                     &playSelectedSound);
             } else if (pressedButtons & B_BUTTON ||
                        (gMenuFlow.curIndex == 16 && pressedButtons & (A_BUTTON | START_BUTTON))) {
                 playCancelSound = 1;
                 gMenuInput.delay = 1;
                 transition_begin(&sMenuTransitionFadeIn);
             } else {
-                // gMenuFlow.curIndex = selected menu index?
-                switch (gMenuFlow.curIndex) {
-                    case -1:
-                        if (yStick < 0) {
-                            if (!xStick) {} // Fakematch
-                            gMenuFlow.curIndex = 0;
-                            playMoveSound = TRUE;
-                        }
-                        break;
-                    case 16:
-                        if (yStick > 0) {
-                            gMenuFlow.curIndex = 15;
-                            playMoveSound = TRUE;
-                        }
-                        break;
-                    default:
-                        if (pressedButtons & (A_BUTTON | START_BUTTON)) {
-                            // Check if the selected menu item is a file or blank
-                            if ((gControllerPak.fileTypes[gMenuFlow.curIndex] >= SAVE_FILE_TYPE_CPAK_SAVE) &&
-                                (gControllerPak.fileTypes[gMenuFlow.curIndex] <= SAVE_FILE_TYPE_CPAK_OTHER)) {
-                                gCpakWriteTimer = 0;
-                                gMenuFlow.stage = PAKMENU_WRITE;
-                                playSelectedSound = TRUE;
-                            } else {
-                                // If it's not, just play the "back" sound
-                                playCancelSound = TRUE;
-                            }
-                        } else {
-                            if (yStick > 0) {
-                                gMenuFlow.curIndex--;
-                                if (gMenuFlow.curIndex < 0) {
-                                    gMenuFlow.curIndex = 0;
-                                } else {
-                                    playMoveSound = TRUE;
-                                }
-                            } else if (yStick < 0) {
-                                gMenuFlow.curIndex++;
-                                playMoveSound = TRUE;
-                            }
-                        }
-                        if (gMenuFlow.curIndex >= (gMenuFlow.opacityDecayTimer + sControllerPakMenuNumberOfRows)) {
-                            gMenuFlow.opacityDecayTimer = (gMenuFlow.curIndex - sControllerPakMenuNumberOfRows) + 1;
-                        }
-                        if (gMenuFlow.curIndex < gMenuFlow.opacityDecayTimer) {
-                            gMenuFlow.opacityDecayTimer = gMenuFlow.curIndex;
-                        }
-                        maxScroll = 16 - sControllerPakMenuNumberOfRows;
-                        if (maxScroll < gMenuFlow.opacityDecayTimer) {
-                            gMenuFlow.opacityDecayTimer = maxScroll;
-                        }
-                        if (gMenuFlow.opacityDecayTimer < 0) {
-                            gMenuFlow.opacityDecayTimer = 0;
-                        }
-                        break;
-                }
+                pakmenu_file_list_input(pressedButtons, xStick, yStick, &playMoveSound, &playCancelSound,
+                                        &playSelectedSound);
             }
         }
         if (playCancelSound) {

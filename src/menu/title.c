@@ -260,35 +260,14 @@ void render_title_screen(UNUSED s32 updateRate, f32 updateRateF) {
 }
 
 /**
- * Handle the countdown when the title screen starts to show the logo coming in.
- * Fade music to make voice clips more audible.
+ * Count down the current demo, fading out a second before the end, then load the next demo
+ * once it ends or its animation finishes. The first demo also restarts the intro names.
  */
-s32 menu_title_screen_loop(s32 updateRate) {
+static void titlescreen_update_demo(s32 updateRate) {
     s32 demoTimedOut;
-    s32 cutsceneId;
     s8 *demo;
-    s32 contrIndex;
-    f32 updateRateF;
-    Camera *camera;
     s8 playerCount;
 
-    camera = cam_get_active_camera();
-    gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
-    menu_input();
-    if (osTvType == OS_TV_TYPE_PAL) {
-        updateRateF = (f32) updateRate / 50.0f;
-    } else {
-        updateRateF = (f32) updateRate / 60.0f;
-    }
-    if (gMenuInput.delay < 20) {
-        render_title_screen(updateRate, updateRateF);
-    }
-    if (gMenuInput.delay) {
-        gMenuInput.delay += updateRate;
-    }
-    if (sTitleScreenDemoIds[gTitleDemoIndex] == sTitleScreenDemoIds[0]) {
-        gMenuFlow.opacityDecayTimer += updateRate;
-    }
     demoTimedOut = 0;
     if (gTitleDemoTimer > 0) {
         gTitleDemoTimer -= updateRate;
@@ -328,6 +307,13 @@ s32 menu_title_screen_loop(s32 updateRate) {
             gMenuFlow.opacityDecayTimer = 0;
         }
     }
+}
+
+/**
+ * Drop the title in with a whoosh and a camera shake, then play T.T.'s "Diddy Kong Racing"
+ * and "Press Start" lines. Lower the music while he speaks.
+ */
+static void titlescreen_update_reveal(s32 updateRate, f32 updateRateF, Camera *camera) {
     if (gTitleRevealTimer) {
         if (gTitleRevealTimer < 32) {
             if (gTitleRevealTimer == 1) {
@@ -367,12 +353,21 @@ s32 menu_title_screen_loop(s32 updateRate) {
             music_volume_set((u8) gTrackSelect.musicVolume);
         }
     }
+}
+
+/**
+ * Before the title is shown, A or Start reveals it. After, move between the two options and
+ * select one with A or Start, giving menu control to whoever pressed it.
+ */
+static void titlescreen_input(void) {
+    s32 contrIndex;
+
     if (gTitleRevealTimer == 0) {
         if (gMenuInput.buttons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
             gTitleRevealTimer = 1;
         }
     } else if ((gMenuInput.delay == 0) && !is_controller_missing()) {
-        s32 temp0 = gTitleScreenCurrentOption;
+        s32 prevOption = gTitleScreenCurrentOption;
         // gMenuInput.stickY[PLAYER_MENU] = +1 when going up, and -1 when going down.
         if (gMenuInput.stickY[PLAYER_MENU] < 0 && gTitleScreenCurrentOption < 1) {
             gTitleScreenCurrentOption++;
@@ -380,7 +375,7 @@ s32 menu_title_screen_loop(s32 updateRate) {
         if (gMenuInput.stickY[PLAYER_MENU] > 0 && gTitleScreenCurrentOption > 0) {
             gTitleScreenCurrentOption--;
         }
-        if (temp0 != gTitleScreenCurrentOption) {
+        if (prevOption != gTitleScreenCurrentOption) {
             sound_play(SOUND_MENU_PICK2, NULL);
         }
         if (gMenuInput.buttons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
@@ -393,6 +388,37 @@ s32 menu_title_screen_loop(s32 updateRate) {
             sound_play(SOUND_SELECT2, NULL);
         }
     }
+}
+
+/**
+ * Handle the countdown when the title screen starts to show the logo coming in.
+ * Fade music to make voice clips more audible.
+ */
+s32 menu_title_screen_loop(s32 updateRate) {
+    s32 cutsceneId;
+    f32 updateRateF;
+    Camera *camera;
+
+    camera = cam_get_active_camera();
+    gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
+    menu_input();
+    if (osTvType == OS_TV_TYPE_PAL) {
+        updateRateF = (f32) updateRate / 50.0f;
+    } else {
+        updateRateF = (f32) updateRate / 60.0f;
+    }
+    if (gMenuInput.delay < 20) {
+        render_title_screen(updateRate, updateRateF);
+    }
+    if (gMenuInput.delay) {
+        gMenuInput.delay += updateRate;
+    }
+    if (sTitleScreenDemoIds[gTitleDemoIndex] == sTitleScreenDemoIds[0]) {
+        gMenuFlow.opacityDecayTimer += updateRate;
+    }
+    titlescreen_update_demo(updateRate);
+    titlescreen_update_reveal(updateRate, updateRateF, camera);
+    titlescreen_input();
     if (gMenuInput.delay > 30) {
         titlescreen_free();
         disable_new_screen_transitions();

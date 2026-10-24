@@ -926,8 +926,11 @@ void trackmenu_render_2D(s32 x, s32 y, char *hubName, char *trackName, s32 rectO
 #define STICK_DEADZONE 35
 #define STICK_DELAY_AMOUNT 15
 
-void load_menu_text(s32 language) {
-    char **menuText;
+/**
+ * Load the menu text for the language into its own buffer and point gMenuLoaded.text at
+ * each string. Returns FALSE, loading nothing, when the text table has not been allocated.
+ */
+static s32 menu_text_load_strings(s32 language) {
     char **textTable;
     s32 langIndex;
     s32 size;
@@ -962,7 +965,7 @@ void load_menu_text(s32 language) {
     textTable = gMenuLoaded.text;
 
     if (textTable == NULL) {
-        return;
+        return FALSE;
     }
 
     {
@@ -982,8 +985,14 @@ void load_menu_text(s32 language) {
             gMenuLoaded.text[langIndex] = (offset == 0xFFFFFFFF) ? NULL : (char *) sPcMenuTextBlob + offset;
         }
     }
+    return TRUE;
+}
 
-    menuText = gMenuLoaded.text;
+/**
+ * Point the audio, magic code, results, options, file name, controller pak, title and game
+ * select menus at their strings.
+ */
+static void menu_text_assign_menus(char **menuText) {
     gAudioOutputStrings[0] = menuText[ASSET_MENU_TEXT_STEREO];                       // "STEREO"
     gAudioOutputStrings[1] = menuText[ASSET_MENU_TEXT_MONO];                         // "MONO"
     gAudioOutputStrings[2] = menuText[ASSET_MENU_TEXT_HEADPHONES];                   // "HEADPHONES"
@@ -1070,6 +1079,15 @@ void load_menu_text(s32 language) {
     gGameSelectTextElemsWithAdv2[3].t.asciiText = menuText[ASSET_MENU_TEXT_ADVENTURE];  // "ADVENTURE"
     gGameSelectTextElemsWithAdv2[5].t.asciiText = menuText[ASSET_MENU_TEXT_ADVENTURETWO]; // "ADVENTURE TWO"
     gGameSelectTextElemsWithAdv2[7].t.asciiText = menuText[ASSET_MENU_TEXT_TRACKS];       // "TRACKS"
+}
+
+/**
+ * Build the ghost saving messages (each followed by the shared "If you wish to change" lines),
+ * the insert pak messages and the caution screen text.
+ */
+static void menu_text_assign_pak_messages(char **menuText) {
+    s32 i;
+
     sBadControllerPakMenuText[0] = menuText[ASSET_MENU_TEXT_BADCONTPAK];                  // "BAD CONTROLLER PAK"
     sControllerPakFullMenuText[0] = menuText[ASSET_MENU_TEXT_CONTPAKFULL];                // "CONTROLLER PAK FULL"
     sNoControllerPakMenuText[0] = menuText[ASSET_MENU_TEXT_NOCONTPAK];                    // 'NO CONTROLLER PAK"
@@ -1079,16 +1097,16 @@ void load_menu_text(s32 language) {
 
     // Three messages
     //"If you wish to change" / "Controller Pak or Rumble Pak," / "please do so now."
-    for (langIndex = 0; langIndex <= 2; langIndex++) {
-        sBadControllerPakMenuText[langIndex + 1] = menuText[ASSET_MENU_TEXT_CANNOTSAVEGHOSTDATA_0 + langIndex];
-        sControllerPakFullMenuText[langIndex + 1] = menuText[ASSET_MENU_TEXT_CANNOTSAVEGHOSTDATA_0 + langIndex];
-        sNoControllerPakMenuText[langIndex + 1] = menuText[ASSET_MENU_TEXT_CANNOTSAVEGHOSTDATA_0 + langIndex];
-        sCorruptDataMenuText[langIndex + 1] = menuText[ASSET_MENU_TEXT_CANNOTSAVEGHOSTDATA_0 + langIndex];
+    for (i = 0; i <= 2; i++) {
+        sBadControllerPakMenuText[i + 1] = menuText[ASSET_MENU_TEXT_CANNOTSAVEGHOSTDATA_0 + i];
+        sControllerPakFullMenuText[i + 1] = menuText[ASSET_MENU_TEXT_CANNOTSAVEGHOSTDATA_0 + i];
+        sNoControllerPakMenuText[i + 1] = menuText[ASSET_MENU_TEXT_CANNOTSAVEGHOSTDATA_0 + i];
+        sCorruptDataMenuText[i + 1] = menuText[ASSET_MENU_TEXT_CANNOTSAVEGHOSTDATA_0 + i];
     }
 
-    for (langIndex = 0; sCorruptDataMenuText[langIndex] != NULL; langIndex++) {}
+    for (i = 0; sCorruptDataMenuText[i] != NULL; i++) {}
 
-    sCorruptDataMenuText[langIndex] = menuText[ASSET_MENU_TEXT_CORRUPTDATA_1];  // "TRY AGAIN!"
+    sCorruptDataMenuText[i] = menuText[ASSET_MENU_TEXT_CORRUPTDATA_1];          // "TRY AGAIN!"
     sInsertControllerPakMenuText[0] = menuText[ASSET_MENU_TEXT_INSERTDEVICE_3]; // "If you wish to use"
     sInsertControllerPakMenuText[1] = menuText[ASSET_MENU_TEXT_INSERTDEVICE_4]; // "the Controller Pak"
 #if VERSION == VERSION_77
@@ -1106,10 +1124,25 @@ void load_menu_text(s32 language) {
     gCautionMenuTextElements[0].t.asciiText = menuText[ASSET_MENU_TEXT_CAUTION]; // "CAUTION"
     gCautionMenuTextElements[1].t.asciiText = menuText[ASSET_MENU_TEXT_CAUTION]; // "CAUTION"
 
-    for (langIndex = 0; langIndex <= 10; langIndex++) {
+    for (i = 0; i <= 10; i++) {
         // Caution message lines starting from gMenuLoaded.text[166]
-        gCautionMenuTextElements[langIndex + 2].t.element = menuText[ASSET_MENU_TEXT_CAUTIONMESSAGE_0 + langIndex];
+        gCautionMenuTextElements[i + 2].t.element = menuText[ASSET_MENU_TEXT_CAUTIONMESSAGE_0 + i];
     }
+}
+
+/**
+ * Load the menu text for the given language, then point every menu at its strings.
+ */
+void load_menu_text(s32 language) {
+    char **menuText;
+
+    if (!menu_text_load_strings(language)) {
+        return;
+    }
+
+    menuText = gMenuLoaded.text;
+    menu_text_assign_menus(menuText);
+    menu_text_assign_pak_messages(menuText);
 }
 
 /**

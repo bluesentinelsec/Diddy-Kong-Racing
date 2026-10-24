@@ -169,29 +169,14 @@ void fileselect_render_element(s32 imageID, s32 xOffset, s32 yOffset, s32 red, s
 }
 
 /**
- * Render the file select buttons onscreen. This includes the 3D buttons,
- * and then the copy and erase text beneath.
- * If trying to copy or erase a file, render the confirmation menu.
+ * Draw the three wooden file buttons and, once they have settled, each started file's
+ * adventure icon, balloon count and balloon, or "NEW" on an empty file.
  */
-void fileselect_render(UNUSED s32 updateRate) {
-    s32 yPos;
+static void fileselect_render_buttons(s32 yPos) {
     s32 fileIcon;
-    s32 highlighted;
-    s32 glow;
     u32 colour;
     s32 i;
-    // Also receives the untrimmed menu-text names ("GAME A" etc.) for unstarted
-    // slots, which are longer than SavefileInfo.name.
-    char trimmedFilename[16];
 
-    if (osTvType == OS_TV_TYPE_PAL) {
-        yPos = 12;
-    } else {
-        yPos = 0;
-    }
-
-    menu_camera_centre();
-    mtx_ortho(&gMenuFrame.displayList, &gMenuFrame.hudMat);
     for (i = 0; i < NUMBER_OF_SAVE_FILES; i++) {
         if (gSavefileInfo[i].isAdventure2 == gRaceSetup.isInAdventureTwo || gSavefileInfo[i].isStarted == FALSE) {
             colour = COLOUR_RGBA32(176, 224, 192, 255);
@@ -239,10 +224,20 @@ void fileselect_render(UNUSED s32 updateRate) {
             }
         }
     }
-    glow = gMenuFlow.blinkTimer * 8;
-    if (glow > 255) {
-        glow = 511 - glow;
-    }
+}
+
+/**
+ * Draw the pulsing border around the highlighted file (the one being copied or erased, or
+ * the selected one), then the file names.
+ */
+static void fileselect_render_names(s32 yPos, s32 glow) {
+    s32 highlighted;
+    u32 colour;
+    s32 i;
+    // Also receives the untrimmed menu-text names ("GAME A" etc.) for unstarted
+    // slots, which are longer than SavefileInfo.name.
+    char trimmedFilename[16];
+
     set_text_font(ASSET_FONTS_FUNFONT);
     set_text_background_colour(0, 0, 0, 0);
     set_text_colour(255, 255, 255, 0, 255);
@@ -281,6 +276,13 @@ void fileselect_render(UNUSED s32 updateRate) {
             }
         }
     }
+}
+
+/**
+ * Draw the "GAME SELECT" title, then the copy or erase prompt, or the "COPY" and "ERASE"
+ * options beneath the files.
+ */
+static void fileselect_render_title_and_prompt(s32 yPos, s32 glow) {
     set_text_font(ASSET_FONTS_BIGFONT);
     set_text_colour(0, 0, 0, 255, 128);
 #if VERSION >= VERSION_79
@@ -334,6 +336,32 @@ void fileselect_render(UNUSED s32 updateRate) {
         }
         draw_text(&gMenuFrame.displayList, 230, yPos, gMenuLoaded.text[ASSET_MENU_TEXT_ERASE], ALIGN_MIDDLE_CENTER);
     }
+}
+
+/**
+ * Render the file select buttons onscreen. This includes the 3D buttons,
+ * and then the copy and erase text beneath.
+ * If trying to copy or erase a file, render the confirmation menu.
+ */
+void fileselect_render(UNUSED s32 updateRate) {
+    s32 yPos;
+    s32 glow;
+
+    if (osTvType == OS_TV_TYPE_PAL) {
+        yPos = 12;
+    } else {
+        yPos = 0;
+    }
+
+    menu_camera_centre();
+    mtx_ortho(&gMenuFrame.displayList, &gMenuFrame.hudMat);
+    fileselect_render_buttons(yPos);
+    glow = gMenuFlow.blinkTimer * 8;
+    if (glow > 255) {
+        glow = 511 - glow;
+    }
+    fileselect_render_names(yPos, glow);
+    fileselect_render_title_and_prompt(yPos, glow);
 }
 
 /**
