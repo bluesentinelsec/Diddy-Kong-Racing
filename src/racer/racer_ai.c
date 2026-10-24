@@ -1,5 +1,10 @@
 #include "racer_internal.h"
 
+// What the AI does with a balloon's weapon (gRacerAIBalloonActionTable).
+#define AI_BALLOON_FIRE_AHEAD 1  // fired forward: chase the racer ahead
+#define AI_BALLOON_DROP_BEHIND 2 // dropped behind: wait for the racer behind
+#define AI_BALLOON_BOOST 4       // a nitro boost
+
 // Used to know how the AI should use a balloon when they have one.
 static s8 gRacerAIBalloonActionTable[NUM_WEAPON_TYPES] = { 1, 1, 2, 2, 4, 3, 0, 6, 4, 3, 2, 2, 5, 5, 5, 0 };
 
@@ -22,34 +27,34 @@ static s8 gAiLaneByAiCount[8] = {
  * how many computers are ahead of it, and the place of the leading human.
  */
 static void racer_ai_tactics_count_field(Object_Racer *racer, Object **racerGroup, s32 numRacers, s16 *racerID,
-                                         s16 *var_t5, s16 *var_t0, s16 *var_t4) {
+                                         s16 *aiAheadCount, s16 *aiCount, s16 *firstHumanPos) {
     s16 index;
-    s8 someFlag;
-    Object_Racer *sp5C;
+    s8 beforeSelf;
+    Object_Racer *otherRacer;
 
     index = 0;
-    *var_t5 = 0;
-    *var_t0 = 0;
-    *var_t4 = PLAYER_COMPUTER;
-    for (someFlag = TRUE; index < numRacers; index++) {
-        sp5C = racerGroup[index]->racer;
-        if (sp5C == racer) {
-            someFlag = FALSE;
+    *aiAheadCount = 0;
+    *aiCount = 0;
+    *firstHumanPos = PLAYER_COMPUTER;
+    for (beforeSelf = TRUE; index < numRacers; index++) {
+        otherRacer = racerGroup[index]->racer;
+        if (otherRacer == racer) {
+            beforeSelf = FALSE;
             *racerID = index;
         }
 
-        if (sp5C->playerIndex == PLAYER_COMPUTER) {
-            (*var_t0)++;
-            if (someFlag) {
-                (*var_t5)++;
+        if (otherRacer->playerIndex == PLAYER_COMPUTER) {
+            (*aiCount)++;
+            if (beforeSelf) {
+                (*aiAheadCount)++;
             }
-        } else if (*var_t4 == PLAYER_COMPUTER) {
-            *var_t4 = index;
+        } else if (*firstHumanPos == PLAYER_COMPUTER) {
+            *firstHumanPos = index;
         }
     }
 
-    if (*var_t4 == PLAYER_COMPUTER) {
-        *var_t4 = PLAYER_ONE;
+    if (*firstHumanPos == PLAYER_COMPUTER) {
+        *firstHumanPos = PLAYER_ONE;
     }
 }
 
@@ -58,17 +63,17 @@ static void racer_ai_tactics_count_field(Object_Racer *racer, Object **racerGrou
  * a human racer.
  */
 static void racer_ai_tactics_overtake_voices(Object *obj, Object_Racer *racer, Object **racerGroup, s32 numRacers,
-                                             s16 racerID, s16 temp_v0) {
+                                             s16 racerID, s16 bossRace) {
     s16 index;
     s16 tempRacerIndex;
-    Object_Racer *sp5C;
+    Object_Racer *otherRacer;
 
     if (gRaceStartTimer == 0 && racer->vehicleID != VEHICLE_LOOPDELOOP) {
         index = racerID - 1;
         if (racer->prevRaceOrder < racerID && index >= 0 && index < numRacers) {
-            sp5C = racerGroup[index]->racer;
-            if (sp5C->playerIndex != PLAYER_COMPUTER) {
-                if (temp_v0 == 0) {
+            otherRacer = racerGroup[index]->racer;
+            if (otherRacer->playerIndex != PLAYER_COMPUTER) {
+                if (bossRace == 0) {
                     play_random_character_voice(obj, SOUND_VOICE_CHARACTER_NEGATIVE, 8, 3);
                 } else {
                     racer_boss_sound_spatial(obj->trans.x_position, obj->trans.y_position, obj->trans.z_position, 5);
@@ -78,10 +83,10 @@ static void racer_ai_tactics_overtake_voices(Object *obj, Object_Racer *racer, O
         }
         tempRacerIndex = racerID + 1;
         if (racerID < racer->prevRaceOrder && tempRacerIndex >= 0 && tempRacerIndex < numRacers) {
-            sp5C = racerGroup[tempRacerIndex]->racer;
-            if (sp5C->playerIndex != PLAYER_COMPUTER) {
+            otherRacer = racerGroup[tempRacerIndex]->racer;
+            if (otherRacer->playerIndex != PLAYER_COMPUTER) {
                 play_random_character_voice(racerGroup[(racerID + 1)], SOUND_VOICE_KRUNCH_NEGATIVE1, 8, 2);
-                if (temp_v0 == 0) {
+                if (bossRace == 0) {
                     play_random_character_voice(obj, SOUND_VOICE_CHARACTER_POSITIVE, 8, 3);
                 } else {
                     racer_boss_sound_spatial(obj->trans.x_position, obj->trans.y_position, obj->trans.z_position, 3);
@@ -95,21 +100,21 @@ static void racer_ai_tactics_overtake_voices(Object *obj, Object_Racer *racer, O
  * Finds the nearest opponents just ahead of and just behind this racer, with their
  * distances.
  */
-static void racer_ai_tactics_find_neighbours(Object_Racer *racer, f32 *sp94, f32 *sp90, Object_Racer **sp5C,
-                                             Object_Racer **sp58) {
+static void racer_ai_tactics_find_neighbours(Object_Racer *racer, f32 *distAhead, f32 *distBehind,
+                                             Object_Racer **racerAhead, Object_Racer **racerBehind) {
     Object *obj;
 
-    *sp94 = 0.0f;
-    *sp90 = 0.0f;
-    *sp5C = NULL;
-    obj = racer_find_nearest_opponent_relative(racer, 1, sp94);
+    *distAhead = 0.0f;
+    *distBehind = 0.0f;
+    *racerAhead = NULL;
+    obj = racer_find_nearest_opponent_relative(racer, 1, distAhead);
     if (obj != NULL) {
-        *sp5C = obj->racer;
+        *racerAhead = obj->racer;
     }
-    *sp58 = NULL;
-    obj = racer_find_nearest_opponent_relative(racer, -1, sp90);
+    *racerBehind = NULL;
+    obj = racer_find_nearest_opponent_relative(racer, -1, distBehind);
     if (obj != NULL) {
-        *sp58 = obj->racer;
+        *racerBehind = obj->racer;
     }
 }
 
@@ -117,8 +122,8 @@ static void racer_ai_tactics_find_neighbours(Object_Racer *racer, f32 *sp94, f32
  * Sets the racer's skill: random at the start of an ordinary race with a human in it,
  * otherwise from the level header's per-character table.
  */
-static void racer_ai_tactics_choose_skill(Object_Racer *racer, LevelHeader *header, s16 var_t0, s8 racerCharacterId) {
-    if (var_t0 < 7 && get_trophy_race_world_id() == 0 && boss_race_number() == 0 && !is_taj_challenge()) {
+static void racer_ai_tactics_choose_skill(Object_Racer *racer, LevelHeader *header, s16 aiCount, s8 racerCharacterId) {
+    if (aiCount < 7 && get_trophy_race_world_id() == 0 && boss_race_number() == 0 && !is_taj_challenge()) {
         if (gRaceStartTimer == 100) {
             racer->aiSkill = rand_range(AI_MASTER, AI_HARD);
         }
@@ -167,52 +172,53 @@ static s8 racer_ai_tactics_balloon_weapon(Object_Racer *racer) {
  * When a new item decision is due, rolls to upgrade or discard the balloon, fire a boost,
  * or set off chasing the racer ahead or waiting for the one behind to use the weapon.
  */
-static void racer_ai_tactics_use_balloon(Object_Racer *racer, s8 balloonType, Object_Racer *sp5C, Object_Racer *sp58,
-                                         s16 var_t4, s16 var_t5, s16 sp38, s16 sp36, s16 sp3C, s8 *miscAsset2,
+static void racer_ai_tactics_use_balloon(Object_Racer *racer, s8 balloonType, Object_Racer *racerAhead,
+                                         Object_Racer *racerBehind, s16 firstHumanPos, s16 aiAheadCount,
+                                         s16 balloonChance, s16 attackChance, s16 blueBalloonChance, s8 *miscAsset2,
                                          s8 racerCharacterId) {
-    if (racer->aiFlags & 1) {
+    if (racer->aiFlags & AI_FLAG_NEW_BALLOON) {
         if (racer->aiPhysicsTimer == 0) {
             if (racer->balloon_level == 0) {
-                if (roll_percent_chance(sp38)) {
+                if (roll_percent_chance(balloonChance)) {
                     racer->balloon_level++;
                 }
             }
-            if (var_t4 == 0 && var_t5 < 3) {
-                if (roll_percent_chance(sp3C)) {
+            if (firstHumanPos == 0 && aiAheadCount < 3) {
+                if (roll_percent_chance(blueBalloonChance)) {
                     racer->balloon_type = 0;
                 }
             }
         }
-        if (racer->boostTimer == 0 && gRacerAIBalloonActionTable[balloonType] == 4) {
-            if (roll_percent_chance(sp3C)) {
+        if (racer->boostTimer == 0 && gRacerAIBalloonActionTable[balloonType] == AI_BALLOON_BOOST) {
+            if (roll_percent_chance(blueBalloonChance)) {
                 gCurrentButtonsReleased |= Z_TRIG;
             }
         }
         if (racer->balloon_quantity != 0) {
-            if (gRacerAIBalloonActionTable[balloonType] == 1) {
-                if (sp5C != NULL && sp5C->playerIndex == PLAYER_COMPUTER) {
-                    if (var_t4 < 4) {
+            if (gRacerAIBalloonActionTable[balloonType] == AI_BALLOON_FIRE_AHEAD) {
+                if (racerAhead != NULL && racerAhead->playerIndex == PLAYER_COMPUTER) {
+                    if (firstHumanPos < 4) {
                         racer->aiBehaviourTimer = miscAsset2[racerCharacterId] * 60;
-                        racer->aiBehaviour = 4;
+                        racer->aiBehaviour = AI_BEHAVIOUR_FIRE_AHEAD;
                     }
-                } else if (roll_percent_chance(sp36) && var_t4 < 2) {
+                } else if (roll_percent_chance(attackChance) && firstHumanPos < 2) {
                     racer->aiBehaviourTimer = miscAsset2[racerCharacterId] * 60;
-                    racer->aiBehaviour = 4;
+                    racer->aiBehaviour = AI_BEHAVIOUR_FIRE_AHEAD;
                 }
             }
-            if (gRacerAIBalloonActionTable[balloonType] == 2) {
-                if (sp58 != NULL && sp58->playerIndex == PLAYER_COMPUTER) {
-                    if (var_t4 < 4) {
+            if (gRacerAIBalloonActionTable[balloonType] == AI_BALLOON_DROP_BEHIND) {
+                if (racerBehind != NULL && racerBehind->playerIndex == PLAYER_COMPUTER) {
+                    if (firstHumanPos < 4) {
                         racer->aiBehaviourTimer = miscAsset2[racerCharacterId] * 60;
-                        racer->aiBehaviour = 5;
+                        racer->aiBehaviour = AI_BEHAVIOUR_DROP_BEHIND;
                     }
-                } else if (roll_percent_chance(sp36) && var_t4 < 2) {
+                } else if (roll_percent_chance(attackChance) && firstHumanPos < 2) {
                     racer->aiBehaviourTimer = miscAsset2[racerCharacterId] * 60;
-                    racer->aiBehaviour = 5;
+                    racer->aiBehaviour = AI_BEHAVIOUR_DROP_BEHIND;
                 }
             }
         }
-        racer->aiFlags &= ~1;
+        racer->aiFlags &= ~AI_FLAG_NEW_BALLOON;
     }
 }
 
@@ -220,24 +226,24 @@ static void racer_ai_tactics_use_balloon(Object_Racer *racer, s8 balloonType, Ob
  * While boosting, rolls once per boost whether to let off the throttle, and keeps it off
  * until the racer has slowed down.
  */
-static void racer_ai_tactics_boost_throttle(Object_Racer *racer, s16 sp3A) {
+static void racer_ai_tactics_boost_throttle(Object_Racer *racer, s16 boostChance) {
     if (racer->boostTimer != 0) {
-        if (!(racer->aiFlags & 2)) {
-            if (roll_percent_chance(sp3A)) {
-                racer->aiFlags |= 4;
+        if (!(racer->aiFlags & AI_FLAG_BOOST_ROLLED)) {
+            if (roll_percent_chance(boostChance)) {
+                racer->aiFlags |= AI_FLAG_BOOST_COAST;
             }
-            racer->aiFlags |= 2;
+            racer->aiFlags |= AI_FLAG_BOOST_ROLLED;
         }
-        if (racer->aiFlags & 4) {
+        if (racer->aiFlags & AI_FLAG_BOOST_COAST) {
             gCurrentRacerInput &= ~A_BUTTON;
         }
     } else {
-        racer->aiFlags &= ~2;
+        racer->aiFlags &= ~AI_FLAG_BOOST_ROLLED;
         if (racer->velocity > -12.0) {
-            racer->aiFlags &= ~4;
+            racer->aiFlags &= ~AI_FLAG_BOOST_COAST;
         }
     }
-    if (racer->aiFlags & 4) {
+    if (racer->aiFlags & AI_FLAG_BOOST_COAST) {
         gCurrentRacerInput &= ~A_BUTTON;
     }
 }
@@ -246,20 +252,21 @@ static void racer_ai_tactics_boost_throttle(Object_Racer *racer, s16 sp3A) {
  * When the behaviour timer runs out: fires any held weapon, picks the next behaviour and
  * lane, and restarts the timer.
  */
-static void racer_ai_tactics_renew_behaviour(Object_Racer *racer, Object_Racer *sp58, f32 sp90, s16 var_t5, s16 var_t4,
-                                             s8 *miscAsset1, s8 racerCharacterId, s8 sp3F, s16 sp3C) {
+static void racer_ai_tactics_renew_behaviour(Object_Racer *racer, Object_Racer *racerBehind, f32 distBehind,
+                                             s16 aiAheadCount, s16 firstHumanPos, s8 *miscAsset1, s8 racerCharacterId,
+                                             s8 aheadCharacterId, s16 blueBalloonChance) {
     if (racer->aiBehaviourTimer == 0) {
-        if (racer->aiBehaviour == 4 || racer->aiBehaviour == 5) {
+        if (racer->aiBehaviour == AI_BEHAVIOUR_FIRE_AHEAD || racer->aiBehaviour == AI_BEHAVIOUR_DROP_BEHIND) {
             gCurrentButtonsReleased |= Z_TRIG;
         }
-        racer->aiBehaviour = 0;
-        if (sp58 != NULL && sp58->playerIndex != PLAYER_COMPUTER && sp90 < 200.0f && var_t5 != 0 && var_t4 < 3 &&
-            miscAsset1[(racerCharacterId * 10) + sp3F] < 5) {
-            racer->aiBehaviour = 5;
+        racer->aiBehaviour = AI_BEHAVIOUR_LANE;
+        if (racerBehind != NULL && racerBehind->playerIndex != PLAYER_COMPUTER && distBehind < 200.0f &&
+            aiAheadCount != 0 && firstHumanPos < 3 && miscAsset1[(racerCharacterId * 10) + aheadCharacterId] < 5) {
+            racer->aiBehaviour = AI_BEHAVIOUR_DROP_BEHIND;
         }
         if (gAiStartDelay == 0.0f) {
-            racer->aiLane = gAiLaneByAiCount[var_t5];
-            if (roll_percent_chance(sp3C)) {
+            racer->aiLane = gAiLaneByAiCount[aiAheadCount];
+            if (roll_percent_chance(blueBalloonChance)) {
                 racer->aiLane -= 1;
             }
         }
@@ -271,26 +278,26 @@ static void racer_ai_tactics_renew_behaviour(Object_Racer *racer, Object_Racer *
  * Once the race is under way, sets the target speed between the AI table's minimum and
  * maximum by how many computers are ahead, faster in the outer lanes.
  */
-static void racer_ai_tactics_target_speed(Object_Racer *racer, AIBehaviourTable *sp54, s16 var_t5) {
-    f32 var_f12;
-    f32 var_f0;
+static void racer_ai_tactics_target_speed(Object_Racer *racer, AIBehaviourTable *aiTable, s16 aiAheadCount) {
+    f32 targetSpeed;
+    f32 maxSpeed;
     s8 temp7;
 
     if (gRaceStartTimer == 0) {
-        var_f0 = sp54->maxTargetSpeed;
-        var_f0 = sqrtf(((var_f0 * 0.025) + 0.561) / 0.004);
-        var_f12 = sp54->minTargetSpeed;
-        var_f12 = sqrtf(((var_f12 * 0.025) + 0.561) / 0.004);
+        maxSpeed = aiTable->maxTargetSpeed;
+        maxSpeed = sqrtf(((maxSpeed * 0.025) + 0.561) / 0.004);
+        targetSpeed = aiTable->minTargetSpeed;
+        targetSpeed = sqrtf(((targetSpeed * 0.025) + 0.561) / 0.004);
         // explicit load of 7 required
         temp7 = 7;
-        var_f12 += ((var_f0 - var_f12) / temp7) * (7 - var_t5);
+        targetSpeed += ((maxSpeed - targetSpeed) / temp7) * (7 - aiAheadCount);
         if (racer->aiLane > 1) {
             // casts below required
-            var_f12 += (f32) (((s32) racer->aiLane) - 1) * 0.2;
+            targetSpeed += (f32) (((s32) racer->aiLane) - 1) * 0.2;
         }
 
-        var_f12 = ((var_f12 * var_f12 * 0.004) - 0.595) / 0.025;
-        racer->aiTargetSpeed = var_f12;
+        targetSpeed = ((targetSpeed * targetSpeed * 0.004) - 0.595) / 0.025;
+        racer->aiTargetSpeed = targetSpeed;
         // @fake
         if (!racer) {}
     }
@@ -300,14 +307,16 @@ static void racer_ai_tactics_target_speed(Object_Racer *racer, AIBehaviourTable 
  * Acts on the current behaviour: changes lane to get past a computer racer just ahead,
  * or follows the line of the racer being chased or waited for.
  */
-static void racer_ai_tactics_follow_behaviour(Object_Racer *racer, Object_Racer *sp5C, Object_Racer *sp58, f32 sp94) {
-    if (sp5C != NULL && racer->aiLane == 3 && 500.0 < sp94) {
+static void racer_ai_tactics_follow_behaviour(Object_Racer *racer, Object_Racer *racerAhead, Object_Racer *racerBehind,
+                                              f32 distAhead) {
+    if (racerAhead != NULL && racer->aiLane == 3 && 500.0 < distAhead) {
         racer->aiLane = 2;
     }
     switch (racer->aiBehaviour) {
-        case 0:
-            if (sp5C != NULL && sp5C->playerIndex == PLAYER_COMPUTER && sp5C->aiBehaviour == 0) {
-                if (sp5C->aiLane == racer->aiLane && 100.0 > sp94) {
+        case AI_BEHAVIOUR_LANE:
+            if (racerAhead != NULL && racerAhead->playerIndex == PLAYER_COMPUTER &&
+                racerAhead->aiBehaviour == AI_BEHAVIOUR_LANE) {
+                if (racerAhead->aiLane == racer->aiLane && 100.0 > distAhead) {
                     racer->aiLane++;
                     if (racer->aiLane > 3) {
                         racer->aiLane = 3;
@@ -315,14 +324,14 @@ static void racer_ai_tactics_follow_behaviour(Object_Racer *racer, Object_Racer 
                 }
             }
             break;
-        case 4:
-            if (sp5C != NULL) {
-                racer->trackOffsetX = sp5C->trackOffsetX;
+        case AI_BEHAVIOUR_FIRE_AHEAD:
+            if (racerAhead != NULL) {
+                racer->trackOffsetX = racerAhead->trackOffsetX;
             }
             break;
-        case 5:
-            if (sp58 != NULL) {
-                racer->trackOffsetX = sp58->trackOffsetX;
+        case AI_BEHAVIOUR_DROP_BEHIND:
+            if (racerBehind != NULL) {
+                racer->trackOffsetX = racerBehind->trackOffsetX;
             }
             break;
     }
@@ -332,19 +341,19 @@ static void racer_ai_tactics_follow_behaviour(Object_Racer *racer, Object_Racer 
  * In Taj's challenges and boss races, drops the tactics and takes the target speed from
  * that race's fixed table.
  */
-static void racer_ai_tactics_scripted_speed(Object_Racer *racer, s16 temp_v0) {
+static void racer_ai_tactics_scripted_speed(Object_Racer *racer, s16 bossRace) {
     s16 index;
     f32 *miscAsset3;
 
     // clang-format off
     index = (u16) is_taj_challenge();\
-    if (index != 0 || temp_v0 != 0) {
+    if (index != 0 || bossRace != 0) {
         // clang-format on
         racer->aiLane = 0;
-        racer->aiBehaviour = 0;
-        if (temp_v0 != 0) {
+        racer->aiBehaviour = AI_BEHAVIOUR_LANE;
+        if (bossRace != 0) {
             miscAsset3 = (f32 *) get_misc_asset(ASSET_MISC_18);
-            index = temp_v0;
+            index = bossRace;
         } else {
             miscAsset3 = (f32 *) get_misc_asset(ASSET_MISC_17);
         }
@@ -356,29 +365,29 @@ static void racer_ai_tactics_scripted_speed(Object_Racer *racer, s16 temp_v0) {
  * Boss races: speeds the boss up early on and when it is close to losing, and brings it
  * to a stop once it has finished.
  */
-static void racer_ai_tactics_boss_pace(Object_Racer *racer, s16 temp_v0, s16 racerID, f32 sp94, f32 sp90,
+static void racer_ai_tactics_boss_pace(Object_Racer *racer, s16 bossRace, s16 racerID, f32 distAhead, f32 distBehind,
                                        s32 updateRate) {
-    f32 var_f0;
+    f32 catchupSpeed;
 
-    if (temp_v0 != 0) {
+    if (bossRace != 0) {
         if (gRaceStartTimer != 0) {
             gAiCatchupTimer = 900;
         } else {
             gAiCatchupTimer -= updateRate;
             if (gAiCatchupTimer < 0) {
                 gAiCatchupTimer = 0;
-                if (racerID == 1 && sp94 > 650.0) {
+                if (racerID == 1 && distAhead > 650.0) {
                     racer->aiTargetSpeed += 2.0;
                 }
             } else {
-                var_f0 = racer->aiTargetSpeed;
+                catchupSpeed = racer->aiTargetSpeed;
                 if (gAiCatchupTimer > 720) {
-                    var_f0 += 5.0;
-                } else if (racerID == 1 || sp90 < 200.0) {
-                    var_f0 += 10.0;
+                    catchupSpeed += 5.0;
+                } else if (racerID == 1 || distBehind < 200.0) {
+                    catchupSpeed += 10.0;
                 }
-                if (racer->aiTargetSpeed < var_f0) {
-                    racer->aiTargetSpeed = var_f0;
+                if (racer->aiTargetSpeed < catchupSpeed) {
+                    racer->aiTargetSpeed = catchupSpeed;
                 }
             }
         }
@@ -419,36 +428,36 @@ static void racer_ai_tactics_clamp_track_offset(Object_Racer *racer) {
  * opponents just ahead and behind. Called from racer_ai_drive.
  */
 void racer_ai_tactics(Object *obj, Object_Racer *racer, s32 updateRate) {
-    f32 sp94;
-    f32 sp90;
-    s16 var_t5;
-    s16 var_t0;
+    f32 distAhead;
+    f32 distBehind;
+    s16 aiAheadCount;
+    s16 aiCount;
     s16 racerID = 0; // read before it is set on some paths in the original
-    s16 temp_v0;
-    s16 sp6E;
+    s16 bossRace;
+    s16 prevLane;
     s32 numRacers;
     Object **racerGroup;
-    Object_Racer *sp5C;
-    Object_Racer *sp58;
-    AIBehaviourTable *sp54;
+    Object_Racer *racerAhead;
+    Object_Racer *racerBehind;
+    AIBehaviourTable *aiTable;
     LevelHeader *header;
     s8 balloonType;
     s8 *miscAsset2;
     s8 *miscAsset1;
-    s8 sp3F = 0; // read before it is set on some paths in the original
+    s8 aheadCharacterId = 0; // read before it is set on some paths in the original
     s8 racerCharacterId;
-    s16 sp3C;
-    s16 sp3A;
-    s16 sp38;
-    s16 sp36;
-    s16 var_t4;
+    s16 blueBalloonChance;
+    s16 boostChance;
+    s16 balloonChance;
+    s16 attackChance;
+    s16 firstHumanPos;
 
-    sp6E = racer->aiLane;
+    prevLane = racer->aiLane;
     miscAsset1 = (s8 *) get_misc_asset(ASSET_MISC_1);
     miscAsset2 = (s8 *) get_misc_asset(ASSET_MISC_2);
     header = level_header();
     racerGroup = get_racer_objects_by_position(&numRacers);
-    sp54 = aitable_get();
+    aiTable = aitable_get();
     if (racer->aiBehaviourTimer > 0) {
         racer->aiBehaviourTimer -= updateRate;
     } else {
@@ -459,44 +468,49 @@ void racer_ai_tactics(Object *obj, Object_Racer *racer, s32 updateRate) {
         return;
     }
 
-    racer_ai_tactics_count_field(racer, racerGroup, numRacers, &racerID, &var_t5, &var_t0, &var_t4);
-    if (var_t0 == 0) {
+    racer_ai_tactics_count_field(racer, racerGroup, numRacers, &racerID, &aiAheadCount, &aiCount, &firstHumanPos);
+    if (aiCount == 0) {
         return;
     }
 
-    temp_v0 = boss_race_number();
-    racer_ai_tactics_overtake_voices(obj, racer, racerGroup, numRacers, racerID, temp_v0);
+    bossRace = boss_race_number();
+    racer_ai_tactics_overtake_voices(obj, racer, racerGroup, numRacers, racerID, bossRace);
     racer->prevRaceOrder = racerID;
-    racer_ai_tactics_find_neighbours(racer, &sp94, &sp90, &sp5C, &sp58);
+    racer_ai_tactics_find_neighbours(racer, &distAhead, &distBehind, &racerAhead, &racerBehind);
     racerCharacterId = racer->characterId;
-    if (sp5C != NULL) {
-        sp3F = sp5C->characterId;
+    if (racerAhead != NULL) {
+        aheadCharacterId = racerAhead->characterId;
     }
 
-    racer_ai_tactics_choose_skill(racer, header, var_t0, racerCharacterId);
+    racer_ai_tactics_choose_skill(racer, header, aiCount, racerCharacterId);
     racer_ai_tactics_start_launch(racer);
     balloonType = racer_ai_tactics_balloon_weapon(racer);
 
-    sp38 = sp54->percentages[1][0] + (((sp54->percentages[1][1] - sp54->percentages[1][0]) * (7 - var_t5)) / 7);
-    sp36 = sp54->percentages[2][0] + (((sp54->percentages[2][1] - sp54->percentages[2][0]) * (7 - var_t5)) / 7);
-    sp3A = sp54->percentages[0][0] + (((sp54->percentages[0][1] - sp54->percentages[0][0]) * (7 - var_t5)) / 7);
-    sp3C = sp54->percentages[3][0] + (((sp54->percentages[3][1] - sp54->percentages[3][0]) * (7 - var_t5)) / 7);
+    balloonChance = aiTable->percentages[1][0] +
+                    (((aiTable->percentages[1][1] - aiTable->percentages[1][0]) * (7 - aiAheadCount)) / 7);
+    attackChance = aiTable->percentages[2][0] +
+                   (((aiTable->percentages[2][1] - aiTable->percentages[2][0]) * (7 - aiAheadCount)) / 7);
+    boostChance = aiTable->percentages[0][0] +
+                  (((aiTable->percentages[0][1] - aiTable->percentages[0][0]) * (7 - aiAheadCount)) / 7);
+    blueBalloonChance = aiTable->percentages[3][0] +
+                        (((aiTable->percentages[3][1] - aiTable->percentages[3][0]) * (7 - aiAheadCount)) / 7);
 
-    racer_ai_tactics_use_balloon(racer, balloonType, sp5C, sp58, var_t4, var_t5, sp38, sp36, sp3C, miscAsset2,
-                                 racerCharacterId);
-    racer_ai_tactics_boost_throttle(racer, sp3A);
-    racer_ai_tactics_renew_behaviour(racer, sp58, sp90, var_t5, var_t4, miscAsset1, racerCharacterId, sp3F, sp3C);
+    racer_ai_tactics_use_balloon(racer, balloonType, racerAhead, racerBehind, firstHumanPos, aiAheadCount,
+                                 balloonChance, attackChance, blueBalloonChance, miscAsset2, racerCharacterId);
+    racer_ai_tactics_boost_throttle(racer, boostChance);
+    racer_ai_tactics_renew_behaviour(racer, racerBehind, distBehind, aiAheadCount, firstHumanPos, miscAsset1,
+                                     racerCharacterId, aheadCharacterId, blueBalloonChance);
     // @fake
-    if ((7 - var_t5) == (7 & 0xFFFFFFFFu) && sp58 != NULL && sp90 < -2500.0) {
-        racer->aiFlags &= ~4;
+    if ((7 - aiAheadCount) == (7 & 0xFFFFFFFFu) && racerBehind != NULL && distBehind < -2500.0) {
+        racer->aiFlags &= ~AI_FLAG_BOOST_COAST;
         racer->aiLane = 1;
     }
-    racer_ai_tactics_target_speed(racer, sp54, var_t5);
-    racer_ai_tactics_follow_behaviour(racer, sp5C, sp58, sp94);
-    racer_ai_tactics_scripted_speed(racer, temp_v0);
-    racer_ai_tactics_boss_pace(racer, temp_v0, racerID, sp94, sp90, updateRate);
+    racer_ai_tactics_target_speed(racer, aiTable, aiAheadCount);
+    racer_ai_tactics_follow_behaviour(racer, racerAhead, racerBehind, distAhead);
+    racer_ai_tactics_scripted_speed(racer, bossRace);
+    racer_ai_tactics_boss_pace(racer, bossRace, racerID, distAhead, distBehind, updateRate);
     if (racer->aiReverseTimer != 0) {
-        racer->aiLane = sp6E;
+        racer->aiLane = prevLane;
     }
     racer_ai_tactics_clamp_track_offset(racer);
 }
@@ -554,7 +568,7 @@ void increment_ai_behaviour_chances(Object *obj, Object_Racer *racer, s32 update
         } else {
             balloonType = racer->balloon_type;
         }
-        if (gRacerAIBalloonActionTable[balloonType] == 1) {
+        if (gRacerAIBalloonActionTable[balloonType] == AI_BALLOON_FIRE_AHEAD) {
             aiTable->percentages[AI_UNK_2][AI_MIN] += aiTable->percentages[AI_UNK_2][AI_MIN_STEP];
             aiTable->percentages[AI_UNK_2][AI_MAX] += aiTable->percentages[AI_UNK_2][AI_MAX_STEP];
         }
@@ -616,7 +630,7 @@ void racer_AI_pathing_inputs(Object *obj, Object_Racer *racer, s32 updateRate) {
             if (!(raceType & RACETYPE_CHALLENGE)) {
                 racer->aiLane = (racer->aiLane + 1) & 3;
             } else if (raceType == RACETYPE_CHALLENGE_BATTLE || raceType == RACETYPE_CHALLENGE_BANANAS) {
-                if (racer->aiNodeId != 0xFF) {
+                if (racer->aiNodeId != NODE_NONE) {
                     racer->aiNodeObj = ainode_get(racer->aiNodeId);
                 }
             }
@@ -655,15 +669,15 @@ s32 roll_percent_chance(s32 chance) {
  * Challenge AI with no node yet: starts it at the AI node nearest to the racer.
  */
 static void racer_ai_challenge_find_first_node(Object *aiRacerObj, Object_Racer *aiRacer) {
-    s32 temp;
+    s32 nodeId;
 
-    if (aiRacer->currentAnimId == 0) {
-        temp = ainode_find_nearest(aiRacerObj->trans.x_position, aiRacerObj->trans.y_position,
-                                   aiRacerObj->trans.z_position, 0);
-        if (temp != 0xFF) {
-            aiRacer->aiNodeObj = ainode_get(temp);
-            aiRacer->currentAnimId = 1;
-            aiRacer->aiNodeId = 0xFF;
+    if (aiRacer->currentAnimId == CHALLENGE_GOAL_FIND_NODE) {
+        nodeId = ainode_find_nearest(aiRacerObj->trans.x_position, aiRacerObj->trans.y_position,
+                                     aiRacerObj->trans.z_position, 0);
+        if (nodeId != NODE_NONE) {
+            aiRacer->aiNodeObj = ainode_get(nodeId);
+            aiRacer->currentAnimId = CHALLENGE_GOAL_CHOOSE;
+            aiRacer->aiNodeId = NODE_NONE;
         }
     }
 }
@@ -672,28 +686,28 @@ static void racer_ai_challenge_find_first_node(Object *aiRacerObj, Object_Racer 
  * Steers toward the racer's current AI node, giving back the node's level entry and its
  * distance.
  */
-static void racer_ai_challenge_steer_to_node(Object *aiRacerObj, Object_Racer *aiRacer, Object *sp74,
-                                             LevelObjectEntry **sp6C, f32 *dist) {
+static void racer_ai_challenge_steer_to_node(Object *aiRacerObj, Object_Racer *aiRacer, Object *nodeObj,
+                                             LevelObjectEntry **nodeEntry, f32 *dist) {
     f32 xDiff;
     f32 zDiff;
-    s32 temp;
-    s32 var_v1;
+    s32 angle;
+    s32 angleDiff;
 
-    if (sp74 != NULL) {
-        *sp6C = sp74->level_entry;
-        xDiff = sp74->trans.x_position - aiRacerObj->trans.x_position;
-        zDiff = sp74->trans.z_position - aiRacerObj->trans.z_position;
+    if (nodeObj != NULL) {
+        *nodeEntry = nodeObj->level_entry;
+        xDiff = nodeObj->trans.x_position - aiRacerObj->trans.x_position;
+        zDiff = nodeObj->trans.z_position - aiRacerObj->trans.z_position;
         *dist = sqrtf((xDiff * xDiff) + (zDiff * zDiff));
         if (*dist > 0.0) {
-            temp = ((arctan2_f(xDiff, zDiff)) - 0x8000) & 0xFFFF;
-            var_v1 = temp - (aiRacer->steerVisualRotation & 0xFFFF);
-            if (var_v1 > 0x8000) {
-                var_v1 -= 0xFFFF;
+            angle = ((arctan2_f(xDiff, zDiff)) - 0x8000) & 0xFFFF;
+            angleDiff = angle - (aiRacer->steerVisualRotation & 0xFFFF);
+            if (angleDiff > 0x8000) {
+                angleDiff -= 0xFFFF;
             }
-            if (var_v1 < -0x8000) {
-                var_v1 += 0xFFFF;
+            if (angleDiff < -0x8000) {
+                angleDiff += 0xFFFF;
             }
-            gCurrentStickX = -var_v1 >> 4;
+            gCurrentStickX = -angleDiff >> 4;
         }
     }
 }
@@ -706,7 +720,8 @@ static void racer_ai_challenge_tick_behaviour_timer(Object_Racer *aiRacer, s32 u
     if (gRaceStartTimer != 0) {
         aiRacer->aiBehaviourTimer = 0;
     }
-    if ((aiRacer->currentAnimId == 2) || (aiRacer->currentAnimId == 4) || (aiRacer->currentAnimId == 5)) {
+    if ((aiRacer->currentAnimId == CHALLENGE_GOAL_WANDER) || (aiRacer->currentAnimId == CHALLENGE_GOAL_HUNT) ||
+        (aiRacer->currentAnimId == CHALLENGE_GOAL_DEFEND)) {
         if (aiRacer->aiBehaviourTimer > 0) {
             aiRacer->aiBehaviourTimer -= updateRate;
         } else {
@@ -719,30 +734,30 @@ static void racer_ai_challenge_tick_behaviour_timer(Object_Racer *aiRacer, s32 u
  * Picks a rival to hunt (most or fewest bananas, or player one) and, if there is one,
  * claims it in gAiEggCounts; otherwise wanders for a while.
  */
-static void racer_ai_challenge_pick_rival(Object_Racer *aiRacer, s8 *sp38) {
+static void racer_ai_challenge_pick_rival(Object_Racer *aiRacer, s8 *chances) {
     Object_Racer *tempRacer;
     s16 i;
     s16 index = 0; // read before it is set on some paths in the original
-    s16 sp4C;
-    s16 sp4A;
-    s16 sp48;
-    s16 sp46;
+    s16 searchBackwards;
+    s16 rivalIndex;
+    s16 bestBananas;
+    s16 wantFewest;
     Object *tempRacerObj;
 
     if (roll_percent_chance(50) != 0) {
-        sp4C = 1;
+        searchBackwards = 1;
     } else {
-        sp4C = 0;
+        searchBackwards = 0;
     }
-    if (roll_percent_chance(sp38[1]) != 0) {
-        sp46 = 0;
+    if (roll_percent_chance(chances[1]) != 0) {
+        wantFewest = 0;
     } else {
-        sp46 = 1;
+        wantFewest = 1;
     }
-    sp4A = -1;
-    sp48 = sp46 << 4;
+    rivalIndex = -1;
+    bestBananas = wantFewest << 4;
     for (i = 0; i < 4; i++) {
-        if (sp4C != 0) {
+        if (searchBackwards != 0) {
             index = 3 - i;
         } else {
             index = i;
@@ -750,35 +765,35 @@ static void racer_ai_challenge_pick_rival(Object_Racer *aiRacer, s8 *sp38) {
         if ((gAiEggCounts[index] == 0) && (index != aiRacer->racerIndex)) {
             tempRacerObj = get_racer_object(index);
             tempRacer = tempRacerObj->racer;
-            if (sp46 == 0) {
-                if (sp48 < tempRacer->bananas) {
-                    sp48 = tempRacer->bananas;
-                    sp4A = index;
+            if (wantFewest == 0) {
+                if (bestBananas < tempRacer->bananas) {
+                    bestBananas = tempRacer->bananas;
+                    rivalIndex = index;
                 }
             } else {
-                if ((tempRacer->bananas > 0) && (tempRacer->bananas < sp48)) {
-                    sp48 = tempRacer->bananas;
-                    sp4A = index;
+                if ((tempRacer->bananas > 0) && (tempRacer->bananas < bestBananas)) {
+                    bestBananas = tempRacer->bananas;
+                    rivalIndex = index;
                 }
             }
         }
     }
-    if (roll_percent_chance(sp38[2]) != 0) {
+    if (roll_percent_chance(chances[2]) != 0) {
         if (cam_get_viewport_layout() == 0) {
             tempRacerObj = get_racer_object(index);
             tempRacer = tempRacerObj->racer;
             if (tempRacer->bananas > 0) {
-                sp4A = 0;
+                rivalIndex = 0;
             }
         }
     }
-    if (sp4A >= 0) {
-        aiRacer->eggHudCounter = (s8) sp4A;
-        gAiEggCounts[sp4A] = aiRacer->racerIndex + 1;
-        aiRacer->currentAnimId = 4;
+    if (rivalIndex >= 0) {
+        aiRacer->eggHudCounter = (s8) rivalIndex;
+        gAiEggCounts[rivalIndex] = aiRacer->racerIndex + 1;
+        aiRacer->currentAnimId = CHALLENGE_GOAL_HUNT;
         aiRacer->aiBehaviourTimer = 0x4B0;
     } else {
-        aiRacer->currentAnimId = 2;
+        aiRacer->currentAnimId = CHALLENGE_GOAL_WANDER;
         aiRacer->aiBehaviourTimer = 0x4B0;
     }
 }
@@ -787,29 +802,29 @@ static void racer_ai_challenge_pick_rival(Object_Racer *aiRacer, s8 *sp38) {
  * Goal 1, choosing: rolls the level's challenge chances to fetch a balloon, drop off
  * bananas, defend its egg, hunt a rival, or wander.
  */
-static void racer_ai_challenge_choose_goal(Object_Racer *aiRacer, s8 *sp38, s8 raceType) {
+static void racer_ai_challenge_choose_goal(Object_Racer *aiRacer, s8 *chances, s8 raceType) {
     rand_range(0, 9);
     if (aiRacer->balloon_quantity == 0) {
-        if (roll_percent_chance(sp38[3]) != 0) {
-            aiRacer->currentAnimId = 3;
-        } else if ((roll_percent_chance(sp38[6]) != 0) && (raceType == RACETYPE_CHALLENGE_BANANAS) &&
+        if (roll_percent_chance(chances[3]) != 0) {
+            aiRacer->currentAnimId = CHALLENGE_GOAL_BALLOON;
+        } else if ((roll_percent_chance(chances[6]) != 0) && (raceType == RACETYPE_CHALLENGE_BANANAS) &&
                    (aiRacer->bananas >= 2)) {
-            aiRacer->currentAnimId = 7;
-        } else if ((roll_percent_chance(sp38[5]) != 0) && (gAiEggCounts[aiRacer->racerIndex] != 0)) {
+            aiRacer->currentAnimId = CHALLENGE_GOAL_BANK_BANANAS;
+        } else if ((roll_percent_chance(chances[5]) != 0) && (gAiEggCounts[aiRacer->racerIndex] != 0)) {
             aiRacer->aiBehaviourTimer = 1200;
             aiRacer->eggHudCounter = gAiEggCounts[aiRacer->racerIndex] - 1;
-            aiRacer->currentAnimId = 5;
+            aiRacer->currentAnimId = CHALLENGE_GOAL_DEFEND;
         } else {
-            aiRacer->currentAnimId = 2;
+            aiRacer->currentAnimId = CHALLENGE_GOAL_WANDER;
             aiRacer->aiBehaviourTimer = 300;
         }
-    } else if ((roll_percent_chance(sp38[6]) != 0) && (raceType == RACETYPE_CHALLENGE_BANANAS) &&
+    } else if ((roll_percent_chance(chances[6]) != 0) && (raceType == RACETYPE_CHALLENGE_BANANAS) &&
                (aiRacer->bananas >= 2)) {
-        aiRacer->currentAnimId = 7;
-    } else if (roll_percent_chance(sp38[0]) != 0) {
-        racer_ai_challenge_pick_rival(aiRacer, sp38);
+        aiRacer->currentAnimId = CHALLENGE_GOAL_BANK_BANANAS;
+    } else if (roll_percent_chance(chances[0]) != 0) {
+        racer_ai_challenge_pick_rival(aiRacer, chances);
     } else {
-        aiRacer->currentAnimId = 2;
+        aiRacer->currentAnimId = CHALLENGE_GOAL_WANDER;
         aiRacer->aiBehaviourTimer = 0x12C;
     }
 }
@@ -819,31 +834,31 @@ static void racer_ai_challenge_choose_goal(Object_Racer *aiRacer, s8 *sp38, s8 r
  */
 static void racer_ai_challenge_check_goal_done(Object_Racer *aiRacer) {
     switch (aiRacer->currentAnimId) {
-        case 2:
+        case CHALLENGE_GOAL_WANDER:
             if (aiRacer->aiBehaviourTimer == 0) {
-                aiRacer->currentAnimId = 1;
+                aiRacer->currentAnimId = CHALLENGE_GOAL_CHOOSE;
             }
             break;
-        case 3:
+        case CHALLENGE_GOAL_BALLOON:
             if (aiRacer->balloon_type != 0) {
-                aiRacer->currentAnimId = 2;
+                aiRacer->currentAnimId = CHALLENGE_GOAL_WANDER;
                 aiRacer->aiBehaviourTimer = 180;
             }
             break;
-        case 4:
+        case CHALLENGE_GOAL_HUNT:
             if ((aiRacer->balloon_quantity == 0) || (aiRacer->aiBehaviourTimer == 0)) {
-                aiRacer->currentAnimId = 1;
+                aiRacer->currentAnimId = CHALLENGE_GOAL_CHOOSE;
                 gAiEggCounts[aiRacer->eggHudCounter] = 0;
             }
             break;
-        case 5:
+        case CHALLENGE_GOAL_DEFEND:
             if ((gAiEggCounts[aiRacer->racerIndex] == 0) || (aiRacer->aiBehaviourTimer == 0)) {
-                aiRacer->currentAnimId = 1;
+                aiRacer->currentAnimId = CHALLENGE_GOAL_CHOOSE;
             }
             break;
-        case 7:
+        case CHALLENGE_GOAL_BANK_BANANAS:
             if (aiRacer->bananas == 0) {
-                aiRacer->currentAnimId = 1;
+                aiRacer->currentAnimId = CHALLENGE_GOAL_CHOOSE;
             }
             break;
     }
@@ -853,30 +868,30 @@ static void racer_ai_challenge_check_goal_done(Object_Racer *aiRacer) {
  * Switches to recovery (goal 6) when the racer's elevation has left the range between the
  * current node and the previous one, releasing any claimed rival.
  */
-static void racer_ai_challenge_check_off_route(Object_Racer *aiRacer, LevelObjectEntry *sp6C) {
-    LevelObjectEntry *newvar;
-    s16 sp4E;
-    s16 sp46;
-    Object *tempRacerObj;
+static void racer_ai_challenge_check_off_route(Object_Racer *aiRacer, LevelObjectEntry *nodeEntry) {
+    LevelObjectEntry *prevNodeEntry;
+    s16 racerElevation;
+    s16 offRoute;
+    Object *prevNodeObj;
 
-    if (aiRacer->aiNodeId != 0xFF) {
-        sp4E = aiRacer->elevation;
-        tempRacerObj = ainode_get(aiRacer->aiNodeId); // I'm assuming this is a Ai Node (Take with a grain of salt!)
-        newvar = tempRacerObj->level_entry;
-        sp46 = FALSE;
-        if (sp6C->aiNode.elevation < newvar->aiNode.elevation) {
+    if (aiRacer->aiNodeId != NODE_NONE) {
+        racerElevation = aiRacer->elevation;
+        prevNodeObj = ainode_get(aiRacer->aiNodeId); // I'm assuming this is a Ai Node (Take with a grain of salt!)
+        prevNodeEntry = prevNodeObj->level_entry;
+        offRoute = FALSE;
+        if (nodeEntry->aiNode.elevation < prevNodeEntry->aiNode.elevation) {
             if (1) {} // FAKE
-            if (newvar->aiNode.elevation < sp4E || sp4E < sp6C->aiNode.elevation) {
-                sp46 = TRUE;
+            if (prevNodeEntry->aiNode.elevation < racerElevation || racerElevation < nodeEntry->aiNode.elevation) {
+                offRoute = TRUE;
             }
-        } else if (sp6C->aiNode.elevation < sp4E || sp4E < newvar->aiNode.elevation) {
-            sp46 = TRUE;
+        } else if (nodeEntry->aiNode.elevation < racerElevation || racerElevation < prevNodeEntry->aiNode.elevation) {
+            offRoute = TRUE;
         }
-        if (sp46) {
-            if (aiRacer->currentAnimId == 4) {
+        if (offRoute) {
+            if (aiRacer->currentAnimId == CHALLENGE_GOAL_HUNT) {
                 gAiEggCounts[aiRacer->eggHudCounter] = 0;
             }
-            aiRacer->currentAnimId = 6;
+            aiRacer->currentAnimId = CHALLENGE_GOAL_RECOVER;
         }
     }
 }
@@ -904,27 +919,27 @@ static void racer_ai_challenge_throttle(Object_Racer *aiRacer) {
 /**
  * Brakes ahead of a sharp turn onto the next node.
  */
-static void racer_ai_challenge_brake_for_turn(Object_Racer *aiRacer, Object *sp74) {
+static void racer_ai_challenge_brake_for_turn(Object_Racer *aiRacer, Object *nodeObj) {
     f32 xDiff;
     f32 zDiff;
-    s32 temp;
-    s32 var_v1;
-    Object *tempRacerObj;
+    s32 angle;
+    s32 angleDiff;
+    Object *nextNodeObj;
 
-    tempRacerObj = aiRacer->nodeCurrent;
-    if (tempRacerObj != NULL) {
-        xDiff = tempRacerObj->trans.x_position - sp74->trans.x_position;
-        zDiff = tempRacerObj->trans.z_position - sp74->trans.z_position;
+    nextNodeObj = aiRacer->nodeCurrent;
+    if (nextNodeObj != NULL) {
+        xDiff = nextNodeObj->trans.x_position - nodeObj->trans.x_position;
+        zDiff = nextNodeObj->trans.z_position - nodeObj->trans.z_position;
         if (sqrtf((xDiff * xDiff) + (zDiff * zDiff)) > 0.0) {
-            temp = (arctan2_f(xDiff, zDiff) - 0x8000) & 0xFFFF;
-            var_v1 = temp - (aiRacer->steerVisualRotation & 0xFFFF);
-            if (var_v1 > 0x8000) {
-                var_v1 -= 0xFFFF;
+            angle = (arctan2_f(xDiff, zDiff) - 0x8000) & 0xFFFF;
+            angleDiff = angle - (aiRacer->steerVisualRotation & 0xFFFF);
+            if (angleDiff > 0x8000) {
+                angleDiff -= 0xFFFF;
             }
-            if (var_v1 < -0x8000) {
-                var_v1 += 0xFFFF;
+            if (angleDiff < -0x8000) {
+                angleDiff += 0xFFFF;
             }
-            if ((var_v1 > 0x1500) || (var_v1 < -0x1500)) {
+            if ((angleDiff > 0x1500) || (angleDiff < -0x1500)) {
                 if (aiRacer->velocity > -4.0) {
                     gCurrentRacerInput = (A_BUTTON | B_BUTTON);
                 } else {
@@ -939,49 +954,53 @@ static void racer_ai_challenge_brake_for_turn(Object_Racer *aiRacer, Object *sp7
  * Near the current node, picks the next one toward the goal: a balloon, the hunted
  * rival, its own egg, its banana drop, or simply onward.
  */
-static void racer_ai_challenge_pick_next_node(Object_Racer *aiRacer, LevelObjectEntry *sp6C, f32 dist) {
+static void racer_ai_challenge_pick_next_node(Object_Racer *aiRacer, LevelObjectEntry *nodeEntry, f32 dist) {
     Object_Racer *tempRacer;
     LevelObjectEntry *newvar;
-    s32 temp;
+    s32 nextNodeId;
     Object *tempRacerObj;
 
     if (dist < 300.0) {
         if (aiRacer->nodeCurrent == NULL) {
             switch (aiRacer->currentAnimId) {
-                case 3:
-                    temp = ainode_pick_next(sp6C->animation.x_rotation, 1, aiRacer->aiNodeId, aiRacer->racerIndex);
+                case CHALLENGE_GOAL_BALLOON:
+                    nextNodeId =
+                        ainode_pick_next(nodeEntry->animation.x_rotation, 1, aiRacer->aiNodeId, aiRacer->racerIndex);
                     break;
-                case 4:
+                case CHALLENGE_GOAL_HUNT:
                     tempRacerObj = get_racer_object(aiRacer->eggHudCounter);
                     tempRacer = tempRacerObj->racer;
-                    if (tempRacer->playerIndex == -1) {
+                    if (tempRacer->playerIndex == PLAYER_COMPUTER) {
                         tempRacerObj = tempRacer->aiNodeObj;
                         newvar = tempRacerObj->level_entry;
-                        temp = ainode_pick_next(sp6C->animation.x_rotation, newvar->animation.x_rotation | 0x100,
-                                                aiRacer->aiNodeId, aiRacer->racerIndex);
+                        nextNodeId =
+                            ainode_pick_next(nodeEntry->animation.x_rotation, newvar->animation.x_rotation | 0x100,
+                                             aiRacer->aiNodeId, aiRacer->racerIndex);
                     } else {
-                        temp = ainode_find_nearest(tempRacerObj->trans.x_position, tempRacerObj->trans.y_position,
-                                                   tempRacerObj->trans.z_position, 0);
-                        temp = ainode_pick_next(sp6C->animation.x_rotation, temp | 0x100, aiRacer->aiNodeId,
-                                                aiRacer->racerIndex);
+                        nextNodeId = ainode_find_nearest(tempRacerObj->trans.x_position, tempRacerObj->trans.y_position,
+                                                         tempRacerObj->trans.z_position, 0);
+                        nextNodeId = ainode_pick_next(nodeEntry->animation.x_rotation, nextNodeId | 0x100,
+                                                      aiRacer->aiNodeId, aiRacer->racerIndex);
                     }
                     break;
-                case 5:
-                    temp = ainode_pick_next(sp6C->animation.x_rotation, 1, aiRacer->aiNodeId, aiRacer->racerIndex);
+                case CHALLENGE_GOAL_DEFEND:
+                    nextNodeId =
+                        ainode_pick_next(nodeEntry->animation.x_rotation, 1, aiRacer->aiNodeId, aiRacer->racerIndex);
                     break;
-                case 7:
-                    temp = ainode_pick_next(sp6C->animation.x_rotation, aiRacer->racerIndex + 4, aiRacer->aiNodeId,
-                                            aiRacer->racerIndex);
+                case CHALLENGE_GOAL_BANK_BANANAS:
+                    nextNodeId = ainode_pick_next(nodeEntry->animation.x_rotation, aiRacer->racerIndex + 4,
+                                                  aiRacer->aiNodeId, aiRacer->racerIndex);
                     break;
                 default:
-                    temp = ainode_find_next(sp6C->animation.x_rotation, aiRacer->aiNodeId, aiRacer->racerIndex);
+                    nextNodeId =
+                        ainode_find_next(nodeEntry->animation.x_rotation, aiRacer->aiNodeId, aiRacer->racerIndex);
                     break;
             }
 
-            if (temp != 0xFF) {
-                aiRacer->nodeCurrent = ainode_get(temp);
+            if (nextNodeId != NODE_NONE) {
+                aiRacer->nodeCurrent = ainode_get(nextNodeId);
             } else {
-                if (aiRacer->aiNodeId != 0xFF) {
+                if (aiRacer->aiNodeId != NODE_NONE) {
                     aiRacer->nodeCurrent = ainode_get(aiRacer->aiNodeId);
                 } else {
                     aiRacer->nodeCurrent = NULL;
@@ -995,12 +1014,12 @@ static void racer_ai_challenge_pick_next_node(Object_Racer *aiRacer, LevelObject
  * On reaching the current node (or overshooting it), makes the chosen next node current;
  * with none, goes back to finding a first node.
  */
-static void racer_ai_challenge_advance_node(Object_Racer *aiRacer, LevelObjectEntry *sp6C, f32 dist) {
+static void racer_ai_challenge_advance_node(Object_Racer *aiRacer, LevelObjectEntry *nodeEntry, f32 dist) {
     if (dist < 50.0 || (dist > 320.0 && aiRacer->nodeCurrent != NULL)) {
-        aiRacer->aiNodeId = sp6C->animation.x_rotation;
+        aiRacer->aiNodeId = nodeEntry->animation.x_rotation;
         aiRacer->aiNodeObj = aiRacer->nodeCurrent;
         if (aiRacer->nodeCurrent == NULL) {
-            aiRacer->currentAnimId = 0;
+            aiRacer->currentAnimId = CHALLENGE_GOAL_FIND_NODE;
         }
         aiRacer->nodeCurrent = NULL;
     }
@@ -1010,27 +1029,28 @@ static void racer_ai_challenge_advance_node(Object_Racer *aiRacer, LevelObjectEn
  * Goals 2 to 5 and 7: drives the node network toward the goal until it is done or the
  * racer leaves the route.
  */
-static void racer_ai_challenge_pursue_goal(Object_Racer *aiRacer, Object *sp74, LevelObjectEntry *sp6C, f32 dist) {
+static void racer_ai_challenge_pursue_goal(Object_Racer *aiRacer, Object *nodeObj, LevelObjectEntry *nodeEntry,
+                                           f32 dist) {
     racer_ai_challenge_check_goal_done(aiRacer);
-    racer_ai_challenge_check_off_route(aiRacer, sp6C);
+    racer_ai_challenge_check_off_route(aiRacer, nodeEntry);
     racer_ai_challenge_throttle(aiRacer);
-    racer_ai_challenge_brake_for_turn(aiRacer, sp74);
-    racer_ai_challenge_pick_next_node(aiRacer, sp6C, dist);
-    racer_ai_challenge_advance_node(aiRacer, sp6C, dist);
+    racer_ai_challenge_brake_for_turn(aiRacer, nodeObj);
+    racer_ai_challenge_pick_next_node(aiRacer, nodeEntry, dist);
+    racer_ai_challenge_advance_node(aiRacer, nodeEntry, dist);
 }
 
 /**
  * Goal 6, recovering: rejoins the network at the nearest node and goes back to choosing.
  */
 static void racer_ai_challenge_recover(Object *aiRacerObj, Object_Racer *aiRacer) {
-    s32 temp;
+    s32 nodeId;
 
-    temp = ainode_find_nearest(aiRacerObj->trans.x_position, aiRacerObj->trans.y_position, aiRacerObj->trans.z_position,
-                               2);
-    if (temp != 0xFF) {
-        aiRacer->aiNodeObj = ainode_get(temp);
-        aiRacer->currentAnimId = 1;
-        aiRacer->aiNodeId = 0xFF;
+    nodeId = ainode_find_nearest(aiRacerObj->trans.x_position, aiRacerObj->trans.y_position,
+                                 aiRacerObj->trans.z_position, 2);
+    if (nodeId != NODE_NONE) {
+        aiRacer->aiNodeObj = ainode_get(nodeId);
+        aiRacer->currentAnimId = CHALLENGE_GOAL_CHOOSE;
+        aiRacer->aiNodeId = NODE_NONE;
     }
     aiRacer->aiBehaviour = 1;
 }
@@ -1043,36 +1063,36 @@ static void racer_ai_challenge_fire_at_rivals(Object *aiRacerObj, Object_Racer *
     Object_Racer *tempRacer;
     f32 xDiff;
     f32 zDiff;
-    s32 temp;
+    s32 angleDiff;
     s16 i;
-    s32 var_v1;
+    s32 fireArc;
     Object *tempRacerObj;
 
     for (i = 0; i < 4; i++) {
         if (i != aiRacer->racerIndex) {
             tempRacerObj = get_racer_object(i);
             tempRacer = tempRacerObj->racer;
-            if (tempRacer->playerIndex != -1) {
+            if (tempRacer->playerIndex != PLAYER_COMPUTER) {
                 gAiRacerElevations[i] = tempRacer->elevation;
             }
             if (gAiRacerElevations[aiRacer->racerIndex] == gAiRacerElevations[i]) {
                 xDiff = aiRacerObj->trans.x_position - tempRacerObj->trans.x_position;
                 zDiff = aiRacerObj->trans.z_position - tempRacerObj->trans.z_position;
                 if (sqrtf((xDiff * xDiff) + (zDiff * zDiff)) < 800.0) {
-                    temp = arctan2_f(xDiff, zDiff);
-                    temp -= (aiRacerObj->trans.rotation.y_rotation & 0xFFFF);
-                    if (temp > 0x8000) {
-                        temp = -0xFFFF;
+                    angleDiff = arctan2_f(xDiff, zDiff);
+                    angleDiff -= (aiRacerObj->trans.rotation.y_rotation & 0xFFFF);
+                    if (angleDiff > 0x8000) {
+                        angleDiff = -0xFFFF;
                     }
-                    if (temp < -0x8000) {
-                        temp = 0xFFFF;
+                    if (angleDiff < -0x8000) {
+                        angleDiff = 0xFFFF;
                     }
                     if (aiRacer->balloon_level == 1) {
-                        var_v1 = 0x1000;
+                        fireArc = 0x1000;
                     } else {
-                        var_v1 = 0x800;
+                        fireArc = 0x800;
                     }
-                    if ((-var_v1 < temp) && (temp < var_v1)) {
+                    if ((-fireArc < angleDiff) && (angleDiff < fireArc)) {
                         gCurrentButtonsReleased |= Z_TRIG;
                     }
                 }
@@ -1083,44 +1103,44 @@ static void racer_ai_challenge_fire_at_rivals(Object *aiRacerObj, Object_Racer *
 
 // Handles the opponent A.I. for battle & banana challenges.
 void racer_ai_challenge(Object *aiRacerObj, Object_Racer *aiRacer, s32 updateRate) {
-    Object *sp74;
-    LevelObjectEntry *sp6C = NULL; // read before it is set on some paths in the original
-    f32 dist = 0.0f; // read before it is set on some paths in the original
-    s32 temp;
+    Object *nodeObj;
+    LevelObjectEntry *nodeEntry = NULL; // read before it is set on some paths in the original
+    f32 dist = 0.0f;                    // read before it is set on some paths in the original
+    s32 numRacers;
     LevelHeader *levelHeader;
     s8 raceType;
-    s8 *sp38;
+    s8 *chances;
 
     gCurrentButtonsPressed = 0;
     gCurrentButtonsReleased = 0;
     gCurrentRacerInput = 0;
     gCurrentStickX = 0;
     gCurrentStickY = 0;
-    get_racer_objects(&temp); // temp = Number of racers
-    if (temp != 4) {
+    get_racer_objects(&numRacers);
+    if (numRacers != 4) {
         return;
     }
 
     levelHeader = level_header();
     raceType = levelHeader->race_type;
-    sp38 = levelHeader->aiChallengeChances;
+    chances = levelHeader->aiChallengeChances;
     racer_ai_challenge_find_first_node(aiRacerObj, aiRacer);
-    sp74 = aiRacer->aiNodeObj;
-    racer_ai_challenge_steer_to_node(aiRacerObj, aiRacer, sp74, &sp6C, &dist);
+    nodeObj = aiRacer->aiNodeObj;
+    racer_ai_challenge_steer_to_node(aiRacerObj, aiRacer, nodeObj, &nodeEntry, &dist);
     racer_ai_challenge_tick_behaviour_timer(aiRacer, updateRate);
     aiRacer->elevation = obj_elevation(aiRacerObj->trans.y_position);
     switch (aiRacer->currentAnimId) {
-        case 1:
-            racer_ai_challenge_choose_goal(aiRacer, sp38, raceType);
+        case CHALLENGE_GOAL_CHOOSE:
+            racer_ai_challenge_choose_goal(aiRacer, chances, raceType);
             break;
-        case 2:
-        case 3:
-        case 4:
-        case 5:
-        case 7:
-            racer_ai_challenge_pursue_goal(aiRacer, sp74, sp6C, dist);
+        case CHALLENGE_GOAL_WANDER:
+        case CHALLENGE_GOAL_BALLOON:
+        case CHALLENGE_GOAL_HUNT:
+        case CHALLENGE_GOAL_DEFEND:
+        case CHALLENGE_GOAL_BANK_BANANAS:
+            racer_ai_challenge_pursue_goal(aiRacer, nodeObj, nodeEntry, dist);
             break;
-        case 6:
+        case CHALLENGE_GOAL_RECOVER:
             racer_ai_challenge_recover(aiRacerObj, aiRacer);
             break;
     }
@@ -1176,12 +1196,12 @@ static void racer_ai_eggs_ground_timer(Object_Racer *racer, s32 updateRate) {
 static s8 racer_ai_eggs_requested_goal(Object_Racer *racer, s8 *header) {
     s32 i;
     s8 tickCount;
-    s8 flags;
+    s8 leaderIndex;
     s8 racerID;
     s8 bestTick;
 
     racerID = PLAYER_COMPUTER;
-    flags = 0;
+    leaderIndex = 0;
     bestTick = 0;
     for (i = 3; i >= 0; i--) {
         tickCount = (gEggChallengeFlags[i] & RACER_EGG_MASK) * 3;
@@ -1192,7 +1212,7 @@ static s8 racer_ai_eggs_requested_goal(Object_Racer *racer, s8 *header) {
         }
         if (bestTick < tickCount) {
             bestTick = tickCount;
-            flags = i;
+            leaderIndex = i;
         }
     }
     if (racer->aiNodeId & 0x40) {
@@ -1206,7 +1226,7 @@ static s8 racer_ai_eggs_requested_goal(Object_Racer *racer, s8 *header) {
         } else {
             bestTick = 1;
             if (roll_percent_chance(header[2]) && cam_get_viewport_layout() == 0) {
-                flags = 0;
+                leaderIndex = 0;
             }
         }
         if (bestTick == 2) {
@@ -1224,8 +1244,8 @@ static s8 racer_ai_eggs_requested_goal(Object_Racer *racer, s8 *header) {
         if (bestTick == 1) {
             if (racer->balloon_quantity != 0) {
                 racer->currentAnimId = 6;
-                if (flags != racer->racerIndex) {
-                    racerID = flags;
+                if (leaderIndex != racer->racerIndex) {
+                    racerID = leaderIndex;
                 } else {
                     racerID = (racer->racerIndex + 1) & 3;
                 }
@@ -1380,7 +1400,7 @@ static f32 racer_ai_eggs_steer_to_target(Object *obj, Object_Racer *racer, Objec
     f32 diffY;
     f32 diffZ;
     f32 distance;
-    s32 racerCount;
+    s32 targetAngle;
     s32 i;
     Object_CollectEgg *egg;
     s32 angleDiffX;
@@ -1404,8 +1424,8 @@ static f32 racer_ai_eggs_steer_to_target(Object *obj, Object_Racer *racer, Objec
         diffZ = curObj->trans.z_position - obj->trans.z_position;
         distance = sqrtf((diffX * diffX) + (diffY * diffY) + (diffZ * diffZ));
         if (distance > 0.0) {
-            racerCount = (arctan2_f(diffX, diffZ) - 0x8000) & 0xFFFF;
-            angleDiffX = racerCount - (racer->steerVisualRotation & 0xFFFF);
+            targetAngle = (arctan2_f(diffX, diffZ) - 0x8000) & 0xFFFF;
+            angleDiffX = targetAngle - (racer->steerVisualRotation & 0xFFFF);
             if (angleDiffX > 0x8000) {
                 angleDiffX -= 0xFFFF;
             }
@@ -1545,189 +1565,209 @@ void racer_ai_eggs(Object *obj, Object_Racer *racer, s32 updateRate) {
 }
 
 /**
- * Computer racer input: builds the stick and button state for this tick by
- * steering toward the checkpoint spline, then runs racer_ai_tactics.
+ * Builds the four spline points from two checkpoints back, along the racer's lane (and takes
+ * the lane's track offset while no behaviour overrides it). Returns how far the racer is
+ * between the checkpoints.
  */
-void racer_ai_drive(Object *obj, Object_Racer *racer, s32 updateRate) {
-    s32 v0;
-    UNUSED s32 pad_spE0;
-    s32 s0;
+static f32 racer_ai_drive_lane_spline(Object_Racer *racer, s32 checkpointCount, f32 *splineX, f32 *splineY,
+                                      f32 *splineZ) {
+    s32 checkpointIdx;
     s32 i;
-    UNUSED s32 pad_spD4;
-    UNUSED s32 pad_spD0;
-    s32 a0;
-    s32 v1;
-    s32 spC4;
     CheckpointNode *checkpoint;
-    f32 splineX[4];
-    f32 splineY[4];
-    f32 splineZ[4];
+    f32 laneOffsetX[4];
+    f32 laneOffsetY[4];
+    f32 progress;
 
-    f32 sp8C;
-    f32 sp88;
-    f32 sp84;
-
-    f32 sp74[4];
-    f32 sp64[4];
-
-    s32 a1;
-    f32 xDerivative;
-    f32 yDirevative;
-    f32 zDerivative;
-    f32 magnitude;
-    s32 v00;
-
-    spC4 = FALSE;
-
-    gCurrentRacerInput = 0;
-    gCurrentButtonsPressed = 0;
-    gCurrentButtonsReleased = 0;
-    gCurrentStickX = 0;
-    gCurrentStickY = 0;
-
-    v0 = get_checkpoint_count();
-    if (v0 == 0) {
-        gCurrentStickX = 25;
-        return;
+    checkpointIdx = racer->nextCheckpoint - 2;
+    progress = 1.0 - racer->checkpoint_distance;
+    if (progress < 0.0) {
+        progress = 0.0f;
     }
-
-    s0 = racer->nextCheckpoint - 2;
-    magnitude = 1.0 - racer->checkpoint_distance;
-    if (magnitude < 0.0) {
-        magnitude = 0.0f;
+    if (progress > 1.0) {
+        progress = 1;
     }
-    if (magnitude > 1.0) {
-        magnitude = 1;
+    if (checkpointIdx < 0) {
+        checkpointIdx += checkpointCount;
     }
-    if (s0 < 0) {
-        s0 += v0;
-    }
-    if (s0 >= v0) {
-        s0 -= v0;
+    if (checkpointIdx >= checkpointCount) {
+        checkpointIdx -= checkpointCount;
     }
 
     for (i = 0; i < 4; i++) {
-        checkpoint = find_next_checkpoint_node(s0, racer->isOnAlternateRoute);
+        checkpoint = find_next_checkpoint_node(checkpointIdx, racer->isOnAlternateRoute);
         splineX[i] = checkpoint->x;
         splineY[i] = checkpoint->y;
         splineZ[i] = checkpoint->z;
-        if (racer->aiBehaviour == 0) {
-            sp74[i] = checkpoint->laneOffsetX[racer->aiLane];
-            sp64[i] = checkpoint->laneOffsetY[racer->aiLane];
+        if (racer->aiBehaviour == AI_BEHAVIOUR_LANE) {
+            laneOffsetX[i] = checkpoint->laneOffsetX[racer->aiLane];
+            laneOffsetY[i] = checkpoint->laneOffsetY[racer->aiLane];
             splineX[i] += checkpoint->scale * checkpoint->rotationZFrac * checkpoint->laneOffsetX[racer->aiLane];
             splineY[i] += checkpoint->scale * checkpoint->laneOffsetY[racer->aiLane];
             splineZ[i] += checkpoint->scale * -checkpoint->rotationXFrac * checkpoint->laneOffsetX[racer->aiLane];
         }
 
-        s0++;
-        if (s0 == v0) {
-            s0 = 0;
+        checkpointIdx++;
+        if (checkpointIdx == checkpointCount) {
+            checkpointIdx = 0;
         }
     }
 
-    if (racer->aiBehaviour == 0) {
-        racer->trackOffsetX = sp74[1] + (sp74[2] - sp74[1]) * magnitude;
-        racer->trackOffsetY = sp64[1] + (sp64[2] - sp64[1]) * magnitude;
+    if (racer->aiBehaviour == AI_BEHAVIOUR_LANE) {
+        racer->trackOffsetX = laneOffsetX[1] + (laneOffsetX[2] - laneOffsetX[1]) * progress;
+        racer->trackOffsetY = laneOffsetY[1] + (laneOffsetY[2] - laneOffsetY[1]) * progress;
     }
+    return progress;
+}
 
-    xDerivative = catmull_rom_derivative(splineX, 0, magnitude);
-    yDirevative = catmull_rom_derivative(splineY, 0, magnitude);
-    zDerivative = catmull_rom_derivative(splineZ, 0, magnitude);
-    magnitude = sqrtf(xDerivative * xDerivative + yDirevative * yDirevative + zDerivative * zDerivative);
+/**
+ * Takes the path's heading at the racer's progress as the new AI target yaw and pitch, and
+ * steers by how much it changed since last frame. Returns TRUE when the path heads well away
+ * from where the racer is facing.
+ */
+static s32 racer_ai_drive_path_heading(Object_Racer *racer, f32 *splineX, f32 *splineY, f32 *splineZ, f32 progress) {
+    s32 targetYaw;
+    s32 targetPitch;
+    s32 yawDiff;
+    s32 pitchDiff;
+    s32 sharpTurn;
+    f32 xDerivative;
+    f32 yDerivative;
+    f32 zDerivative;
+    f32 magnitude;
+
+    sharpTurn = FALSE;
+    xDerivative = catmull_rom_derivative(splineX, 0, progress);
+    yDerivative = catmull_rom_derivative(splineY, 0, progress);
+    zDerivative = catmull_rom_derivative(splineZ, 0, progress);
+    magnitude = sqrtf(xDerivative * xDerivative + yDerivative * yDerivative + zDerivative * zDerivative);
     if (magnitude != 0.0f) {
         magnitude = 100.0f / magnitude;
         xDerivative *= magnitude;
-        yDirevative *= magnitude;
+        yDerivative *= magnitude;
         zDerivative *= magnitude;
     }
 
-    s0 = (u16) (arctan2_f(xDerivative, zDerivative) - 0x8000);
-    a1 = (u16) arctan2_f(yDirevative, 100.0f);
+    targetYaw = (u16) (arctan2_f(xDerivative, zDerivative) - 0x8000);
+    targetPitch = (u16) arctan2_f(yDerivative, 100.0f);
 
     racer->aiTargetYawPrev = racer->aiTargetYaw;
     racer->aiTargetPitchPrev = racer->aiTargetPitch;
 
-    racer->aiTargetYaw = s0;
-    racer->aiTargetPitch = a1;
+    racer->aiTargetYaw = targetYaw;
+    racer->aiTargetPitch = targetPitch;
 
-    a0 = s0 - (racer->aiTargetYawPrev & 0xFFFF);
-    WRAP(a0, -0x8000, 0x8000);
-    v1 = a1 - (racer->aiTargetPitchPrev & 0xFFFF);
-    WRAP(v1, -0x8000, 0x8000);
+    yawDiff = targetYaw - (racer->aiTargetYawPrev & 0xFFFF);
+    WRAP(yawDiff, -0x8000, 0x8000);
+    pitchDiff = targetPitch - (racer->aiTargetPitchPrev & 0xFFFF);
+    WRAP(pitchDiff, -0x8000, 0x8000);
 
-    gCurrentStickX = -(a0 >> 3);
-    gCurrentStickY = -(v1 >> 3);
+    gCurrentStickX = -(yawDiff >> 3);
+    gCurrentStickY = -(pitchDiff >> 3);
 
-    a0 = s0 - (racer->steerVisualRotation & 0xFFFF);
-    WRAP(a0, -0x8000, 0x8000);
-    if (a0 > 0x3000 || a0 < -0x3000) {
-        spC4 = TRUE;
+    yawDiff = targetYaw - (racer->steerVisualRotation & 0xFFFF);
+    WRAP(yawDiff, -0x8000, 0x8000);
+    if (yawDiff > 0x3000 || yawDiff < -0x3000) {
+        sharpTurn = TRUE;
+    }
+    return sharpTurn;
+}
+
+/**
+ * The progress to aim from (the end of the segment in a sharp turn); while a behaviour sets
+ * the track offset, rebuilds the spline points along that offset instead of the lane.
+ */
+static f32 racer_ai_drive_offset_spline(Object_Racer *racer, s32 checkpointCount, f32 *splineX, f32 *splineY,
+                                        f32 *splineZ, s32 sharpTurn) {
+    s32 checkpointIdx;
+    s32 i;
+    CheckpointNode *checkpoint;
+    f32 progress;
+
+    checkpointIdx = racer->nextCheckpoint - 2;
+    progress = 1.0 - racer->checkpoint_distance;
+    if (progress < 0.0) {
+        progress = 0.0;
+    }
+    if (progress > 1.0) {
+        progress = 1.0;
+    }
+    if (sharpTurn) {
+        progress = 1.0;
     }
 
-    s0 = racer->nextCheckpoint - 2;
-    magnitude = 1.0 - racer->checkpoint_distance;
-    if (magnitude < 0.0) {
-        magnitude = 0.0;
-    }
-    if (magnitude > 1.0) {
-        magnitude = 1.0;
-    }
-    if (spC4) {
-        magnitude = 1.0;
-    }
-
-    if (racer->aiBehaviour != 0) {
-        if (s0 < 0) {
-            s0 += v0;
+    if (racer->aiBehaviour != AI_BEHAVIOUR_LANE) {
+        if (checkpointIdx < 0) {
+            checkpointIdx += checkpointCount;
         }
-        if (s0 >= v0) {
-            s0 -= v0;
+        if (checkpointIdx >= checkpointCount) {
+            checkpointIdx -= checkpointCount;
         }
         for (i = 0; i < 4; i++) {
-            checkpoint = find_next_checkpoint_node(s0, racer->isOnAlternateRoute);
+            checkpoint = find_next_checkpoint_node(checkpointIdx, racer->isOnAlternateRoute);
             splineX[i] = checkpoint->x + checkpoint->scale * checkpoint->rotationZFrac * racer->trackOffsetX;
             splineY[i] = checkpoint->y + checkpoint->scale * racer->trackOffsetY;
             splineZ[i] = checkpoint->z + checkpoint->scale * -checkpoint->rotationXFrac * racer->trackOffsetX;
 
-            s0++;
-            if (s0 == v0) {
-                s0 = 0;
+            checkpointIdx++;
+            if (checkpointIdx == checkpointCount) {
+                checkpointIdx = 0;
             }
         }
     }
+    return progress;
+}
 
-    sp8C = cubic_spline_interpolation(splineX, 0, magnitude, &xDerivative);
-    sp88 = cubic_spline_interpolation(splineY, 0, magnitude, &yDirevative);
-    sp84 = cubic_spline_interpolation(splineZ, 0, magnitude, &zDerivative);
-    magnitude = sqrtf(xDerivative * xDerivative + yDirevative * yDirevative + zDerivative * zDerivative);
+/**
+ * Steers toward a point 500 units ahead along the spline from the racer's progress, more
+ * gently for planes, and in the axes each vehicle can steer in.
+ */
+static void racer_ai_drive_steer(Object *obj, Object_Racer *racer, f32 *splineX, f32 *splineY, f32 *splineZ,
+                                 f32 progress) {
+    f32 pointX;
+    f32 pointY;
+    f32 pointZ;
+    f32 xDerivative;
+    f32 yDerivative;
+    f32 zDerivative;
+    f32 magnitude;
+    s32 targetYaw;
+    s32 targetPitch;
+    s32 yawDiff;
+    s32 pitchDiff;
+    s32 shift;
+
+    pointX = cubic_spline_interpolation(splineX, 0, progress, &xDerivative);
+    pointY = cubic_spline_interpolation(splineY, 0, progress, &yDerivative);
+    pointZ = cubic_spline_interpolation(splineZ, 0, progress, &zDerivative);
+    magnitude = sqrtf(xDerivative * xDerivative + yDerivative * yDerivative + zDerivative * zDerivative);
     if (magnitude != 0.0f) {
         magnitude = 500.0f / magnitude;
         xDerivative *= magnitude;
-        yDirevative *= magnitude;
+        yDerivative *= magnitude;
         zDerivative *= magnitude;
     }
 
-    xDerivative = sp8C + xDerivative - obj->trans.x_position;
-    yDirevative = sp88 + yDirevative - obj->trans.y_position;
-    zDerivative = sp84 + zDerivative - obj->trans.z_position;
+    xDerivative = pointX + xDerivative - obj->trans.x_position;
+    yDerivative = pointY + yDerivative - obj->trans.y_position;
+    zDerivative = pointZ + zDerivative - obj->trans.z_position;
 
-    s0 = (u16) (arctan2_f(xDerivative, zDerivative) - 0x8000);
-    a1 = (u16) arctan2_f(yDirevative, 500.0f);
+    targetYaw = (u16) (arctan2_f(xDerivative, zDerivative) - 0x8000);
+    targetPitch = (u16) arctan2_f(yDerivative, 500.0f);
 
-    a0 = s0 - (u16) racer->steerVisualRotation;
-    WRAP(a0, -0x8000, 0x8000);
-    a0 = -a0;
-    v1 = a1 - (obj->trans.rotation.x_rotation & 0xFFFF);
-    WRAP(v1, -0x8000, 0x8000);
-    v1 = -v1;
+    yawDiff = targetYaw - (u16) racer->steerVisualRotation;
+    WRAP(yawDiff, -0x8000, 0x8000);
+    yawDiff = -yawDiff;
+    pitchDiff = targetPitch - (obj->trans.rotation.x_rotation & 0xFFFF);
+    WRAP(pitchDiff, -0x8000, 0x8000);
+    pitchDiff = -pitchDiff;
 
-    v00 = 5;
+    shift = 5;
     if (racer->vehicleID == VEHICLE_PLANE) {
-        v00 = 6;
+        shift = 6;
     }
 
-    if (racer->vehicleID == 1 && racer->spinDirection == 0) {
-        racer->steerVisualRotation -= a0 >> 1;
+    if (racer->vehicleID == VEHICLE_HOVERCRAFT && racer->spinDirection == 0) {
+        racer->steerVisualRotation -= yawDiff >> 1;
     }
 
     switch (racer->vehicleID) {
@@ -1736,23 +1776,111 @@ void racer_ai_drive(Object *obj, Object_Racer *racer, s32 updateRate) {
             break;
         case VEHICLE_HOVERCRAFT:
             gCurrentStickY = 0;
-            gCurrentStickX += a0 >> v00;
+            gCurrentStickX += yawDiff >> shift;
             break;
         case VEHICLE_TRICKY:
-            gCurrentStickX += a0 >> (v00 - 1);
+            gCurrentStickX += yawDiff >> (shift - 1);
             gCurrentStickY = 0;
             break;
         case VEHICLE_SMOKEY:
-            v00--;
-            gCurrentStickX += a0 >> v00;
-            gCurrentStickY += v1 >> v00;
+            shift--;
+            gCurrentStickX += yawDiff >> shift;
+            gCurrentStickY += pitchDiff >> shift;
             break;
         default:
-            gCurrentStickX += a0 >> v00;
-            gCurrentStickY += v1 >> v00;
+            gCurrentStickX += yawDiff >> shift;
+            gCurrentStickY += pitchDiff >> shift;
             break;
     }
+}
+
+/**
+ * Computer racer input: builds the stick and button state for this tick by
+ * steering toward the checkpoint spline, then runs racer_ai_tactics.
+ */
+void racer_ai_drive(Object *obj, Object_Racer *racer, s32 updateRate) {
+    s32 checkpointCount;
+    f32 splineX[4];
+    f32 splineY[4];
+    f32 splineZ[4];
+    f32 progress;
+    s32 sharpTurn;
+
+    gCurrentRacerInput = 0;
+    gCurrentButtonsPressed = 0;
+    gCurrentButtonsReleased = 0;
+    gCurrentStickX = 0;
+    gCurrentStickY = 0;
+
+    checkpointCount = get_checkpoint_count();
+    if (checkpointCount == 0) {
+        gCurrentStickX = 25;
+        return;
+    }
+
+    progress = racer_ai_drive_lane_spline(racer, checkpointCount, splineX, splineY, splineZ);
+    sharpTurn = racer_ai_drive_path_heading(racer, splineX, splineY, splineZ, progress);
+    progress = racer_ai_drive_offset_spline(racer, checkpointCount, splineX, splineY, splineZ, sharpTurn);
+    racer_ai_drive_steer(obj, racer, splineX, splineY, splineZ, progress);
     racer_ai_tactics(obj, racer, updateRate);
+}
+
+/**
+ * Shows the turn rate in the driver's steering animation frame.
+ */
+static void onscreen_AI_racer_steer_frame(Object *obj, Object_Racer *racer) {
+    s32 steerVel;
+
+    obj->animationID = 0;
+    steerVel = ((-racer->y_rotation_vel >> 8) / gCurrentRacerHandlingStat);
+    steerVel = 40 - steerVel;
+    if (steerVel < 0) {
+        steerVel = 0;
+    }
+    if (steerVel > 73) {
+        steerVel = 73;
+    }
+    obj->animFrame = steerVel;
+}
+
+/**
+ * Eases the yaw velocity toward this frame's steering (at most 0x2EE per tick) and the roll
+ * toward its target, and applies both.
+ */
+static void onscreen_AI_racer_turn(Object *obj, Object_Racer *racer, s32 updateRate) {
+    s32 angle;
+
+    slowly_reset_head_angle(racer);
+    angle = gCurrentCarSteerVel - (u16) racer->y_rotation_vel;
+    WRAP(angle, -0x8000, 0x8000);
+    angle >>= 2;
+    CLAMP(angle, -0x2EE, 0x2EE);
+    racer->y_rotation_vel += (angle * updateRate);
+    obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
+    racer->z_rotation_vel += ((gRacerTargetRoll - racer->z_rotation_vel) * updateRate) >> 4;
+    obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
+}
+
+/**
+ * Unless escaping water, turns the racer's forward and sideways speed into a world velocity
+ * along its heading.
+ */
+static void onscreen_AI_racer_heading_velocity(Object *obj, Object_Racer *racer) {
+    f32 unusedY;
+    MtxF mtx;
+
+    if (!racer->waterEscapeActive) {
+        gCurrentRacerTransform.rotation.y_rotation = racer->steerVisualRotation + racer->driftHeadingOffset;
+        gCurrentRacerTransform.rotation.x_rotation = 0;
+        gCurrentRacerTransform.rotation.z_rotation = 0;
+        gCurrentRacerTransform.x_position = 0.0f;
+        gCurrentRacerTransform.y_position = 0.0f;
+        gCurrentRacerTransform.z_position = 0.0f;
+        gCurrentRacerTransform.scale = 1.0f;
+        mtxf_from_inverse_transform(&mtx, &gCurrentRacerTransform);
+        mtxf_transform_point(mtx, racer->lateral_velocity, 0.0f, racer->velocity, &obj->x_velocity, &unusedY,
+                             &obj->z_velocity);
+    }
 }
 
 /**
@@ -1771,8 +1899,6 @@ void update_onscreen_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, 
     f32 zTemp;
     MtxF mtx;
     LevelHeader *header;
-    s32 angle;
-    s32 steerVel;
 
     xTemp = obj->trans.x_position;
     yTemp = obj->trans.y_position;
@@ -1817,37 +1943,9 @@ void update_onscreen_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, 
     } else if (racer->groundedWheels > 2) {
         racer->waterEscapeActive = 0;
     }
-    obj->animationID = 0;
-    steerVel = ((-racer->y_rotation_vel >> 8) / gCurrentRacerHandlingStat);
-    steerVel = 40 - steerVel;
-    if (steerVel < 0) {
-        steerVel = 0;
-    }
-    if (steerVel > 73) {
-        steerVel = 73;
-    }
-    obj->animFrame = steerVel;
-    slowly_reset_head_angle(racer);
-    angle = gCurrentCarSteerVel - (u16) racer->y_rotation_vel;
-    WRAP(angle, -0x8000, 0x8000);
-    angle >>= 2;
-    CLAMP(angle, -0x2EE, 0x2EE);
-    racer->y_rotation_vel += (angle * updateRate);
-    obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
-    racer->z_rotation_vel += ((gRacerTargetRoll - racer->z_rotation_vel) * updateRate) >> 4;
-    obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
-    if (!racer->waterEscapeActive) {
-        gCurrentRacerTransform.rotation.y_rotation = racer->steerVisualRotation + racer->driftHeadingOffset;
-        gCurrentRacerTransform.rotation.x_rotation = 0;
-        gCurrentRacerTransform.rotation.z_rotation = 0;
-        gCurrentRacerTransform.x_position = 0.0f;
-        gCurrentRacerTransform.y_position = 0.0f;
-        gCurrentRacerTransform.z_position = 0.0f;
-        gCurrentRacerTransform.scale = 1.0f;
-        mtxf_from_inverse_transform(&mtx, &gCurrentRacerTransform);
-        mtxf_transform_point(mtx, racer->lateral_velocity, 0.0f, racer->velocity, &obj->x_velocity, &tempVel,
-                             &obj->z_velocity);
-    }
+    onscreen_AI_racer_steer_frame(obj, racer);
+    onscreen_AI_racer_turn(obj, racer, updateRate);
+    onscreen_AI_racer_heading_velocity(obj, racer);
     if (racer->magnetTimer) {
         obj->x_velocity = gRacerMagnetVelX;
         obj->z_velocity = gRacerMagnetVelZ;
@@ -1922,7 +2020,7 @@ void onscreen_ai_racer_physics(Object *obj, Object_Racer *racer, UNUSED s32 upda
     f32 distance;
     s32 hasCollision;
     s32 flags;
-    s32 temp_v1_2;
+    s32 rollRot;
     f32 xTemp;
     f32 yTemp;
     f32 zTemp;
@@ -1996,9 +2094,9 @@ void onscreen_ai_racer_physics(Object *obj, Object_Racer *racer, UNUSED s32 upda
         angleZ = coss_f(-obj->trans.rotation.y_rotation);
         distance = (xTemp * angleZ) + (zTemp * angleX);
         zTemp = (xTemp * angleX) - (zTemp * angleZ);
-        temp_v1_2 = -(s16) (u16) arctan2_f(distance, yTemp);
-        if (temp_v1_2 < 0x2000 && temp_v1_2 > -0x2000) {
-            racer->x_rotation_vel = temp_v1_2;
+        rollRot = -(s16) (u16) arctan2_f(distance, yTemp);
+        if (rollRot < 0x2000 && rollRot > -0x2000) {
+            racer->x_rotation_vel = rollRot;
         }
         xRot = -(s16) (u16) arctan2_f(zTemp, yTemp);
         if (xRot < 0x2000 && xRot > -0x2000) {
@@ -2079,40 +2177,40 @@ static void update_AI_racer_counters(Object_Racer *racer, LevelHeader *levelHead
  * or more away; 1000000 when not checked.
  */
 static f32 update_AI_racer_player_dist_sq(Object *obj, Object_Racer *racer) {
-    s32 var_t2;
+    s32 i;
     Object **objects;
     s32 countOfObjects;
     Object *playerOneObj;
-    f32 var_fv1;
+    f32 distSq;
     Object *playerTwoObj;
-    f32 temp_f0;
+    f32 zDiff;
     Object_Racer *tempRacer;
 
-    var_fv1 = 1000000;
+    distSq = 1000000;
     if (racer->aiPhysicsTimer == 0) {
         objects = get_racer_objects(&countOfObjects);
         playerOneObj = playerTwoObj = NULL;
-        for (var_t2 = 0; var_t2 < countOfObjects; var_t2++) {
-            tempRacer = objects[var_t2]->racer;
+        for (i = 0; i < countOfObjects; i++) {
+            tempRacer = objects[i]->racer;
             if (tempRacer->playerIndex == PLAYER_ONE) {
-                playerOneObj = objects[var_t2];
+                playerOneObj = objects[i];
             }
             if (tempRacer->playerIndex == PLAYER_TWO) {
-                playerTwoObj = objects[var_t2];
+                playerTwoObj = objects[i];
             }
         }
         if (playerOneObj != NULL) {
-            var_fv1 = playerOneObj->trans.x_position - obj->trans.x_position;
-            temp_f0 = playerOneObj->trans.z_position - obj->trans.z_position;
-            var_fv1 = (var_fv1 * var_fv1) + (temp_f0 * temp_f0);
+            distSq = playerOneObj->trans.x_position - obj->trans.x_position;
+            zDiff = playerOneObj->trans.z_position - obj->trans.z_position;
+            distSq = (distSq * distSq) + (zDiff * zDiff);
         }
-        if ((playerTwoObj != NULL) && (var_fv1 >= 160000.0)) {
-            var_fv1 = playerTwoObj->trans.x_position - obj->trans.x_position;
-            temp_f0 = playerTwoObj->trans.z_position - obj->trans.z_position;
-            var_fv1 = (var_fv1 * var_fv1) + (temp_f0 * temp_f0);
+        if ((playerTwoObj != NULL) && (distSq >= 160000.0)) {
+            distSq = playerTwoObj->trans.x_position - obj->trans.x_position;
+            zDiff = playerTwoObj->trans.z_position - obj->trans.z_position;
+            distSq = (distSq * distSq) + (zDiff * zDiff);
         }
     }
-    return var_fv1;
+    return distSq;
 }
 
 /**
@@ -2220,41 +2318,41 @@ static void update_AI_racer_vehicle(Object *obj, Object_Racer *racer, s32 update
  */
 static void update_AI_racer_checkpoints(Object *obj, Object_Racer *racer, LevelHeader *levelHeader, f32 xPos, f32 yPos,
                                         f32 zPos) {
-    s32 var_t2;
-    s32 countOfObjects;
+    s32 passResult;
+    s32 prevCheckpoint;
     f32 lastCheckpointDist;
-    s32 temp_v0_10;
+    s32 checkpointCount;
     CheckpointNode *checkpoint;
 
     lastCheckpointDist = racer->checkpoint_distance;
-    countOfObjects = racer->nextCheckpoint;
-    var_t2 = checkpoint_is_passed(racer->nextCheckpoint, obj, xPos, yPos, zPos, &racer->checkpoint_distance,
-                                  &racer->isOnAlternateRoute);
-    if (var_t2 == -100) {
+    prevCheckpoint = racer->nextCheckpoint;
+    passResult = checkpoint_is_passed(racer->nextCheckpoint, obj, xPos, yPos, zPos, &racer->checkpoint_distance,
+                                      &racer->isOnAlternateRoute);
+    if (passResult == -100) {
         racer_update_progress(racer);
     }
     checkpoint = find_next_checkpoint_node(racer->nextCheckpoint, racer->isOnAlternateRoute);
-    if (checkpoint->laneAction[racer->aiLane] == 5) {
+    if (checkpoint->laneAction[racer->aiLane] == LANE_ACTION_WATER_ROUTE) {
         racer->aiPhysicsTimer = 30;
         if (racer->waterTimer) {
             racer->isOnAlternateRoute = TRUE;
         }
     }
-    if (checkpoint->laneAction[racer->aiLane] == 6) {
+    if (checkpoint->laneAction[racer->aiLane] == LANE_ACTION_END_RACE) {
         racer->lap = levelHeader->laps + 1;
     }
-    if (checkpoint->laneAction[racer->aiLane] == 4) {
+    if (checkpoint->laneAction[racer->aiLane] == LANE_ACTION_SLOW_DOWN) {
         if (racer->velocity < -4.0) {
             racer->velocity *= 0.9; //!@Delta
         }
     }
-    if (var_t2 == 0) {
-        if (checkpoint->laneAction[racer->aiLane] == 2) {
+    if (passResult == 0) {
+        if (checkpoint->laneAction[racer->aiLane] == LANE_ACTION_ALT_ROUTE) {
             racer->isOnAlternateRoute = TRUE;
         }
-        temp_v0_10 = get_checkpoint_count();
+        checkpointCount = get_checkpoint_count();
         racer->nextCheckpoint++;
-        if (racer->nextCheckpoint >= temp_v0_10) {
+        if (racer->nextCheckpoint >= checkpointCount) {
             racer->nextCheckpoint = 0;
             if (racer->courseCheckpoint > 0) {
                 if (racer->lap < 120) {
@@ -2262,7 +2360,7 @@ static void update_AI_racer_checkpoints(Object *obj, Object_Racer *racer, LevelH
                 }
             }
         }
-        if (racer->courseCheckpoint < ((levelHeader->laps + 3) * temp_v0_10)) {
+        if (racer->courseCheckpoint < ((levelHeader->laps + 3) * checkpointCount)) {
             racer->courseCheckpoint++;
         }
         racer->checkpointRank = 10000;
@@ -2270,7 +2368,7 @@ static void update_AI_racer_checkpoints(Object *obj, Object_Racer *racer, LevelH
         if (racer->playerIndex == PLAYER_COMPUTER && lastCheckpointDist < racer->checkpoint_distance) {
             racer->checkpoint_distance = lastCheckpointDist;
         }
-        racer->checkpointRank = var_t2;
+        racer->checkpointRank = passResult;
     }
     racer->checkpointPosX = obj->trans.x_position;
     racer->checkpointPosY = obj->trans.y_position;
@@ -2281,18 +2379,18 @@ static void update_AI_racer_checkpoints(Object *obj, Object_Racer *racer, LevelH
  * Eases the racer's squash-and-stretch height toward its target, then resets the target.
  */
 static void update_AI_racer_stretch(Object_Racer *racer, f32 updateRateF) {
-    f32 temp_fv1_2;
+    f32 stretchStep;
 
     if (racer->stretch_height <= racer->stretch_height_cap) {
-        temp_fv1_2 = 0.02f;
+        stretchStep = 0.02f;
     } else {
-        temp_fv1_2 = -0.02f;
+        stretchStep = -0.02f;
     }
     racer->stretch_height =
         (racer->stretch_height +
-         ((((racer->stretch_height_cap - racer->stretch_height) * 0.125) + temp_fv1_2) * updateRateF));
-    if (((temp_fv1_2 < 0.0f) && (racer->stretch_height <= racer->stretch_height_cap)) ||
-        ((temp_fv1_2 > 0.0f) && (racer->stretch_height_cap <= racer->stretch_height))) {
+         ((((racer->stretch_height_cap - racer->stretch_height) * 0.125) + stretchStep) * updateRateF));
+    if (((stretchStep < 0.0f) && (racer->stretch_height <= racer->stretch_height_cap)) ||
+        ((stretchStep > 0.0f) && (racer->stretch_height_cap <= racer->stretch_height))) {
         racer->stretch_height = racer->stretch_height_cap;
         racer->stretch_height_cap = 1.0f;
     }
@@ -2302,11 +2400,11 @@ static void update_AI_racer_stretch(Object_Racer *racer, f32 updateRateF) {
  * Turns the racer's head toward its target angle, at most 0x800 per tick.
  */
 static void update_AI_racer_turn_head(Object_Racer *racer, s32 updateRate) {
-    s32 var_t2;
+    s32 turnStep;
 
-    var_t2 = ((racer->headAngleTarget - racer->headAngle) * updateRate) >> 3;
-    CLAMP(var_t2, -0x800, 0x800)
-    racer->headAngle += var_t2;
+    turnStep = ((racer->headAngleTarget - racer->headAngle) * updateRate) >> 3;
+    CLAMP(turnStep, -0x800, 0x800)
+    racer->headAngle += turnStep;
 }
 
 /**
@@ -2342,10 +2440,10 @@ static void update_AI_racer_shield(Object *obj, Object_Racer *racer, s32 updateR
  */
 static void update_AI_racer_position_arrow(Object *obj, Object_Racer *racer) {
     if (racer->posArrowObj != NULL && gRaceStartTimer == 0) {
-        s8 *temp;
+        s8 *arrowHeights;
         racer->posArrowObj->trans.x_position = obj->trans.x_position;
-        temp = (s8 *) get_misc_asset(ASSET_MISC_0);
-        racer->posArrowObj->trans.y_position = obj->trans.y_position + temp[racer->characterId];
+        arrowHeights = (s8 *) get_misc_asset(ASSET_MISC_0);
+        racer->posArrowObj->trans.y_position = obj->trans.y_position + arrowHeights[racer->characterId];
         racer->posArrowObj->trans.z_position = obj->trans.z_position;
         racer->posArrowObj->trans.scale = obj->distanceToCamera / 265.0f;
         if (obj->distanceToCamera < 1500.0) {
@@ -2368,10 +2466,10 @@ void update_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, f32 updat
     f32 xPos;
     f32 yPos;
     f32 zPos;
-    f32 var_fv1;
+    f32 playerDistSq;
     LevelHeader *levelHeader;
 
-    gCurrentPlayerIndex = -1;
+    gCurrentPlayerIndex = PLAYER_COMPUTER;
     gameMode = get_game_mode();
     levelHeader = level_header();
     update_AI_racer_timers(racer, updateRate);
@@ -2380,9 +2478,9 @@ void update_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, f32 updat
     yPos = obj->trans.y_position;
     zPos = obj->trans.z_position;
     update_AI_racer_counters(racer, levelHeader, updateRate);
-    var_fv1 = update_AI_racer_player_dist_sq(obj, racer);
+    playerDistSq = update_AI_racer_player_dist_sq(obj, racer);
     update_AI_racer_traps(racer, updateRate);
-    if ((racer->aiPhysicsTimer == 0) && (var_fv1 < 160000.0)) {
+    if ((racer->aiPhysicsTimer == 0) && (playerDistSq < 160000.0)) {
         racer->aiPhysicsTimer = 30;
     }
     if (racer->aiPhysicsTimer != 0) {
@@ -2428,85 +2526,67 @@ void update_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, f32 updat
 }
 
 /**
- * Moves a computer racer along the checkpoint spline directly (the cheap
- * path used while it is not near the player), setting its speed from the
- * lane and vehicle and placing it on the spline.
+ * Drops behaviours, zippers, attacks and sideways speed, then eases the forward speed toward
+ * the AI target speed (clamped, faster when boosting); a hovercraft also slows for the curve.
  */
-void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF) {
-    s32 j;
-    s32 checkpointIdx;
-    s32 checkpointCount;
-    CheckpointNode *checkpoint;
-    s32 i;
-    f32 checkpointX[5];
-    f32 checkpointY[5];
-    f32 checkpointZ[5];
-    s32 checkpointSplineIdx;
-    f32 checkpointDistance;
-    f32 var_f28;
-    f32 spB8[5];
-    f32 spA4[5];
-    f32 var_f26;
-    f32 sp9C;
-    f32 sp98;
-    f32 sp94;
-    f32 checkpointPositionOffset; // sp90
-    f32 tempRacerVelocity;        // sp8C
-    f32 var_f24;
-    f32 var_f12;
-    LevelHeader *levelHeader;
-#if VERSION == VERSION_80
-    LevelModel *model;
-#endif
+static void racer_ai_spline_speed(Object_Racer *racer) {
+    s32 yawChange;
+    f32 maxSpeed;
+    f32 turnSlowdown;
+    f32 targetSpeed;
 
-    gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(ASSET_MISC_RACERACCELERATION_UNKNOWN0);
-    levelHeader = level_header();
-    checkpointCount = get_checkpoint_count();
-    if (checkpointCount == 0) {
-        return;
-    }
-
-    racer->aiBehaviour = 0;
+    racer->aiBehaviour = AI_BEHAVIOUR_LANE;
     racer->zipperDirCorrection = 0;
     racer->attackType = ATTACK_NONE;
     racer->lateral_velocity = 0;
-    sp94 = 20.0f;
-    if (racer->aiTargetSpeed < -sp94) {
-        racer->aiTargetSpeed = -sp94;
+    maxSpeed = 20.0f;
+    if (racer->aiTargetSpeed < -maxSpeed) {
+        racer->aiTargetSpeed = -maxSpeed;
     }
 
-    if (racer->aiTargetSpeed > sp94) {
-        racer->aiTargetSpeed = sp94;
+    if (racer->aiTargetSpeed > maxSpeed) {
+        racer->aiTargetSpeed = maxSpeed;
     }
 
-    var_f12 = sqrtf(((racer->aiTargetSpeed * 0.025) + 0.595) / 0.004);
+    targetSpeed = sqrtf(((racer->aiTargetSpeed * 0.025) + 0.595) / 0.004);
     if (racer->boostTimer != 0) {
-        var_f12 *= 1.3;
+        targetSpeed *= 1.3;
     }
 
     if (racer->vehicleID == VEHICLE_HOVERCRAFT) {
-        i = (racer->aiTargetYaw & 0xFFFF) - (racer->aiTargetYawPrev & 0xFFFF);
-        WRAP(i, -0x8000, 0x8000);
-        i = ABS(i);
+        yawChange = (racer->aiTargetYaw & 0xFFFF) - (racer->aiTargetYawPrev & 0xFFFF);
+        WRAP(yawChange, -0x8000, 0x8000);
+        yawChange = ABS(yawChange);
 
-        i -= 200;
-        if (i < 0) {
-            i = 0;
+        yawChange -= 200;
+        if (yawChange < 0) {
+            yawChange = 0;
         }
-        sp94 = (f32) i / 150.0;
-        var_f12 -= sp94;
-        if (var_f12 < 2.0) {
-            var_f12 = 2.0f;
+        turnSlowdown = (f32) yawChange / 150.0;
+        targetSpeed -= turnSlowdown;
+        if (targetSpeed < 2.0) {
+            targetSpeed = 2.0f;
         }
 
-        if (racer->velocity < -var_f12) {
-            racer->velocity = -var_f12;
+        if (racer->velocity < -targetSpeed) {
+            racer->velocity = -targetSpeed;
         } else {
-            racer->velocity += ((-var_f12 - racer->velocity) * 0.125);
+            racer->velocity += ((-targetSpeed - racer->velocity) * 0.125);
         }
     } else {
-        racer->velocity += ((-var_f12 - racer->velocity) * 0.25);
+        racer->velocity += ((-targetSpeed - racer->velocity) * 0.25);
     }
+}
+
+/**
+ * Builds the five spline points from two checkpoints back, along the racer's lane, with the
+ * lane offsets at each.
+ */
+static void racer_ai_spline_points(Object_Racer *racer, s32 checkpointCount, f32 *checkpointX, f32 *checkpointY,
+                                   f32 *checkpointZ, f32 *laneOffsetX, f32 *laneOffsetY) {
+    s32 checkpointIdx;
+    CheckpointNode *checkpoint;
+    s32 i;
 
     checkpointIdx = racer->nextCheckpoint - 2;
     if (checkpointIdx < 0) {
@@ -2523,8 +2603,8 @@ void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f3
         checkpointX[i] = checkpoint->x;
         checkpointY[i] = checkpoint->y;
         checkpointZ[i] = checkpoint->z;
-        spB8[i] = checkpoint->laneOffsetX[racer->aiLane];
-        spA4[i] = checkpoint->laneOffsetY[racer->aiLane];
+        laneOffsetX[i] = checkpoint->laneOffsetX[racer->aiLane];
+        laneOffsetY[i] = checkpoint->laneOffsetY[racer->aiLane];
         checkpointX[i] += ((checkpoint->scale * checkpoint->rotationZFrac * checkpoint->laneOffsetX[racer->aiLane]));
         checkpointY[i] += ((checkpoint->scale * checkpoint->laneOffsetY[racer->aiLane]));
         checkpointZ[i] += ((checkpoint->scale * -checkpoint->rotationXFrac * checkpoint->laneOffsetX[racer->aiLane]));
@@ -2534,52 +2614,15 @@ void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f3
             stubbed_printf("Back\n");
         }
     }
+}
 
-    tempRacerVelocity = racer->velocity;
-    if (tempRacerVelocity < 0.0f) {
-        tempRacerVelocity = -tempRacerVelocity;
-    }
-    checkpointSplineIdx = 0;
-    if (racer->aiSplineStep == 0.0) {
-        racer->aiSplineStep = 0.01f;
-    }
-    j = 0;
-    do {
-        checkpointDistance = (1.0 - racer->checkpoint_distance) + (racer->aiSplineStep * updateRateF);
-        if (checkpointDistance >= 1.0) {
-            checkpointSplineIdx = 1;
-            checkpointDistance -= 1.0;
-        }
-        var_f24 = cubic_spline_interpolation(checkpointX, checkpointSplineIdx, checkpointDistance, &sp9C);
-        var_f26 = cubic_spline_interpolation(checkpointY, checkpointSplineIdx, checkpointDistance, &sp98);
-        var_f28 = cubic_spline_interpolation(checkpointZ, checkpointSplineIdx, checkpointDistance, &sp94);
-        var_f24 -= racer->checkpointPosX;
-        var_f26 -= racer->checkpointPosY;
-        var_f28 -= racer->checkpointPosZ;
-        if (j == 0) {
-            checkpointSplineIdx = 0;
-            var_f12 = sqrtf((var_f24 * var_f24) + (var_f26 * var_f26) + (var_f28 * var_f28)) / updateRateF;
-            if (var_f12 != 0.0f) {
-                racer->aiSplineStep *= (tempRacerVelocity / var_f12);
-            } else {
-                j = -1;
-                racer->aiSplineStep += 0.01;
-            }
-        }
-        j++;
-    } while (j < 2);
-    racer->checkpointPosX += var_f24;
-    racer->checkpointPosY += var_f26;
-    racer->checkpointPosZ += var_f28;
-    var_f24 = racer->checkpointPosX - obj->trans.x_position;
-    var_f26 = racer->checkpointPosY - obj->trans.y_position;
-    var_f28 = racer->checkpointPosZ - obj->trans.z_position;
-    checkpointPositionOffset = sqrtf((var_f24 * var_f24) + (var_f28 * var_f28)) / updateRateF;
-    if (checkpointPositionOffset > 35.0) {
-        var_f12 = (35.0 / checkpointPositionOffset);
-        var_f24 *= var_f12;
-        var_f28 *= var_f12;
-    }
+/**
+ * Stores the new progress, moving on a checkpoint (and lap, and course checkpoint) when the
+ * next spline segment was reached; counts down the boost and takes the lane's track offset.
+ */
+static void racer_ai_spline_progress(Object_Racer *racer, s32 updateRate, LevelHeader *levelHeader, s32 checkpointCount,
+                                     s32 checkpointSplineIdx, f32 checkpointDistance, f32 *laneOffsetX,
+                                     f32 *laneOffsetY) {
     racer->checkpoint_distance = (1.0 - checkpointDistance);
     if (checkpointSplineIdx != 0) {
         racer->nextCheckpoint++;
@@ -2604,64 +2647,36 @@ void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f3
     } else {
         racer->boostTimer = 0;
     }
-    racer->trackOffsetX = spB8[1] + ((spB8[2] - spB8[1]) * checkpointDistance);
-    racer->trackOffsetY = spA4[1] + ((spA4[2] - spA4[1]) * checkpointDistance);
-    checkpointDistance = sqrtf((sp9C * sp9C) + (sp94 * sp94));
-    if (checkpointDistance != 0.0f) {
-        sp9C /= checkpointDistance;
-        sp98 /= checkpointDistance;
-        sp94 /= checkpointDistance;
-        racer->steerVisualRotation = arctan2_f(sp9C, sp94) - 0x8000;
+    racer->trackOffsetX = laneOffsetX[1] + ((laneOffsetX[2] - laneOffsetX[1]) * checkpointDistance);
+    racer->trackOffsetY = laneOffsetY[1] + ((laneOffsetY[2] - laneOffsetY[1]) * checkpointDistance);
+}
+
+/**
+ * Faces the racer along the spline's direction and records it as the AI target yaw and pitch.
+ */
+static void racer_ai_spline_face(Object *obj, Object_Racer *racer, f32 derivX, f32 derivY, f32 derivZ) {
+    f32 length;
+
+    length = sqrtf((derivX * derivX) + (derivZ * derivZ));
+    if (length != 0.0f) {
+        derivX /= length;
+        derivY /= length;
+        derivZ /= length;
+        racer->steerVisualRotation = arctan2_f(derivX, derivZ) - 0x8000;
         obj->trans.rotation.y_rotation = racer->steerVisualRotation;
-        obj->trans.rotation.x_rotation = arctan2_f(sp98, 1.0f);
+        obj->trans.rotation.x_rotation = arctan2_f(derivY, 1.0f);
     }
     racer->aiTargetYawPrev = racer->aiTargetYaw;
     racer->aiTargetPitchPrev = racer->aiTargetPitch;
     racer->aiTargetYaw = racer->steerVisualRotation;
     racer->aiTargetPitch = obj->trans.rotation.x_rotation;
-    if (move_object(obj, var_f24, var_f26, var_f28)) {
-#if VERSION < VERSION_80
-        if (1) {}
-        obj->trans.x_position += var_f24;
-        obj->trans.y_position += var_f26;
-        obj->trans.z_position += var_f28;
-#else
-        model = get_current_level_model();
-        obj->trans.x_position += var_f24;
-        obj->trans.y_position += var_f26;
-        obj->trans.z_position += var_f28;
-        // Don't get caught up on this using checkpointDistance var when documenting. It just matched that way.
-        checkpointDistance = model->upperXBounds + 1000.0f;
-        if (obj->trans.x_position > checkpointDistance) {
-            obj->trans.x_position = checkpointDistance;
-        }
-        checkpointDistance = model->lowerXBounds - 1000.0f;
-        if (obj->trans.x_position < checkpointDistance) {
-            obj->trans.x_position = checkpointDistance;
-        }
-        checkpointDistance = model->upperYBounds + 3000.0f;
-        if (obj->trans.y_position > checkpointDistance) {
-            obj->trans.y_position = checkpointDistance;
-        }
-        checkpointDistance = model->lowerYBounds - 500.0f;
-        if (obj->trans.y_position < checkpointDistance) {
-            obj->trans.y_position = checkpointDistance;
-        }
-        checkpointDistance = model->upperZBounds + 1000.0f;
-        if (obj->trans.z_position > checkpointDistance) {
-            obj->trans.z_position = checkpointDistance;
-        }
-        checkpointDistance = model->lowerZBounds - 1000.0f;
-        if (obj->trans.z_position < checkpointDistance) {
-            obj->trans.z_position = checkpointDistance;
-        }
-#endif
-    }
-    if (checkpointPositionOffset < 20.0) {
-        obj->x_velocity = var_f24 / updateRateF;
-        obj->y_velocity = -1.0f;
-        obj->z_velocity = var_f28 / updateRateF;
-    }
+}
+
+/**
+ * Racer decisions and items, then resets the state that full physics would otherwise use:
+ * water, drift, rotation speeds, bump, body bob, wheel positions and particles.
+ */
+static void racer_ai_spline_finish(Object *obj, Object_Racer *racer, s32 updateRate) {
     racer_ai_tactics(obj, racer, updateRate);
     handle_racer_items(obj, racer, updateRate);
     racer->waterTimer = 0;
@@ -2690,6 +2705,139 @@ void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f3
     racer->wheelCollisionPos[11] = obj->trans.z_position;
     obj->particleEmittersEnabled = OBJ_EMIT_NONE;
     update_vehicle_particles(obj, updateRate);
+}
+
+/**
+ * Moves a computer racer along the checkpoint spline directly (the cheap
+ * path used while it is not near the player), setting its speed from the
+ * lane and vehicle and placing it on the spline.
+ */
+void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF) {
+    s32 j;
+    s32 checkpointCount;
+    f32 checkpointX[5];
+    f32 checkpointY[5];
+    f32 checkpointZ[5];
+    s32 checkpointSplineIdx;
+    f32 checkpointDistance;
+    f32 moveZ;
+    f32 laneOffsetX[5];
+    f32 laneOffsetY[5];
+    f32 moveY;
+    f32 derivX;
+    f32 derivY;
+    f32 derivZ;
+    f32 checkpointPositionOffset;
+    f32 speed;
+    f32 moveX;
+    f32 stepLength;
+    f32 clampScale;
+    LevelHeader *levelHeader;
+#if VERSION == VERSION_80
+    LevelModel *model;
+#endif
+
+    gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(ASSET_MISC_RACERACCELERATION_UNKNOWN0);
+    levelHeader = level_header();
+    checkpointCount = get_checkpoint_count();
+    if (checkpointCount == 0) {
+        return;
+    }
+
+    racer_ai_spline_speed(racer);
+    racer_ai_spline_points(racer, checkpointCount, checkpointX, checkpointY, checkpointZ, laneOffsetX, laneOffsetY);
+    speed = racer->velocity;
+    if (speed < 0.0f) {
+        speed = -speed;
+    }
+    checkpointSplineIdx = 0;
+    if (racer->aiSplineStep == 0.0) {
+        racer->aiSplineStep = 0.01f;
+    }
+    j = 0;
+    do {
+        checkpointDistance = (1.0 - racer->checkpoint_distance) + (racer->aiSplineStep * updateRateF);
+        if (checkpointDistance >= 1.0) {
+            checkpointSplineIdx = 1;
+            checkpointDistance -= 1.0;
+        }
+        moveX = cubic_spline_interpolation(checkpointX, checkpointSplineIdx, checkpointDistance, &derivX);
+        moveY = cubic_spline_interpolation(checkpointY, checkpointSplineIdx, checkpointDistance, &derivY);
+        moveZ = cubic_spline_interpolation(checkpointZ, checkpointSplineIdx, checkpointDistance, &derivZ);
+        moveX -= racer->checkpointPosX;
+        moveY -= racer->checkpointPosY;
+        moveZ -= racer->checkpointPosZ;
+        if (j == 0) {
+            checkpointSplineIdx = 0;
+            stepLength = sqrtf((moveX * moveX) + (moveY * moveY) + (moveZ * moveZ)) / updateRateF;
+            if (stepLength != 0.0f) {
+                racer->aiSplineStep *= (speed / stepLength);
+            } else {
+                j = -1;
+                racer->aiSplineStep += 0.01;
+            }
+        }
+        j++;
+    } while (j < 2);
+    racer->checkpointPosX += moveX;
+    racer->checkpointPosY += moveY;
+    racer->checkpointPosZ += moveZ;
+    moveX = racer->checkpointPosX - obj->trans.x_position;
+    moveY = racer->checkpointPosY - obj->trans.y_position;
+    moveZ = racer->checkpointPosZ - obj->trans.z_position;
+    checkpointPositionOffset = sqrtf((moveX * moveX) + (moveZ * moveZ)) / updateRateF;
+    if (checkpointPositionOffset > 35.0) {
+        clampScale = (35.0 / checkpointPositionOffset);
+        moveX *= clampScale;
+        moveZ *= clampScale;
+    }
+    racer_ai_spline_progress(racer, updateRate, levelHeader, checkpointCount, checkpointSplineIdx, checkpointDistance,
+                             laneOffsetX, laneOffsetY);
+    racer_ai_spline_face(obj, racer, derivX, derivY, derivZ);
+    if (move_object(obj, moveX, moveY, moveZ)) {
+#if VERSION < VERSION_80
+        if (1) {}
+        obj->trans.x_position += moveX;
+        obj->trans.y_position += moveY;
+        obj->trans.z_position += moveZ;
+#else
+        model = get_current_level_model();
+        obj->trans.x_position += moveX;
+        obj->trans.y_position += moveY;
+        obj->trans.z_position += moveZ;
+        // Don't get caught up on this using checkpointDistance var when documenting. It just matched that way.
+        checkpointDistance = model->upperXBounds + 1000.0f;
+        if (obj->trans.x_position > checkpointDistance) {
+            obj->trans.x_position = checkpointDistance;
+        }
+        checkpointDistance = model->lowerXBounds - 1000.0f;
+        if (obj->trans.x_position < checkpointDistance) {
+            obj->trans.x_position = checkpointDistance;
+        }
+        checkpointDistance = model->upperYBounds + 3000.0f;
+        if (obj->trans.y_position > checkpointDistance) {
+            obj->trans.y_position = checkpointDistance;
+        }
+        checkpointDistance = model->lowerYBounds - 500.0f;
+        if (obj->trans.y_position < checkpointDistance) {
+            obj->trans.y_position = checkpointDistance;
+        }
+        checkpointDistance = model->upperZBounds + 1000.0f;
+        if (obj->trans.z_position > checkpointDistance) {
+            obj->trans.z_position = checkpointDistance;
+        }
+        checkpointDistance = model->lowerZBounds - 1000.0f;
+        if (obj->trans.z_position < checkpointDistance) {
+            obj->trans.z_position = checkpointDistance;
+        }
+#endif
+    }
+    if (checkpointPositionOffset < 20.0) {
+        obj->x_velocity = moveX / updateRateF;
+        obj->y_velocity = -1.0f;
+        obj->z_velocity = moveZ / updateRateF;
+    }
+    racer_ai_spline_finish(obj, racer, updateRate);
 }
 
 /**

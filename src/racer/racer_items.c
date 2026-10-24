@@ -1,61 +1,240 @@
 #include "racer_internal.h"
 
 /**
+ * Lets go of the held egg when Z is pressed, the race ends or the racer is hit: it drops from
+ * the character's held-item attach point with some of the racer's speed.
+ */
+static void racer_items_drop_egg(Object *obj, Object_Racer *racer) {
+    Object *heldObj;
+    ObjectModel *model;
+    f32 scaleY;
+    f32 scaleZ;
+    Object_CollectEgg *egg;
+    Vertex *heldObjData;
+
+    heldObj = racer->held_obj;
+    if (gCurrentButtonsPressed & Z_TRIG || racer->raceFinished || racer->attackType) {
+        scaleY = 0;
+        scaleZ = 0;
+        if (obj->modelInstances[obj->modelIndex] != NULL) {
+            model = obj->modelInstances[obj->modelIndex]->objModel;
+            if (obj->header->heldItemAttachPoint > -1 &&
+                obj->header->heldItemAttachPoint < model->numberOfAttachPoints) {
+                if (obj->curVertData != NULL) {
+                    heldObjData = obj->curVertData;
+                    heldObjData += model->attachPoints[obj->header->heldItemAttachPoint];
+                    scaleY = heldObjData->y;
+                    scaleY *= obj->trans.scale;
+                    scaleZ = heldObjData->z;
+                    scaleZ *= obj->trans.scale;
+                }
+            }
+        }
+        heldObj->trans.x_position = obj->trans.x_position + (racer->ox1 * scaleZ) + (racer->ox2 * scaleY);
+        heldObj->trans.y_position = obj->trans.y_position + (racer->oy1 * scaleZ) + (racer->oy2 * scaleY);
+        heldObj->trans.z_position = obj->trans.z_position + (racer->oz1 * scaleZ) + (racer->oz2 * scaleY);
+        heldObj->segmentID = obj->segmentID;
+        heldObj->x_velocity = obj->x_velocity * 0.7;
+        heldObj->y_velocity = obj->y_velocity - 2.0;
+        heldObj->z_velocity = obj->z_velocity * 0.7;
+        egg = heldObj->egg;
+        egg->status = EGG_MOVING;
+        racer->held_obj = NULL;
+        racer->eggDropZLock = 1;
+    }
+}
+
+/**
+ * Fires a nitro balloon: a boost by level (empowered when the throttle was released), its
+ * sound and rumble.
+ */
+static void racer_items_use_nitro(Object *obj, Object_Racer *racer, s32 weaponID) {
+    // clang-format off
+    switch (weaponID) {
+        case WEAPON_NITRO_LEVEL_3:
+            // IDO demands this to be on 1 line.
+            racer->boostTimer = normalise_time(75); \
+            racer->boostType = BOOST_LARGE;
+            break;
+        case WEAPON_NITRO_LEVEL_2:
+            // Ditto
+            racer->boostTimer = normalise_time(55); \
+            racer->boostType = BOOST_MEDIUM;
+            break;
+        default:
+            // :(
+            racer->boostTimer = normalise_time(35); \
+            racer->boostType = BOOST_SMALL;
+            break;
+    }
+    // clang-format on
+    if (racer->throttleReleased) {
+        racer->boostType |= EMPOWER_BOOST;
+    }
+    if (weaponID == WEAPON_NITRO_LEVEL_3) {
+        racer_play_sound(obj, SOUND_NITRO_LEVEL3_CHARGE);
+        racer_play_sound_after_delay(obj, SOUND_NITRO_LEVEL3_BOOST, 30);
+    } else {
+        racer_play_sound(obj, SOUND_NITRO_BOOST);
+    }
+    racer->balloon_quantity -= 1;
+    if (weaponID == WEAPON_NITRO_LEVEL_1) {
+        if (racer->raceFinished == FALSE) {
+            rumble_set(racer->playerIndex, RUMBLE_TYPE_6);
+        }
+    } else if (racer->raceFinished == FALSE) {
+        rumble_set(racer->playerIndex, RUMBLE_TYPE_8);
+    }
+}
+
+/**
+ * Fires a magnet or a shield, which act on the racer (or its magnet target) at once rather
+ * than spawning a projectile.
+ */
+static void racer_items_use_magnet_or_shield(Object *obj, Object_Racer *racer, s32 weaponID, Object *intendedTarget,
+                                             Object_Racer *magnetTarget) {
+    switch (weaponID) {
+        case WEAPON_MAGNET_LEVEL_1:
+        case WEAPON_MAGNET_LEVEL_2:
+            racer->balloon_quantity -= 1;
+            if (racer->playerIndex != PLAYER_COMPUTER) {
+                if (intendedTarget != NULL) {
+                    racer->magnetTimer = 90;
+                    racer->magnetModelID = (weaponID - WEAPON_MAGNET_LEVEL_1) >> 1;
+                }
+                if (racer->raceFinished == FALSE) {
+                    rumble_set(racer->playerIndex, RUMBLE_TYPE_15);
+                }
+            }
+            return;
+        case WEAPON_MAGNET_LEVEL_3:
+            racer->balloon_quantity -= 1;
+            racer->magnetTargetObj = NULL;
+            if (racer->playerIndex != PLAYER_COMPUTER) {
+                if (magnetTarget != NULL) {
+                    magnetTarget->magnetLevel3 = TRUE;
+                    magnetTarget->magnetTimer = 120;
+                    magnetTarget->magnetTargetObj = obj;
+                    magnetTarget->magnetModelID = MAGNET_LEVEL3;
+                }
+                if (racer->raceFinished == FALSE) {
+                    rumble_set(racer->playerIndex, RUMBLE_TYPE_15);
+                }
+            }
+            return;
+        case WEAPON_SHIELD_LEVEL_1:
+            racer->shieldType = SHIELD_LEVEL1;
+            racer->shieldTimer = 300;
+            racer->balloon_quantity -= 1;
+            return;
+        case WEAPON_SHIELD_LEVEL_2:
+            racer->shieldType = SHIELD_LEVEL2;
+            racer->balloon_quantity -= 1;
+            racer->shieldTimer = 600;
+            return;
+        case WEAPON_SHIELD_LEVEL_3:
+            racer->shieldType = SHIELD_LEVEL3;
+            racer->shieldTimer = 900;
+            racer->balloon_quantity -= 1;
+            return;
+    }
+}
+
+/**
+ * Spawns the fired projectile ahead of (or behind) the racer with its velocity, owner and
+ * target, plays its launch sound, and uses up one of the balloon's charges.
+ */
+static void racer_items_launch(Object *obj, Object_Racer *racer, s32 weaponID, s32 objID, f32 objDist, f32 velocity,
+                               Object *intendedTarget) {
+    LevelObjectEntryCommon newObject;
+    Object *spawnedObj;
+    Object_Weapon *weapon;
+    u16 soundID = SOUND_NONE;
+
+    play_random_character_voice(obj, SOUND_VOICE_CHARACTER_POSITIVE, 8, 129);
+    newObject.x = obj->trans.x_position + (racer->ox1 * objDist);
+    newObject.y = obj->trans.y_position + (racer->oy1 * objDist) + (10.0f * racer->oy2);
+    newObject.z = obj->trans.z_position + (racer->oz1 * objDist);
+    newObject.size = sizeof(LevelObjectEntryCommon);
+    newObject.objectID = objID;
+    spawnedObj = spawn_object(&newObject, OBJECT_SPAWN_UNK01);
+    if (spawnedObj != NULL) {
+        spawnedObj->level_entry = NULL;
+        spawnedObj->x_velocity = obj->x_velocity - (racer->ox1 * velocity);
+        spawnedObj->y_velocity = obj->y_velocity - (racer->oy1 * velocity);
+        spawnedObj->z_velocity = obj->z_velocity - (racer->oz1 * velocity);
+        spawnedObj->trans.rotation.y_rotation = obj->trans.rotation.y_rotation;
+        spawnedObj->trans.rotation.x_rotation = obj->trans.rotation.x_rotation;
+        if (racer->vehicleID == VEHICLE_HOVERCRAFT && racer->waterTimer) {
+            if (spawnedObj->trans.rotation.x_rotation > -0x400 && spawnedObj->trans.rotation.x_rotation < 0x400) {
+                spawnedObj->trans.rotation.x_rotation = 0;
+            }
+        }
+        weapon = spawnedObj->weapon;
+        weapon->owner = obj;
+        weapon->target = intendedTarget;
+        weapon->checkpoint = racer->nextCheckpoint;
+        weapon->forwardVel = (racer->velocity - velocity);
+        weapon->weaponID = weaponID;
+        switch (weapon->weaponID) {
+            case WEAPON_ROCKET_HOMING:
+                soundID = SOUND_NYOOM2;
+                break;
+            case WEAPON_ROCKET:
+                soundID = SOUND_NYOOM3;
+                break;
+            case WEAPON_TRIPMINE:
+                soundID = SOUND_PLOP;
+                break;
+            case WEAPON_OIL_SLICK:
+                if (racer->vehicleID != VEHICLE_PLANE) {
+                    spawnedObj->shadow->scale = 0;
+                }
+                soundID = SOUND_SPLOINK2;
+                break;
+            case WEAPON_BUBBLE_TRAP:
+                soundID = SOUND_PLOP;
+                break;
+            case WEAPON_UNK_11:
+                spawnedObj->animFrame = 0;
+                break;
+        }
+        if (soundID != SOUND_NONE) {
+            if (racer->playerIndex == PLAYER_COMPUTER) {
+                audspat_play_sound_at_position(soundID, obj->trans.x_position, obj->trans.y_position,
+                                               obj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
+            } else {
+                if (racer->weaponSoundMask) {
+                    sndp_stop(racer->weaponSoundMask);
+                }
+                sound_play_spatial(soundID, obj->trans.x_position, obj->trans.y_position, obj->trans.z_position,
+                                   &racer->weaponSoundMask);
+            }
+        }
+    }
+    if (racer->balloon_quantity > 0) {
+        racer->balloon_quantity = racer->balloon_quantity - 1;
+    } else {
+        racer->balloon_quantity = 0;
+    }
+}
+
+/**
  * Handles the input and activation of any weapons the player is carrying.
  * Also handles the egg object from Fire Mountain, which takes precedent, even if the player is holding a weapon.
  */
 void handle_racer_items(Object *obj, Object_Racer *racer, UNUSED s32 updateRate) {
-    LevelObjectEntryCommon newObject;
     s32 weaponID;
-    Object *spawnedObj;
     s32 objID;
-    Object *heldObj;
     Object *intendedTarget;
     Object_Racer *magnetTarget;
     f32 objDist;
-    ObjectModel *model;
-    Object_Weapon *weapon;
     f32 velocity;
     f32 distance;
-    f32 scaleY;
-    f32 scaleZ;
-    UNUSED s32 pad;
-    Object_CollectEgg *egg;
     s8 *miscAsset;
-    Vertex *heldObjData;
-    u16 soundID = SOUND_NONE;
 
     if (racer->held_obj != NULL) {
-        heldObj = racer->held_obj;
-        if (gCurrentButtonsPressed & Z_TRIG || racer->raceFinished || racer->attackType) {
-            scaleY = 0;
-            scaleZ = 0;
-            if (obj->modelInstances[obj->modelIndex] != NULL) {
-                model = obj->modelInstances[obj->modelIndex]->objModel;
-                if (obj->header->heldItemAttachPoint > -1 &&
-                    obj->header->heldItemAttachPoint < model->numberOfAttachPoints) {
-                    if (obj->curVertData != NULL) {
-                        heldObjData = obj->curVertData;
-                        heldObjData += model->attachPoints[obj->header->heldItemAttachPoint];
-                        scaleY = heldObjData->y;
-                        scaleY *= obj->trans.scale;
-                        scaleZ = heldObjData->z;
-                        scaleZ *= obj->trans.scale;
-                    }
-                }
-            }
-            heldObj->trans.x_position = obj->trans.x_position + (racer->ox1 * scaleZ) + (racer->ox2 * scaleY);
-            heldObj->trans.y_position = obj->trans.y_position + (racer->oy1 * scaleZ) + (racer->oy2 * scaleY);
-            heldObj->trans.z_position = obj->trans.z_position + (racer->oz1 * scaleZ) + (racer->oz2 * scaleY);
-            heldObj->segmentID = obj->segmentID;
-            heldObj->x_velocity = obj->x_velocity * 0.7;
-            heldObj->y_velocity = obj->y_velocity - 2.0;
-            heldObj->z_velocity = obj->z_velocity * 0.7;
-            egg = heldObj->egg;
-            egg->status = EGG_MOVING;
-            racer->held_obj = NULL;
-            racer->eggDropZLock = 1;
-        }
+        racer_items_drop_egg(obj, racer);
     } else {
         if (gCurrentButtonsPressed & Z_TRIG) {
             racer->eggDropZLock = 0;
@@ -156,158 +335,21 @@ void handle_racer_items(Object *obj, Object_Racer *racer, UNUSED s32 updateRate)
                     case WEAPON_NITRO_LEVEL_1:
                     case WEAPON_NITRO_LEVEL_2:
                     case WEAPON_NITRO_LEVEL_3:
-                        // clang-format off
-                        switch (weaponID) {
-                            case WEAPON_NITRO_LEVEL_3:
-                                // IDO demands this to be on 1 line.
-                                racer->boostTimer = normalise_time(75); \
-                                racer->boostType = BOOST_LARGE;
-                                break;
-                            case WEAPON_NITRO_LEVEL_2:
-                                // Ditto
-                                racer->boostTimer = normalise_time(55); \
-                                racer->boostType = BOOST_MEDIUM;
-                                break;
-                            default:
-                                // :(
-                                racer->boostTimer = normalise_time(35); \
-                                racer->boostType = BOOST_SMALL;
-                                break;
-                        }
-                        // clang-format on
-                        if (racer->throttleReleased) {
-                            racer->boostType |= EMPOWER_BOOST;
-                        }
-                        if (weaponID == WEAPON_NITRO_LEVEL_3) {
-                            racer_play_sound(obj, SOUND_NITRO_LEVEL3_CHARGE);
-                            racer_play_sound_after_delay(obj, SOUND_NITRO_LEVEL3_BOOST, 30);
-                        } else {
-                            racer_play_sound(obj, SOUND_NITRO_BOOST);
-                        }
-                        racer->balloon_quantity -= 1;
-                        if (weaponID == WEAPON_NITRO_LEVEL_1) {
-                            if (racer->raceFinished == FALSE) {
-                                rumble_set(racer->playerIndex, RUMBLE_TYPE_6);
-                            }
-                        } else if (racer->raceFinished == FALSE) {
-                            rumble_set(racer->playerIndex, RUMBLE_TYPE_8);
-                        }
+                        racer_items_use_nitro(obj, racer, weaponID);
                         return;
                     case WEAPON_MAGNET_LEVEL_1:
                     case WEAPON_MAGNET_LEVEL_2:
-                        racer->balloon_quantity -= 1;
-                        if (racer->playerIndex != PLAYER_COMPUTER) {
-                            if (intendedTarget != NULL) {
-                                racer->magnetTimer = 90;
-                                racer->magnetModelID = (weaponID - WEAPON_MAGNET_LEVEL_1) >> 1;
-                            }
-                            if (racer->raceFinished == FALSE) {
-                                rumble_set(racer->playerIndex, RUMBLE_TYPE_15);
-                            }
-                        }
-                        return;
                     case WEAPON_MAGNET_LEVEL_3:
-                        racer->balloon_quantity -= 1;
-                        racer->magnetTargetObj = NULL;
-                        if (racer->playerIndex != PLAYER_COMPUTER) {
-                            if (magnetTarget != NULL) {
-                                magnetTarget->magnetLevel3 = TRUE;
-                                magnetTarget->magnetTimer = 120;
-                                magnetTarget->magnetTargetObj = obj;
-                                magnetTarget->magnetModelID = MAGNET_LEVEL3;
-                            }
-                            if (racer->raceFinished == FALSE) {
-                                rumble_set(racer->playerIndex, RUMBLE_TYPE_15);
-                            }
-                        }
-                        return;
                     case WEAPON_SHIELD_LEVEL_1:
-                        racer->shieldType = SHIELD_LEVEL1;
-                        racer->shieldTimer = 300;
-                        racer->balloon_quantity -= 1;
-                        return;
                     case WEAPON_SHIELD_LEVEL_2:
-                        racer->shieldType = SHIELD_LEVEL2;
-                        racer->balloon_quantity -= 1;
-                        racer->shieldTimer = 600;
-                        return;
                     case WEAPON_SHIELD_LEVEL_3:
-                        racer->shieldType = SHIELD_LEVEL3;
-                        racer->shieldTimer = 900;
-                        racer->balloon_quantity -= 1;
+                        racer_items_use_magnet_or_shield(obj, racer, weaponID, intendedTarget, magnetTarget);
                         return;
                     default:
                         objDist = 0;
                         break;
                 }
-                play_random_character_voice(obj, SOUND_VOICE_CHARACTER_POSITIVE, 8, 129);
-                newObject.x = obj->trans.x_position + (racer->ox1 * objDist);
-                newObject.y = obj->trans.y_position + (racer->oy1 * objDist) + (10.0f * racer->oy2);
-                newObject.z = obj->trans.z_position + (racer->oz1 * objDist);
-                newObject.size = sizeof(LevelObjectEntryCommon);
-                newObject.objectID = objID;
-                spawnedObj = spawn_object(&newObject, OBJECT_SPAWN_UNK01);
-                if (spawnedObj != NULL) {
-                    spawnedObj->level_entry = NULL;
-                    spawnedObj->x_velocity = obj->x_velocity - (racer->ox1 * velocity);
-                    spawnedObj->y_velocity = obj->y_velocity - (racer->oy1 * velocity);
-                    spawnedObj->z_velocity = obj->z_velocity - (racer->oz1 * velocity);
-                    spawnedObj->trans.rotation.y_rotation = obj->trans.rotation.y_rotation;
-                    spawnedObj->trans.rotation.x_rotation = obj->trans.rotation.x_rotation;
-                    if (racer->vehicleID == VEHICLE_HOVERCRAFT && racer->waterTimer) {
-                        if (spawnedObj->trans.rotation.x_rotation > -0x400 &&
-                            spawnedObj->trans.rotation.x_rotation < 0x400) {
-                            spawnedObj->trans.rotation.x_rotation = 0;
-                        }
-                    }
-                    weapon = spawnedObj->weapon;
-                    weapon->owner = obj;
-                    weapon->target = intendedTarget;
-                    weapon->checkpoint = racer->nextCheckpoint;
-                    weapon->forwardVel = (racer->velocity - velocity);
-                    weapon->weaponID = weaponID;
-                    switch (weapon->weaponID) {
-                        case WEAPON_ROCKET_HOMING:
-                            soundID = SOUND_NYOOM2;
-                            break;
-                        case WEAPON_ROCKET:
-                            soundID = SOUND_NYOOM3;
-                            break;
-                        case WEAPON_TRIPMINE:
-                            soundID = SOUND_PLOP;
-                            break;
-                        case WEAPON_OIL_SLICK:
-                            if (racer->vehicleID != VEHICLE_PLANE) {
-                                spawnedObj->shadow->scale = 0;
-                            }
-                            soundID = SOUND_SPLOINK2;
-                            break;
-                        case WEAPON_BUBBLE_TRAP:
-                            soundID = SOUND_PLOP;
-                            break;
-                        case WEAPON_UNK_11:
-                            spawnedObj->animFrame = 0;
-                            break;
-                    }
-                    if (soundID != SOUND_NONE) {
-                        if (racer->playerIndex == PLAYER_COMPUTER) {
-                            audspat_play_sound_at_position(soundID, obj->trans.x_position, obj->trans.y_position,
-                                                           obj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER,
-                                                           NULL);
-                        } else {
-                            if (racer->weaponSoundMask) {
-                                sndp_stop(racer->weaponSoundMask);
-                            }
-                            sound_play_spatial(soundID, obj->trans.x_position, obj->trans.y_position,
-                                               obj->trans.z_position, &racer->weaponSoundMask);
-                        }
-                    }
-                }
-                if (racer->balloon_quantity > 0) {
-                    racer->balloon_quantity = racer->balloon_quantity - 1;
-                } else {
-                    racer->balloon_quantity = 0;
-                }
+                racer_items_launch(obj, racer, weaponID, objID, objDist, velocity, intendedTarget);
             }
         }
     }
@@ -335,7 +377,6 @@ Object *racer_find_weapon_target(Object *racerObj, Object_Racer *racer, f32 *out
     s32 i;
     f32 curDistance;
     f32 racerOx1;
-    UNUSED s32 pad;
     f32 racerOy1;
     Object *savedRacerObj;
     Object *curRacerObj;

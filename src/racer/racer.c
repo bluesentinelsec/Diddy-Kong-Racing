@@ -100,12 +100,12 @@ s16 gAiCatchupTimer;
  * The two per-vehicle f32 tables reached through the object header, swapped
  * where they are fetched because their misc-asset index is not a constant:
  *
- *   unk5C - the acceleration/velocity curve (gCurrentRacerMiscAssetPtr)
- *   unk5D - the wheel table, 4 wheels x { x, y, z, radius } (gRacerWheelTable)
+ *   miscAssetIds[0] - the acceleration/velocity curve (gCurrentRacerMiscAssetPtr)
+ *   miscAssetIds[1] - the wheel table, 4 wheels x { x, y, z, radius } (gRacerWheelTable)
  *
  * Both were being read big-endian. A wheel offset of 8.0 (0x41000000) becomes
  * 0x00000041 — a denormal, i.e. zero — so all four wheels collapsed onto the
- * racer's origin with radius 0. That made the ground probe in func_80054FD0
+ * racer's origin with radius 0. That made the ground probe in update_racer_collision
  * zero-length (origin == target), and resolve_collisions can never satisfy
  * "origin above the plane, target below it" with a zero-length probe: no wheel
  * ever touched the ground. The acceleration curve read as zeros the same way,
@@ -331,7 +331,8 @@ void racer_collide_keeping_bump(Object *obj, Object_Racer *racer, s32 updateRate
 /**
  * When on water, apply a rotation effect based on the movement of the waves and turning direction.
  */
-f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 arg3, s32 updateRate, s32 arg5, f32 arg6) {
+f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 waveType, s32 updateRate, s32 steerX,
+                          f32 driftScale) {
     MtxF mtxF;
     f32 velocity;
     s32 angle;
@@ -339,7 +340,7 @@ f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 arg3,
     f32 updateRateF;
 
     updateRateF = updateRate;
-    if (arg3 == SURFACE_WATER_WAVY) {
+    if (waveType == SURFACE_WATER_WAVY) {
         velocity = racer->velocity;
         if (velocity < 0.0f) {
             velocity = -velocity;
@@ -349,8 +350,8 @@ f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 arg3,
             velocity = 0.0f;
         }
     } else {
-        obj->trans.x_position += pos->x * updateRateF * arg6;
-        obj->trans.z_position += pos->z * updateRateF * arg6;
+        obj->trans.x_position += pos->x * updateRateF * driftScale;
+        obj->trans.z_position += pos->z * updateRateF * driftScale;
         velocity = 1.0f;
     }
     gCurrentRacerTransform.rotation.y_rotation = -obj->trans.rotation.y_rotation;
@@ -363,7 +364,7 @@ f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 arg3,
     mtxf_from_inverse_transform(&mtxF, &gCurrentRacerTransform);
     mtxf_transform_point(mtxF, pos->x, pos->y, pos->z, &pos->x, &pos->y, &pos->z);
     angle = -((s16) (u16) arctan2_f(pos->x, pos->y)) * velocity;
-    angle = (u16) (angle - (arg5 << 6)) - (u16) racer->x_rotation_vel;
+    angle = (u16) (angle - (steerX << 6)) - (u16) racer->x_rotation_vel;
     angle = angle > 0x8000 ? angle - 0xffff : angle;
     angle = angle < -0x8000 ? angle + 0xffff : angle;
     racer->x_rotation_vel += (angle * updateRate) >> 4;
@@ -804,9 +805,9 @@ static void racer_autopilot_hub(Object *obj, Object_Racer *racer) {
  * and notes whether the throttle was released.
  */
 static void racer_read_input(Object *obj, Object_Racer *tempRacer, s32 updateRate) {
-    s32 tempVar;
+    s32 controllerIndex;
 
-    tempVar = tempRacer->playerIndex;
+    controllerIndex = tempRacer->playerIndex;
     if (tempRacer->playerIndex != PLAYER_COMPUTER && tempRacer->exitObj == 0 && pc_trace_autopilot()) {
         // A scripted trace holding AUTO: the human racer drives itself (linux/input.c), until a
         // hub door takes over the steering below.
@@ -816,18 +817,18 @@ static void racer_read_input(Object *obj, Object_Racer *tempRacer, s32 updateRat
     } else if (tempRacer->playerIndex != PLAYER_COMPUTER) {
         if (tempRacer->exitObj == 0) {
             if (is_race_started_by_player_two()) {
-                tempVar = 1 - tempVar;
+                controllerIndex = 1 - controllerIndex;
             }
             // Cap the joystick tilt and write the button inputs to the current buffer.
-            gCurrentStickX = input_clamp_stick_x(tempVar);
+            gCurrentStickX = input_clamp_stick_x(controllerIndex);
             // Flip the steering for adventure 2.
             if (get_filtered_cheats() & CHEAT_MIRRORED_TRACKS) {
                 gCurrentStickX = -gCurrentStickX;
             }
-            gCurrentStickY = input_clamp_stick_y(tempVar);
-            gCurrentRacerInput = input_held(tempVar);
-            gCurrentButtonsPressed = input_pressed(tempVar);
-            gCurrentButtonsReleased = input_released(tempVar);
+            gCurrentStickY = input_clamp_stick_y(controllerIndex);
+            gCurrentRacerInput = input_held(controllerIndex);
+            gCurrentButtonsPressed = input_pressed(controllerIndex);
+            gCurrentButtonsReleased = input_released(controllerIndex);
         } else {
             racer_enter_door(tempRacer, updateRate);
         }
@@ -859,7 +860,7 @@ static void racer_block_input(Object_Racer *tempRacer) {
  * Applies the bubble trap slowdown, the stun steering wobble and the magnet pull.
  */
 static void racer_apply_status_effects(Object *obj, Object_Racer *tempRacer, s32 updateRate) {
-    s32 tempVar;
+    s32 prevWobblePhase;
 
     if (tempRacer->bubbleTrapTimer > 0) {
         tempRacer->bubbleTrapTimer -= updateRate;
@@ -875,9 +876,9 @@ static void racer_apply_status_effects(Object *obj, Object_Racer *tempRacer, s32
         tempRacer->stunTimer -= updateRate;
     }
     if (tempRacer->steerWobbleTimer > 0) {
-        tempVar = tempRacer->steerWobbleTimer & 0xF;
+        prevWobblePhase = tempRacer->steerWobbleTimer & 0xF;
         tempRacer->steerWobbleTimer -= updateRate;
-        if (tempVar < (tempRacer->steerWobbleTimer & 0xF)) {
+        if (prevWobblePhase < (tempRacer->steerWobbleTimer & 0xF)) {
             tempRacer->steerJitter = rand_range(-80, 80);
         }
         gCurrentStickX += tempRacer->steerJitter;
@@ -1067,27 +1068,28 @@ static void racer_place_challenge_marker(Object_Racer *tempRacer) {
  */
 static void racer_update_checkpoints(Object *obj, Object_Racer *tempRacer, LevelHeader *header, f32 xTemp, f32 yTemp,
                                      f32 zTemp) {
-    s32 tempVar;
+    s32 passResult;
     s32 checkpointCount;
     f32 lastCheckpointDist;
     CheckpointNode *checkpointNode;
 
     lastCheckpointDist = tempRacer->checkpoint_distance;
-    tempVar = checkpoint_is_passed(tempRacer->nextCheckpoint, obj, xTemp, yTemp, zTemp, &tempRacer->checkpoint_distance,
-                                   &tempRacer->isOnAlternateRoute);
-    if (tempVar == -100) {
+    passResult = checkpoint_is_passed(tempRacer->nextCheckpoint, obj, xTemp, yTemp, zTemp,
+                                      &tempRacer->checkpoint_distance, &tempRacer->isOnAlternateRoute);
+    if (passResult == -100) {
         racer_update_progress(tempRacer);
     }
     checkpointNode = find_next_checkpoint_node(tempRacer->nextCheckpoint, tempRacer->isOnAlternateRoute);
-    if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->laneAction[tempRacer->aiLane] == 5 &&
-        tempRacer->waterTimer) {
+    if (tempRacer->playerIndex == PLAYER_COMPUTER &&
+        checkpointNode->laneAction[tempRacer->aiLane] == LANE_ACTION_WATER_ROUTE && tempRacer->waterTimer) {
         tempRacer->isOnAlternateRoute = TRUE;
     }
-    if (checkpointNode->laneAction[tempRacer->aiLane] == 6) {
+    if (checkpointNode->laneAction[tempRacer->aiLane] == LANE_ACTION_END_RACE) {
         tempRacer->lap = header->laps + 1;
     }
-    if (tempVar == 0) {
-        if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->laneAction[tempRacer->aiLane] == 2) {
+    if (passResult == 0) {
+        if (tempRacer->playerIndex == PLAYER_COMPUTER &&
+            checkpointNode->laneAction[tempRacer->aiLane] == LANE_ACTION_ALT_ROUTE) {
             tempRacer->isOnAlternateRoute = TRUE;
         }
         checkpointCount = get_checkpoint_count();
@@ -1116,7 +1118,7 @@ static void racer_update_checkpoints(Object *obj, Object_Racer *tempRacer, Level
         if (tempRacer->playerIndex == PLAYER_COMPUTER && lastCheckpointDist < tempRacer->checkpoint_distance) {
             tempRacer->checkpoint_distance = lastCheckpointDist;
         }
-        tempRacer->checkpointRank = tempVar;
+        tempRacer->checkpointRank = passResult;
     }
 }
 
@@ -1183,11 +1185,11 @@ static void racer_update_stretch(Object_Racer *tempRacer, f32 updateRateF) {
  * Turns the character's head toward its target angle, then tracks double taps of the R button.
  */
 static void racer_update_head_and_r_tap(Object_Racer *tempRacer, s32 updateRate) {
-    s32 tempVar;
+    s32 turnStep;
 
-    tempVar = ((tempRacer->headAngleTarget - tempRacer->headAngle) * updateRate) >> 3;
-    CLAMP(tempVar, -0x800, 0x800);
-    tempRacer->headAngle += tempVar;
+    turnStep = ((tempRacer->headAngleTarget - tempRacer->headAngle) * updateRate) >> 3;
+    CLAMP(turnStep, -0x800, 0x800);
+    tempRacer->headAngle += turnStep;
     if ((gCurrentButtonsPressed & R_TRIG) && tempRacer->tapTimerR) {
         tempRacer->tappedR = TRUE;
         tempRacer->tapTimerR = 0;
@@ -1501,41 +1503,13 @@ s32 turn_head_towards_object(Object *obj, Object_Racer *racer, Object *targetObj
 }
 
 /**
- * Resolves the racer's four collision spheres (from the misc asset in the object header) against the level and
- * objects, then updates the grounded wheel count and wheel surfaces, sets the position to the average of the spheres
- * and tilts the racer to match them. Also handles wall crashes and getting squished.
+ * Places the four collision spheres from the wheel table in world space around the racer,
+ * with their radii, and marks their surfaces unknown.
  */
-void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRate) {
-    s32 pad[3];
-    s32 numCollisions;
-    s32 flags;
-    s32 mask;
-    s32 sp184;
-    f32 sp180;
-    f32 sp17C;
-    f32 sp178;
-    f32 new_var;
-    f32 new_var2;
+static void racer_collision_place_wheels(Object *racerObj, f32 *wheelPos, f32 *wheelRadius, s8 *wheelSurface) {
     s32 i;
-    s32 j;
-    s32 new_var3;
-    f32 sp134[4 * 3]; // 4 sets of 3 floats. (4 Vec3fs don't seem to match?)
-    s16 temp_s16;
-    s16 sp130;
-    f32 sp11C[5];
-    f32 sp108[5];
-    f32 spF4[5];
-    f32 spE0[5];
-    MtxF spA0;
-    MtxF sp60;
-    s8 sp5C;
-    s8 sp58[4];
+    MtxF mtx;
 
-    if (gCurrentCourseHeight < racerObj->trans.y_position) {
-        racerObj->trans.y_position = gCurrentCourseHeight;
-        set_collision_mode(COLLISION_MODE_1);
-    }
-    sp130 = FALSE;
     gCurrentRacerTransform.rotation.y_rotation = racerObj->trans.rotation.y_rotation;
     gCurrentRacerTransform.rotation.x_rotation = racerObj->trans.rotation.x_rotation;
     gCurrentRacerTransform.rotation.z_rotation = racerObj->trans.rotation.z_rotation;
@@ -1543,84 +1517,62 @@ void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRat
     gCurrentRacerTransform.x_position = racerObj->trans.x_position;
     gCurrentRacerTransform.y_position = racerObj->trans.y_position;
     gCurrentRacerTransform.z_position = racerObj->trans.z_position;
-    mtxf_from_transform(&spA0, &gCurrentRacerTransform);
+    mtxf_from_transform(&mtx, &gCurrentRacerTransform);
 
     for (i = 0; i < 4; i++) {
-        mtxf_transform_point(spA0, gRacerWheelTable[i * 4 + 0], gRacerWheelTable[i * 4 + 1],
-                             gRacerWheelTable[i * 4 + 2], &sp134[i * 3 + 0], &sp134[i * 3 + 1], &sp134[i * 3 + 2]);
-        spE0[i] = gRacerWheelTable[i * 4 + 3];
-        sp58[i] = -1;
+        mtxf_transform_point(mtx, gRacerWheelTable[i * 4 + 0], gRacerWheelTable[i * 4 + 1], gRacerWheelTable[i * 4 + 2],
+                             &wheelPos[i * 3 + 0], &wheelPos[i * 3 + 1], &wheelPos[i * 3 + 2]);
+        wheelRadius[i] = gRacerWheelTable[i * 4 + 3];
+        wheelSurface[i] = -1;
     }
+}
 
-    numCollisions = 0;
-    gRacerExternalShiftX = 0;
-    gRacerExternalShiftZ = 0;
-    flags = 0;
-    if (racer->playerIndex != PLAYER_COMPUTER || racer->vehicleIDPrev < VEHICLE_BOSSES) {
-        flags =
-            collision_objectmodel(racerObj, 4, &numCollisions, (Vec3f *) racer->wheelCollisionPos, sp134, spE0, sp58);
-    }
-    if (flags & 0x80) {
-        for (i = 0; i < 4; i++) {
-            gRacerExternalShiftX = gRacerExternalShiftX + sp134[i * 3 + 0];
-            gRacerExternalShiftZ = gRacerExternalShiftZ + sp134[i * 3 + 2];
+/**
+ * Hitting a wall head on (or at any angle in a hovercraft): rumbles, and above a speed bumps the
+ * racer back off the wall's normal with a crash sound, voice and camera shake.
+ */
+static void racer_collision_wall_crash(Object *racerObj, Object_Racer *racer, f32 normalX, f32 normalZ) {
+    s16 wallAngle;
+    f32 impactSpeed;
+
+    wallAngle = (u16) arctan2_f(normalX * 255.0f, normalZ * 255.0f);
+    wallAngle -= racerObj->trans.rotation.y_rotation;
+    if ((wallAngle < 0x2000 && wallAngle > -0x2000) || racer->vehicleID == VEHICLE_HOVERCRAFT) {
+        impactSpeed = racer->velocity * 1.075;
+        if (impactSpeed < 0) {
+            impactSpeed = -impactSpeed;
         }
-        gRacerExternalShiftX = gRacerExternalShiftX / 4;
-        gRacerExternalShiftZ = gRacerExternalShiftZ / 4;
-        gRacerExternalShiftX = gRacerExternalShiftX - racerObj->trans.x_position;
-        gRacerExternalShiftZ = gRacerExternalShiftZ - racerObj->trans.z_position;
-        sp130 = TRUE;
-        flags &= ~0x80;
-    }
-    sp5C = 0;
-    if (flags) {
-        sp178 = 0;
-        for (i = 0; i < 4; i++) {
-            sp178 += sp134[i * 3 + 1];
+        if (impactSpeed > 1.0) {
+            rumble_set_fade(racer->playerIndex, 18, impactSpeed * 0.125);
         }
-        sp178 *= 0.25;
-        if (sp178 < (racerObj->trans.y_position - 4.0)) {
-            sp5C = 1;
-        }
-    }
-    generate_collision_candidates(4, (Vec3f *) racer->wheelCollisionPos, (Vec3f *) sp134, racer->vehicleID);
-    numCollisions = 0;
-    racer->wheelContactFlags =
-        resolve_collisions((Vec3f *) racer->wheelCollisionPos, (Vec3f *) sp134, spE0, sp58, 4, &numCollisions);
-    sp184 = get_collision_normal(&sp180, &sp178, &sp17C);
-    if (sp184 != 0) {
-        temp_s16 = (u16) arctan2_f(sp180 * 255.0f, sp17C * 255.0f);
-        temp_s16 -= racerObj->trans.rotation.y_rotation;
-        if ((temp_s16 < 0x2000 && temp_s16 > -0x2000) || racer->vehicleID == VEHICLE_HOVERCRAFT) {
-            sp178 = racer->velocity * 1.075;
-            if (sp178 < 0) {
-                sp178 = -sp178;
+        if (impactSpeed > 4.0) {
+            racer->driveAnimFlags |= 8;
+            if (gCurrentPlayerIndex != PLAYER_COMPUTER) {
+                gCameraObject->shakeMagnitude = 3.0f;
             }
-            if (sp178 > 1.0) {
-                rumble_set_fade(racer->playerIndex, 18, sp178 * 0.125);
+            racer->bumpTimer = 7;
+            if (racer->playerIndex != PLAYER_COMPUTER) {
+                play_random_character_voice(racerObj, SOUND_VOICE_CHARACTER_NEGATIVE, 8, 0x80 | 0x2);
+                racer_play_sound(racerObj, SOUND_CRASH);
             }
-            if (sp178 > 4.0) {
-                racer->driveAnimFlags |= 8;
-                if (gCurrentPlayerIndex != PLAYER_COMPUTER) {
-                    gCameraObject->shakeMagnitude = 3.0f;
-                }
-                racer->bumpTimer = 7;
-                if (racer->playerIndex != PLAYER_COMPUTER) {
-                    play_random_character_voice(racerObj, SOUND_VOICE_CHARACTER_NEGATIVE, 8, 0x80 | 0x2);
-                    racer_play_sound(racerObj, SOUND_CRASH);
-                }
-                racer->boost_sound |= BOOST_SOUND_UNK4;
-                if (racer->vehicleID == VEHICLE_HOVERCRAFT) {
-                    sp178 *= 0.5;
-                }
-                racer->bumpVelX = sp180 * sp178;
-                racer->bumpVelZ = sp17C * sp178;
-                racer->velocity *= 0.15;
-                racer->lateral_velocity = 0;
+            racer->boost_sound |= BOOST_SOUND_UNK4;
+            if (racer->vehicleID == VEHICLE_HOVERCRAFT) {
+                impactSpeed *= 0.5;
             }
+            racer->bumpVelX = normalX * impactSpeed;
+            racer->bumpVelZ = normalZ * impactSpeed;
+            racer->velocity *= 0.15;
+            racer->lateral_velocity = 0;
         }
     }
-    if (sp5C && numCollisions >= 3) {
+}
+
+/**
+ * Squashed under an object with three or more wheels on the ground: splat sound, and the
+ * squish attack (or the squish lasts longer).
+ */
+static void racer_collision_squish(Object_Racer *racer, s8 underObject, s32 numCollisions) {
+    if (underObject && numCollisions >= 3) {
         if (racer->playerIndex != PLAYER_COMPUTER && racer->splatSoundHandle == 0 && racer->shieldTimer <= 0) {
             sound_play(SOUND_SPLAT, &racer->splatSoundHandle);
         }
@@ -1630,6 +1582,17 @@ void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRat
             racer->squish_timer = 60;
         }
     }
+}
+
+/**
+ * Stores the wheel contacts, counts the grounded wheels, keeps the resolved sphere positions
+ * and surfaces, and moves the racer to their average.
+ */
+static void racer_collision_store_wheels(Object *racerObj, Object_Racer *racer, s32 flags, f32 *wheelPos,
+                                         s8 *wheelSurface) {
+    s32 i;
+    s32 j;
+
     racer->objectContactFlags = flags;
     racer->wheelContactFlags |= flags;
 
@@ -1643,10 +1606,10 @@ void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRat
     }
 
     for (i = 0; i < 12; i++) {
-        racer->wheelCollisionPos[i] = sp134[i];
+        racer->wheelCollisionPos[i] = wheelPos[i];
     }
     for (i = 0; i < 4; i++) {
-        racer->wheel_surfaces[i] = sp58[i];
+        racer->wheel_surfaces[i] = wheelSurface[i];
     }
     racerObj->trans.x_position = 0;
     racerObj->trans.y_position = 0;
@@ -1659,6 +1622,15 @@ void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRat
     racerObj->trans.x_position /= 4;
     racerObj->trans.y_position /= 4;
     racerObj->trans.z_position /= 4;
+}
+
+/**
+ * Brings the resolved sphere positions into the racer's local space.
+ */
+static void racer_collision_wheels_to_local(Object *racerObj, Object_Racer *racer, f32 *localX, f32 *localY,
+                                            f32 *localZ) {
+    s32 i;
+    MtxF invMtx;
 
     gCurrentRacerTransform.rotation.y_rotation = -racerObj->trans.rotation.y_rotation;
     gCurrentRacerTransform.rotation.x_rotation = -racerObj->trans.rotation.x_rotation;
@@ -1667,58 +1639,161 @@ void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRat
     gCurrentRacerTransform.x_position = -racerObj->trans.x_position;
     gCurrentRacerTransform.y_position = -racerObj->trans.y_position;
     gCurrentRacerTransform.z_position = -racerObj->trans.z_position;
-    mtxf_from_inverse_transform(&sp60, &gCurrentRacerTransform);
+    mtxf_from_inverse_transform(&invMtx, &gCurrentRacerTransform);
     for (i = 0; i < 4; i++) {
-        mtxf_transform_point(sp60, racer->wheelCollisionPos[3 * i], racer->wheelCollisionPos[3 * i + 1],
-                             racer->wheelCollisionPos[3 * i + 2], &sp11C[i], &sp108[i], &spF4[i]);
+        mtxf_transform_point(invMtx, racer->wheelCollisionPos[3 * i], racer->wheelCollisionPos[3 * i + 1],
+                             racer->wheelCollisionPos[3 * i + 2], &localX[i], &localY[i], &localZ[i]);
     }
-    if (racer->vehicleID != VEHICLE_LOOPDELOOP) {
-        sp180 = sp11C[0] + sp11C[1];
-        sp17C = spF4[0] + spF4[1];
-        new_var = sp11C[2] + sp11C[3];
-        new_var2 = spF4[2] + spF4[3];
-        new_var3 = (arctan2_f(sp180 - new_var, sp17C - new_var2) + 0x8000) & 0xFFFF;
-        temp_s16 = new_var3;
-        if (racer->bumpTimer == 7) {
-            if (temp_s16 > 0) {
-                racer->bumpTiltAngle = 2048;
-            }
-            if (temp_s16 < 0) {
-                racer->bumpTiltAngle = -2048;
-            }
+}
+
+/**
+ * Turns the racer to line up with where the spheres were pushed (or by the fixed bump tilt
+ * after a crash), damping drift and spin when the turn is large.
+ */
+static void racer_collision_align_yaw(Object *racerObj, Object_Racer *racer, f32 *localX, f32 *localZ,
+                                      s16 movedByObject) {
+    f32 frontX;
+    f32 frontZ;
+    f32 rearX;
+    f32 rearZ;
+    s32 yawAngle;
+    s16 yawDiff;
+
+    frontX = localX[0] + localX[1];
+    frontZ = localZ[0] + localZ[1];
+    rearX = localX[2] + localX[3];
+    rearZ = localZ[2] + localZ[3];
+    yawAngle = (arctan2_f(frontX - rearX, frontZ - rearZ) + 0x8000) & 0xFFFF;
+    yawDiff = yawAngle;
+    if (racer->bumpTimer == 7) {
+        if (yawDiff > 0) {
+            racer->bumpTiltAngle = 2048;
         }
-        if (racer->bumpTimer != 0) {
-            temp_s16 = racer->bumpTiltAngle;
+        if (yawDiff < 0) {
+            racer->bumpTiltAngle = -2048;
         }
-        if (temp_s16 > 500 || temp_s16 < -500) {
-            racer->drift_direction = 0;
-            racer->driftHeadingOffset = (s32) (racer->driftHeadingOffset * 7) >> 3;
-            racer->y_rotation_vel = (s16) ((s32) (racer->y_rotation_vel * 7) >> 3);
-        }
-        if (sp130) {
-            temp_s16 *= 4;
-        }
-        racerObj->trans.rotation.y_rotation += temp_s16 >> 2;
-        racer->steerVisualRotation = racerObj->trans.rotation.y_rotation - racer->y_rotation_vel;
     }
-    sp180 = spF4[2] - spF4[0];
-    sp17C = sp108[2] - sp108[0];
-    temp_s16 = arctan2_f(sp180, sp17C) & 0xFFFF;
-    temp_s16 -= 0x4000;
-    if (sp184 == 0) {
-        racerObj->trans.rotation.x_rotation += temp_s16;
+    if (racer->bumpTimer != 0) {
+        yawDiff = racer->bumpTiltAngle;
     }
-    sp180 = (sp11C[1] - sp11C[0]);
-    sp17C = (sp108[1] - sp108[0]);
-    temp_s16 = (0x4000 - (arctan2_f(sp180, sp17C)));
-    if (sp184 == 0) {
-        racer->x_rotation_vel += temp_s16 & 0xFFFF & 0xFFFF & 0xFFFF;
+    if (yawDiff > 500 || yawDiff < -500) {
+        racer->drift_direction = 0;
+        racer->driftHeadingOffset = (s32) (racer->driftHeadingOffset * 7) >> 3;
+        racer->y_rotation_vel = (s16) ((s32) (racer->y_rotation_vel * 7) >> 3);
+    }
+    if (movedByObject) {
+        yawDiff *= 4;
+    }
+    racerObj->trans.rotation.y_rotation += yawDiff >> 2;
+    racer->steerVisualRotation = racerObj->trans.rotation.y_rotation - racer->y_rotation_vel;
+}
+
+/**
+ * Unless a wall was hit, pitches and rolls the racer to match the spheres, then (for ground
+ * vehicles) limits both.
+ */
+static void racer_collision_pitch_and_roll(Object *racerObj, Object_Racer *racer, f32 *localX, f32 *localY, f32 *localZ,
+                                           s32 hitWall) {
+    f32 diffA;
+    f32 diffB;
+    s16 angle;
+
+    diffA = localZ[2] - localZ[0];
+    diffB = localY[2] - localY[0];
+    angle = arctan2_f(diffA, diffB) & 0xFFFF;
+    angle -= 0x4000;
+    if (hitWall == 0) {
+        racerObj->trans.rotation.x_rotation += angle;
+    }
+    diffA = (localX[1] - localX[0]);
+    diffB = (localY[1] - localY[0]);
+    angle = (0x4000 - (arctan2_f(diffA, diffB)));
+    if (hitWall == 0) {
+        racer->x_rotation_vel += angle & 0xFFFF & 0xFFFF & 0xFFFF;
     }
     if (racer->vehicleID != VEHICLE_LOOPDELOOP && racer->vehicleID != VEHICLE_PLANE &&
         racer->vehicleID != VEHICLE_CARPET && racer->vehicleID != VEHICLE_SMOKEY) {
         CLAMP(racer->x_rotation_vel, -0x3400, 0x3400);
         CLAMP(racerObj->trans.rotation.x_rotation, -0x3400, 0x3400);
     }
+}
+
+/**
+ * Resolves the racer's four collision spheres (from the misc asset in the object header) against the level and
+ * objects, then updates the grounded wheel count and wheel surfaces, sets the position to the average of the spheres
+ * and tilts the racer to match them. Also handles wall crashes and getting squished.
+ */
+void update_racer_collision(Object *racerObj, Object_Racer *racer, s32 updateRate) {
+    s32 numCollisions;
+    s32 flags;
+    s32 hitWall;
+    f32 normalX;
+    f32 normalZ;
+    f32 normalY;
+    f32 averageY;
+    s32 i;
+    f32 wheelPos[4 * 3]; // 4 sets of 3 floats. (4 Vec3fs don't seem to match?)
+    s16 movedByObject;
+    f32 localX[5];
+    f32 localY[5];
+    f32 localZ[5];
+    f32 wheelRadius[5];
+    s8 underObject;
+    s8 wheelSurface[4];
+
+    if (gCurrentCourseHeight < racerObj->trans.y_position) {
+        racerObj->trans.y_position = gCurrentCourseHeight;
+        set_collision_mode(COLLISION_MODE_1);
+    }
+    movedByObject = FALSE;
+    racer_collision_place_wheels(racerObj, wheelPos, wheelRadius, wheelSurface);
+
+    numCollisions = 0;
+    gRacerExternalShiftX = 0;
+    gRacerExternalShiftZ = 0;
+    flags = 0;
+    if (racer->playerIndex != PLAYER_COMPUTER || racer->vehicleIDPrev < VEHICLE_BOSSES) {
+        flags = collision_objectmodel(racerObj, 4, &numCollisions, (Vec3f *) racer->wheelCollisionPos, wheelPos,
+                                      wheelRadius, wheelSurface);
+    }
+    if (flags & 0x80) {
+        for (i = 0; i < 4; i++) {
+            gRacerExternalShiftX = gRacerExternalShiftX + wheelPos[i * 3 + 0];
+            gRacerExternalShiftZ = gRacerExternalShiftZ + wheelPos[i * 3 + 2];
+        }
+        gRacerExternalShiftX = gRacerExternalShiftX / 4;
+        gRacerExternalShiftZ = gRacerExternalShiftZ / 4;
+        gRacerExternalShiftX = gRacerExternalShiftX - racerObj->trans.x_position;
+        gRacerExternalShiftZ = gRacerExternalShiftZ - racerObj->trans.z_position;
+        movedByObject = TRUE;
+        flags &= ~0x80;
+    }
+    underObject = 0;
+    if (flags) {
+        averageY = 0;
+        for (i = 0; i < 4; i++) {
+            averageY += wheelPos[i * 3 + 1];
+        }
+        averageY *= 0.25;
+        if (averageY < (racerObj->trans.y_position - 4.0)) {
+            underObject = 1;
+        }
+    }
+    generate_collision_candidates(4, (Vec3f *) racer->wheelCollisionPos, (Vec3f *) wheelPos, racer->vehicleID);
+    numCollisions = 0;
+    racer->wheelContactFlags = resolve_collisions((Vec3f *) racer->wheelCollisionPos, (Vec3f *) wheelPos, wheelRadius,
+                                                  wheelSurface, 4, &numCollisions);
+    hitWall = get_collision_normal(&normalX, &normalY, &normalZ);
+    if (hitWall != 0) {
+        racer_collision_wall_crash(racerObj, racer, normalX, normalZ);
+    }
+    racer_collision_squish(racer, underObject, numCollisions);
+    racer_collision_store_wheels(racerObj, racer, flags, wheelPos, wheelSurface);
+    racer_collision_wheels_to_local(racerObj, racer, localX, localY, localZ);
+    if (racer->vehicleID != VEHICLE_LOOPDELOOP) {
+        racer_collision_align_yaw(racerObj, racer, localX, localZ, movedByObject);
+    }
+    racer_collision_pitch_and_roll(racerObj, racer, localX, localY, localZ, hitWall);
 }
 
 /**
@@ -1750,7 +1825,6 @@ void handle_base_steering(Object_Racer *racer, UNUSED s32 updateRate, f32 update
  */
 void racer_update_checkpoint_progress(Object *obj, Object_Racer *racer, s32 updateRate) {
     f32 ftemp;
-    UNUSED s32 pad;
     s32 checkpointCount;
     CheckpointNode *tempCheckpointNode;
     f32 posX[5];

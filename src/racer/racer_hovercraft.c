@@ -1,7 +1,7 @@
 #include "racer_internal.h"
 
 /**
- * Hovercraft spin-outs turn the craft on the spot: unk1D4 ramps to +/-10 while the spin
+ * Hovercraft spin-outs turn the craft on the spot: spinDirection ramps to +/-10 while the spin
  * lasts and drives the heading offset, then spinRecoverTimer eases the offset back. Braking at
  * speed also yaws the craft.
  */
@@ -119,7 +119,7 @@ static void hovercraft_land(Object *obj, Object_Racer *racer) {
 static void hovercraft_update_camera_yaw(Object *obj, Object_Racer *racer, s32 updateRate) {
     f32 speed;
     f32 blend;
-    f32 var_f6;
+    f32 yawScale;
     s32 diff;
     s32 step;
 
@@ -164,8 +164,8 @@ static void hovercraft_update_camera_yaw(Object *obj, Object_Racer *racer, s32 u
     if (diff < -0x8000) {
         diff += 0xFFFF;
     }
-    var_f6 = 1.0f;
-    diff = ((s32) ((((f32) diff) * 1.75) * var_f6));
+    yawScale = 1.0f;
+    diff = ((s32) ((((f32) diff) * 1.75) * yawScale));
     step = (diff * updateRate);
     racer->cameraYaw += step >> 6;
 }
@@ -177,14 +177,14 @@ static void hovercraft_update_camera_yaw(Object *obj, Object_Racer *racer, s32 u
 static void hovercraft_apply_forces(Object *obj, Object_Racer *racer, f32 updateRateF, f32 throttleForce,
                                     f32 brakeForce, f32 accel, f32 drag) {
     f32 slip;
-    f32 temp;
+    f32 force;
     f32 pitchForce;
     f32 rollForce;
     f32 velSquared;
 
     if (gCurrentPlayerIndex == PLAYER_COMPUTER && !racer->raceFinished) {
-        temp = racer->lateral_velocity * 0.25;
-        slip = temp * 0.35;
+        force = racer->lateral_velocity * 0.25;
+        slip = force * 0.35;
         if (slip < 0.0) {
             slip = -slip;
         }
@@ -195,22 +195,22 @@ static void hovercraft_apply_forces(Object *obj, Object_Racer *racer, f32 update
         obj->y_velocity += racer->oy1 * slip;
         obj->z_velocity += racer->oz1 * slip;
     } else {
-        temp = racer->lateral_velocity * 0.07;
+        force = racer->lateral_velocity * 0.07;
         if (gCurrentRacerInput & R_TRIG) {
-            temp *= 2;
+            force *= 2;
             if (gCurrentStickX > -40 && gCurrentStickX < 40) {
                 throttleForce *= 0.8;
             } else if (racer->lateral_velocity > 2.5 || racer->lateral_velocity < -2.5) {
                 throttleForce *= 1.5;
             }
             if (gCurrentRacerInput & B_BUTTON) {
-                temp *= 2;
+                force *= 2;
             }
         }
     }
-    obj->x_velocity -= racer->ox3 * temp;
-    obj->y_velocity -= racer->oy3 * temp;
-    obj->z_velocity -= racer->oz3 * temp;
+    obj->x_velocity -= racer->ox3 * force;
+    obj->y_velocity -= racer->oy3 * force;
+    obj->z_velocity -= racer->oz3 * force;
     throttleForce *= accel;
     obj->x_velocity -= racer->ox1 * throttleForce;
     obj->y_velocity -= racer->oy1 * throttleForce;
@@ -232,13 +232,13 @@ static void hovercraft_apply_forces(Object *obj, Object_Racer *racer, f32 update
         velSquared = -velSquared;
     }
     if (velSquared < 1.0f && (!(gCurrentRacerInput & A_BUTTON))) {
-        temp = racer->velocity * drag * 8.0f;
+        force = racer->velocity * drag * 8.0f;
     } else {
-        temp = velSquared * drag;
+        force = velSquared * drag;
     }
-    obj->x_velocity -= racer->ox1 * temp;
-    obj->y_velocity -= racer->oy1 * temp;
-    obj->z_velocity -= racer->oz1 * temp;
+    obj->x_velocity -= racer->ox1 * force;
+    obj->y_velocity -= racer->oy1 * force;
+    obj->z_velocity -= racer->oz1 * force;
     if (racer->magnetTimer != 0) {
         obj->x_velocity = gRacerMagnetVelX;
         obj->z_velocity = gRacerMagnetVelZ;
@@ -470,49 +470,12 @@ static void hovercraft_update_fan(Object *obj) {
 }
 
 /**
- * One frame of hovercraft physics: read the controls, turn and spin, apply the forces,
- * move, float on the waves, collide, then derive the velocities for next frame.
+ * Controls: eases the steering toward the stick (slower for computers and after the finish),
+ * then items, tilt, attacks and head turning.
  */
-void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *racer) {
-    f32 throttleForce;
-    f32 brakeForce;
-    f32 drag;
-    f32 accel;
-    f32 speed;
-    f32 force;
-    f32 waterDepth;
-    f32 xPos;
-    f32 yPos;
-    f32 zPos;
-    f32 shiftX;
-    f32 shiftZ;
-    f32 invRate;
-    f32 dialogueScale;
+static void hovercraft_read_controls(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF) {
     f32 steerDivisor;
-    s32 steerInput;
-    s32 surface;
-    s32 stoneWheels;
-    s32 frame;
-    s32 playerMoved;
 
-    if (is_nondefault_vehicle()) {
-        updateRateF *= 1.15;
-    }
-    if (racer->playerIndex >= PLAYER_ONE && gNumViewports < 2) {
-        obj->particleEmittersEnabled |= OBJ_EMIT_9;
-    }
-    gRacerSurfaceSoundId = 0;
-    gCurrentCarSteerVel = 0;
-    gRacerTargetRoll = 0;
-    xPos = obj->trans.x_position;
-    yPos = obj->trans.y_position;
-    zPos = obj->trans.z_position;
-    // The craft is drawn offset along its heading while a dialogue camera is active.
-    dialogueScale = 1.0 - (gDialogueCameraAngle / 10240.0f);
-    shiftX = -racer->ox1 * 10 * dialogueScale;
-    shiftZ = -racer->oz1 * 10 * dialogueScale;
-
-    // Controls.
     steerDivisor = 8.0f;
     if (gCurrentPlayerIndex == PLAYER_COMPUTER || racer->raceFinished) {
         steerDivisor = 32.0f;
@@ -526,6 +489,17 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
     } else {
         slowly_reset_head_angle(racer);
     }
+}
+
+/**
+ * Eases the throttle and brake and turns them into this frame's throttle and brake forces.
+ */
+static void hovercraft_throttle_and_brake(Object_Racer *racer, f32 updateRateF, f32 *outThrottleForce,
+                                          f32 *outBrakeForce) {
+    f32 throttleForce;
+    f32 brakeForce;
+    f32 force;
+
     racer_ease_throttle(racer, updateRateF, 0.016);
     force = racer->throttle;
     if ((racer->velocity > 0.0f) && (gCurrentRacerInput & A_BUTTON)) {
@@ -547,17 +521,16 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
     if (racer->velocity > 0.0) {
         brakeForce *= 0.3;
     }
+    *outThrottleForce = throttleForce;
+    *outBrakeForce = brakeForce;
+}
 
-    if (racer->zipperDirCorrection != 0) {
-        gCurrentStickX = 0;
-        racer->magnetTimer = 0;
-        racer->steerAngle = 0;
-        racer->spinout_timer = 0;
-        racer->trickType = 0;
-        racer_zipper_align(obj, racer, updateRate);
-    }
-    hovercraft_update_spinout(obj, racer, updateRate, brakeForce);
-    racer_update_basis_vectors(obj, racer);
+/**
+ * Shows the steering in the driver's animation frame, unless approaching an object.
+ */
+static void hovercraft_set_steer_frame(Object *obj, Object_Racer *racer) {
+    s32 frame;
+
     if (racer->approachTarget == NULL) {
         obj->animationID = 0;
         frame = racer->steerAngle;
@@ -571,16 +544,22 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
         }
         obj->animFrame = frame;
     }
+}
 
-    // Acceleration from the speed curve, gravity, and steering.
-    speed = racer->velocity;
-    if (speed < 0.0f) {
-        speed = -speed;
-    }
-    if (speed > 12.0f) {
-        speed = 12.0f;
-    }
-    accel = racer_speed_curve(speed);
+/**
+ * Gravity (halved with three or more wheels down), vertical drag, braking drag, and turning
+ * from the steering (sharper, with less acceleration, when the stick is pulled back); counts
+ * the airborne time used for the landing.
+ */
+static void hovercraft_gravity_and_steering(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF,
+                                            f32 *accelInOut, f32 *outDrag) {
+    f32 accel;
+    f32 drag;
+    f32 speed;
+    f32 force;
+    s32 steerInput;
+
+    accel = *accelInOut;
     gCurrentRacerWeightStat *= 0.75;
     if (racer->groundedWheels >= 3) {
         obj->y_velocity -= gCurrentRacerWeightStat * 0.5 * updateRateF;
@@ -609,7 +588,104 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
             racer->trickType = 25;
         }
     }
+    *accelInOut = accel;
+    *outDrag = drag;
+}
 
+/**
+ * Eases the yaw and roll velocities toward this frame's targets and applies them, and counts
+ * down the bump timer.
+ */
+static void hovercraft_update_rotation(Object *obj, Object_Racer *racer, s32 updateRate) {
+    racer->driftHeadingOffset = 0;
+    racer->y_rotation_vel += (gCurrentCarSteerVel - racer->y_rotation_vel) >> 3;
+    obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
+    racer->z_rotation_vel += (gRacerTargetRoll - racer->z_rotation_vel) >> 3;
+    obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
+    if (racer->bumpTimer > 0) {
+        racer->bumpTimer -= updateRate;
+    } else {
+        racer->bumpTimer = 0;
+    }
+}
+
+/**
+ * Settles the body offset and records how hard the craft is falling, for the landing.
+ */
+static void hovercraft_update_fall_impact(Object *obj, Object_Racer *racer, f32 updateRateF) {
+    racer->bodyOffsetY -= (racer->bodyOffsetY * 0.125) * updateRateF;
+    racer->fallImpact = (-obj->y_velocity) * 7.0;
+    if (racer->fallImpact > 35.0) {
+        racer->fallImpact = 35.0;
+    }
+    if (racer->fallImpact < 0.0) {
+        racer->fallImpact = 0;
+    }
+}
+
+/**
+ * One frame of hovercraft physics: read the controls, turn and spin, apply the forces,
+ * move, float on the waves, collide, then derive the velocities for next frame.
+ */
+void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *racer) {
+    f32 throttleForce;
+    f32 brakeForce;
+    f32 drag;
+    f32 accel;
+    f32 speed;
+    f32 waterDepth;
+    f32 xPos;
+    f32 yPos;
+    f32 zPos;
+    f32 shiftX;
+    f32 shiftZ;
+    f32 invRate;
+    f32 dialogueScale;
+    s32 surface;
+    s32 stoneWheels;
+    s32 playerMoved;
+
+    if (is_nondefault_vehicle()) {
+        updateRateF *= 1.15;
+    }
+    if (racer->playerIndex >= PLAYER_ONE && gNumViewports < 2) {
+        obj->particleEmittersEnabled |= OBJ_EMIT_9;
+    }
+    gRacerSurfaceSoundId = 0;
+    gCurrentCarSteerVel = 0;
+    gRacerTargetRoll = 0;
+    xPos = obj->trans.x_position;
+    yPos = obj->trans.y_position;
+    zPos = obj->trans.z_position;
+    // The craft is drawn offset along its heading while a dialogue camera is active.
+    dialogueScale = 1.0 - (gDialogueCameraAngle / 10240.0f);
+    shiftX = -racer->ox1 * 10 * dialogueScale;
+    shiftZ = -racer->oz1 * 10 * dialogueScale;
+
+    // Controls.
+    hovercraft_read_controls(obj, racer, updateRate, updateRateF);
+    hovercraft_throttle_and_brake(racer, updateRateF, &throttleForce, &brakeForce);
+    if (racer->zipperDirCorrection != 0) {
+        gCurrentStickX = 0;
+        racer->magnetTimer = 0;
+        racer->steerAngle = 0;
+        racer->spinout_timer = 0;
+        racer->trickType = 0;
+        racer_zipper_align(obj, racer, updateRate);
+    }
+    hovercraft_update_spinout(obj, racer, updateRate, brakeForce);
+    racer_update_basis_vectors(obj, racer);
+    hovercraft_set_steer_frame(obj, racer);
+    // Acceleration from the speed curve, gravity, and steering.
+    speed = racer->velocity;
+    if (speed < 0.0f) {
+        speed = -speed;
+    }
+    if (speed > 12.0f) {
+        speed = 12.0f;
+    }
+    accel = racer_speed_curve(speed);
+    hovercraft_gravity_and_steering(obj, racer, updateRate, updateRateF, &accel, &drag);
     // Surfaces.
     surface = racer_dominant_surface(racer, &stoneWheels);
     racer_check_taj_pad(racer, surface);
@@ -645,27 +721,11 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
     if (racer->zipperDirCorrection == 0) {
         hovercraft_apply_forces(obj, racer, updateRateF, throttleForce, brakeForce, accel, drag);
     }
-    racer->driftHeadingOffset = 0;
-    racer->y_rotation_vel += (gCurrentCarSteerVel - racer->y_rotation_vel) >> 3;
-    obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
-    racer->z_rotation_vel += (gRacerTargetRoll - racer->z_rotation_vel) >> 3;
-    obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
-    if (racer->bumpTimer > 0) {
-        racer->bumpTimer -= updateRate;
-    } else {
-        racer->bumpTimer = 0;
-    }
+    hovercraft_update_rotation(obj, racer, updateRate);
     shiftX += racer->ox1 * 10 * dialogueScale;
     shiftZ += racer->oz1 * 10 * dialogueScale;
     playerMoved = hovercraft_move(obj, racer, updateRateF, &shiftX, &shiftZ);
-    racer->bodyOffsetY -= (racer->bodyOffsetY * 0.125) * updateRateF;
-    racer->fallImpact = (-obj->y_velocity) * 7.0;
-    if (racer->fallImpact > 35.0) {
-        racer->fallImpact = 35.0;
-    }
-    if (racer->fallImpact < 0.0) {
-        racer->fallImpact = 0;
-    }
+    hovercraft_update_fall_impact(obj, racer, updateRateF);
     waterDepth = hovercraft_update_water(obj, racer, updateRate);
     racer_collide_keeping_bump(obj, racer, updateRate);
 
@@ -760,50 +820,47 @@ void update_camera_hovercraft(f32 updateRate, Object *obj, Object_Racer *racer) 
     f32 yVel;
     s32 numViewports;
     u8 tempZoom;
-    UNUSED s32 pad[2];
-    f32 phi_f14;
-    f32 phi_f18;
+    f32 targetBoom;
+    f32 targetHeight;
     f32 xVel;
     f32 zVel;
-    UNUSED s32 pad2;
-    f32 sp34;
-    UNUSED s32 pad3;
+    f32 pitchSin;
     f32 brakeVar;
     f32 baseSpeed;
-    s32 sp24 = 0x400;
+    s32 basePitch = 0x400;
     s32 tempUpdateRate;
     s32 angle;
     s32 segmentIndex;
     s32 tempAngle;
 
-    phi_f14 = 165.0f;
-    phi_f18 = 65.0f;
-    sp24 = 0x400;
+    targetBoom = 165.0f;
+    targetHeight = 65.0f;
+    basePitch = 0x400;
     tempUpdateRate = (s32) updateRate;
     // Place the camera a bit closer with 2+ players to help visibility.
     numViewports = cam_get_viewport_layout();
     if (numViewports == 1) {
-        phi_f14 = 200.0f;
-        phi_f18 = 51.0f;
-        sp24 = 0x280;
+        targetBoom = 200.0f;
+        targetHeight = 51.0f;
+        basePitch = 0x280;
     } else if (numViewports > 1) {
-        phi_f14 = 130.0f;
-        phi_f18 = 50.0f;
+        targetBoom = 130.0f;
+        targetHeight = 50.0f;
     }
     brakeVar = racer->brake;
     tempZoom = gCameraObject->zoom;
     baseSpeed = racer->forwardVel;
     switch (gCameraObject->zoom) {
         case 1:
-            phi_f14 += 35.0f;
+            targetBoom += 35.0f;
             break;
         case 2:
-            phi_f14 -= 35.0f;
-            phi_f18 -= 10.0f;
+            targetBoom -= 35.0f;
+            targetHeight -= 10.0f;
             break;
         case 3:
-            phi_f14 -= 53.0f;
-            phi_f18 -= 5.0f;
+            targetBoom -= 53.0f;
+            targetHeight -= 5.0f;
             baseSpeed *= 0.250;
             brakeVar = 0.0f;
             break;
@@ -822,7 +879,7 @@ void update_camera_hovercraft(f32 updateRate, Object *obj, Object_Racer *racer) 
                 angle = 0;
             }
         }
-        angle = sp24 - angle;
+        angle = basePitch - angle;
         tempAngle = angle - (u16) gCameraObject->trans.rotation.x_rotation;
         WRAP(tempAngle, -0x8000, 0x8000);
         gCameraObject->trans.rotation.x_rotation += (tempAngle * tempUpdateRate) >> 4;
@@ -834,25 +891,25 @@ void update_camera_hovercraft(f32 updateRate, Object *obj, Object_Racer *racer) 
         if (yVel > 65.0) {
             yVel = 65.0f;
         }
-        phi_f14 -= yVel;
+        targetBoom -= yVel;
     }
-    phi_f14 += baseSpeed * 30.0f;
+    targetBoom += baseSpeed * 30.0f;
     if (gRaceStartTimer == 0) {
         if (normalise_time(36) < racer->boostTimer) {
-            phi_f14 = -30.0f;
+            targetBoom = -30.0f;
         } else if (racer->boostTimer > 0) {
-            phi_f14 = 180.0f;
+            targetBoom = 180.0f;
         }
     }
     if (gRaceStartTimer > 80) {
-        gCameraObject->boomLength = phi_f14;
-        gCameraObject->cam_unk_20 = phi_f18;
+        gCameraObject->boomLength = targetBoom;
+        gCameraObject->cam_unk_20 = targetHeight;
     }
-    gCameraObject->boomLength += (phi_f14 - gCameraObject->boomLength) * 0.125; //!@Delta
-    gCameraObject->cam_unk_20 += (phi_f18 - gCameraObject->cam_unk_20) * 0.125; //!@Delta
-    sp34 = sins_f(gCameraObject->trans.rotation.x_rotation - sp24);
-    phi_f18 = coss_f(gCameraObject->trans.rotation.x_rotation - sp24);
-    phi_f18 = (gCameraObject->boomLength * sp34) + (gCameraObject->cam_unk_20 * phi_f18);
+    gCameraObject->boomLength += (targetBoom - gCameraObject->boomLength) * 0.125;   //!@Delta
+    gCameraObject->cam_unk_20 += (targetHeight - gCameraObject->cam_unk_20) * 0.125; //!@Delta
+    pitchSin = sins_f(gCameraObject->trans.rotation.x_rotation - basePitch);
+    targetHeight = coss_f(gCameraObject->trans.rotation.x_rotation - basePitch);
+    targetHeight = (gCameraObject->boomLength * pitchSin) + (gCameraObject->cam_unk_20 * targetHeight);
     xVel = sins_f(-racer->cameraYaw + 0x8000) * gCameraObject->boomLength;
     zVel = coss_f(-racer->cameraYaw + 0x8000) * gCameraObject->boomLength;
     yVel = (1.0 - (gDialogueCameraAngle / 10240.0f)); // Goes between 0-1
@@ -862,7 +919,7 @@ void update_camera_hovercraft(f32 updateRate, Object *obj, Object_Racer *racer) 
     racer->cameraLateralOffset -= (racer->cameraLateralOffset - yVel) * 0.25;
     yVel = sins_f(racer->cameraYaw + 0x4000) * racer->cameraLateralOffset;
     gCameraObject->trans.x_position = obj->trans.x_position + xVel + yVel;
-    yVel = gCameraObject->trans.y_position - (obj->trans.y_position + phi_f18);
+    yVel = gCameraObject->trans.y_position - (obj->trans.y_position + targetHeight);
     if (yVel > 0.0f) {
         yVel *= 0.5;
     } else {
@@ -878,7 +935,7 @@ void update_camera_hovercraft(f32 updateRate, Object *obj, Object_Racer *racer) 
     gCameraObject->trans.y_position -= yVel;
     gCameraObject->trans.rotation.z_rotation = 0;
     if (gRaceStartTimer) {
-        gCameraObject->trans.y_position = obj->trans.y_position + phi_f18;
+        gCameraObject->trans.y_position = obj->trans.y_position + targetHeight;
     }
 
     coss_f(racer->cameraYaw + 0x4000); // Unused function call that wasn't fully optimised out.

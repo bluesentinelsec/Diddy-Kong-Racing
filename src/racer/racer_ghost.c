@@ -64,13 +64,13 @@ s32 timetrial_map_id(void) {
  * Attempt to load the player ghost data from the controller pak.
  * Returns the controller pak status when done.
  */
-s32 timetrial_load_player_ghost(s32 controllerID, s32 mapId, s16 arg2, s16 *characterID, s16 *time) {
+s32 timetrial_load_player_ghost(s32 controllerID, s32 mapId, s16 vehicleId, s16 *characterID, s16 *time) {
     s32 cpakStatus;
     s32 nodeID;
     s16 nodeCount;
 
     nodeID = (gCurrentGhostIndex + 1) & 1;
-    cpakStatus = ghost_load(controllerID, mapId, arg2, (u16 *) characterID, time, &nodeCount,
+    cpakStatus = ghost_load(controllerID, mapId, vehicleId, (u16 *) characterID, time, &nodeCount,
                             (GhostPakFile *) gGhostData[nodeID]);
     if (characterID) {
         if (cpakStatus == CONTROLLER_PAK_GOOD) {
@@ -122,8 +122,8 @@ void timetrial_free_staff_ghost(void) {
  * Calls a function that attempts to write the player ghost data to the controller pak.
  * Returns the controller pak status when finished.
  */
-SIDeviceStatus timetrial_write_player_ghost(s32 controllerIndex, s32 mapId, s16 arg2, s16 arg3, s16 arg4) {
-    return ghost_save(controllerIndex, (s16) mapId, arg2, arg3, arg4, gGhostNodeCount[gCurrentGhostIndex],
+SIDeviceStatus timetrial_write_player_ghost(s32 controllerIndex, s32 mapId, s16 vehicleId, s16 characterId, s16 time) {
+    return ghost_save(controllerIndex, (s16) mapId, vehicleId, characterId, time, gGhostNodeCount[gCurrentGhostIndex],
                       (GhostPakDirEntry *) gGhostData[gCurrentGhostIndex]);
 }
 
@@ -174,7 +174,7 @@ s16 timetrial_ghost_full(void) {
 
 s32 timetrial_ghost_read(Object *obj) {
     f32 catmullX;
-    s32 temp;
+    s32 endNode;
 #ifdef AVOID_UB
     //!@bug The loop below writes four spline points and the interpolation reads four, but the original
     // declared room for three, so the fourth landed in whatever followed on the stack.
@@ -192,7 +192,6 @@ s32 timetrial_ghost_read(Object *obj) {
 #endif
     s32 commonUnk0s32;
     s32 ghostDataIndex;
-    s32 pad_sp58;
     s32 nodeIndex;
     GhostNode *nextGhostNode;
     s32 ghostNodeCount;
@@ -290,8 +289,8 @@ s32 timetrial_ghost_read(Object *obj) {
     obj->particleEmittersEnabled = OBJ_EMIT_NONE;
     obj->segmentID =
         get_level_segment_index_from_position(obj->trans.x_position, obj->trans.y_position, obj->trans.z_position);
-    temp = commonUnk0s32 + 3;
-    if (ghostNodeCount == temp) {
+    endNode = commonUnk0s32 + 3;
+    if (ghostNodeCount == endNode) {
         racer = obj->racer;
         if (catmullX >= 0.8) {
             racer->transparency = 0;
