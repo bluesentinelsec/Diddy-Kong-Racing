@@ -423,7 +423,7 @@ void racer_ai_tactics(Object *obj, Object_Racer *racer, s32 updateRate) {
     f32 sp90;
     s16 var_t5;
     s16 var_t0;
-    s16 racerID;
+    s16 racerID = 0; // read before it is set on some paths in the original
     s16 temp_v0;
     s16 sp6E;
     s32 numRacers;
@@ -435,7 +435,7 @@ void racer_ai_tactics(Object *obj, Object_Racer *racer, s32 updateRate) {
     s8 balloonType;
     s8 *miscAsset2;
     s8 *miscAsset1;
-    s8 sp3F;
+    s8 sp3F = 0; // read before it is set on some paths in the original
     s8 racerCharacterId;
     s16 sp3C;
     s16 sp3A;
@@ -722,7 +722,7 @@ static void racer_ai_challenge_tick_behaviour_timer(Object_Racer *aiRacer, s32 u
 static void racer_ai_challenge_pick_rival(Object_Racer *aiRacer, s8 *sp38) {
     Object_Racer *tempRacer;
     s16 i;
-    s16 index;
+    s16 index = 0; // read before it is set on some paths in the original
     s16 sp4C;
     s16 sp4A;
     s16 sp48;
@@ -1084,8 +1084,8 @@ static void racer_ai_challenge_fire_at_rivals(Object *aiRacerObj, Object_Racer *
 // Handles the opponent A.I. for battle & banana challenges.
 void racer_ai_challenge(Object *aiRacerObj, Object_Racer *aiRacer, s32 updateRate) {
     Object *sp74;
-    LevelObjectEntry *sp6C;
-    f32 dist;
+    LevelObjectEntry *sp6C = NULL; // read before it is set on some paths in the original
+    f32 dist = 0.0f; // read before it is set on some paths in the original
     s32 temp;
     LevelHeader *levelHeader;
     s8 raceType;
@@ -1506,7 +1506,7 @@ void racer_ai_eggs(Object *obj, Object_Racer *racer, s32 updateRate) {
     f32 distance;
     s32 racerCount;
     s32 targetBehaviourID;
-    Object *targetObj;
+    Object *targetObj = NULL; // read before it is set on some paths in the original
     s8 *header;
     s8 racerID;
     s8 bestTick;
