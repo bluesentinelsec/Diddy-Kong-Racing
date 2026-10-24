@@ -25,7 +25,7 @@ s16 *gSoundGroupVolume;
 /**** Debug strings ****/
 
 static void sndp_remove_events(ALEventQueue *, ALSoundState *, u16);
-void func_80065A80(ALSynth *arg0, struct PVoice_s *arg1, s16 arg2);
+void alSynSetVoiceAuxBus(ALSynth *synth, struct PVoice_s *pvoice, s16 auxBusIndex);
 
 /**
  * Sets the global volume level for all sounds.
@@ -153,15 +153,220 @@ ALMicroTime sndp_voice_handler(void *node) {
 }
 
 /**
+ * Tries to allocate a synth voice for a sound about to play, ignoring the active sound limit for
+ * retriggered sounds. Sets *isVoiceAllocated only when an allocation was attempted.
+ * Returns whether the active sound limit has been reached.
+ */
+static s32 sndp_play_event_alloc_voice(SoundPlayer *sndp, ALSoundState *soundState, s32 *isVoiceAllocated) {
+    ALVoiceConfig config;
+    s32 limitReached;
+
+    config.fxBus = 0;
+    config.priority = soundState->priority;
+    config.unityPitch = 0;
+
+    limitReached = sndp->maxActiveSounds <= gNumActiveSounds;
+    pc_trace_event("sndp_play_evt prio=%d limit=%d active=%d flags=%x", soundState->priority, limitReached,
+                   gNumActiveSounds, soundState->flags);
+
+    if (!limitReached || (soundState->flags & SOUND_FLAG_RETRIGGER)) {
+        // Allocate a voice for the sound
+        // for retriggered sounds, ignore the limit
+        *isVoiceAllocated = alSynAllocVoice(sndp->drvr, &soundState->voice, &config);
+    }
+    if (*isVoiceAllocated) {
+        alSynSetVoiceAuxBus(sndp->drvr, soundState->voice.pvoice, 1);
+    }
+    return limitReached;
+}
+
+/**
+ * No voice was free for the sound: retry it next frame, preempt a sound of lower or equal priority
+ * and retry after that, or give up and end the sound.
+ */
+static void sndp_play_event_no_voice(SoundPlayer *sndp, ALSndpEvent *event, ALSoundState *soundState,
+                                     s32 limitReached) {
+    // No free voices available, wait for another sound to stop.
+    if ((soundState->flags & (SOUND_FLAG_RETRIGGER | SOUND_FLAG_LOOPED)) || soundState->retries > 0) {
+        // Retry on the next frame.
+        // For looped and retriggered sounds, keep retrying on each frame.
+        soundState->state = SOUND_STATE_WAIT_VOICE;
+        soundState->retries--;
+        alEvtqPostEvent(&sndp->evtq, (ALEvent *) event, 33333);
+    } else {
+        // Not a looped or retriggered sound, and all retries have been exhausted.
+        if (limitReached) {
+            // Check if we can preempt a lower-priority sound.
+            ALSoundState *iterState = gSoundStateLists.allocTail;
+
+            do {
+                if (iterState->priority <= soundState->priority && iterState->state != SOUND_STATE_PREEMPT) {
+                    // Found a lower-priority sound; it can be preempted
+                    ALSndpEvent interruptEvent;
+
+                    interruptEvent.common.type = AL_SNDP_END_EVT;
+                    interruptEvent.common.state = iterState;
+                    iterState->state = SOUND_STATE_PREEMPT;
+                    limitReached = FALSE;
+                    alEvtqPostEvent(&sndp->evtq, (ALEvent *) &interruptEvent, 1000);
+                    alSynSetVol(sndp->drvr, &iterState->voice, (soundState->state == 1) * 0,
+                                1000); // FAKE
+                }
+                iterState = iterState->prev;
+            } while (limitReached && iterState != NULL);
+
+            if (!limitReached) {
+                // Retry the sound that was preempted.
+                soundState->retries = 2;
+                alEvtqPostEvent(&sndp->evtq, (ALEvent *) event, 1001);
+            } else {
+                // No lower-priority sound to preempt, so stop the sound.
+                sndp_end(soundState);
+            }
+        } else {
+            // It seems the developers made a mistake with the logic here.
+            // Should we stop the sound immediately if the maximum number of sounds hasn't been reached?
+            // Perhaps it would be better to look for a sound to preempt, just like when the limit is
+            // reached. It's strange that we only check for sounds to preempt when the limit is reached,
+            // but not when it hasn't been.
+            sndp_end(soundState);
+        }
+    }
+}
+
+/**
+ * Starts the sound's voice and sets its attack volume, pan, pitch and FX mix,
+ * then queues the decay event for the end of the attack.
+ */
+static void sndp_play_event_start_voice(SoundPlayer *sndp, ALSoundState *soundState, ALVoice *voice, ALSound *sound,
+                                        ALKeyMap *keyMap) {
+    s32 delta;
+    ALSndpEvent decayEvent;
+    s32 volume;
+    s32 fxMix;
+    ALPan pan;
+
+    soundState->flags |= SOUND_FLAG_PLAYING;
+    alSynStartVoice(sndp->drvr, voice, sound->wavetable);
+    soundState->state = SOUND_STATE_PLAYING;
+    gNumActiveSounds++;
+
+    // Set volume
+    delta = sound->envelope->attackTime / soundState->pitch / soundState->slideMult;
+    volume = MAX(0, gSoundGroupVolume[SOUND_PARAM_GROUP(keyMap)] *
+                            (sound->envelope->attackVolume * soundState->volume * sound->sampleVolume / 16129) /
+                            AL_SNDP_GROUP_VOLUME_MAX -
+                        1);
+    volume = (u32) (volume * gSoundGlobalVolume) >> 8;
+    alSynSetVol(sndp->drvr, &soundState->voice, 0, 0);
+    alSynSetVol(sndp->drvr, &soundState->voice, volume, delta);
+
+    // Set pan
+    pan = MIN(MAX((soundState->pan + sound->samplePan - AL_PAN_CENTER), AL_PAN_LEFT), AL_PAN_RIGHT);
+    alSynSetPan(sndp->drvr, &soundState->voice, pan);
+
+    // Set pitch
+    alSynSetPitch(sndp->drvr, &soundState->voice, soundState->pitch * soundState->slideMult);
+
+    // Set FX mix
+    //!@bug: SOUND_PARAM_FXMIX is allocated only four bits, so it needs to be multiplied by 8
+    // to scale it to a range of 0 to 127.
+    // However, it's unclear why soundState->fxmix also needs to be multiplied by 8.
+    // The same issue appears in the AL_SNDP_FX_EVT handler.
+    fxMix = (soundState->fxmix + SOUND_PARAM_FXMIX(keyMap)) * 8;
+    fxMix = MIN(127, MAX(0, fxMix));
+    alSynSetFXMix(sndp->drvr, &soundState->voice, fxMix);
+
+    // Queue the decay event
+    decayEvent.common.type = AL_SNDP_DECAY_EVT;
+    decayEvent.common.state = soundState;
+    alEvtqPostEvent(&sndp->evtq, (ALEvent *) &decayEvent,
+                    sound->envelope->attackTime / soundState->pitch / soundState->slideMult);
+}
+
+/**
+ * Release or stop event: fades a playing sound out over its release time (or ends it at once),
+ * and ends a sound that has not started yet. A release event becomes a release-next event
+ * for the rest of a composite sound.
+ */
+static void sndp_release_event(SoundPlayer *sndp, ALSndpEvent *event, ALSoundState *soundState, ALSound *sound) {
+    s32 delta;
+    ALSndpEvent endEvent;
+
+    // If any sound in the composite sound is in the release phase, ignore this event for all other sounds
+    // in the sequence, because they haven't started yet.
+    // However, if the other sound is looped, process the event anyway.
+    //
+    // The purpose of checking for a looped sound seems unclear.
+    // Does it imply that a composite sound can't contain looped simple sounds?
+    // It seems logical, but the check may still be redundant.
+    if (event->common.type != AL_SNDP_RELEASE_NEXT_EVT || (soundState->flags & SOUND_FLAG_LOOPED)) {
+        switch (soundState->state) {
+            case SOUND_STATE_PLAYING:
+                sndp_remove_events(&sndp->evtq, soundState, AL_SNDP_DECAY_EVT);
+                delta = sound->envelope->releaseTime / soundState->slideMult / soundState->pitch;
+                alSynSetVol(sndp->drvr, &soundState->voice, 0, delta);
+                if (delta != 0) {
+                    endEvent.common.type = AL_SNDP_END_EVT;
+                    endEvent.common.state = soundState;
+                    alEvtqPostEvent(&sndp->evtq, (ALEvent *) &endEvent, delta);
+                    soundState->state = SOUND_STATE_STOPPING;
+                } else {
+                    sndp_end(soundState);
+                }
+                break;
+            case SOUND_STATE_WAIT_VOICE:
+            case SOUND_STATE_INIT:
+                sndp_end(soundState);
+                break;
+        }
+        if (event->common.type == AL_SNDP_RELEASE_EVT) {
+            event->common.type = AL_SNDP_RELEASE_NEXT_EVT;
+        }
+    }
+}
+
+/**
+ * Decay event: the voice has reached its attack volume. Unless the sound is looped, fades it to its
+ * decay volume, queues the release event and starts any pitch slide.
+ */
+static void sndp_decay_event(SoundPlayer *sndp, ALSoundState *soundState, ALSound *sound, ALKeyMap *keyMap) {
+    s32 delta;
+    ALSndpEvent releaseEvent;
+    s32 volume;
+
+    /*
+     * The voice has theoretically reached its attack velocity,
+     * set up callback for release envelope - except for a looped sound
+     */
+    if (!(soundState->flags & SOUND_FLAG_LOOPED)) {
+        volume = MAX(0, gSoundGroupVolume[SOUND_PARAM_GROUP(keyMap)] *
+                                (sound->envelope->decayVolume * soundState->volume * sound->sampleVolume / 16129) /
+                                AL_SNDP_GROUP_VOLUME_MAX -
+                            1);
+        volume = (u32) (volume * gSoundGlobalVolume) >> 8;
+        delta = sound->envelope->decayTime / soundState->slideMult / soundState->pitch;
+        alSynSetVol(sndp->drvr, &soundState->voice, volume, delta);
+
+        releaseEvent.common.type = AL_SNDP_RELEASE_EVT;
+        releaseEvent.common.state = soundState;
+        alEvtqPostEvent(&sndp->evtq, (ALEvent *) &releaseEvent, delta);
+
+        // Start applying the pitch slide only when the decay phase is reached.
+        if (soundState->flags & SOUND_FLAG_PITCH_SLIDE) {
+            sndp_apply_pitch_slide(soundState);
+        }
+    }
+}
+
+/**
  * Modified version of _handleEvent from libultra.
  * Processes the current event for the sound player.
  */
 void sndp_handle_event(SoundPlayer *sndp, ALSndpEvent *event) {
-    ALVoiceConfig config;
     ALVoice *voice;
     s32 delta;
     s32 limitReached;
-    ALSndpEvent spAC;
     ALSndpEvent nextStateEvent;
     ALSound *sound;
     ALKeyMap *keyMap;
@@ -205,146 +410,20 @@ void sndp_handle_event(SoundPlayer *sndp, ALSndpEvent *event) {
                     return;
                 }
 
-                config.fxBus = 0;
-                config.priority = soundState->priority;
-                config.unityPitch = 0;
-
-                limitReached = sndp->maxActiveSounds <= gNumActiveSounds;
-                pc_trace_event("sndp_play_evt prio=%d limit=%d active=%d flags=%x", soundState->priority, limitReached, gNumActiveSounds, soundState->flags);
-
-                if (!limitReached || (soundState->flags & SOUND_FLAG_RETRIGGER)) {
-                    // Allocate a voice for the sound
-                    // for retriggered sounds, ignore the limit
-                    isVoiceAllocated = alSynAllocVoice(sndp->drvr, &soundState->voice, &config);
-                }
-                if (isVoiceAllocated) {
-                    func_80065A80(sndp->drvr, soundState->voice.pvoice, 1);
-                }
+                limitReached = sndp_play_event_alloc_voice(sndp, soundState, &isVoiceAllocated);
 
                 voice = &soundState->voice;
                 if (!isVoiceAllocated) {
-                    // No free voices available, wait for another sound to stop.
-                    if ((soundState->flags & (SOUND_FLAG_RETRIGGER | SOUND_FLAG_LOOPED)) || soundState->retries > 0) {
-                        // Retry on the next frame.
-                        // For looped and retriggered sounds, keep retrying on each frame.
-                        soundState->state = SOUND_STATE_WAIT_VOICE;
-                        soundState->retries--;
-                        alEvtqPostEvent(&sndp->evtq, (ALEvent *) event, 33333);
-                    } else {
-                        // Not a looped or retriggered sound, and all retries have been exhausted.
-                        if (limitReached) {
-                            // Check if we can preempt a lower-priority sound.
-                            ALSoundState *iterState = gSoundStateLists.allocTail;
-
-                            do {
-                                if (iterState->priority <= soundState->priority &&
-                                    iterState->state != SOUND_STATE_PREEMPT) {
-                                    // Found a lower-priority sound; it can be preempted
-                                    ALSndpEvent interruptEvent;
-
-                                    interruptEvent.common.type = AL_SNDP_END_EVT;
-                                    interruptEvent.common.state = iterState;
-                                    iterState->state = SOUND_STATE_PREEMPT;
-                                    limitReached = FALSE;
-                                    alEvtqPostEvent(&sndp->evtq, (ALEvent *) &interruptEvent, 1000);
-                                    alSynSetVol(sndp->drvr, &iterState->voice, (soundState->state == 1) * 0,
-                                                1000); // FAKE
-                                }
-                                iterState = iterState->prev;
-                            } while (limitReached && iterState != NULL);
-
-                            if (!limitReached) {
-                                // Retry the sound that was preempted.
-                                soundState->retries = 2;
-                                alEvtqPostEvent(&sndp->evtq, (ALEvent *) event, 1001);
-                            } else {
-                                // No lower-priority sound to preempt, so stop the sound.
-                                sndp_end(soundState);
-                            }
-                        } else {
-                            // It seems the developers made a mistake with the logic here.
-                            // Should we stop the sound immediately if the maximum number of sounds hasn't been reached?
-                            // Perhaps it would be better to look for a sound to preempt, just like when the limit is
-                            // reached. It's strange that we only check for sounds to preempt when the limit is reached,
-                            // but not when it hasn't been.
-                            sndp_end(soundState);
-                        }
-                    }
+                    sndp_play_event_no_voice(sndp, event, soundState, limitReached);
                     return;
                 }
 
-                soundState->flags |= SOUND_FLAG_PLAYING;
-                alSynStartVoice(sndp->drvr, voice, sound->wavetable);
-                soundState->state = SOUND_STATE_PLAYING;
-                gNumActiveSounds++;
-
-                // Set volume
-                delta = sound->envelope->attackTime / soundState->pitch / soundState->slideMult;
-                volume =
-                    MAX(0, gSoundGroupVolume[SOUND_PARAM_GROUP(keyMap)] *
-                                   (sound->envelope->attackVolume * soundState->volume * sound->sampleVolume / 16129) /
-                                   AL_SNDP_GROUP_VOLUME_MAX -
-                               1);
-                volume = (u32) (volume * gSoundGlobalVolume) >> 8;
-                alSynSetVol(sndp->drvr, &soundState->voice, 0, 0);
-                alSynSetVol(sndp->drvr, &soundState->voice, volume, delta);
-
-                // Set pan
-                pan = MIN(MAX((soundState->pan + sound->samplePan - AL_PAN_CENTER), AL_PAN_LEFT), AL_PAN_RIGHT);
-                alSynSetPan(sndp->drvr, &soundState->voice, pan);
-
-                // Set pitch
-                alSynSetPitch(sndp->drvr, &soundState->voice, soundState->pitch * soundState->slideMult);
-
-                // Set FX mix
-                //!@bug: SOUND_PARAM_FXMIX is allocated only four bits, so it needs to be multiplied by 8
-                // to scale it to a range of 0 to 127.
-                // However, it's unclear why soundState->fxmix also needs to be multiplied by 8.
-                // The same issue appears in the AL_SNDP_FX_EVT handler.
-                fxMix = (soundState->fxmix + SOUND_PARAM_FXMIX(keyMap)) * 8;
-                fxMix = MIN(127, MAX(0, fxMix));
-                alSynSetFXMix(sndp->drvr, &soundState->voice, fxMix);
-
-                // Queue the decay event
-                spAC.common.type = AL_SNDP_DECAY_EVT;
-                spAC.common.state = soundState;
-                alEvtqPostEvent(&sndp->evtq, (ALEvent *) &spAC,
-                                sound->envelope->attackTime / soundState->pitch / soundState->slideMult);
+                sndp_play_event_start_voice(sndp, soundState, voice, sound, keyMap);
                 break;
             case AL_SNDP_RELEASE_EVT:
             case AL_SNDP_STOP_EVT:
             case AL_SNDP_RELEASE_NEXT_EVT:
-                // If any sound in the composite sound is in the release phase, ignore this event for all other sounds
-                // in the sequence, because they haven't started yet.
-                // However, if the other sound is looped, process the event anyway.
-                //
-                // The purpose of checking for a looped sound seems unclear.
-                // Does it imply that a composite sound can't contain looped simple sounds?
-                // It seems logical, but the check may still be redundant.
-                if (event->common.type != AL_SNDP_RELEASE_NEXT_EVT || (soundState->flags & SOUND_FLAG_LOOPED)) {
-                    switch (soundState->state) {
-                        case SOUND_STATE_PLAYING:
-                            sndp_remove_events(&sndp->evtq, soundState, AL_SNDP_DECAY_EVT);
-                            delta = sound->envelope->releaseTime / soundState->slideMult / soundState->pitch;
-                            alSynSetVol(sndp->drvr, &soundState->voice, 0, delta);
-                            if (delta != 0) {
-                                spAC.common.type = AL_SNDP_END_EVT;
-                                spAC.common.state = soundState;
-                                alEvtqPostEvent(&sndp->evtq, (ALEvent *) &spAC, delta);
-                                soundState->state = SOUND_STATE_STOPPING;
-                            } else {
-                                sndp_end(soundState);
-                            }
-                            break;
-                        case SOUND_STATE_WAIT_VOICE:
-                        case SOUND_STATE_INIT:
-                            sndp_end(soundState);
-                            break;
-                    }
-                    if (event->common.type == AL_SNDP_RELEASE_EVT) {
-                        event->common.type = AL_SNDP_RELEASE_NEXT_EVT;
-                    }
-                }
+                sndp_release_event(sndp, event, soundState, sound);
                 break;
             case AL_SNDP_PAN_EVT:
                 soundState->pan = event->common.param;
@@ -397,29 +476,7 @@ void sndp_handle_event(SoundPlayer *sndp, ALSndpEvent *event) {
                 }
                 break;
             case AL_SNDP_DECAY_EVT:
-                /*
-                 * The voice has theoretically reached its attack velocity,
-                 * set up callback for release envelope - except for a looped sound
-                 */
-                if (!(soundState->flags & SOUND_FLAG_LOOPED)) {
-                    volume = MAX(
-                        0, gSoundGroupVolume[SOUND_PARAM_GROUP(keyMap)] *
-                                   (sound->envelope->decayVolume * soundState->volume * sound->sampleVolume / 16129) /
-                                   AL_SNDP_GROUP_VOLUME_MAX -
-                               1);
-                    volume = (u32) (volume * gSoundGlobalVolume) >> 8;
-                    delta = sound->envelope->decayTime / soundState->slideMult / soundState->pitch;
-                    alSynSetVol(sndp->drvr, &soundState->voice, volume, delta);
-
-                    spAC.common.type = AL_SNDP_RELEASE_EVT;
-                    spAC.common.state = soundState;
-                    alEvtqPostEvent(&sndp->evtq, (ALEvent *) &spAC, delta);
-
-                    // Start applying the pitch slide only when the decay phase is reached.
-                    if (soundState->flags & SOUND_FLAG_PITCH_SLIDE) {
-                        sndp_apply_pitch_slide(soundState);
-                    }
-                }
+                sndp_decay_event(sndp, soundState, sound, keyMap);
                 break;
             case AL_SNDP_END_EVT:
                 sndp_end(soundState);
@@ -855,7 +912,6 @@ u16 sndp_get_group_volume(u8 groupID) {
  */
 void sndp_set_group_volume(u8 groupID, u16 volume) {
     ALSoundState *state;
-    UNUSED s32 pad;
     ALSndpEvent evt;
     state = gSoundStateLists.allocHead;
     gSoundGroupVolume[groupID] = volume;
