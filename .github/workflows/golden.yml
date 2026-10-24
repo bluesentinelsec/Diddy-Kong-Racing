@@ -1,0 +1,51 @@
+name: Golden traces
+
+# Runs every golden trace on the owner's Raspberry Pi, which holds the ROM the game data is
+# built from. Locked down three ways, because a self-hosted runner executes the code it is
+# given:
+#   1. this job only runs for bluesentinelsec, on branches of this repository (never forks);
+#   2. the repository requires approval before any outside contributor's workflow runs;
+#   3. the runner itself refuses any other job in a job-started hook that lives on the Pi
+#      (~/actions-runner/dkr-guard.py), where a pull request cannot change it.
+# The ROM and the assets never leave the Pi: nothing is uploaded.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: golden-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golden:
+    name: Golden traces (Raspberry Pi)
+    if: >-
+      github.repository == 'bluesentinelsec/Diddy-Kong-Racing' &&
+      github.actor == 'bluesentinelsec' &&
+      github.triggering_actor == 'bluesentinelsec' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, dkr-pi]
+    timeout-minutes: 120
+    env:
+      SDL_AUDIO_DRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+      # Builds live outside the workspace so they survive checkout's clean and stay incremental.
+      DKR_CI_DIR: /home/michael/dkr-ci
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Game data from the Pi's ROM
+        run: |
+          mkdir -p baseroms
+          cp "$DKR_CI_DIR/baserom.us.v80.z64" baseroms/
+          make assets
+      - name: Golden traces
+        run: make golden DEBUG_DIR="$DKR_CI_DIR/build-debug"
