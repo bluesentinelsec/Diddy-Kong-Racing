@@ -978,9 +978,9 @@ void trackmenu_input(s32 updateRate) {
         }
         if (gMenuInput.delay > 30) {
             if (is_adventure_two_unlocked() && gTrackSelectCursorX != TRACK_COLUMN_CHALLENGE) {
-                gMenuFlow.stage = TRACKMENU_MIRROR;
+                gMenuFlow.stage = TRACKMENU_ADVENTURE_CHOICE;
             } else {
-                gMenuFlow.stage = TRACKMENU_OPT_1;
+                gMenuFlow.stage = TRACKMENU_VEHICLE_CHOICE;
             }
             trackmenu_assets(TRACKMENU_TYPE_FREE);
         } else if (gMenuInput.delay < -30) {
@@ -1043,7 +1043,8 @@ void trackmenu_input(s32 updateRate) {
  * If the time trial option is off when prompted, loop the snoring sound.
  */
 void trackmenu_timetrial_sound(UNUSED s32 updateRate) {
-    if (gMenuFlow.stage == TRACKMENU_CHOOSE && gTracksMenuTimeTrialHighlightIndex == 0 && gTrackTTSoundMask == NULL) {
+    if (gMenuFlow.stage == TRACKMENU_TIME_TRIAL_CHOICE && gTracksMenuTimeTrialHighlightIndex == 0 &&
+        gTrackTTSoundMask == NULL) {
         sound_play(SOUND_VOICE_TT_SNORE, &gTrackTTSoundMask);
     }
 }
@@ -1201,7 +1202,7 @@ static void trackmenu_render_option_heading(s32 regionOffset, s32 showRacerCount
     if (gRaceSetup.numberOfActivePlayers == 1) {
         set_current_dialogue_box_coords(7, 134, regionOffset + 112, 186, regionOffset + 137);
         render_dialogue_box(&gMenuFrame.displayList, NULL, NULL, 7);
-        if (gMenuFlow.stage <= TRACKMENU_OPT_1) {
+        if (gMenuFlow.stage <= TRACKMENU_VEHICLE_CHOICE) {
             texrect_draw(&gMenuFrame.displayList, gRaceSelectionVehicleTitleTexture, 136, regionOffset + 114, 255, 255,
                          255, gMenuFrame.guiOpacity);
         } else {
@@ -1280,7 +1281,7 @@ static void trackmenu_render_vehicle_pictures(s32 regionOffset, s32 showRacerCou
         y += 2;
     }
     if (gRaceSetup.numberOfActivePlayers == 1) {
-        if (gMenuFlow.stage == TRACKMENU_OPT_1) {
+        if (gMenuFlow.stage == TRACKMENU_VEHICLE_CHOICE) {
             // Draw vehicle image for one player
             texrect_draw(&gMenuFrame.displayList, gRaceSelectionImages[gRaceSetup.playerVehicles[PLAYER_ONE] * 3], 149,
                          y, 255, 255, 255, gMenuFrame.guiOpacity);
@@ -1377,7 +1378,7 @@ static void trackmenu_render_racer_count(s32 regionOffset, s32 blinkAlpha) {
 static void trackmenu_render_player_options(Settings *settings, s32 regionOffset, s32 availableVehicleFlags,
                                             s32 blinkAlpha, s32 showRacerCount) {
     trackmenu_render_option_heading(regionOffset, showRacerCount);
-    if ((gRaceSetup.numberOfActivePlayers > 1 || gMenuFlow.stage == TRACKMENU_OPT_1) && !showRacerCount) {
+    if ((gRaceSetup.numberOfActivePlayers > 1 || gMenuFlow.stage == TRACKMENU_VEHICLE_CHOICE) && !showRacerCount) {
         // Draws "Car", "Hover", "Plane" text choice images.
         trackmenu_render_vehicle_choices(settings, regionOffset, availableVehicleFlags);
     }
@@ -1454,7 +1455,7 @@ void trackmenu_setup_render(UNUSED s32 updateRate) {
         regionOffset = 12;
     }
     if (gRaceSetup.numberOfActivePlayers == 2 && gTrackSelectCursorX < TRACK_COLUMN_TROPHY_RACE &&
-        gMenuFlow.stage > TRACKMENU_CHOOSE) {
+        gMenuFlow.stage > TRACKMENU_TIME_TRIAL_CHOICE) {
         showRacerCount = TRUE;
     }
     camDisableUserView(0, TRUE);
@@ -1470,14 +1471,14 @@ void trackmenu_setup_render(UNUSED s32 updateRate) {
         }
         availableVehicleFlags = trackmenu_available_vehicles();
         blinkAlpha = trackmenu_render_track_name();
-        if (gMenuFlow.stage == TRACKMENU_MIRROR ||
+        if (gMenuFlow.stage == TRACKMENU_ADVENTURE_CHOICE ||
             (gMenuFlow.stage == TRACKMENU_OPT_2 && gTrackSelectCursorX == TRACK_COLUMN_TROPHY_RACE &&
              is_adventure_two_unlocked())) {
             trackmenu_render_adventure_choice(regionOffset, blinkAlpha);
         }
         if (gTrackSelectCursorX < TRACK_COLUMN_TROPHY_RACE) {
             trackmenu_render_best_times(settings, regionOffset);
-            if (gMenuFlow.stage != TRACKMENU_MIRROR) {
+            if (gMenuFlow.stage != TRACKMENU_ADVENTURE_CHOICE) {
                 trackmenu_render_player_options(settings, regionOffset, availableVehicleFlags, blinkAlpha,
                                                 showRacerCount);
             }
@@ -1485,7 +1486,7 @@ void trackmenu_setup_render(UNUSED s32 updateRate) {
         if (gTrackSelectCursorX < TRACK_COLUMN_TROPHY_RACE) {
             trackmenu_render_adventure_flags(settings);
         }
-        if (gRaceSetup.numberOfActivePlayers == 1 && gMenuFlow.stage > TRACKMENU_MIRROR &&
+        if (gRaceSetup.numberOfActivePlayers == 1 && gMenuFlow.stage > TRACKMENU_ADVENTURE_CHOICE &&
             trackmenu_staff_beaten(gTrackSelect.previewTrackId) >= 0) {
             texrect_draw(&gMenuFrame.displayList, gRaceSelectionTTTexture, 204, regionOffset + 122, 255, 255, 255,
                          gMenuFrame.guiOpacity);
@@ -1516,7 +1517,7 @@ static void trackmenu_vehicle_select_intro(s32 updateRate) {
         }
     }
     // Trophy Races
-    if (gTrackSelectCursorX == TRACK_COLUMN_TROPHY_RACE && gMenuFlow.stage != TRACKMENU_MIRROR &&
+    if (gTrackSelectCursorX == TRACK_COLUMN_TROPHY_RACE && gMenuFlow.stage != TRACKMENU_ADVENTURE_CHOICE &&
         gMenuFlow.stage != TRACKMENU_OPT_2) {
         gMenuFlow.stage = TRACKMENU_OPT_2;
     }
@@ -1564,7 +1565,7 @@ static void trackmenu_vehicle_select_zoom(s32 updateRate) {
 }
 
 /**
- * Adventure or Adventure Two choice (TRACKMENU_MIRROR): A picks one, B leaves the setup,
+ * Adventure or Adventure Two choice (TRACKMENU_ADVENTURE_CHOICE): A picks one, B leaves the setup,
  * up and down move between the two.
  */
 static void trackmenu_adventure_choice_input(s32 *menuBackedOut, s32 *menuSelected, s32 *menuChanged) {
@@ -1572,7 +1573,7 @@ static void trackmenu_adventure_choice_input(s32 *menuBackedOut, s32 *menuSelect
         if (gTrackSelectCursorX == TRACK_COLUMN_TROPHY_RACE) {
             gMenuFlow.stage = TRACKMENU_OPT_2;
         } else {
-            gMenuFlow.stage = TRACKMENU_OPT_1;
+            gMenuFlow.stage = TRACKMENU_VEHICLE_CHOICE;
         }
         *menuSelected = TRUE;
     } else if (gMenuInput.buttons[PLAYER_MENU] & B_BUTTON) {
@@ -1590,7 +1591,7 @@ static void trackmenu_adventure_choice_input(s32 *menuBackedOut, s32 *menuSelect
 }
 
 /**
- * Vehicle choice (TRACKMENU_OPT_1): each player confirms with A, backs out with B, or
+ * Vehicle choice (TRACKMENU_VEHICLE_CHOICE): each player confirms with A, backs out with B, or
  * picks one of the vehicles the track allows once the course has been visited. When every
  * player is ready, move on to the time trial choice, or the racer count in multiplayer.
  */
@@ -1604,7 +1605,7 @@ static void trackmenu_vehicle_choice_input(Settings *settings, s32 availableVehi
             *menuBackedOut = TRUE;
             if (gRaceSetup.numberOfReadyPlayers == 0) {
                 if (is_adventure_two_unlocked()) {
-                    gMenuFlow.stage = TRACKMENU_MIRROR;
+                    gMenuFlow.stage = TRACKMENU_ADVENTURE_CHOICE;
                 } else {
                     gMenuInput.delay = -1;
                 }
@@ -1651,14 +1652,14 @@ static void trackmenu_vehicle_choice_input(Settings *settings, s32 availableVehi
         if (gRaceSetup.numberOfActivePlayers >= 2) {
             gMenuFlow.stage = TRACKMENU_OPT_2;
         } else {
-            gMenuFlow.stage = TRACKMENU_CHOOSE;
+            gMenuFlow.stage = TRACKMENU_TIME_TRIAL_CHOICE;
         }
         sound_play(SOUND_CAR_REV2, NULL);
     }
 }
 
 /**
- * Time trial on or off (TRACKMENU_CHOOSE, one player only). Moving onto "on" plays one of
+ * Time trial on or off (TRACKMENU_TIME_TRIAL_CHOICE, one player only). Moving onto "on" plays one of
  * T.T.'s voice lines.
  */
 static void trackmenu_time_trial_input(s32 *menuBackedOut, s32 *menuSelected, s32 *menuChanged) {
@@ -1668,7 +1669,7 @@ static void trackmenu_time_trial_input(s32 *menuBackedOut, s32 *menuSelected, s3
     } else if (gMenuInput.buttons[0] & B_BUTTON) {
         gPlayerSelectConfirm[0] = 0;
         gRaceSetup.numberOfReadyPlayers = 0;
-        gMenuFlow.stage = TRACKMENU_OPT_1;
+        gMenuFlow.stage = TRACKMENU_VEHICLE_CHOICE;
         *menuBackedOut = TRUE;
     }
     if (gMenuInput.stickY[0] > 0 && gTracksMenuTimeTrialHighlightIndex > 0) {
@@ -1707,7 +1708,7 @@ static void trackmenu_confirm_input(s32 *menuBackedOut, s32 *menuSelected, s32 *
             gMenuFlow.stage = TRACKMENU_OPT_3;
             *menuSelected = TRUE;
         } else if (gMenuInput.buttons[PLAYER_MENU] & B_BUTTON) {
-            gMenuFlow.stage = TRACKMENU_OPT_1;
+            gMenuFlow.stage = TRACKMENU_VEHICLE_CHOICE;
             gRaceSetup.numberOfReadyPlayers--;
             if (gMenuInput.buttons[0] & B_BUTTON) {
                 gPlayerSelectConfirm[0] = 0;
@@ -1738,7 +1739,7 @@ static void trackmenu_confirm_input(s32 *menuBackedOut, s32 *menuSelected, s32 *
         if (gMenuInput.buttons[PLAYER_MENU] & B_BUTTON) {
             *menuBackedOut = TRUE;
             if ((gTrackSelectCursorX == TRACK_COLUMN_TROPHY_RACE) && (is_adventure_two_unlocked())) {
-                gMenuFlow.stage = TRACKMENU_MIRROR;
+                gMenuFlow.stage = TRACKMENU_ADVENTURE_CHOICE;
             } else {
                 gMenuInput.delay = -1;
             }
@@ -1748,7 +1749,7 @@ static void trackmenu_confirm_input(s32 *menuBackedOut, s32 *menuSelected, s32 *
         }
     } else if (gRaceSetup.numberOfActivePlayers == 1) {
         if (gMenuInput.buttons[0] & B_BUTTON) {
-            gMenuFlow.stage = TRACKMENU_CHOOSE;
+            gMenuFlow.stage = TRACKMENU_TIME_TRIAL_CHOICE;
             *menuBackedOut = TRUE;
         }
     } else if (gRaceSetup.numberOfActivePlayers == 2) {
@@ -1761,7 +1762,7 @@ static void trackmenu_confirm_input(s32 *menuBackedOut, s32 *menuSelected, s32 *
             if (gMenuInput.buttons[i] & B_BUTTON) {
                 gRaceSetup.numberOfReadyPlayers--;
                 gPlayerSelectConfirm[i] = 0;
-                gMenuFlow.stage = TRACKMENU_OPT_1;
+                gMenuFlow.stage = TRACKMENU_VEHICLE_CHOICE;
                 *menuBackedOut = TRUE;
             }
         }
@@ -1791,14 +1792,14 @@ void trackmenu_update_vehicle_select(s32 updateRate) {
         menuSelected = FALSE;
         menuChanged = FALSE;
         switch (gMenuFlow.stage) {
-            case TRACKMENU_MIRROR:
+            case TRACKMENU_ADVENTURE_CHOICE:
                 trackmenu_adventure_choice_input(&menuBackedOut, &menuSelected, &menuChanged);
                 break;
-            case TRACKMENU_OPT_1:
+            case TRACKMENU_VEHICLE_CHOICE:
                 trackmenu_vehicle_choice_input(settings, availableVehicles, &menuBackedOut, &menuSelected,
                                                &menuChanged);
                 break;
-            case TRACKMENU_CHOOSE:
+            case TRACKMENU_TIME_TRIAL_CHOICE:
                 trackmenu_time_trial_input(&menuBackedOut, &menuSelected, &menuChanged);
                 break;
             case TRACKMENU_OPT_2: /* fall through */

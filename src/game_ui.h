@@ -49,9 +49,9 @@ typedef enum WrongWayStages {
 
 typedef enum LapTextStages {
     LAPTEXT_IDLE,
-    LAPTEXT_UNK1,
-    LAPTEXT_UNK2,
-    LAPTEXT_UNK3
+    LAPTEXT_UNUSED,   // Never set.
+    LAPTEXT_LAP_TWO,  // The "Lap 2" banner is flying.
+    LAPTEXT_FINAL_LAP // The "Final Lap" banner is flying.
 } LapTextStages;
 
 typedef enum LapTextDirection {

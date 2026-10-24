@@ -457,7 +457,7 @@ static void hud_lap_text_trigger(Object_Racer *racer) {
     if (racer->lap_times[racer->lap] < 30 && gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status == LAPTEXT_IDLE &&
         racer->raceFinished == FALSE) {
         if (racer->lap == 1 && gHudLevelHeader->laps >= 3) {
-            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status = LAPTEXT_UNK2;
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status = LAPTEXT_LAP_TWO;
             gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction = LAPTEXT_OUT;
             gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed = FALSE;
             sound_play(SOUND_WHOOSH1, NULL);
@@ -489,7 +489,7 @@ static void hud_lap_text_trigger(Object_Racer *racer) {
                     break;
             }
         } else if (gHudLevelHeader->laps == (0, racer->lap + 1) && racer->lap != 0) {
-            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status = LAPTEXT_UNK3;
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status = LAPTEXT_FINAL_LAP;
             gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction = LAPTEXT_IN;
             gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed = FALSE;
             sound_play(SOUND_WHOOSH1, NULL);
@@ -625,9 +625,9 @@ void hud_lap_count(Object_Racer *racer, s32 updateRate) {
     if (is_game_paused() == FALSE) {
         hud_lap_text_trigger(racer);
         if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status != LAPTEXT_IDLE) {
-            if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status == LAPTEXT_UNK2) {
+            if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status == LAPTEXT_LAP_TWO) {
                 hud_lap_text_lap_two(racer, updateRate);
-            } else if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status == LAPTEXT_UNK3) {
+            } else if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status == LAPTEXT_FINAL_LAP) {
                 hud_lap_text_final_lap(racer, updateRate);
             }
         }
