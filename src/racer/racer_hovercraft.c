@@ -470,49 +470,12 @@ static void hovercraft_update_fan(Object *obj) {
 }
 
 /**
- * One frame of hovercraft physics: read the controls, turn and spin, apply the forces,
- * move, float on the waves, collide, then derive the velocities for next frame.
+ * Controls: eases the steering toward the stick (slower for computers and after the finish),
+ * then items, tilt, attacks and head turning.
  */
-void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *racer) {
-    f32 throttleForce;
-    f32 brakeForce;
-    f32 drag;
-    f32 accel;
-    f32 speed;
-    f32 force;
-    f32 waterDepth;
-    f32 xPos;
-    f32 yPos;
-    f32 zPos;
-    f32 shiftX;
-    f32 shiftZ;
-    f32 invRate;
-    f32 dialogueScale;
+static void hovercraft_read_controls(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF) {
     f32 steerDivisor;
-    s32 steerInput;
-    s32 surface;
-    s32 stoneWheels;
-    s32 frame;
-    s32 playerMoved;
 
-    if (is_nondefault_vehicle()) {
-        updateRateF *= 1.15;
-    }
-    if (racer->playerIndex >= PLAYER_ONE && gNumViewports < 2) {
-        obj->particleEmittersEnabled |= OBJ_EMIT_9;
-    }
-    gRacerSurfaceSoundId = 0;
-    gCurrentCarSteerVel = 0;
-    gRacerTargetRoll = 0;
-    xPos = obj->trans.x_position;
-    yPos = obj->trans.y_position;
-    zPos = obj->trans.z_position;
-    // The craft is drawn offset along its heading while a dialogue camera is active.
-    dialogueScale = 1.0 - (gDialogueCameraAngle / 10240.0f);
-    shiftX = -racer->ox1 * 10 * dialogueScale;
-    shiftZ = -racer->oz1 * 10 * dialogueScale;
-
-    // Controls.
     steerDivisor = 8.0f;
     if (gCurrentPlayerIndex == PLAYER_COMPUTER || racer->raceFinished) {
         steerDivisor = 32.0f;
@@ -526,6 +489,17 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
     } else {
         slowly_reset_head_angle(racer);
     }
+}
+
+/**
+ * Eases the throttle and brake and turns them into this frame's throttle and brake forces.
+ */
+static void hovercraft_throttle_and_brake(Object_Racer *racer, f32 updateRateF, f32 *outThrottleForce,
+                                          f32 *outBrakeForce) {
+    f32 throttleForce;
+    f32 brakeForce;
+    f32 force;
+
     racer_ease_throttle(racer, updateRateF, 0.016);
     force = racer->throttle;
     if ((racer->velocity > 0.0f) && (gCurrentRacerInput & A_BUTTON)) {
@@ -547,17 +521,16 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
     if (racer->velocity > 0.0) {
         brakeForce *= 0.3;
     }
+    *outThrottleForce = throttleForce;
+    *outBrakeForce = brakeForce;
+}
 
-    if (racer->zipperDirCorrection != 0) {
-        gCurrentStickX = 0;
-        racer->magnetTimer = 0;
-        racer->steerAngle = 0;
-        racer->spinout_timer = 0;
-        racer->trickType = 0;
-        racer_zipper_align(obj, racer, updateRate);
-    }
-    hovercraft_update_spinout(obj, racer, updateRate, brakeForce);
-    racer_update_basis_vectors(obj, racer);
+/**
+ * Shows the steering in the driver's animation frame, unless approaching an object.
+ */
+static void hovercraft_set_steer_frame(Object *obj, Object_Racer *racer) {
+    s32 frame;
+
     if (racer->approachTarget == NULL) {
         obj->animationID = 0;
         frame = racer->steerAngle;
@@ -571,16 +544,22 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
         }
         obj->animFrame = frame;
     }
+}
 
-    // Acceleration from the speed curve, gravity, and steering.
-    speed = racer->velocity;
-    if (speed < 0.0f) {
-        speed = -speed;
-    }
-    if (speed > 12.0f) {
-        speed = 12.0f;
-    }
-    accel = racer_speed_curve(speed);
+/**
+ * Gravity (halved with three or more wheels down), vertical drag, braking drag, and turning
+ * from the steering (sharper, with less acceleration, when the stick is pulled back); counts
+ * the airborne time used for the landing.
+ */
+static void hovercraft_gravity_and_steering(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF,
+                                            f32 *accelInOut, f32 *outDrag) {
+    f32 accel;
+    f32 drag;
+    f32 speed;
+    f32 force;
+    s32 steerInput;
+
+    accel = *accelInOut;
     gCurrentRacerWeightStat *= 0.75;
     if (racer->groundedWheels >= 3) {
         obj->y_velocity -= gCurrentRacerWeightStat * 0.5 * updateRateF;
@@ -609,7 +588,104 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
             racer->trickType = 25;
         }
     }
+    *accelInOut = accel;
+    *outDrag = drag;
+}
 
+/**
+ * Eases the yaw and roll velocities toward this frame's targets and applies them, and counts
+ * down the bump timer.
+ */
+static void hovercraft_update_rotation(Object *obj, Object_Racer *racer, s32 updateRate) {
+    racer->driftHeadingOffset = 0;
+    racer->y_rotation_vel += (gCurrentCarSteerVel - racer->y_rotation_vel) >> 3;
+    obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
+    racer->z_rotation_vel += (gRacerTargetRoll - racer->z_rotation_vel) >> 3;
+    obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
+    if (racer->bumpTimer > 0) {
+        racer->bumpTimer -= updateRate;
+    } else {
+        racer->bumpTimer = 0;
+    }
+}
+
+/**
+ * Settles the body offset and records how hard the craft is falling, for the landing.
+ */
+static void hovercraft_update_fall_impact(Object *obj, Object_Racer *racer, f32 updateRateF) {
+    racer->bodyOffsetY -= (racer->bodyOffsetY * 0.125) * updateRateF;
+    racer->fallImpact = (-obj->y_velocity) * 7.0;
+    if (racer->fallImpact > 35.0) {
+        racer->fallImpact = 35.0;
+    }
+    if (racer->fallImpact < 0.0) {
+        racer->fallImpact = 0;
+    }
+}
+
+/**
+ * One frame of hovercraft physics: read the controls, turn and spin, apply the forces,
+ * move, float on the waves, collide, then derive the velocities for next frame.
+ */
+void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *racer) {
+    f32 throttleForce;
+    f32 brakeForce;
+    f32 drag;
+    f32 accel;
+    f32 speed;
+    f32 waterDepth;
+    f32 xPos;
+    f32 yPos;
+    f32 zPos;
+    f32 shiftX;
+    f32 shiftZ;
+    f32 invRate;
+    f32 dialogueScale;
+    s32 surface;
+    s32 stoneWheels;
+    s32 playerMoved;
+
+    if (is_nondefault_vehicle()) {
+        updateRateF *= 1.15;
+    }
+    if (racer->playerIndex >= PLAYER_ONE && gNumViewports < 2) {
+        obj->particleEmittersEnabled |= OBJ_EMIT_9;
+    }
+    gRacerSurfaceSoundId = 0;
+    gCurrentCarSteerVel = 0;
+    gRacerTargetRoll = 0;
+    xPos = obj->trans.x_position;
+    yPos = obj->trans.y_position;
+    zPos = obj->trans.z_position;
+    // The craft is drawn offset along its heading while a dialogue camera is active.
+    dialogueScale = 1.0 - (gDialogueCameraAngle / 10240.0f);
+    shiftX = -racer->ox1 * 10 * dialogueScale;
+    shiftZ = -racer->oz1 * 10 * dialogueScale;
+
+    // Controls.
+    hovercraft_read_controls(obj, racer, updateRate, updateRateF);
+    hovercraft_throttle_and_brake(racer, updateRateF, &throttleForce, &brakeForce);
+    if (racer->zipperDirCorrection != 0) {
+        gCurrentStickX = 0;
+        racer->magnetTimer = 0;
+        racer->steerAngle = 0;
+        racer->spinout_timer = 0;
+        racer->trickType = 0;
+        racer_zipper_align(obj, racer, updateRate);
+    }
+    hovercraft_update_spinout(obj, racer, updateRate, brakeForce);
+    racer_update_basis_vectors(obj, racer);
+    hovercraft_set_steer_frame(obj, racer);
+    // Acceleration from the speed curve, gravity, and steering.
+    speed = racer->velocity;
+    if (speed < 0.0f) {
+        speed = -speed;
+    }
+    if (speed > 12.0f) {
+        speed = 12.0f;
+    }
+    accel = racer_speed_curve(speed);
+    hovercraft_gravity_and_steering(obj, racer, updateRate, updateRateF, &accel, &drag);
     // Surfaces.
     surface = racer_dominant_surface(racer, &stoneWheels);
     racer_check_taj_pad(racer, surface);
@@ -645,27 +721,11 @@ void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Race
     if (racer->zipperDirCorrection == 0) {
         hovercraft_apply_forces(obj, racer, updateRateF, throttleForce, brakeForce, accel, drag);
     }
-    racer->driftHeadingOffset = 0;
-    racer->y_rotation_vel += (gCurrentCarSteerVel - racer->y_rotation_vel) >> 3;
-    obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
-    racer->z_rotation_vel += (gRacerTargetRoll - racer->z_rotation_vel) >> 3;
-    obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
-    if (racer->bumpTimer > 0) {
-        racer->bumpTimer -= updateRate;
-    } else {
-        racer->bumpTimer = 0;
-    }
+    hovercraft_update_rotation(obj, racer, updateRate);
     shiftX += racer->ox1 * 10 * dialogueScale;
     shiftZ += racer->oz1 * 10 * dialogueScale;
     playerMoved = hovercraft_move(obj, racer, updateRateF, &shiftX, &shiftZ);
-    racer->bodyOffsetY -= (racer->bodyOffsetY * 0.125) * updateRateF;
-    racer->fallImpact = (-obj->y_velocity) * 7.0;
-    if (racer->fallImpact > 35.0) {
-        racer->fallImpact = 35.0;
-    }
-    if (racer->fallImpact < 0.0) {
-        racer->fallImpact = 0;
-    }
+    hovercraft_update_fall_impact(obj, racer, updateRateF);
     waterDepth = hovercraft_update_water(obj, racer, updateRate);
     racer_collide_keeping_bump(obj, racer, updateRate);
 

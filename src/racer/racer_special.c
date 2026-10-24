@@ -1,36 +1,10 @@
 #include "racer_internal.h"
 
 /**
- * Movement while riding a loop-de-loop: the racer is carried along its nodes
- * with walls ignored and the boost kept alive.
+ * No shields on a loop-de-loop, and the boost is kept going (restarted with its sound when
+ * it has run out).
  */
-void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer *racer) {
-    s32 animFrame;
-    s32 moveObjResult;
-    f32 curYPos;
-    s32 i;
-    Object **nodes;
-    s32 var_a2;
-    s32 var_v0;
-    f32 prevXPos;
-    f32 prevYPos;
-    f32 prevZPos;
-    f32 xDiff;
-    f32 zDiff;
-    f32 yDiff;
-    s32 var_v1;
-    f32 temp;
-    f32 temp2;
-    f32 temp3;
-    s32 steerAngle;
-    f32 temp4;
-    f32 var_f0;
-    f32 mtx[4][4];
-    Object *obj;
-    f32 var_f2;
-    s8 objectMoved;
-
-    objectMoved = FALSE;
+static void loop_keep_boost(Object *racerObj, Object_Racer *racer) {
     racer->shieldTimer = 0;
     racer->shieldType = 0;
     if (racer->shieldSoundMask != NULL) {
@@ -45,35 +19,47 @@ void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Obje
         racer->boostTimer = 4;
     }
     racer->boostType = BOOST_NONE;
-    set_collision_mode(COLLISION_MODE_NO_WALLS);
-    gRacerSurfaceSoundId = 0;
-    gCurrentCarSteerVel = 0;
-    gRacerTargetRoll = 0;
-    prevXPos = racerObj->trans.x_position;
-    prevYPos = racerObj->trans.y_position;
-    prevZPos = racerObj->trans.z_position;
-    var_v1 = gCurrentStickX - racer->steerAngle;
-    var_a2 = (var_v1 * updateRate) >> 4;
-    if (var_v1 != 0 && var_a2 == 0) {
-        if (var_v1 > 0) {
-            var_a2 = 1;
+}
+
+/**
+ * Eases the steer angle and pitch input toward the stick, at least one unit per frame while
+ * they differ.
+ */
+static void loop_ease_stick(Object_Racer *racer, s32 updateRate) {
+    s32 diff;
+    s32 step;
+
+    diff = gCurrentStickX - racer->steerAngle;
+    step = (diff * updateRate) >> 4;
+    if (diff != 0 && step == 0) {
+        if (diff > 0) {
+            step = 1;
         }
-        if (var_v1 < 0) {
-            var_a2 = -1;
-        }
-    }
-    racer->steerAngle += var_a2;
-    var_v1 = gCurrentStickY - racer->smoothedStickY;
-    var_a2 = (var_v1 * updateRate) >> 4;
-    if (var_v1 != 0 && var_a2 == 0) {
-        if (var_v1 > 0) {
-            var_a2 = 1;
-        }
-        if (var_v1 < 0) {
-            var_a2 = -1;
+        if (diff < 0) {
+            step = -1;
         }
     }
-    racer->smoothedStickY += var_a2;
+    racer->steerAngle += step;
+    diff = gCurrentStickY - racer->smoothedStickY;
+    step = (diff * updateRate) >> 4;
+    if (diff != 0 && step == 0) {
+        if (diff > 0) {
+            step = 1;
+        }
+        if (diff < 0) {
+            step = -1;
+        }
+    }
+    racer->smoothedStickY += step;
+}
+
+/**
+ * Clears the vehicle's rotation offsets, rebuilds its basis vectors and up vector, holds the
+ * throttle down and updates the tilt, speed and wheels.
+ */
+static void loop_orient(Object *racerObj, Object_Racer *racer, f32 updateRateF) {
+    f32 mtx[4][4];
+
     racer->y_rotation_offset = 0;
     racer->x_rotation_offset = 0;
     racer->z_rotation_offset = 0;
@@ -91,6 +77,14 @@ void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Obje
     racer_update_tilt_vector(racerObj, racer);
     handle_car_velocity_control(racer);
     update_car_wheels(racerObj, racer, updateRateF);
+}
+
+/**
+ * Shows the steering in the driver's animation frame.
+ */
+static void loop_set_steer_frame(Object *racerObj, Object_Racer *racer) {
+    s32 animFrame;
+
     racerObj->animationID = 0;
     animFrame = racer->steerAngle;
     animFrame = animFrame >> 1;
@@ -102,6 +96,23 @@ void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Obje
         animFrame = 73;
     }
     racerObj->animFrame = animFrame;
+}
+
+/**
+ * The steering into the loop: the player's steer angle, or for a computer racer, toward its
+ * current node (moving on to the next node once close).
+ */
+static s32 loop_steer_angle(Object *racerObj, Object_Racer *racer) {
+    s32 i;
+    Object **nodes;
+    f32 xDiff;
+    f32 zDiff;
+    f32 yDiff;
+    s32 steerAngle;
+    f32 planeDist;
+    f32 nodeSide;
+    Object *obj;
+
     steerAngle = 10;
     if (racer->playerIndex != PLAYER_COMPUTER) {
         steerAngle = racer->steerAngle;
@@ -125,108 +136,72 @@ void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Obje
                 }
             } else {
                 zDiff = racer->oz3;
-                temp4 = -((racer->ox3 * racerObj->trans.x_position) + (zDiff * racerObj->trans.z_position));
-                var_f0 = (obj->trans.x_position * racer->ox3) + (obj->trans.z_position * zDiff) + temp4;
-                steerAngle = var_f0;
+                planeDist = -((racer->ox3 * racerObj->trans.x_position) + (zDiff * racerObj->trans.z_position));
+                nodeSide = (obj->trans.x_position * racer->ox3) + (obj->trans.z_position * zDiff) + planeDist;
+                steerAngle = nodeSide;
                 steerAngle /= 5;
             }
         }
     }
-    racer->attackType = ATTACK_NONE;
-    racer->spinout_timer = 0;
-    var_f0 = (steerAngle * racer->velocity) / 360;
-    var_f2 = 1.0f;
-    racerObj->x_velocity -= (racer->ox3 * var_f0);
-    racerObj->y_velocity -= (racer->oy3 * var_f0);
-    racerObj->z_velocity -= (racer->oz3 * var_f0);
-    if (gCurrentPlayerIndex == PLAYER_COMPUTER) {
-        var_f2 = 1.3f;
-    }
-    racer->loopDeLoopTimer += updateRate;
-    if (racer->loopDeLoopTimer > 600) {
-        racer->vehicleID = racer->vehicleIDPrev;
-        racerObj->trans.rotation.x_rotation = 0;
-        racer->trickType = 0;
-        if (racer->playerIndex >= 0) {
-            objectMoved = TRUE;
-        }
-    }
-    if (racer->groundedWheels == 0) {
-        var_f2 = 0.1f;
-        racer->trickType += updateRate;
-        if (racer->trickType > 60) {
-            racer->vehicleID = racer->vehicleIDPrev;
-            racerObj->trans.rotation.x_rotation = 0;
-            racer->trickType = 0;
-        }
-    } else {
-        racer->trickType = 0;
-    }
-    var_v0 = racer->loopEntryYaw - (racer->steerVisualRotation & 0xFFFF);
-    if (var_v0 > 0x8000) {
-        var_v0 -= 0xFFFF;
-    }
-    if (var_v0 < -0x8000) {
-        var_v0 += 0xFFFF;
-    }
-    if ((var_v0 > 0x1000) || (var_v0 < -0x1000)) {
-        var_f2 = 0.0f;
-    }
-    racer->steerVisualRotation += (var_v0 >> 3);
-    racer->x_rotation_vel = 0;
+    return steerAngle;
+}
 
-    racerObj->x_velocity -= racer->ox1 * var_f2;
-    racerObj->y_velocity -= racer->oy1 * var_f2;
-    racerObj->z_velocity -= racer->oz1 * var_f2;
-    racerObj->x_velocity -= racer->ox2 * 1.5;
-    racerObj->y_velocity -= racer->oy2 * 1.5;
-    racerObj->z_velocity -= racer->oz2 * 1.5;
+/**
+ * Drag that grows with the square of the forward, sideways and vertical speeds.
+ */
+static void loop_apply_drag(Object *racerObj, Object_Racer *racer) {
+    f32 dragForce;
 
-    var_f0 = racer->velocity * racer->velocity * 0.002f;
+    dragForce = racer->velocity * racer->velocity * 0.002f;
     if (racer->velocity < 0.0f) {
-        var_f0 = -var_f0;
+        dragForce = -dragForce;
     }
-    racerObj->x_velocity -= racer->ox1 * var_f0;
-    racerObj->y_velocity -= racer->oy1 * var_f0;
-    racerObj->z_velocity -= racer->oz1 * var_f0;
+    racerObj->x_velocity -= racer->ox1 * dragForce;
+    racerObj->y_velocity -= racer->oy1 * dragForce;
+    racerObj->z_velocity -= racer->oz1 * dragForce;
 
-    var_f0 = racer->lateral_velocity * racer->lateral_velocity * 0.01f;
+    dragForce = racer->lateral_velocity * racer->lateral_velocity * 0.01f;
     if (racer->lateral_velocity < 0.0f) {
-        var_f0 = -var_f0;
+        dragForce = -dragForce;
     }
-    racerObj->x_velocity -= racer->ox3 * var_f0;
-    racerObj->y_velocity -= racer->oy3 * var_f0;
-    racerObj->z_velocity -= racer->oz3 * var_f0;
-    var_f0 = racer->vehiclePitch * racer->vehiclePitch * 0.01f;
+    racerObj->x_velocity -= racer->ox3 * dragForce;
+    racerObj->y_velocity -= racer->oy3 * dragForce;
+    racerObj->z_velocity -= racer->oz3 * dragForce;
+    dragForce = racer->vehiclePitch * racer->vehiclePitch * 0.01f;
     if (racer->vehiclePitch < 0.0f) {
-        var_f0 = -var_f0;
+        dragForce = -dragForce;
     }
-    racerObj->x_velocity -= racer->ox2 * var_f0;
-    racerObj->y_velocity -= racer->oy2 * var_f0;
-    racerObj->z_velocity -= racer->oz2 * var_f0;
+    racerObj->x_velocity -= racer->ox2 * dragForce;
+    racerObj->y_velocity -= racer->oy2 * dragForce;
+    racerObj->z_velocity -= racer->oz2 * dragForce;
+}
 
+/**
+ * Eases the yaw and roll velocities toward this frame's targets and applies them.
+ */
+static void loop_update_rotation(Object *racerObj, Object_Racer *racer) {
     racer->driftHeadingOffset = 0;
     racer->y_rotation_vel += ((gCurrentCarSteerVel - racer->y_rotation_vel) >> 3);
     racerObj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
     racer->z_rotation_vel += ((gRacerTargetRoll - racer->z_rotation_vel) >> 3);
     racerObj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
-    temp2 = racerObj->x_velocity;
-    temp3 = racerObj->z_velocity;
-    racer->bumpTimer = 0;
-    moveObjResult = move_object(racerObj, temp2 * updateRateF, racerObj->y_velocity * updateRateF, temp3 * updateRateF);
-    if ((moveObjResult) && (gCurrentPlayerIndex != -1)) {
-        objectMoved = TRUE;
-    }
-    if (gCurrentPlayerIndex == PLAYER_COMPUTER) {
-        onscreen_ai_racer_physics(racerObj, racer, updateRate);
-    } else {
-        update_racer_collision(racerObj, racer, updateRate);
-    }
-    var_f0 = (racerObj->trans.x_position - prevXPos) * (1 / updateRateF);
+}
+
+/**
+ * The velocity for next frame is the distance moved, which is also stored in the racer's
+ * local axes.
+ */
+static void loop_velocity_to_local(Object *racerObj, Object_Racer *racer, f32 updateRateF, f32 prevXPos, f32 prevYPos,
+                                   f32 prevZPos) {
+    f32 velX;
+    f32 velZ;
+    f32 mtx[4][4];
+
+    velX = (racerObj->trans.x_position - prevXPos) * (1 / updateRateF);
     racerObj->y_velocity = (racerObj->trans.y_position - prevYPos) * (1 / updateRateF);
-    temp3 = (racerObj->trans.z_position - prevZPos) * (1 / updateRateF);
-    racerObj->z_velocity = temp3;
-    racerObj->x_velocity = var_f0;
+    velZ = (racerObj->trans.z_position - prevZPos) * (1 / updateRateF);
+    racerObj->z_velocity = velZ;
+    racerObj->x_velocity = velX;
     gCurrentRacerTransform.rotation.y_rotation = -racerObj->trans.rotation.y_rotation;
     gCurrentRacerTransform.rotation.x_rotation = -racerObj->trans.rotation.x_rotation;
     gCurrentRacerTransform.rotation.z_rotation = 0;
@@ -238,13 +213,119 @@ void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Obje
     mtxf_from_inverse_transform(&mtx, &gCurrentRacerTransform);
     mtxf_transform_point(mtx, racerObj->x_velocity, racerObj->y_velocity, racerObj->z_velocity,
                          &racer->lateral_velocity, &racer->vehiclePitch, &racer->velocity);
-    second_racer_camera_update(racerObj, racer, CAMERA_LOOP, updateRateF);
+}
+
+/**
+ * Straightens a car's front wheels.
+ */
+static void loop_straighten_wheels(Object *racerObj, Object_Racer *racer) {
+    Object *obj;
+
     if (racerObj->attachPoints != NULL && racer->vehicleIDPrev == VEHICLE_CAR && racerObj->attachPoints->count >= 4) {
         obj = racerObj->attachPoints->obj[2];
         obj->trans.rotation.y_rotation = 0;
         obj = racerObj->attachPoints->obj[3];
         obj->trans.rotation.y_rotation = 0;
     }
+}
+
+/**
+ * Movement while riding a loop-de-loop: the racer is carried along its nodes
+ * with walls ignored and the boost kept alive.
+ */
+void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer *racer) {
+    s32 moveObjResult;
+    s32 yawDiff;
+    f32 prevXPos;
+    f32 prevYPos;
+    f32 prevZPos;
+    f32 velX;
+    f32 velZ;
+    s32 steerAngle;
+    f32 sideForce;
+    f32 thrust;
+    s8 objectMoved;
+
+    objectMoved = FALSE;
+    loop_keep_boost(racerObj, racer);
+    set_collision_mode(COLLISION_MODE_NO_WALLS);
+    gRacerSurfaceSoundId = 0;
+    gCurrentCarSteerVel = 0;
+    gRacerTargetRoll = 0;
+    prevXPos = racerObj->trans.x_position;
+    prevYPos = racerObj->trans.y_position;
+    prevZPos = racerObj->trans.z_position;
+    loop_ease_stick(racer, updateRate);
+    loop_orient(racerObj, racer, updateRateF);
+    loop_set_steer_frame(racerObj, racer);
+    steerAngle = loop_steer_angle(racerObj, racer);
+    racer->attackType = ATTACK_NONE;
+    racer->spinout_timer = 0;
+    sideForce = (steerAngle * racer->velocity) / 360;
+    thrust = 1.0f;
+    racerObj->x_velocity -= (racer->ox3 * sideForce);
+    racerObj->y_velocity -= (racer->oy3 * sideForce);
+    racerObj->z_velocity -= (racer->oz3 * sideForce);
+    if (gCurrentPlayerIndex == PLAYER_COMPUTER) {
+        thrust = 1.3f;
+    }
+    racer->loopDeLoopTimer += updateRate;
+    if (racer->loopDeLoopTimer > 600) {
+        racer->vehicleID = racer->vehicleIDPrev;
+        racerObj->trans.rotation.x_rotation = 0;
+        racer->trickType = 0;
+        if (racer->playerIndex >= 0) {
+            objectMoved = TRUE;
+        }
+    }
+    if (racer->groundedWheels == 0) {
+        thrust = 0.1f;
+        racer->trickType += updateRate;
+        if (racer->trickType > 60) {
+            racer->vehicleID = racer->vehicleIDPrev;
+            racerObj->trans.rotation.x_rotation = 0;
+            racer->trickType = 0;
+        }
+    } else {
+        racer->trickType = 0;
+    }
+    yawDiff = racer->loopEntryYaw - (racer->steerVisualRotation & 0xFFFF);
+    if (yawDiff > 0x8000) {
+        yawDiff -= 0xFFFF;
+    }
+    if (yawDiff < -0x8000) {
+        yawDiff += 0xFFFF;
+    }
+    if ((yawDiff > 0x1000) || (yawDiff < -0x1000)) {
+        thrust = 0.0f;
+    }
+    racer->steerVisualRotation += (yawDiff >> 3);
+    racer->x_rotation_vel = 0;
+
+    racerObj->x_velocity -= racer->ox1 * thrust;
+    racerObj->y_velocity -= racer->oy1 * thrust;
+    racerObj->z_velocity -= racer->oz1 * thrust;
+    racerObj->x_velocity -= racer->ox2 * 1.5;
+    racerObj->y_velocity -= racer->oy2 * 1.5;
+    racerObj->z_velocity -= racer->oz2 * 1.5;
+
+    loop_apply_drag(racerObj, racer);
+    loop_update_rotation(racerObj, racer);
+    velX = racerObj->x_velocity;
+    velZ = racerObj->z_velocity;
+    racer->bumpTimer = 0;
+    moveObjResult = move_object(racerObj, velX * updateRateF, racerObj->y_velocity * updateRateF, velZ * updateRateF);
+    if ((moveObjResult) && (gCurrentPlayerIndex != -1)) {
+        objectMoved = TRUE;
+    }
+    if (gCurrentPlayerIndex == PLAYER_COMPUTER) {
+        onscreen_ai_racer_physics(racerObj, racer, updateRate);
+    } else {
+        update_racer_collision(racerObj, racer, updateRate);
+    }
+    loop_velocity_to_local(racerObj, racer, updateRateF, prevXPos, prevYPos, prevZPos);
+    second_racer_camera_update(racerObj, racer, CAMERA_LOOP, updateRateF);
+    loop_straighten_wheels(racerObj, racer);
     if (objectMoved) {
         racer->vehicleID = racer->vehicleIDPrev;
         racer_find_start_node(racerObj, racer);

@@ -626,6 +626,96 @@ static void plane_update_attachments(Object *obj, Object_Racer *racer, s32 wheel
 }
 
 /**
+ * Controls: the steer angle eases towards the stick (twice as fast during a trick) and the
+ * pitch input towards the stick's Y; then items, tilt, attacks and head turning.
+ */
+static void plane_read_controls(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF) {
+    s32 steerDiff;
+    s32 steerStep;
+
+    racer->steerAngle += ease_step(gCurrentStickX - racer->steerAngle, updateRateF, racer->trickType != 0 ? 4.0 : 8.0);
+    steerDiff = gCurrentStickY - racer->smoothedStickY;
+    steerStep = steerDiff * updateRateF * 0.0625;
+    if (steerDiff != 0 && steerStep == 0) {
+        if (steerDiff > 0) {
+            steerStep = 1;
+        }
+        if (steerDiff < 0) {
+            steerStep = -1;
+        }
+    }
+    racer->smoothedStickY += steerStep;
+    handle_racer_items(obj, racer, updateRate);
+    racer_update_tilt_vector(obj, racer);
+    racer_attack_handler_plane(obj, racer);
+    if (gCurrentPlayerIndex != PLAYER_COMPUTER) {
+        handle_racer_head_turning(obj, racer, updateRate);
+    } else {
+        slowly_reset_head_angle(racer);
+    }
+}
+
+/**
+ * Eases the yaw and roll velocities toward this frame's targets and applies them.
+ */
+static void plane_update_rotation(Object *obj, Object_Racer *racer) {
+    racer->driftHeadingOffset = 0;
+    racer->y_rotation_vel += (gCurrentCarSteerVel - racer->y_rotation_vel) >> 3;
+    obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
+    racer->z_rotation_vel += (gRacerTargetRoll - racer->z_rotation_vel) >> 3;
+    obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
+}
+
+/**
+ * The velocity for next frame is whatever movement survived collision, except while bumped,
+ * when the horizontal velocity is kept as it was (and the bump timer counts down).
+ */
+static void plane_next_velocity(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF, f32 xPos, f32 yPos,
+                                f32 zPos, f32 *velXInOut, f32 *velZInOut) {
+    f32 velX;
+    f32 velZ;
+    f32 invRate;
+
+    velX = *velXInOut;
+    velZ = *velZInOut;
+    if (racer->bumpTimer != 0) {
+        racer->bumpTimer -= updateRate;
+        if (racer->bumpTimer < 0) {
+            racer->bumpTimer = 0;
+        }
+    } else {
+        invRate = 1.0f / updateRateF;
+        velX = (obj->trans.x_position - xPos - gRacerExternalShiftX) * invRate;
+        obj->y_velocity = (obj->trans.y_position - yPos) * invRate;
+        velZ = (obj->trans.z_position - zPos - gRacerExternalShiftZ) * invRate;
+    }
+    if (gRaceStartTimer == 100) {
+        obj->y_velocity = -5.0f;
+    }
+    *velXInOut = velX;
+    *velZInOut = velZ;
+}
+
+/**
+ * Boost exhaust for a human's plane, no emitters for computer racers or without full physics,
+ * then the vehicle particles.
+ */
+static void plane_update_emitters(Object *obj, Object_Racer *racer, s32 updateRate) {
+    if (gCurrentPlayerIndex != PLAYER_COMPUTER && racer->boostTimer == 0 && gNumViewports < 2) {
+        racer_enable_boost_emitter(obj, racer, 9);
+    }
+    if (gCurrentPlayerIndex == PLAYER_COMPUTER) {
+        obj->particleEmittersEnabled = OBJ_EMIT_NONE;
+    }
+    if (racer->aiPhysicsTimer == 0) {
+        obj->particleEmittersEnabled = OBJ_EMIT_NONE;
+    }
+    if (racer->vehicleIDPrev < VEHICLE_BOSSES) {
+        update_vehicle_particles(obj, updateRate);
+    }
+}
+
+/**
  * One frame of plane physics: skim the waves, read the controls, work out lift and drag,
  * handle spin-outs, tricks or normal steering, apply the forces, move, collide and derive
  * the velocities for next frame.
@@ -645,9 +735,6 @@ void update_plane(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
     f32 xPos;
     f32 yPos;
     f32 zPos;
-    f32 invRate;
-    s32 steerDiff;
-    s32 steerStep;
     s32 nearCeiling;
     s32 wheelsDown;
     s32 rHeldOnGround;
@@ -672,27 +759,8 @@ void update_plane(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
     yPos = obj->trans.y_position;
     zPos = obj->trans.z_position;
 
-    // Controls: the steer angle eases towards the stick, twice as fast during a trick.
-    racer->steerAngle += ease_step(gCurrentStickX - racer->steerAngle, updateRateF, racer->trickType != 0 ? 4.0 : 8.0);
-    steerDiff = gCurrentStickY - racer->smoothedStickY;
-    steerStep = steerDiff * updateRateF * 0.0625;
-    if (steerDiff != 0 && steerStep == 0) {
-        if (steerDiff > 0) {
-            steerStep = 1;
-        }
-        if (steerDiff < 0) {
-            steerStep = -1;
-        }
-    }
-    racer->smoothedStickY += steerStep;
-    handle_racer_items(obj, racer, updateRate);
-    racer_update_tilt_vector(obj, racer);
-    racer_attack_handler_plane(obj, racer);
-    if (gCurrentPlayerIndex != PLAYER_COMPUTER) {
-        handle_racer_head_turning(obj, racer, updateRate);
-    } else {
-        slowly_reset_head_angle(racer);
-    }
+    // Controls.
+    plane_read_controls(obj, racer, updateRate, updateRateF);
     racer_ease_throttle(racer, updateRateF, 0.01);
     if (racer->exitObj) {
         racer->throttle = 0.5;
@@ -773,50 +841,19 @@ void update_plane(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
     if (racer->zipperDirCorrection == 0 && gRaceStartTimer == 0) {
         plane_apply_forces(obj, racer, throttle, brake, accel, drag, lateralDrag, pitchDrag);
     }
-    racer->driftHeadingOffset = 0;
-    racer->y_rotation_vel += (gCurrentCarSteerVel - racer->y_rotation_vel) >> 3;
-    obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
-    racer->z_rotation_vel += (gRacerTargetRoll - racer->z_rotation_vel) >> 3;
-    obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
+    plane_update_rotation(obj, racer);
     if (racer->magnetTimer != 0) {
         obj->x_velocity = gRacerMagnetVelX;
         obj->z_velocity = gRacerMagnetVelZ;
     }
     playerMoved = plane_move(obj, racer, updateRateF, &velX, &velZ);
     plane_collide(obj, racer, updateRate);
-
-    // The velocity for next frame is whatever movement survived collision, except while
-    // bumped, when the horizontal velocity is kept as it was.
-    if (racer->bumpTimer != 0) {
-        racer->bumpTimer -= updateRate;
-        if (racer->bumpTimer < 0) {
-            racer->bumpTimer = 0;
-        }
-    } else {
-        invRate = 1.0f / updateRateF;
-        velX = (obj->trans.x_position - xPos - gRacerExternalShiftX) * invRate;
-        obj->y_velocity = (obj->trans.y_position - yPos) * invRate;
-        velZ = (obj->trans.z_position - zPos - gRacerExternalShiftZ) * invRate;
-    }
-    if (gRaceStartTimer == 100) {
-        obj->y_velocity = -5.0f;
-    }
+    plane_next_velocity(obj, racer, updateRate, updateRateF, xPos, yPos, zPos, &velX, &velZ);
     obj->x_velocity = velX;
     obj->z_velocity = velZ;
     racer_velocity_to_local(obj, racer, FALSE);
     plane_update_attachments(obj, racer, wheelsDown);
-    if (gCurrentPlayerIndex != PLAYER_COMPUTER && racer->boostTimer == 0 && gNumViewports < 2) {
-        racer_enable_boost_emitter(obj, racer, 9);
-    }
-    if (gCurrentPlayerIndex == PLAYER_COMPUTER) {
-        obj->particleEmittersEnabled = OBJ_EMIT_NONE;
-    }
-    if (racer->aiPhysicsTimer == 0) {
-        obj->particleEmittersEnabled = OBJ_EMIT_NONE;
-    }
-    if (racer->vehicleIDPrev < VEHICLE_BOSSES) {
-        update_vehicle_particles(obj, updateRate);
-    }
+    plane_update_emitters(obj, racer, updateRate);
     if (rHeldOnGround != FALSE) {
         gCurrentRacerInput |= R_TRIG;
     }
@@ -918,41 +955,15 @@ void racer_attack_handler_plane(Object *obj, Object_Racer *racer) {
     }
 }
 
-void update_camera_plane(f32 updateRate, Object *obj, Object_Racer *racer) {
-    s32 segmentIndex;
-    f32 baseSpeed;
-    s32 pad_sp44;
-    f32 yOffset;
-    f32 pad_sp3C;
+/**
+ * Swings the camera yaw round behind the plane, faster the longer it has been turning,
+ * unless R is held on the ground (or the plane is being lined up on a zipper). Faces the
+ * plane head on during dialogue.
+ */
+static void plane_camera_follow_yaw(Object_Racer *racer, s32 delta) {
     s32 angleVel;
-    f32 baseFloat2 = 120.0f;
-    f32 baseFloat1 = 45.0f;
     s32 angle;
-    f32 xOffset;
-    f32 zOffset;
-    f32 var_f16;
-    f32 var_f14;
-    f32 brakeVar = 0.0f;
-    s32 numViewports;
-    s32 delta;
 
-    delta = (s32) updateRate;
-    var_f16 = gCurrentCourseHeight - obj->trans.y_position;
-    var_f16 = 200.0f - (var_f16);
-    if (var_f16 < 0.0f) {
-        var_f16 = 0.0f;
-    }
-    if (var_f16 > 200.0f) {
-        var_f16 = 200.0f;
-    }
-    numViewports = cam_get_viewport_layout();
-    if (numViewports == 1) {
-        baseFloat2 = 180.0f;
-        baseFloat1 = 50.0f;
-    } else if (numViewports > 1) {
-        baseFloat2 = 110.0f;
-        baseFloat1 = 42.0f;
-    }
     if (((!(gCurrentRacerInput & 0x10)) || racer->groundedWheels < 3) && !racer->zipperDirCorrection) {
         angle = (-racer->steerVisualRotation - (racer->cameraYaw & 0xFFFF)) + 0x8000;
         if (angle > 0x8000) {
@@ -987,6 +998,16 @@ void update_camera_plane(f32 updateRate, Object *obj, Object_Racer *racer) {
     if (gDialogueCameraAngle) {
         racer->cameraYaw = 0x8000 - racer->steerVisualRotation;
     }
+}
+
+/**
+ * Pitches the camera with the plane (level during a loop), tilting it further down the
+ * closer the plane is to the course's ceiling.
+ */
+static void plane_camera_pitch(Object *obj, Object_Racer *racer, f32 heightFactor, s32 delta) {
+    s32 angleVel;
+    s32 angle;
+
     if (racer->trickType == 2 || racer->trickType == -2) {
         angle = 0;
     } else {
@@ -998,7 +1019,7 @@ void update_camera_plane(f32 updateRate, Object *obj, Object_Racer *racer) {
             angle = -0x3000;
         }
     }
-    angle = -(angle - ((s32) (var_f16 * 10.0f)));
+    angle = -(angle - ((s32) (heightFactor * 10.0f)));
     angleVel = angle - ((u16) gCameraObject->trans.rotation.x_rotation);
     if (angleVel > 0x8000) {
         angleVel -= 0xFFFF;
@@ -1007,58 +1028,18 @@ void update_camera_plane(f32 updateRate, Object *obj, Object_Racer *racer) {
         angleVel += 0xFFFF;
     }
     gCameraObject->trans.rotation.x_rotation += ((angleVel * delta) >> 4);
-    brakeVar = racer->brake;
-    baseSpeed = racer->forwardVel;
-    switch (gCameraObject->zoom) {
-        case 1:
-            baseFloat2 += 35.0f;
-            break;
-        case 2:
-            baseFloat1 -= 10.0f;
-            baseFloat2 -= 35.0f;
-            break;
-        case 3:
-            baseFloat2 -= 53.0f;
-            baseFloat1 -= 5.0f;
-            baseSpeed *= 0.25;
-            brakeVar = 0.0f;
-            break;
-    }
-    if (numViewports < 2) {
-        baseFloat2 += baseSpeed * 60.0f;
-    } else {
-        baseFloat2 += baseSpeed * 30.0f;
-    }
-    if (racer->velocity < 0.0 && !racer->groundedWheels) {
-        var_f16 = -(racer->velocity * brakeVar) * 6.0f;
-        if (65.0 < var_f16) {
-            var_f16 = 65.0f;
-        }
-        baseFloat2 -= var_f16;
-    }
-    if (!gRaceStartTimer) {
-        if (normalise_time(36) < racer->boostTimer) {
-            baseFloat2 = -30.0f;
-        } else if (racer->boostTimer > 0) {
-            baseFloat2 = 180.0f;
-        }
-    }
-    if (gRaceStartTimer > 80) {
-        gCameraObject->boomLength = baseFloat2;
-        gCameraObject->cam_unk_20 = baseFloat1;
-    }
-    gCameraObject->boomLength += (baseFloat2 - gCameraObject->boomLength) * 0.125;
-    gCameraObject->cam_unk_20 += (baseFloat1 - gCameraObject->cam_unk_20) * 0.125;
-    var_f14 = sins_f(gCameraObject->trans.rotation.x_rotation - 0x400);
-    xOffset = coss_f(gCameraObject->trans.rotation.x_rotation - 0x400);
-    var_f16 = (gCameraObject->boomLength * xOffset) - (gCameraObject->cam_unk_20 * var_f14);
-    baseFloat1 = ((gCameraObject->boomLength) * var_f14) + (gCameraObject->cam_unk_20 * xOffset);
-    xOffset = sins_f(0x8000 - racer->cameraYaw) * var_f16;
-    zOffset = coss_f(0x8000 - racer->cameraYaw) * var_f16;
-    var_f16 = sins_f(racer->cameraYaw + 0x4000) * 3.0f * racer->lateral_velocity;
-    gCameraObject->trans.x_position = (obj->trans.x_position + xOffset) + var_f16;
-    yOffset = gCameraObject->trans.y_position - (obj->trans.y_position + baseFloat1);
-    var_f16 = yOffset;
+}
+
+/**
+ * Follows the plane's height, loosely: the damping drops sharply during a trick and then
+ * recovers, and the camera never overshoots the target height.
+ */
+static void plane_camera_follow_height(Object *obj, Object_Racer *racer, f32 updateRate, f32 heightOffset) {
+    f32 yOffset;
+    f32 fullOffset;
+
+    yOffset = gCameraObject->trans.y_position - (obj->trans.y_position + heightOffset);
+    fullOffset = yOffset;
     if (racer->trickType == 1 || racer->trickType == -1) {
         racer->cameraYDamping = 8.0;
     }
@@ -1071,16 +1052,22 @@ void update_camera_plane(f32 updateRate, Object *obj, Object_Racer *racer) {
         racer->cameraYDamping = 2.0;
     }
     yOffset = (yOffset * updateRate) / racer->cameraYDamping;
-    if (yOffset > 0.0f && var_f16 < yOffset) {
-        yOffset = var_f16;
+    if (yOffset > 0.0f && fullOffset < yOffset) {
+        yOffset = fullOffset;
     }
-    if (yOffset < 0.0f && yOffset < var_f16) {
-        yOffset = var_f16;
+    if (yOffset < 0.0f && yOffset < fullOffset) {
+        yOffset = fullOffset;
     }
     gCameraObject->trans.y_position -= yOffset;
-    var_f16 = (-coss_f(racer->cameraYaw + 0x4000) * 3.0f * racer->lateral_velocity);
-    gCameraObject->trans.z_position = zOffset + obj->trans.z_position + var_f16;
-    gCameraObject->trans.rotation.y_rotation = racer->cameraYaw;
+}
+
+/**
+ * Levels the camera's roll during tricks and dialogue, otherwise rolls it with the plane.
+ */
+static void plane_camera_roll(Object_Racer *racer) {
+    s32 angleVel;
+    s32 angle;
+
     if (racer->trickType || gDialogueCameraAngle) {
         angleVel = -(u16) gCameraObject->trans.rotation.z_rotation;
         if (angleVel > 0x8000) {
@@ -1101,6 +1088,102 @@ void update_camera_plane(f32 updateRate, Object *obj, Object_Racer *racer) {
         }
         gCameraObject->trans.rotation.z_rotation += angleVel >> 3;
     }
+}
+
+/**
+ * Handles the camera movement when the player is flying a plane: a boom behind the plane that
+ * follows its yaw, pitch, height and roll, longer with speed and pulled in by braking.
+ */
+void update_camera_plane(f32 updateRate, Object *obj, Object_Racer *racer) {
+    s32 segmentIndex;
+    f32 baseSpeed;
+    f32 targetBoom = 120.0f;
+    f32 targetHeight = 45.0f;
+    f32 xOffset;
+    f32 zOffset;
+    f32 heightFactor;
+    f32 brakePull;
+    f32 boomFlat;
+    f32 sideOffset;
+    f32 pitchSin;
+    f32 brakeVar = 0.0f;
+    s32 numViewports;
+    s32 delta;
+
+    delta = (s32) updateRate;
+    heightFactor = gCurrentCourseHeight - obj->trans.y_position;
+    heightFactor = 200.0f - (heightFactor);
+    if (heightFactor < 0.0f) {
+        heightFactor = 0.0f;
+    }
+    if (heightFactor > 200.0f) {
+        heightFactor = 200.0f;
+    }
+    numViewports = cam_get_viewport_layout();
+    if (numViewports == 1) {
+        targetBoom = 180.0f;
+        targetHeight = 50.0f;
+    } else if (numViewports > 1) {
+        targetBoom = 110.0f;
+        targetHeight = 42.0f;
+    }
+    plane_camera_follow_yaw(racer, delta);
+    plane_camera_pitch(obj, racer, heightFactor, delta);
+    brakeVar = racer->brake;
+    baseSpeed = racer->forwardVel;
+    switch (gCameraObject->zoom) {
+        case 1:
+            targetBoom += 35.0f;
+            break;
+        case 2:
+            targetHeight -= 10.0f;
+            targetBoom -= 35.0f;
+            break;
+        case 3:
+            targetBoom -= 53.0f;
+            targetHeight -= 5.0f;
+            baseSpeed *= 0.25;
+            brakeVar = 0.0f;
+            break;
+    }
+    if (numViewports < 2) {
+        targetBoom += baseSpeed * 60.0f;
+    } else {
+        targetBoom += baseSpeed * 30.0f;
+    }
+    if (racer->velocity < 0.0 && !racer->groundedWheels) {
+        brakePull = -(racer->velocity * brakeVar) * 6.0f;
+        if (65.0 < brakePull) {
+            brakePull = 65.0f;
+        }
+        targetBoom -= brakePull;
+    }
+    if (!gRaceStartTimer) {
+        if (normalise_time(36) < racer->boostTimer) {
+            targetBoom = -30.0f;
+        } else if (racer->boostTimer > 0) {
+            targetBoom = 180.0f;
+        }
+    }
+    if (gRaceStartTimer > 80) {
+        gCameraObject->boomLength = targetBoom;
+        gCameraObject->cam_unk_20 = targetHeight;
+    }
+    gCameraObject->boomLength += (targetBoom - gCameraObject->boomLength) * 0.125;
+    gCameraObject->cam_unk_20 += (targetHeight - gCameraObject->cam_unk_20) * 0.125;
+    pitchSin = sins_f(gCameraObject->trans.rotation.x_rotation - 0x400);
+    xOffset = coss_f(gCameraObject->trans.rotation.x_rotation - 0x400);
+    boomFlat = (gCameraObject->boomLength * xOffset) - (gCameraObject->cam_unk_20 * pitchSin);
+    targetHeight = ((gCameraObject->boomLength) * pitchSin) + (gCameraObject->cam_unk_20 * xOffset);
+    xOffset = sins_f(0x8000 - racer->cameraYaw) * boomFlat;
+    zOffset = coss_f(0x8000 - racer->cameraYaw) * boomFlat;
+    sideOffset = sins_f(racer->cameraYaw + 0x4000) * 3.0f * racer->lateral_velocity;
+    gCameraObject->trans.x_position = (obj->trans.x_position + xOffset) + sideOffset;
+    plane_camera_follow_height(obj, racer, updateRate, targetHeight);
+    sideOffset = (-coss_f(racer->cameraYaw + 0x4000) * 3.0f * racer->lateral_velocity);
+    gCameraObject->trans.z_position = zOffset + obj->trans.z_position + sideOffset;
+    gCameraObject->trans.rotation.y_rotation = racer->cameraYaw;
+    plane_camera_roll(racer);
     segmentIndex = get_level_segment_index_from_position(
         gCameraObject->trans.x_position, gCameraObject->trans.y_position, gCameraObject->trans.z_position);
     if (segmentIndex != -1) {

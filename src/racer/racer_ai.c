@@ -1558,189 +1558,209 @@ void racer_ai_eggs(Object *obj, Object_Racer *racer, s32 updateRate) {
 }
 
 /**
- * Computer racer input: builds the stick and button state for this tick by
- * steering toward the checkpoint spline, then runs racer_ai_tactics.
+ * Builds the four spline points from two checkpoints back, along the racer's lane (and takes
+ * the lane's track offset while no behaviour overrides it). Returns how far the racer is
+ * between the checkpoints.
  */
-void racer_ai_drive(Object *obj, Object_Racer *racer, s32 updateRate) {
-    s32 v0;
-    UNUSED s32 pad_spE0;
-    s32 s0;
+static f32 racer_ai_drive_lane_spline(Object_Racer *racer, s32 checkpointCount, f32 *splineX, f32 *splineY,
+                                      f32 *splineZ) {
+    s32 checkpointIdx;
     s32 i;
-    UNUSED s32 pad_spD4;
-    UNUSED s32 pad_spD0;
-    s32 a0;
-    s32 v1;
-    s32 spC4;
     CheckpointNode *checkpoint;
-    f32 splineX[4];
-    f32 splineY[4];
-    f32 splineZ[4];
+    f32 laneOffsetX[4];
+    f32 laneOffsetY[4];
+    f32 progress;
 
-    f32 sp8C;
-    f32 sp88;
-    f32 sp84;
-
-    f32 sp74[4];
-    f32 sp64[4];
-
-    s32 a1;
-    f32 xDerivative;
-    f32 yDirevative;
-    f32 zDerivative;
-    f32 magnitude;
-    s32 v00;
-
-    spC4 = FALSE;
-
-    gCurrentRacerInput = 0;
-    gCurrentButtonsPressed = 0;
-    gCurrentButtonsReleased = 0;
-    gCurrentStickX = 0;
-    gCurrentStickY = 0;
-
-    v0 = get_checkpoint_count();
-    if (v0 == 0) {
-        gCurrentStickX = 25;
-        return;
+    checkpointIdx = racer->nextCheckpoint - 2;
+    progress = 1.0 - racer->checkpoint_distance;
+    if (progress < 0.0) {
+        progress = 0.0f;
     }
-
-    s0 = racer->nextCheckpoint - 2;
-    magnitude = 1.0 - racer->checkpoint_distance;
-    if (magnitude < 0.0) {
-        magnitude = 0.0f;
+    if (progress > 1.0) {
+        progress = 1;
     }
-    if (magnitude > 1.0) {
-        magnitude = 1;
+    if (checkpointIdx < 0) {
+        checkpointIdx += checkpointCount;
     }
-    if (s0 < 0) {
-        s0 += v0;
-    }
-    if (s0 >= v0) {
-        s0 -= v0;
+    if (checkpointIdx >= checkpointCount) {
+        checkpointIdx -= checkpointCount;
     }
 
     for (i = 0; i < 4; i++) {
-        checkpoint = find_next_checkpoint_node(s0, racer->isOnAlternateRoute);
+        checkpoint = find_next_checkpoint_node(checkpointIdx, racer->isOnAlternateRoute);
         splineX[i] = checkpoint->x;
         splineY[i] = checkpoint->y;
         splineZ[i] = checkpoint->z;
         if (racer->aiBehaviour == 0) {
-            sp74[i] = checkpoint->laneOffsetX[racer->aiLane];
-            sp64[i] = checkpoint->laneOffsetY[racer->aiLane];
+            laneOffsetX[i] = checkpoint->laneOffsetX[racer->aiLane];
+            laneOffsetY[i] = checkpoint->laneOffsetY[racer->aiLane];
             splineX[i] += checkpoint->scale * checkpoint->rotationZFrac * checkpoint->laneOffsetX[racer->aiLane];
             splineY[i] += checkpoint->scale * checkpoint->laneOffsetY[racer->aiLane];
             splineZ[i] += checkpoint->scale * -checkpoint->rotationXFrac * checkpoint->laneOffsetX[racer->aiLane];
         }
 
-        s0++;
-        if (s0 == v0) {
-            s0 = 0;
+        checkpointIdx++;
+        if (checkpointIdx == checkpointCount) {
+            checkpointIdx = 0;
         }
     }
 
     if (racer->aiBehaviour == 0) {
-        racer->trackOffsetX = sp74[1] + (sp74[2] - sp74[1]) * magnitude;
-        racer->trackOffsetY = sp64[1] + (sp64[2] - sp64[1]) * magnitude;
+        racer->trackOffsetX = laneOffsetX[1] + (laneOffsetX[2] - laneOffsetX[1]) * progress;
+        racer->trackOffsetY = laneOffsetY[1] + (laneOffsetY[2] - laneOffsetY[1]) * progress;
     }
+    return progress;
+}
 
-    xDerivative = catmull_rom_derivative(splineX, 0, magnitude);
-    yDirevative = catmull_rom_derivative(splineY, 0, magnitude);
-    zDerivative = catmull_rom_derivative(splineZ, 0, magnitude);
-    magnitude = sqrtf(xDerivative * xDerivative + yDirevative * yDirevative + zDerivative * zDerivative);
+/**
+ * Takes the path's heading at the racer's progress as the new AI target yaw and pitch, and
+ * steers by how much it changed since last frame. Returns TRUE when the path heads well away
+ * from where the racer is facing.
+ */
+static s32 racer_ai_drive_path_heading(Object_Racer *racer, f32 *splineX, f32 *splineY, f32 *splineZ, f32 progress) {
+    s32 targetYaw;
+    s32 targetPitch;
+    s32 yawDiff;
+    s32 pitchDiff;
+    s32 sharpTurn;
+    f32 xDerivative;
+    f32 yDerivative;
+    f32 zDerivative;
+    f32 magnitude;
+
+    sharpTurn = FALSE;
+    xDerivative = catmull_rom_derivative(splineX, 0, progress);
+    yDerivative = catmull_rom_derivative(splineY, 0, progress);
+    zDerivative = catmull_rom_derivative(splineZ, 0, progress);
+    magnitude = sqrtf(xDerivative * xDerivative + yDerivative * yDerivative + zDerivative * zDerivative);
     if (magnitude != 0.0f) {
         magnitude = 100.0f / magnitude;
         xDerivative *= magnitude;
-        yDirevative *= magnitude;
+        yDerivative *= magnitude;
         zDerivative *= magnitude;
     }
 
-    s0 = (u16) (arctan2_f(xDerivative, zDerivative) - 0x8000);
-    a1 = (u16) arctan2_f(yDirevative, 100.0f);
+    targetYaw = (u16) (arctan2_f(xDerivative, zDerivative) - 0x8000);
+    targetPitch = (u16) arctan2_f(yDerivative, 100.0f);
 
     racer->aiTargetYawPrev = racer->aiTargetYaw;
     racer->aiTargetPitchPrev = racer->aiTargetPitch;
 
-    racer->aiTargetYaw = s0;
-    racer->aiTargetPitch = a1;
+    racer->aiTargetYaw = targetYaw;
+    racer->aiTargetPitch = targetPitch;
 
-    a0 = s0 - (racer->aiTargetYawPrev & 0xFFFF);
-    WRAP(a0, -0x8000, 0x8000);
-    v1 = a1 - (racer->aiTargetPitchPrev & 0xFFFF);
-    WRAP(v1, -0x8000, 0x8000);
+    yawDiff = targetYaw - (racer->aiTargetYawPrev & 0xFFFF);
+    WRAP(yawDiff, -0x8000, 0x8000);
+    pitchDiff = targetPitch - (racer->aiTargetPitchPrev & 0xFFFF);
+    WRAP(pitchDiff, -0x8000, 0x8000);
 
-    gCurrentStickX = -(a0 >> 3);
-    gCurrentStickY = -(v1 >> 3);
+    gCurrentStickX = -(yawDiff >> 3);
+    gCurrentStickY = -(pitchDiff >> 3);
 
-    a0 = s0 - (racer->steerVisualRotation & 0xFFFF);
-    WRAP(a0, -0x8000, 0x8000);
-    if (a0 > 0x3000 || a0 < -0x3000) {
-        spC4 = TRUE;
+    yawDiff = targetYaw - (racer->steerVisualRotation & 0xFFFF);
+    WRAP(yawDiff, -0x8000, 0x8000);
+    if (yawDiff > 0x3000 || yawDiff < -0x3000) {
+        sharpTurn = TRUE;
     }
+    return sharpTurn;
+}
 
-    s0 = racer->nextCheckpoint - 2;
-    magnitude = 1.0 - racer->checkpoint_distance;
-    if (magnitude < 0.0) {
-        magnitude = 0.0;
+/**
+ * The progress to aim from (the end of the segment in a sharp turn); while a behaviour sets
+ * the track offset, rebuilds the spline points along that offset instead of the lane.
+ */
+static f32 racer_ai_drive_offset_spline(Object_Racer *racer, s32 checkpointCount, f32 *splineX, f32 *splineY,
+                                        f32 *splineZ, s32 sharpTurn) {
+    s32 checkpointIdx;
+    s32 i;
+    CheckpointNode *checkpoint;
+    f32 progress;
+
+    checkpointIdx = racer->nextCheckpoint - 2;
+    progress = 1.0 - racer->checkpoint_distance;
+    if (progress < 0.0) {
+        progress = 0.0;
     }
-    if (magnitude > 1.0) {
-        magnitude = 1.0;
+    if (progress > 1.0) {
+        progress = 1.0;
     }
-    if (spC4) {
-        magnitude = 1.0;
+    if (sharpTurn) {
+        progress = 1.0;
     }
 
     if (racer->aiBehaviour != 0) {
-        if (s0 < 0) {
-            s0 += v0;
+        if (checkpointIdx < 0) {
+            checkpointIdx += checkpointCount;
         }
-        if (s0 >= v0) {
-            s0 -= v0;
+        if (checkpointIdx >= checkpointCount) {
+            checkpointIdx -= checkpointCount;
         }
         for (i = 0; i < 4; i++) {
-            checkpoint = find_next_checkpoint_node(s0, racer->isOnAlternateRoute);
+            checkpoint = find_next_checkpoint_node(checkpointIdx, racer->isOnAlternateRoute);
             splineX[i] = checkpoint->x + checkpoint->scale * checkpoint->rotationZFrac * racer->trackOffsetX;
             splineY[i] = checkpoint->y + checkpoint->scale * racer->trackOffsetY;
             splineZ[i] = checkpoint->z + checkpoint->scale * -checkpoint->rotationXFrac * racer->trackOffsetX;
 
-            s0++;
-            if (s0 == v0) {
-                s0 = 0;
+            checkpointIdx++;
+            if (checkpointIdx == checkpointCount) {
+                checkpointIdx = 0;
             }
         }
     }
+    return progress;
+}
 
-    sp8C = cubic_spline_interpolation(splineX, 0, magnitude, &xDerivative);
-    sp88 = cubic_spline_interpolation(splineY, 0, magnitude, &yDirevative);
-    sp84 = cubic_spline_interpolation(splineZ, 0, magnitude, &zDerivative);
-    magnitude = sqrtf(xDerivative * xDerivative + yDirevative * yDirevative + zDerivative * zDerivative);
+/**
+ * Steers toward a point 500 units ahead along the spline from the racer's progress, more
+ * gently for planes, and in the axes each vehicle can steer in.
+ */
+static void racer_ai_drive_steer(Object *obj, Object_Racer *racer, f32 *splineX, f32 *splineY, f32 *splineZ,
+                                 f32 progress) {
+    f32 pointX;
+    f32 pointY;
+    f32 pointZ;
+    f32 xDerivative;
+    f32 yDerivative;
+    f32 zDerivative;
+    f32 magnitude;
+    s32 targetYaw;
+    s32 targetPitch;
+    s32 yawDiff;
+    s32 pitchDiff;
+    s32 shift;
+
+    pointX = cubic_spline_interpolation(splineX, 0, progress, &xDerivative);
+    pointY = cubic_spline_interpolation(splineY, 0, progress, &yDerivative);
+    pointZ = cubic_spline_interpolation(splineZ, 0, progress, &zDerivative);
+    magnitude = sqrtf(xDerivative * xDerivative + yDerivative * yDerivative + zDerivative * zDerivative);
     if (magnitude != 0.0f) {
         magnitude = 500.0f / magnitude;
         xDerivative *= magnitude;
-        yDirevative *= magnitude;
+        yDerivative *= magnitude;
         zDerivative *= magnitude;
     }
 
-    xDerivative = sp8C + xDerivative - obj->trans.x_position;
-    yDirevative = sp88 + yDirevative - obj->trans.y_position;
-    zDerivative = sp84 + zDerivative - obj->trans.z_position;
+    xDerivative = pointX + xDerivative - obj->trans.x_position;
+    yDerivative = pointY + yDerivative - obj->trans.y_position;
+    zDerivative = pointZ + zDerivative - obj->trans.z_position;
 
-    s0 = (u16) (arctan2_f(xDerivative, zDerivative) - 0x8000);
-    a1 = (u16) arctan2_f(yDirevative, 500.0f);
+    targetYaw = (u16) (arctan2_f(xDerivative, zDerivative) - 0x8000);
+    targetPitch = (u16) arctan2_f(yDerivative, 500.0f);
 
-    a0 = s0 - (u16) racer->steerVisualRotation;
-    WRAP(a0, -0x8000, 0x8000);
-    a0 = -a0;
-    v1 = a1 - (obj->trans.rotation.x_rotation & 0xFFFF);
-    WRAP(v1, -0x8000, 0x8000);
-    v1 = -v1;
+    yawDiff = targetYaw - (u16) racer->steerVisualRotation;
+    WRAP(yawDiff, -0x8000, 0x8000);
+    yawDiff = -yawDiff;
+    pitchDiff = targetPitch - (obj->trans.rotation.x_rotation & 0xFFFF);
+    WRAP(pitchDiff, -0x8000, 0x8000);
+    pitchDiff = -pitchDiff;
 
-    v00 = 5;
+    shift = 5;
     if (racer->vehicleID == VEHICLE_PLANE) {
-        v00 = 6;
+        shift = 6;
     }
 
     if (racer->vehicleID == 1 && racer->spinDirection == 0) {
-        racer->steerVisualRotation -= a0 >> 1;
+        racer->steerVisualRotation -= yawDiff >> 1;
     }
 
     switch (racer->vehicleID) {
@@ -1749,23 +1769,111 @@ void racer_ai_drive(Object *obj, Object_Racer *racer, s32 updateRate) {
             break;
         case VEHICLE_HOVERCRAFT:
             gCurrentStickY = 0;
-            gCurrentStickX += a0 >> v00;
+            gCurrentStickX += yawDiff >> shift;
             break;
         case VEHICLE_TRICKY:
-            gCurrentStickX += a0 >> (v00 - 1);
+            gCurrentStickX += yawDiff >> (shift - 1);
             gCurrentStickY = 0;
             break;
         case VEHICLE_SMOKEY:
-            v00--;
-            gCurrentStickX += a0 >> v00;
-            gCurrentStickY += v1 >> v00;
+            shift--;
+            gCurrentStickX += yawDiff >> shift;
+            gCurrentStickY += pitchDiff >> shift;
             break;
         default:
-            gCurrentStickX += a0 >> v00;
-            gCurrentStickY += v1 >> v00;
+            gCurrentStickX += yawDiff >> shift;
+            gCurrentStickY += pitchDiff >> shift;
             break;
     }
+}
+
+/**
+ * Computer racer input: builds the stick and button state for this tick by
+ * steering toward the checkpoint spline, then runs racer_ai_tactics.
+ */
+void racer_ai_drive(Object *obj, Object_Racer *racer, s32 updateRate) {
+    s32 checkpointCount;
+    f32 splineX[4];
+    f32 splineY[4];
+    f32 splineZ[4];
+    f32 progress;
+    s32 sharpTurn;
+
+    gCurrentRacerInput = 0;
+    gCurrentButtonsPressed = 0;
+    gCurrentButtonsReleased = 0;
+    gCurrentStickX = 0;
+    gCurrentStickY = 0;
+
+    checkpointCount = get_checkpoint_count();
+    if (checkpointCount == 0) {
+        gCurrentStickX = 25;
+        return;
+    }
+
+    progress = racer_ai_drive_lane_spline(racer, checkpointCount, splineX, splineY, splineZ);
+    sharpTurn = racer_ai_drive_path_heading(racer, splineX, splineY, splineZ, progress);
+    progress = racer_ai_drive_offset_spline(racer, checkpointCount, splineX, splineY, splineZ, sharpTurn);
+    racer_ai_drive_steer(obj, racer, splineX, splineY, splineZ, progress);
     racer_ai_tactics(obj, racer, updateRate);
+}
+
+/**
+ * Shows the turn rate in the driver's steering animation frame.
+ */
+static void onscreen_AI_racer_steer_frame(Object *obj, Object_Racer *racer) {
+    s32 steerVel;
+
+    obj->animationID = 0;
+    steerVel = ((-racer->y_rotation_vel >> 8) / gCurrentRacerHandlingStat);
+    steerVel = 40 - steerVel;
+    if (steerVel < 0) {
+        steerVel = 0;
+    }
+    if (steerVel > 73) {
+        steerVel = 73;
+    }
+    obj->animFrame = steerVel;
+}
+
+/**
+ * Eases the yaw velocity toward this frame's steering (at most 0x2EE per tick) and the roll
+ * toward its target, and applies both.
+ */
+static void onscreen_AI_racer_turn(Object *obj, Object_Racer *racer, s32 updateRate) {
+    s32 angle;
+
+    slowly_reset_head_angle(racer);
+    angle = gCurrentCarSteerVel - (u16) racer->y_rotation_vel;
+    WRAP(angle, -0x8000, 0x8000);
+    angle >>= 2;
+    CLAMP(angle, -0x2EE, 0x2EE);
+    racer->y_rotation_vel += (angle * updateRate);
+    obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
+    racer->z_rotation_vel += ((gRacerTargetRoll - racer->z_rotation_vel) * updateRate) >> 4;
+    obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
+}
+
+/**
+ * Unless escaping water, turns the racer's forward and sideways speed into a world velocity
+ * along its heading.
+ */
+static void onscreen_AI_racer_heading_velocity(Object *obj, Object_Racer *racer) {
+    f32 unusedY;
+    MtxF mtx;
+
+    if (!racer->waterEscapeActive) {
+        gCurrentRacerTransform.rotation.y_rotation = racer->steerVisualRotation + racer->driftHeadingOffset;
+        gCurrentRacerTransform.rotation.x_rotation = 0;
+        gCurrentRacerTransform.rotation.z_rotation = 0;
+        gCurrentRacerTransform.x_position = 0.0f;
+        gCurrentRacerTransform.y_position = 0.0f;
+        gCurrentRacerTransform.z_position = 0.0f;
+        gCurrentRacerTransform.scale = 1.0f;
+        mtxf_from_inverse_transform(&mtx, &gCurrentRacerTransform);
+        mtxf_transform_point(mtx, racer->lateral_velocity, 0.0f, racer->velocity, &obj->x_velocity, &unusedY,
+                             &obj->z_velocity);
+    }
 }
 
 /**
@@ -1784,8 +1892,6 @@ void update_onscreen_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, 
     f32 zTemp;
     MtxF mtx;
     LevelHeader *header;
-    s32 angle;
-    s32 steerVel;
 
     xTemp = obj->trans.x_position;
     yTemp = obj->trans.y_position;
@@ -1830,37 +1936,9 @@ void update_onscreen_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, 
     } else if (racer->groundedWheels > 2) {
         racer->waterEscapeActive = 0;
     }
-    obj->animationID = 0;
-    steerVel = ((-racer->y_rotation_vel >> 8) / gCurrentRacerHandlingStat);
-    steerVel = 40 - steerVel;
-    if (steerVel < 0) {
-        steerVel = 0;
-    }
-    if (steerVel > 73) {
-        steerVel = 73;
-    }
-    obj->animFrame = steerVel;
-    slowly_reset_head_angle(racer);
-    angle = gCurrentCarSteerVel - (u16) racer->y_rotation_vel;
-    WRAP(angle, -0x8000, 0x8000);
-    angle >>= 2;
-    CLAMP(angle, -0x2EE, 0x2EE);
-    racer->y_rotation_vel += (angle * updateRate);
-    obj->trans.rotation.y_rotation = racer->steerVisualRotation + racer->y_rotation_vel;
-    racer->z_rotation_vel += ((gRacerTargetRoll - racer->z_rotation_vel) * updateRate) >> 4;
-    obj->trans.rotation.z_rotation = racer->x_rotation_vel + racer->z_rotation_vel;
-    if (!racer->waterEscapeActive) {
-        gCurrentRacerTransform.rotation.y_rotation = racer->steerVisualRotation + racer->driftHeadingOffset;
-        gCurrentRacerTransform.rotation.x_rotation = 0;
-        gCurrentRacerTransform.rotation.z_rotation = 0;
-        gCurrentRacerTransform.x_position = 0.0f;
-        gCurrentRacerTransform.y_position = 0.0f;
-        gCurrentRacerTransform.z_position = 0.0f;
-        gCurrentRacerTransform.scale = 1.0f;
-        mtxf_from_inverse_transform(&mtx, &gCurrentRacerTransform);
-        mtxf_transform_point(mtx, racer->lateral_velocity, 0.0f, racer->velocity, &obj->x_velocity, &tempVel,
-                             &obj->z_velocity);
-    }
+    onscreen_AI_racer_steer_frame(obj, racer);
+    onscreen_AI_racer_turn(obj, racer, updateRate);
+    onscreen_AI_racer_heading_velocity(obj, racer);
     if (racer->magnetTimer) {
         obj->x_velocity = gRacerMagnetVelX;
         obj->z_velocity = gRacerMagnetVelZ;
@@ -2441,85 +2519,67 @@ void update_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, f32 updat
 }
 
 /**
- * Moves a computer racer along the checkpoint spline directly (the cheap
- * path used while it is not near the player), setting its speed from the
- * lane and vehicle and placing it on the spline.
+ * Drops behaviours, zippers, attacks and sideways speed, then eases the forward speed toward
+ * the AI target speed (clamped, faster when boosting); a hovercraft also slows for the curve.
  */
-void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF) {
-    s32 j;
-    s32 checkpointIdx;
-    s32 checkpointCount;
-    CheckpointNode *checkpoint;
-    s32 i;
-    f32 checkpointX[5];
-    f32 checkpointY[5];
-    f32 checkpointZ[5];
-    s32 checkpointSplineIdx;
-    f32 checkpointDistance;
-    f32 var_f28;
-    f32 spB8[5];
-    f32 spA4[5];
-    f32 var_f26;
-    f32 sp9C;
-    f32 sp98;
-    f32 sp94;
-    f32 checkpointPositionOffset; // sp90
-    f32 tempRacerVelocity;        // sp8C
-    f32 var_f24;
-    f32 var_f12;
-    LevelHeader *levelHeader;
-#if VERSION == VERSION_80
-    LevelModel *model;
-#endif
-
-    gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(ASSET_MISC_RACERACCELERATION_UNKNOWN0);
-    levelHeader = level_header();
-    checkpointCount = get_checkpoint_count();
-    if (checkpointCount == 0) {
-        return;
-    }
+static void racer_ai_spline_speed(Object_Racer *racer) {
+    s32 yawChange;
+    f32 maxSpeed;
+    f32 turnSlowdown;
+    f32 targetSpeed;
 
     racer->aiBehaviour = 0;
     racer->zipperDirCorrection = 0;
     racer->attackType = ATTACK_NONE;
     racer->lateral_velocity = 0;
-    sp94 = 20.0f;
-    if (racer->aiTargetSpeed < -sp94) {
-        racer->aiTargetSpeed = -sp94;
+    maxSpeed = 20.0f;
+    if (racer->aiTargetSpeed < -maxSpeed) {
+        racer->aiTargetSpeed = -maxSpeed;
     }
 
-    if (racer->aiTargetSpeed > sp94) {
-        racer->aiTargetSpeed = sp94;
+    if (racer->aiTargetSpeed > maxSpeed) {
+        racer->aiTargetSpeed = maxSpeed;
     }
 
-    var_f12 = sqrtf(((racer->aiTargetSpeed * 0.025) + 0.595) / 0.004);
+    targetSpeed = sqrtf(((racer->aiTargetSpeed * 0.025) + 0.595) / 0.004);
     if (racer->boostTimer != 0) {
-        var_f12 *= 1.3;
+        targetSpeed *= 1.3;
     }
 
     if (racer->vehicleID == VEHICLE_HOVERCRAFT) {
-        i = (racer->aiTargetYaw & 0xFFFF) - (racer->aiTargetYawPrev & 0xFFFF);
-        WRAP(i, -0x8000, 0x8000);
-        i = ABS(i);
+        yawChange = (racer->aiTargetYaw & 0xFFFF) - (racer->aiTargetYawPrev & 0xFFFF);
+        WRAP(yawChange, -0x8000, 0x8000);
+        yawChange = ABS(yawChange);
 
-        i -= 200;
-        if (i < 0) {
-            i = 0;
+        yawChange -= 200;
+        if (yawChange < 0) {
+            yawChange = 0;
         }
-        sp94 = (f32) i / 150.0;
-        var_f12 -= sp94;
-        if (var_f12 < 2.0) {
-            var_f12 = 2.0f;
+        turnSlowdown = (f32) yawChange / 150.0;
+        targetSpeed -= turnSlowdown;
+        if (targetSpeed < 2.0) {
+            targetSpeed = 2.0f;
         }
 
-        if (racer->velocity < -var_f12) {
-            racer->velocity = -var_f12;
+        if (racer->velocity < -targetSpeed) {
+            racer->velocity = -targetSpeed;
         } else {
-            racer->velocity += ((-var_f12 - racer->velocity) * 0.125);
+            racer->velocity += ((-targetSpeed - racer->velocity) * 0.125);
         }
     } else {
-        racer->velocity += ((-var_f12 - racer->velocity) * 0.25);
+        racer->velocity += ((-targetSpeed - racer->velocity) * 0.25);
     }
+}
+
+/**
+ * Builds the five spline points from two checkpoints back, along the racer's lane, with the
+ * lane offsets at each.
+ */
+static void racer_ai_spline_points(Object_Racer *racer, s32 checkpointCount, f32 *checkpointX, f32 *checkpointY,
+                                   f32 *checkpointZ, f32 *laneOffsetX, f32 *laneOffsetY) {
+    s32 checkpointIdx;
+    CheckpointNode *checkpoint;
+    s32 i;
 
     checkpointIdx = racer->nextCheckpoint - 2;
     if (checkpointIdx < 0) {
@@ -2536,8 +2596,8 @@ void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f3
         checkpointX[i] = checkpoint->x;
         checkpointY[i] = checkpoint->y;
         checkpointZ[i] = checkpoint->z;
-        spB8[i] = checkpoint->laneOffsetX[racer->aiLane];
-        spA4[i] = checkpoint->laneOffsetY[racer->aiLane];
+        laneOffsetX[i] = checkpoint->laneOffsetX[racer->aiLane];
+        laneOffsetY[i] = checkpoint->laneOffsetY[racer->aiLane];
         checkpointX[i] += ((checkpoint->scale * checkpoint->rotationZFrac * checkpoint->laneOffsetX[racer->aiLane]));
         checkpointY[i] += ((checkpoint->scale * checkpoint->laneOffsetY[racer->aiLane]));
         checkpointZ[i] += ((checkpoint->scale * -checkpoint->rotationXFrac * checkpoint->laneOffsetX[racer->aiLane]));
@@ -2547,52 +2607,15 @@ void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f3
             stubbed_printf("Back\n");
         }
     }
+}
 
-    tempRacerVelocity = racer->velocity;
-    if (tempRacerVelocity < 0.0f) {
-        tempRacerVelocity = -tempRacerVelocity;
-    }
-    checkpointSplineIdx = 0;
-    if (racer->aiSplineStep == 0.0) {
-        racer->aiSplineStep = 0.01f;
-    }
-    j = 0;
-    do {
-        checkpointDistance = (1.0 - racer->checkpoint_distance) + (racer->aiSplineStep * updateRateF);
-        if (checkpointDistance >= 1.0) {
-            checkpointSplineIdx = 1;
-            checkpointDistance -= 1.0;
-        }
-        var_f24 = cubic_spline_interpolation(checkpointX, checkpointSplineIdx, checkpointDistance, &sp9C);
-        var_f26 = cubic_spline_interpolation(checkpointY, checkpointSplineIdx, checkpointDistance, &sp98);
-        var_f28 = cubic_spline_interpolation(checkpointZ, checkpointSplineIdx, checkpointDistance, &sp94);
-        var_f24 -= racer->checkpointPosX;
-        var_f26 -= racer->checkpointPosY;
-        var_f28 -= racer->checkpointPosZ;
-        if (j == 0) {
-            checkpointSplineIdx = 0;
-            var_f12 = sqrtf((var_f24 * var_f24) + (var_f26 * var_f26) + (var_f28 * var_f28)) / updateRateF;
-            if (var_f12 != 0.0f) {
-                racer->aiSplineStep *= (tempRacerVelocity / var_f12);
-            } else {
-                j = -1;
-                racer->aiSplineStep += 0.01;
-            }
-        }
-        j++;
-    } while (j < 2);
-    racer->checkpointPosX += var_f24;
-    racer->checkpointPosY += var_f26;
-    racer->checkpointPosZ += var_f28;
-    var_f24 = racer->checkpointPosX - obj->trans.x_position;
-    var_f26 = racer->checkpointPosY - obj->trans.y_position;
-    var_f28 = racer->checkpointPosZ - obj->trans.z_position;
-    checkpointPositionOffset = sqrtf((var_f24 * var_f24) + (var_f28 * var_f28)) / updateRateF;
-    if (checkpointPositionOffset > 35.0) {
-        var_f12 = (35.0 / checkpointPositionOffset);
-        var_f24 *= var_f12;
-        var_f28 *= var_f12;
-    }
+/**
+ * Stores the new progress, moving on a checkpoint (and lap, and course checkpoint) when the
+ * next spline segment was reached; counts down the boost and takes the lane's track offset.
+ */
+static void racer_ai_spline_progress(Object_Racer *racer, s32 updateRate, LevelHeader *levelHeader, s32 checkpointCount,
+                                     s32 checkpointSplineIdx, f32 checkpointDistance, f32 *laneOffsetX,
+                                     f32 *laneOffsetY) {
     racer->checkpoint_distance = (1.0 - checkpointDistance);
     if (checkpointSplineIdx != 0) {
         racer->nextCheckpoint++;
@@ -2617,64 +2640,36 @@ void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f3
     } else {
         racer->boostTimer = 0;
     }
-    racer->trackOffsetX = spB8[1] + ((spB8[2] - spB8[1]) * checkpointDistance);
-    racer->trackOffsetY = spA4[1] + ((spA4[2] - spA4[1]) * checkpointDistance);
-    checkpointDistance = sqrtf((sp9C * sp9C) + (sp94 * sp94));
-    if (checkpointDistance != 0.0f) {
-        sp9C /= checkpointDistance;
-        sp98 /= checkpointDistance;
-        sp94 /= checkpointDistance;
-        racer->steerVisualRotation = arctan2_f(sp9C, sp94) - 0x8000;
+    racer->trackOffsetX = laneOffsetX[1] + ((laneOffsetX[2] - laneOffsetX[1]) * checkpointDistance);
+    racer->trackOffsetY = laneOffsetY[1] + ((laneOffsetY[2] - laneOffsetY[1]) * checkpointDistance);
+}
+
+/**
+ * Faces the racer along the spline's direction and records it as the AI target yaw and pitch.
+ */
+static void racer_ai_spline_face(Object *obj, Object_Racer *racer, f32 derivX, f32 derivY, f32 derivZ) {
+    f32 length;
+
+    length = sqrtf((derivX * derivX) + (derivZ * derivZ));
+    if (length != 0.0f) {
+        derivX /= length;
+        derivY /= length;
+        derivZ /= length;
+        racer->steerVisualRotation = arctan2_f(derivX, derivZ) - 0x8000;
         obj->trans.rotation.y_rotation = racer->steerVisualRotation;
-        obj->trans.rotation.x_rotation = arctan2_f(sp98, 1.0f);
+        obj->trans.rotation.x_rotation = arctan2_f(derivY, 1.0f);
     }
     racer->aiTargetYawPrev = racer->aiTargetYaw;
     racer->aiTargetPitchPrev = racer->aiTargetPitch;
     racer->aiTargetYaw = racer->steerVisualRotation;
     racer->aiTargetPitch = obj->trans.rotation.x_rotation;
-    if (move_object(obj, var_f24, var_f26, var_f28)) {
-#if VERSION < VERSION_80
-        if (1) {}
-        obj->trans.x_position += var_f24;
-        obj->trans.y_position += var_f26;
-        obj->trans.z_position += var_f28;
-#else
-        model = get_current_level_model();
-        obj->trans.x_position += var_f24;
-        obj->trans.y_position += var_f26;
-        obj->trans.z_position += var_f28;
-        // Don't get caught up on this using checkpointDistance var when documenting. It just matched that way.
-        checkpointDistance = model->upperXBounds + 1000.0f;
-        if (obj->trans.x_position > checkpointDistance) {
-            obj->trans.x_position = checkpointDistance;
-        }
-        checkpointDistance = model->lowerXBounds - 1000.0f;
-        if (obj->trans.x_position < checkpointDistance) {
-            obj->trans.x_position = checkpointDistance;
-        }
-        checkpointDistance = model->upperYBounds + 3000.0f;
-        if (obj->trans.y_position > checkpointDistance) {
-            obj->trans.y_position = checkpointDistance;
-        }
-        checkpointDistance = model->lowerYBounds - 500.0f;
-        if (obj->trans.y_position < checkpointDistance) {
-            obj->trans.y_position = checkpointDistance;
-        }
-        checkpointDistance = model->upperZBounds + 1000.0f;
-        if (obj->trans.z_position > checkpointDistance) {
-            obj->trans.z_position = checkpointDistance;
-        }
-        checkpointDistance = model->lowerZBounds - 1000.0f;
-        if (obj->trans.z_position < checkpointDistance) {
-            obj->trans.z_position = checkpointDistance;
-        }
-#endif
-    }
-    if (checkpointPositionOffset < 20.0) {
-        obj->x_velocity = var_f24 / updateRateF;
-        obj->y_velocity = -1.0f;
-        obj->z_velocity = var_f28 / updateRateF;
-    }
+}
+
+/**
+ * Racer decisions and items, then resets the state that full physics would otherwise use:
+ * water, drift, rotation speeds, bump, body bob, wheel positions and particles.
+ */
+static void racer_ai_spline_finish(Object *obj, Object_Racer *racer, s32 updateRate) {
     racer_ai_tactics(obj, racer, updateRate);
     handle_racer_items(obj, racer, updateRate);
     racer->waterTimer = 0;
@@ -2703,6 +2698,139 @@ void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f3
     racer->wheelCollisionPos[11] = obj->trans.z_position;
     obj->particleEmittersEnabled = OBJ_EMIT_NONE;
     update_vehicle_particles(obj, updateRate);
+}
+
+/**
+ * Moves a computer racer along the checkpoint spline directly (the cheap
+ * path used while it is not near the player), setting its speed from the
+ * lane and vehicle and placing it on the spline.
+ */
+void racer_ai_follow_spline(Object *obj, Object_Racer *racer, s32 updateRate, f32 updateRateF) {
+    s32 j;
+    s32 checkpointCount;
+    f32 checkpointX[5];
+    f32 checkpointY[5];
+    f32 checkpointZ[5];
+    s32 checkpointSplineIdx;
+    f32 checkpointDistance;
+    f32 moveZ;
+    f32 laneOffsetX[5];
+    f32 laneOffsetY[5];
+    f32 moveY;
+    f32 derivX;
+    f32 derivY;
+    f32 derivZ;
+    f32 checkpointPositionOffset;
+    f32 speed;
+    f32 moveX;
+    f32 stepLength;
+    f32 clampScale;
+    LevelHeader *levelHeader;
+#if VERSION == VERSION_80
+    LevelModel *model;
+#endif
+
+    gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(ASSET_MISC_RACERACCELERATION_UNKNOWN0);
+    levelHeader = level_header();
+    checkpointCount = get_checkpoint_count();
+    if (checkpointCount == 0) {
+        return;
+    }
+
+    racer_ai_spline_speed(racer);
+    racer_ai_spline_points(racer, checkpointCount, checkpointX, checkpointY, checkpointZ, laneOffsetX, laneOffsetY);
+    speed = racer->velocity;
+    if (speed < 0.0f) {
+        speed = -speed;
+    }
+    checkpointSplineIdx = 0;
+    if (racer->aiSplineStep == 0.0) {
+        racer->aiSplineStep = 0.01f;
+    }
+    j = 0;
+    do {
+        checkpointDistance = (1.0 - racer->checkpoint_distance) + (racer->aiSplineStep * updateRateF);
+        if (checkpointDistance >= 1.0) {
+            checkpointSplineIdx = 1;
+            checkpointDistance -= 1.0;
+        }
+        moveX = cubic_spline_interpolation(checkpointX, checkpointSplineIdx, checkpointDistance, &derivX);
+        moveY = cubic_spline_interpolation(checkpointY, checkpointSplineIdx, checkpointDistance, &derivY);
+        moveZ = cubic_spline_interpolation(checkpointZ, checkpointSplineIdx, checkpointDistance, &derivZ);
+        moveX -= racer->checkpointPosX;
+        moveY -= racer->checkpointPosY;
+        moveZ -= racer->checkpointPosZ;
+        if (j == 0) {
+            checkpointSplineIdx = 0;
+            stepLength = sqrtf((moveX * moveX) + (moveY * moveY) + (moveZ * moveZ)) / updateRateF;
+            if (stepLength != 0.0f) {
+                racer->aiSplineStep *= (speed / stepLength);
+            } else {
+                j = -1;
+                racer->aiSplineStep += 0.01;
+            }
+        }
+        j++;
+    } while (j < 2);
+    racer->checkpointPosX += moveX;
+    racer->checkpointPosY += moveY;
+    racer->checkpointPosZ += moveZ;
+    moveX = racer->checkpointPosX - obj->trans.x_position;
+    moveY = racer->checkpointPosY - obj->trans.y_position;
+    moveZ = racer->checkpointPosZ - obj->trans.z_position;
+    checkpointPositionOffset = sqrtf((moveX * moveX) + (moveZ * moveZ)) / updateRateF;
+    if (checkpointPositionOffset > 35.0) {
+        clampScale = (35.0 / checkpointPositionOffset);
+        moveX *= clampScale;
+        moveZ *= clampScale;
+    }
+    racer_ai_spline_progress(racer, updateRate, levelHeader, checkpointCount, checkpointSplineIdx, checkpointDistance,
+                             laneOffsetX, laneOffsetY);
+    racer_ai_spline_face(obj, racer, derivX, derivY, derivZ);
+    if (move_object(obj, moveX, moveY, moveZ)) {
+#if VERSION < VERSION_80
+        if (1) {}
+        obj->trans.x_position += moveX;
+        obj->trans.y_position += moveY;
+        obj->trans.z_position += moveZ;
+#else
+        model = get_current_level_model();
+        obj->trans.x_position += moveX;
+        obj->trans.y_position += moveY;
+        obj->trans.z_position += moveZ;
+        // Don't get caught up on this using checkpointDistance var when documenting. It just matched that way.
+        checkpointDistance = model->upperXBounds + 1000.0f;
+        if (obj->trans.x_position > checkpointDistance) {
+            obj->trans.x_position = checkpointDistance;
+        }
+        checkpointDistance = model->lowerXBounds - 1000.0f;
+        if (obj->trans.x_position < checkpointDistance) {
+            obj->trans.x_position = checkpointDistance;
+        }
+        checkpointDistance = model->upperYBounds + 3000.0f;
+        if (obj->trans.y_position > checkpointDistance) {
+            obj->trans.y_position = checkpointDistance;
+        }
+        checkpointDistance = model->lowerYBounds - 500.0f;
+        if (obj->trans.y_position < checkpointDistance) {
+            obj->trans.y_position = checkpointDistance;
+        }
+        checkpointDistance = model->upperZBounds + 1000.0f;
+        if (obj->trans.z_position > checkpointDistance) {
+            obj->trans.z_position = checkpointDistance;
+        }
+        checkpointDistance = model->lowerZBounds - 1000.0f;
+        if (obj->trans.z_position < checkpointDistance) {
+            obj->trans.z_position = checkpointDistance;
+        }
+#endif
+    }
+    if (checkpointPositionOffset < 20.0) {
+        obj->x_velocity = moveX / updateRateF;
+        obj->y_velocity = -1.0f;
+        obj->z_velocity = moveZ / updateRateF;
+    }
+    racer_ai_spline_finish(obj, racer, updateRate);
 }
 
 /**
