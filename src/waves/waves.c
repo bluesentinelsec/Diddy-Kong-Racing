@@ -87,7 +87,7 @@ s32 gWaveTileCountX;    // used in mempool_alloc_safe size calculation
 s32 gWaveTileCountZ;    // used in mempool_alloc_safe size calculation
 s32 gNumberOfLevelSegments;
 s32 gWaveVisibilityGrid[64];
-s16 gWaveBlockIDs[512]; // used to index gWaveModel and as arg0 for wave_block_build_vertices and
+s16 gWaveBlockIDs[512]; // used to index gWaveModel and as blockID for wave_block_build_vertices and
                         // wave_block_build_vertices_depth_shaded
 // One table: retail's fixed .bss layout placed gWaveVisibleBlocksBody immediately after
 // gWaveVisibleBlocks, and the visibility builder/walkers index straight through both
@@ -145,7 +145,7 @@ void waves_free(void) {
  * Calls waves_free as a precautionary.
  */
 void waves_alloc(void) {
-    s32 temp;
+    s32 rowLength;
     s32 allocSize;
     s32 i;
 
@@ -161,8 +161,8 @@ void waves_alloc(void) {
     for (i = 1; i < ARRAY_COUNT(gWaveHeightBuffers); i++) {
         gWaveHeightBuffers[i] = (f32 *) (((uintptr_t) gWaveHeightBuffers[0]) + (allocSize * i));
     }
-    temp = (gWaveController.subdivisions + 1);
-    allocSize = (temp * 250 * (gWaveController.subdivisions + 1));
+    rowLength = (gWaveController.subdivisions + 1);
+    allocSize = (rowLength * 250 * (gWaveController.subdivisions + 1));
     if (gWavePlayerCount != 2) { // 1 player
         gWaveVertices[0] = (Vertex *) mempool_alloc_safe(allocSize << 1, COLOUR_TAG_CYAN);
         gWaveVertices[1] = (Vertex *) (((uintptr_t) gWaveVertices[0]) + allocSize);
@@ -193,7 +193,7 @@ void waves_init_header(LevelHeader *header) {
     if (gWavePlayerCount != 2) {
         gWaveController.subdivisions = header->waveSubdivisons;
     } else {
-        gWaveController.subdivisions = 4;
+        gWaveController.subdivisions = WAVE_SUBDIVISIONS_2P;
     }
     gWaveController.tileCount = header->waveTileCount;
     gWaveController.initSine[0].sineStep = header->waveSineStep0;
@@ -206,7 +206,7 @@ void waves_init_header(LevelHeader *header) {
     if (gWavePlayerCount != 2) {
         gWaveController.waveViewDist = header->waveViewDist;
     } else {
-        gWaveController.waveViewDist = 3;
+        gWaveController.waveViewDist = WAVE_VIEW_DIST_NEAR;
     }
     gWaveController.doubleDensity = header->waveDoubleDensity;
     gWaveController.textureId = header->waveTexID & 0xFFFF;
@@ -220,137 +220,152 @@ void waves_init_header(LevelHeader *header) {
     gWaveController.xlu = header->wavesXlu;
 }
 
-void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
-    s32 k;
-    s32 sineVar2;
-    s32 j_2;
-    s32 var_s3;
-    s32 var_s5;
-    s32 sineVar1;
-    s32 sineStep1;
+/**
+ * Fills gWaveHeightTable with one cycle of the sum of the level's two sine waves, and records its lowest and
+ * highest values.
+ */
+static void waves_init_height_table(void) {
+    s32 sineAngle0;
+    s32 sineAngleStep0;
+    s32 sineAngle1;
+    s32 sineAngleStep1;
     s32 i;
-    s32 sineStep2;
-    s32 j;
-    s32 i_2;
-    s32 var_t0;
-    s32 var_v1;
-    s32 var_t7;
-    s32 var_a1;
-    s32 var_t2;
 
-    gWavePlayerCount = playerCount;
-    waves_init_header(header);
-    waves_alloc();
-    waves_init_level(model, header);
-    gWaveBoundingBoxW = gWaveBoundingBoxDiffX;
-    gWaveBoundingBoxH = gWaveBoundingBoxDiffZ;
-    gWaveVtxStepX = gWaveBoundingBoxW / gWaveController.subdivisions;
-    gWaveVtxStepZ = gWaveBoundingBoxH / gWaveController.subdivisions;
-    gWaveUVBaseX = 0;
-    gWaveUVBaseY = 0;
-    gWaveUVStepX = ((gWaveTexture->width * gWaveController.uvScaleX) * 32) / gWaveController.subdivisions;
-    gWaveUVStepY = ((gWaveTexture->height * gWaveController.uvScaleY) * 32) / gWaveController.subdivisions;
-    gWaveTexUVMaskX = (gWaveTexture->width * 32) - 1;
-    gWaveTexUVMaskY = (gWaveTexture->height * 32) - 1;
-    gWaveTexAnimFrame = 0;
-    sineVar1 = gWaveController.initSine[0].sineBase;
-    sineStep1 = (gWaveController.initSine[0].sineStep << 16) / gWaveController.seedSize;
-    sineVar2 = gWaveController.initSine[1].sineBase;
-    sineStep2 = (gWaveController.initSine[1].sineStep << 16) / gWaveController.seedSize;
+    sineAngle0 = gWaveController.initSine[0].sineBase;
+    sineAngleStep0 = (gWaveController.initSine[0].sineStep << 16) / gWaveController.seedSize;
+    sineAngle1 = gWaveController.initSine[1].sineBase;
+    sineAngleStep1 = (gWaveController.initSine[1].sineStep << 16) / gWaveController.seedSize;
     gWaveLowerY = 10000.0f;
     gWaveUpperY = -10000.0f;
     stubbed_printf("pre seedSize loop, seedSize=%d tileCount=%d subdiv=%d\n", gWaveController.seedSize,
                    gWaveController.tileCount, gWaveController.subdivisions);
-    for (i_2 = 0; i_2 < gWaveController.seedSize; i_2++) {
-        gWaveHeightTable[i_2] = (sins_f(sineVar1) * gWaveController.initSine[0].height) +
-                                (gWaveController.initSine[1].height * sins_f(sineVar2));
+    for (i = 0; i < gWaveController.seedSize; i++) {
+        gWaveHeightTable[i] = (sins_f(sineAngle0) * gWaveController.initSine[0].height) +
+                              (gWaveController.initSine[1].height * sins_f(sineAngle1));
         if (gWaveController.doubleDensity) {
-            gWaveHeightTable[i_2] *= 2.0f;
+            gWaveHeightTable[i] *= 2.0f;
         }
-        if (gWaveHeightTable[i_2] < gWaveLowerY) {
-            gWaveLowerY = gWaveHeightTable[i_2];
+        if (gWaveHeightTable[i] < gWaveLowerY) {
+            gWaveLowerY = gWaveHeightTable[i];
         }
-        if (gWaveUpperY < gWaveHeightTable[i_2]) {
-            gWaveUpperY = gWaveHeightTable[i_2];
+        if (gWaveUpperY < gWaveHeightTable[i]) {
+            gWaveUpperY = gWaveHeightTable[i];
         }
-        sineVar1 += sineStep1;
-        sineVar2 += sineStep2;
+        sineAngle0 += sineAngleStep0;
+        sineAngle1 += sineAngleStep1;
     };
     stubbed_printf("post seedSize loop\n");
+}
+
+/**
+ * Gives every vertex of the repeating wave tile grid two random starting points in gWaveHeightTable, from a
+ * fixed seed so the water looks the same every time. The game's own RNG state is saved and restored around it.
+ */
+static void waves_init_height_indices(void) {
+    s32 i;
+    s32 row;
+    s32 col;
+
     save_rng_seed();
     set_rng_seed('WAVF');
 
-    var_s5 = 0;
-    for (i_2 = 0; i_2 < gWaveController.tileCount; i_2++) {
-        for (j_2 = 0; j_2 < gWaveController.tileCount; j_2++) {
-            gWaveHeightIndices[var_s5].s[0] = rand_range(0, gWaveController.seedSize - 1);
-            gWaveHeightIndices[var_s5].s[1] = rand_range(0, gWaveController.seedSize - 1);
-            var_s5++;
+    i = 0;
+    for (row = 0; row < gWaveController.tileCount; row++) {
+        for (col = 0; col < gWaveController.tileCount; col++) {
+            gWaveHeightIndices[i].s[0] = rand_range(0, gWaveController.seedSize - 1);
+            gWaveHeightIndices[i].s[1] = rand_range(0, gWaveController.seedSize - 1);
+            i++;
         }
     }
     stubbed_printf("post tileCount^2 loop\n");
-    var_s5 = 0;
-    i_2 = 0;
     load_rng_seed();
-    if (playerCount != 2) {
-        playerCount = 2;
-    } else {
-        playerCount = 4;
-    }
-    stubbed_printf("pre vertex loop playerCount=%d v0=%x v1=%x v2=%x v3=%x\n", playerCount,
+}
+
+/**
+ * Lays out the flat vertex grid of every visible wave cell in each vertex buffer: positions within the cell,
+ * and white (or, for translucent water, black) opaque colour.
+ */
+static void waves_init_vertices(s32 bufferCount) {
+    s32 cell;
+    s32 row;
+    s32 col;
+    s32 k;
+    s32 vertexIdx;
+
+    vertexIdx = 0;
+    row = 0;
+    stubbed_printf("pre vertex loop playerCount=%d v0=%x v1=%x v2=%x v3=%x\n", bufferCount,
                    (u32) (uintptr_t) gWaveVertices[0], (u32) (uintptr_t) gWaveVertices[1],
                    (u32) (uintptr_t) gWaveVertices[2], (u32) (uintptr_t) gWaveVertices[3]);
-    for (var_s3 = 0; var_s3 < 25; var_s3++) {
+    for (cell = 0; cell < WAVE_MAX_VISIBLE_CELLS; cell++) {
         if (0 <= gWaveController.subdivisions) {
             do {
-                for (j_2 = 0; gWaveController.subdivisions >= j_2; j_2++) {
-                    for (k = 0; k < playerCount; k++) {
-                        gWaveVertices[k][var_s5].x = (j_2 * gWaveVtxStepX) + 0.5;
-                        gWaveVertices[k][var_s5].z = (i_2 * gWaveVtxStepZ) + 0.5;
+                for (col = 0; gWaveController.subdivisions >= col; col++) {
+                    for (k = 0; k < bufferCount; k++) {
+                        gWaveVertices[k][vertexIdx].x = (col * gWaveVtxStepX) + 0.5;
+                        gWaveVertices[k][vertexIdx].z = (row * gWaveVtxStepZ) + 0.5;
                         // this is only 0 for hot top volcano
                         if (gWaveController.xlu == FALSE) {
-                            gWaveVertices[k][var_s5].r = 255;
-                            gWaveVertices[k][var_s5].g = 255;
-                            gWaveVertices[k][var_s5].b = 255;
+                            gWaveVertices[k][vertexIdx].r = 255;
+                            gWaveVertices[k][vertexIdx].g = 255;
+                            gWaveVertices[k][vertexIdx].b = 255;
                         } else {
-                            gWaveVertices[k][var_s5].r = 0;
-                            gWaveVertices[k][var_s5].g = 0;
-                            gWaveVertices[k][var_s5].b = 0;
+                            gWaveVertices[k][vertexIdx].r = 0;
+                            gWaveVertices[k][vertexIdx].g = 0;
+                            gWaveVertices[k][vertexIdx].b = 0;
                         }
-                        gWaveVertices[k][var_s5].a = 255;
+                        gWaveVertices[k][vertexIdx].a = 255;
                     }
-                    var_s5++;
+                    vertexIdx++;
                 }
-                i_2++;
-            } while (gWaveController.subdivisions >= i_2);
-            i_2 = 0;
+                row++;
+            } while (gWaveController.subdivisions >= row);
+            row = 0;
         }
     }
     stubbed_printf("post vertex loop\n");
+}
 
-    var_s5 = 0;
-    for (i_2 = 0; i_2 < gWaveController.subdivisions; i_2++) {
-        for (j_2 = 0; j_2 < gWaveController.subdivisions; j_2++) {
-            for (k = 0; k < playerCount; k++) {
-                gWaveTriangles[k][var_s5].flags = BACKFACE_DRAW;
-                gWaveTriangles[k][var_s5].vi0 = j_2;
-                gWaveTriangles[k][var_s5].vi1 = (j_2 + gWaveController.subdivisions) + 1;
-                gWaveTriangles[k][var_s5].vi2 = j_2 + 1;
-                var_s5++;
-                gWaveTriangles[k][var_s5].flags = BACKFACE_DRAW;
-                gWaveTriangles[k][var_s5].vi0 = j_2 + 1;
-                gWaveTriangles[k][var_s5].vi1 = (j_2 + gWaveController.subdivisions) + 1;
-                gWaveTriangles[k][var_s5].vi2 = (j_2 + gWaveController.subdivisions) + 2;
-                var_s5--;
+/**
+ * Builds the triangle list of one wave cell (two triangles per grid square) in each triangle buffer.
+ * Vertex indices are relative to the row being drawn, as waves_render loads two rows of vertices at a time.
+ */
+static void waves_init_triangles(s32 bufferCount) {
+    s32 row;
+    s32 col;
+    s32 k;
+    s32 triIdx;
+
+    triIdx = 0;
+    for (row = 0; row < gWaveController.subdivisions; row++) {
+        for (col = 0; col < gWaveController.subdivisions; col++) {
+            for (k = 0; k < bufferCount; k++) {
+                gWaveTriangles[k][triIdx].flags = BACKFACE_DRAW;
+                gWaveTriangles[k][triIdx].vi0 = col;
+                gWaveTriangles[k][triIdx].vi1 = (col + gWaveController.subdivisions) + 1;
+                gWaveTriangles[k][triIdx].vi2 = col + 1;
+                triIdx++;
+                gWaveTriangles[k][triIdx].flags = BACKFACE_DRAW;
+                gWaveTriangles[k][triIdx].vi0 = col + 1;
+                gWaveTriangles[k][triIdx].vi1 = (col + gWaveController.subdivisions) + 1;
+                gWaveTriangles[k][triIdx].vi2 = (col + gWaveController.subdivisions) + 2;
+                triIdx--;
             }
-            var_s5 += 2;
+            triIdx += 2;
         }
     }
     stubbed_printf("post triangle loop, pre waves_build_sine_table\n");
-    waves_build_sine_table();
-    stubbed_printf("post waves_build_sine_table\n");
+}
 
-    var_s5 = (gWaveController.subdivisions + 1) * gWaveController.subdivisions;
+/**
+ * Copies the four corner vertices of a wave cell's grid into gWaveCornerVertices, for drawing a far cell as
+ * a single flat quad.
+ */
+static void waves_init_corner_vertices(void) {
+    s32 i;
+    s32 lastRow;
+
+    lastRow = (gWaveController.subdivisions + 1) * gWaveController.subdivisions;
     for (i = 0; i < ARRAY_COUNT(gWaveCornerVertices); i++) {
         gWaveCornerVertices[i][0].x = gWaveVertices[i][0].x;
         gWaveCornerVertices[i][0].y = 0;
@@ -368,29 +383,64 @@ void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
         gWaveCornerVertices[i][1].b = gWaveVertices[i][gWaveController.subdivisions].b;
         gWaveCornerVertices[i][1].a = gWaveVertices[i][gWaveController.subdivisions].a;
 
-        gWaveCornerVertices[i][2].x = gWaveVertices[i][var_s5].x;
+        gWaveCornerVertices[i][2].x = gWaveVertices[i][lastRow].x;
         gWaveCornerVertices[i][2].y = 0;
-        gWaveCornerVertices[i][2].z = gWaveVertices[i][var_s5].z;
-        gWaveCornerVertices[i][2].r = gWaveVertices[i][var_s5].r;
-        gWaveCornerVertices[i][2].g = gWaveVertices[i][var_s5].g;
-        gWaveCornerVertices[i][2].b = gWaveVertices[i][var_s5].b;
-        gWaveCornerVertices[i][2].a = gWaveVertices[i][var_s5].a;
+        gWaveCornerVertices[i][2].z = gWaveVertices[i][lastRow].z;
+        gWaveCornerVertices[i][2].r = gWaveVertices[i][lastRow].r;
+        gWaveCornerVertices[i][2].g = gWaveVertices[i][lastRow].g;
+        gWaveCornerVertices[i][2].b = gWaveVertices[i][lastRow].b;
+        gWaveCornerVertices[i][2].a = gWaveVertices[i][lastRow].a;
 
-        gWaveCornerVertices[i][3].x = gWaveVertices[i][var_s5 + gWaveController.subdivisions].x;
+        gWaveCornerVertices[i][3].x = gWaveVertices[i][lastRow + gWaveController.subdivisions].x;
         gWaveCornerVertices[i][3].y = 0;
-        gWaveCornerVertices[i][3].z = gWaveVertices[i][var_s5 + gWaveController.subdivisions].z;
-        gWaveCornerVertices[i][3].r = gWaveVertices[i][var_s5 + gWaveController.subdivisions].r;
-        gWaveCornerVertices[i][3].g = gWaveVertices[i][var_s5 + gWaveController.subdivisions].g;
-        gWaveCornerVertices[i][3].b = gWaveVertices[i][var_s5 + gWaveController.subdivisions].b;
-        gWaveCornerVertices[i][3].a = gWaveVertices[i][var_s5 + gWaveController.subdivisions].a;
+        gWaveCornerVertices[i][3].z = gWaveVertices[i][lastRow + gWaveController.subdivisions].z;
+        gWaveCornerVertices[i][3].r = gWaveVertices[i][lastRow + gWaveController.subdivisions].r;
+        gWaveCornerVertices[i][3].g = gWaveVertices[i][lastRow + gWaveController.subdivisions].g;
+        gWaveCornerVertices[i][3].b = gWaveVertices[i][lastRow + gWaveController.subdivisions].b;
+        gWaveCornerVertices[i][3].a = gWaveVertices[i][lastRow + gWaveController.subdivisions].a;
     }
+}
+
+/**
+ * Sets up the water of a level: reads the wave settings from the level header, allocates the wave buffers,
+ * lays out the segments, then builds the height tables, vertex and triangle grids and depth table.
+ */
+void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
+    gWavePlayerCount = playerCount;
+    waves_init_header(header);
+    waves_alloc();
+    waves_init_level(model, header);
+    gWaveBoundingBoxW = gWaveBoundingBoxDiffX;
+    gWaveBoundingBoxH = gWaveBoundingBoxDiffZ;
+    gWaveVtxStepX = gWaveBoundingBoxW / gWaveController.subdivisions;
+    gWaveVtxStepZ = gWaveBoundingBoxH / gWaveController.subdivisions;
+    gWaveUVBaseX = 0;
+    gWaveUVBaseY = 0;
+    gWaveUVStepX = ((gWaveTexture->width * gWaveController.uvScaleX) * 32) / gWaveController.subdivisions;
+    gWaveUVStepY = ((gWaveTexture->height * gWaveController.uvScaleY) * 32) / gWaveController.subdivisions;
+    gWaveTexUVMaskX = (gWaveTexture->width * 32) - 1;
+    gWaveTexUVMaskY = (gWaveTexture->height * 32) - 1;
+    gWaveTexAnimFrame = 0;
+    waves_init_height_table();
+    waves_init_height_indices();
+    // From here playerCount is the number of vertex and triangle buffers: two per viewport.
+    if (playerCount != 2) {
+        playerCount = 2;
+    } else {
+        playerCount = 4;
+    }
+    waves_init_vertices(playerCount);
+    waves_init_triangles(playerCount);
+    waves_build_sine_table();
+    stubbed_printf("post waves_build_sine_table\n");
+    waves_init_corner_vertices();
 
     waves_init_collision(model);
-    if (gWaveController.waveViewDist == 3) {
+    if (gWaveController.waveViewDist == WAVE_VIEW_DIST_NEAR) {
         gWaveCellLookup = gWaveCellLookupSingle;
         gWaveCellIndexLookup = gWaveCellIndexLookupSingle;
     } else {
-        gWaveController.waveViewDist = 5;
+        gWaveController.waveViewDist = WAVE_VIEW_DIST_FAR;
         gWaveCellLookup = gWaveCellLookupDouble;
         gWaveCellIndexLookup = gWaveCellIndexLookupDouble;
     }

@@ -12,17 +12,23 @@ void waves_visibility_reset(void) {
     }
 }
 
+/**
+ * Marks the wave cells around a viewpoint as visible in gWaveBlockCells, lists the segments they lie on in
+ * gWaveVisibleBlocks, then fades the visible segments' ripples in and the rest out.
+ * With double density each segment is four cells, one per quadrant, packed a byte each.
+ */
 void waves_visibility(s32 xPosition, s32 yPosition, s32 zPosition, s32 currentViewport, s32 updateRate) {
     s32 xPosRatio;
     s32 zPosRatio;
     s32 tempXPosRatio;
-    s32 var_v1;
-    s32 var_s5;
-    u32 var_t2;
-    s32 var_t5;
+    s32 slot;
+    s32 xShift;
+    s32 col;
+    u32 cellIndex;
+    s32 cellXShift;
     s32 i;
-    s32 var_s4;
-    s32 var_a3;
+    s32 zShift;
+    s32 visibleCount;
     s32 blockDist;
 
     xPosRatio = (xPosition - gWaveBlockPosX) / gWaveBoundingBoxDiffX;
@@ -30,44 +36,44 @@ void waves_visibility(s32 xPosition, s32 yPosition, s32 zPosition, s32 currentVi
 
     if (0) {}
 
-    for (var_v1 = 0; var_v1 != WAVE_VISIBLE_BLOCKS_BODY_COUNT; var_v1 += 4) {
+    for (slot = 0; slot != WAVE_VISIBLE_BLOCKS_BODY_COUNT; slot += 4) {
         gWaveVisibleBlocks[0].blockID = -1;
         gWaveVisibleBlocks[1].blockID = -1;
-        gWaveVisibleBlocksBody[var_v1].blockID = -1;
-        gWaveVisibleBlocksBody[var_v1 + 1].blockID = -1;
-        gWaveVisibleBlocksBody[var_v1 + 2].blockID = -1;
-        gWaveVisibleBlocksBody[var_v1 + 3].blockID = -1;
+        gWaveVisibleBlocksBody[slot].blockID = -1;
+        gWaveVisibleBlocksBody[slot + 1].blockID = -1;
+        gWaveVisibleBlocksBody[slot + 2].blockID = -1;
+        gWaveVisibleBlocksBody[slot + 3].blockID = -1;
     }
 
     if (gWaveController.doubleDensity) {
         xPosition -= (xPosRatio * gWaveBoundingBoxDiffX) + gWaveBlockPosX;
         zPosition -= (zPosRatio * gWaveBoundingBoxDiffZ) + gWaveBlockPosZ;
         if ((gWaveBoundingBoxDiffX >> 1) < xPosition) {
-            var_v1 = 8;
+            xShift = 8;
         } else {
-            var_v1 = 0;
+            xShift = 0;
         }
 
         if ((gWaveBoundingBoxDiffZ >> 1) < zPosition) {
-            var_s4 = 16;
+            zShift = 16;
         } else {
-            var_s4 = 0;
+            zShift = 0;
         }
 
-        for (var_v1 -= (gWaveController.waveViewDist >> 1) * 8; var_v1 < 0; var_v1 += 16) {
+        for (xShift -= (gWaveController.waveViewDist >> 1) * 8; xShift < 0; xShift += 16) {
             xPosRatio -= 1;
         }
 
-        for (var_s4 -= (gWaveController.waveViewDist >> 1) * 16; var_s4 < 0; var_s4 += 32) {
+        for (zShift -= (gWaveController.waveViewDist >> 1) * 16; zShift < 0; zShift += 32) {
             zPosRatio -= 1;
         }
 
-        for (blockDist = 0, var_a3 = 0; blockDist < gWaveController.waveViewDist; blockDist++) {
+        for (blockDist = 0, visibleCount = 0; blockDist < gWaveController.waveViewDist; blockDist++) {
             if (zPosRatio >= 0 && zPosRatio < gWaveTileCountZ) {
                 tempXPosRatio = xPosRatio;
-                var_t5 = var_v1;
-                var_t2 = (zPosRatio * gWaveTileCountX) + xPosRatio;
-                for (var_s5 = 0; var_s5 < gWaveController.waveViewDist; var_s5++) {
+                cellXShift = xShift;
+                cellIndex = (zPosRatio * gWaveTileCountX) + xPosRatio;
+                for (col = 0; col < gWaveController.waveViewDist; col++) {
                     // clang-format off
                     if (
                         (tempXPosRatio >= 0) &&
@@ -75,57 +81,57 @@ void waves_visibility(s32 xPosition, s32 yPosition, s32 zPosition, s32 currentVi
                         (gWaveVisibilityGrid[zPosRatio] & (1 << tempXPosRatio))
                     ) {
                         // clang-format on
-                        gWaveBlockCells[var_t2] |= gWaveCellLookup[blockDist * gWaveController.waveViewDist + var_s5]
-                                                   << (var_t5 + var_s4);
+                        gWaveBlockCells[cellIndex] |= gWaveCellLookup[blockDist * gWaveController.waveViewDist + col]
+                                                      << (cellXShift + zShift);
                         for (i = 0; i < gNumberOfLevelSegments; i++) {
-                            if (var_t2 == gWaveModel[i].tileIndex) {
-                                gWaveVisibleBlocks[var_a3].blockID = i;
-                                gWaveVisibleBlocks[var_a3].quadrant = (var_t5 + var_s4) >> 3;
-                                gWaveVisibleBlocks[var_a3].detailLevelIndex = i * gWaveTileTotal;
-                                gWaveVisibleBlocks[var_a3].tileOffsetX = gWaveModel[i].waveTileOffsetX;
-                                if (var_t5 != 0) {
-                                    gWaveVisibleBlocks[var_a3].detailLevelIndex += gWaveController.subdivisions;
-                                    gWaveVisibleBlocks[var_a3].tileOffsetX += gWaveController.subdivisions;
-                                    while (gWaveVisibleBlocks[var_a3].tileOffsetX >= gWaveController.tileCount) {
-                                        gWaveVisibleBlocks[var_a3].tileOffsetX -= gWaveController.tileCount;
+                            if (cellIndex == gWaveModel[i].tileIndex) {
+                                gWaveVisibleBlocks[visibleCount].blockID = i;
+                                gWaveVisibleBlocks[visibleCount].quadrant = (cellXShift + zShift) >> 3;
+                                gWaveVisibleBlocks[visibleCount].detailLevelIndex = i * gWaveTileTotal;
+                                gWaveVisibleBlocks[visibleCount].tileOffsetX = gWaveModel[i].waveTileOffsetX;
+                                if (cellXShift != 0) {
+                                    gWaveVisibleBlocks[visibleCount].detailLevelIndex += gWaveController.subdivisions;
+                                    gWaveVisibleBlocks[visibleCount].tileOffsetX += gWaveController.subdivisions;
+                                    while (gWaveVisibleBlocks[visibleCount].tileOffsetX >= gWaveController.tileCount) {
+                                        gWaveVisibleBlocks[visibleCount].tileOffsetX -= gWaveController.tileCount;
                                     }
                                 }
-                                gWaveVisibleBlocks[var_a3].tileOffsetZ = gWaveModel[i].waveTileOffsetZ;
-                                if (var_s4 != 0) {
-                                    gWaveVisibleBlocks[var_a3].detailLevelIndex +=
+                                gWaveVisibleBlocks[visibleCount].tileOffsetZ = gWaveModel[i].waveTileOffsetZ;
+                                if (zShift != 0) {
+                                    gWaveVisibleBlocks[visibleCount].detailLevelIndex +=
                                         ((gWaveController.subdivisions * 2) + 1) * gWaveController.subdivisions;
-                                    gWaveVisibleBlocks[var_a3].tileOffsetZ += gWaveController.subdivisions;
-                                    while (gWaveVisibleBlocks[var_a3].tileOffsetZ >= gWaveController.tileCount) {
-                                        gWaveVisibleBlocks[var_a3].tileOffsetZ -= gWaveController.tileCount;
+                                    gWaveVisibleBlocks[visibleCount].tileOffsetZ += gWaveController.subdivisions;
+                                    while (gWaveVisibleBlocks[visibleCount].tileOffsetZ >= gWaveController.tileCount) {
+                                        gWaveVisibleBlocks[visibleCount].tileOffsetZ -= gWaveController.tileCount;
                                     }
                                 }
-                                var_a3++;
+                                visibleCount++;
                                 i = 0x7FFF;
                             }
                         }
                     }
-                    var_t5 += 8;
-                    if (var_t5 > 8) {
-                        var_t5 -= 16;
+                    cellXShift += 8;
+                    if (cellXShift > 8) {
+                        cellXShift -= 16;
                         tempXPosRatio++;
-                        var_t2++;
+                        cellIndex++;
                     }
                 }
             }
-            var_s4 += 16;
-            if (var_s4 > 16) {
-                var_s4 -= 32;
+            zShift += 16;
+            if (zShift > 16) {
+                zShift -= 32;
                 zPosRatio++;
             }
         }
     } else {
         xPosRatio -= gWaveController.waveViewDist >> 1;
         zPosRatio -= gWaveController.waveViewDist >> 1;
-        for (blockDist = 0, var_a3 = 0; blockDist < gWaveController.waveViewDist; blockDist++, zPosRatio++) {
+        for (blockDist = 0, visibleCount = 0; blockDist < gWaveController.waveViewDist; blockDist++, zPosRatio++) {
             if ((zPosRatio >= 0) && (zPosRatio < gWaveTileCountZ)) {
                 tempXPosRatio = xPosRatio;
-                var_t2 = (zPosRatio * gWaveTileCountX) + xPosRatio;
-                for (var_s5 = 0; var_s5 < gWaveController.waveViewDist; var_s5++, tempXPosRatio++, var_t2++) {
+                cellIndex = (zPosRatio * gWaveTileCountX) + xPosRatio;
+                for (col = 0; col < gWaveController.waveViewDist; col++, tempXPosRatio++, cellIndex++) {
                     // clang-format off
                     if (
                         (tempXPosRatio >= 0) &&
@@ -133,15 +139,15 @@ void waves_visibility(s32 xPosition, s32 yPosition, s32 zPosition, s32 currentVi
                         (gWaveVisibilityGrid[zPosRatio] & (1 << tempXPosRatio))
                     ) {
                         // clang-format on
-                        gWaveBlockCells[var_t2] = gWaveCellLookup[blockDist * gWaveController.waveViewDist + var_s5];
+                        gWaveBlockCells[cellIndex] = gWaveCellLookup[blockDist * gWaveController.waveViewDist + col];
                         for (i = 0; i < gNumberOfLevelSegments; i++) {
-                            if (var_t2 == gWaveModel[i].tileIndex) {
-                                gWaveVisibleBlocks[var_a3].blockID = i;
-                                gWaveVisibleBlocks[var_a3].quadrant = 0;
-                                gWaveVisibleBlocks[var_a3].tileOffsetX = gWaveModel[i].waveTileOffsetX;
-                                gWaveVisibleBlocks[var_a3].tileOffsetZ = gWaveModel[i].waveTileOffsetZ;
-                                gWaveVisibleBlocks[var_a3].detailLevelIndex = i * gWaveTileTotal;
-                                var_a3++;
+                            if (cellIndex == gWaveModel[i].tileIndex) {
+                                gWaveVisibleBlocks[visibleCount].blockID = i;
+                                gWaveVisibleBlocks[visibleCount].quadrant = 0;
+                                gWaveVisibleBlocks[visibleCount].tileOffsetX = gWaveModel[i].waveTileOffsetX;
+                                gWaveVisibleBlocks[visibleCount].tileOffsetZ = gWaveModel[i].waveTileOffsetZ;
+                                gWaveVisibleBlocks[visibleCount].detailLevelIndex = i * gWaveTileTotal;
+                                visibleCount++;
                                 i = 0x7FFF;
                             }
                         }
@@ -170,96 +176,102 @@ s32 waves_block_hq(LevelModelSegment *block) {
     return result;
 }
 
+/**
+ * Sets the height of every vertex of a segment's visible wave cells, for translucent water.
+ * Vertex colour and alpha are shaded by water depth and wave height, and by how far the segment's ripples
+ * have faded out.
+ */
 void wave_block_build_vertices(s32 blockID, s32 viewportID) {
     s32 i;
-    s32 var_s2;
+    s32 heightIndex;
     s32 j;
-    f32 temp_f22;
+    f32 detailScaleStep;
     f32 vertexY;
-    s32 sp98;
-    s32 var_v0;
-    s32 sp90;
-    s32 sp8C;
-    s32 sp88;
-    s32 sp84;
+    s32 cellSlot;
+    s32 heightBuffer;
+    s32 shade;
+    s32 cellVertexCount;
+    s32 genOffsetX;
+    s32 genOffsetZ;
+    s32 tileZ;
     s32 vertexCol;
     s32 vertexIdx;
-    s32 var_s1;
+    s32 tileX;
     s32 k;
     Vertex *vertices;
-    LevelModel_Alternate *sp6C;
+    LevelModel_Alternate *model;
 
-    temp_f22 = (1.0f - gWaveController.minDetailScale) / 255.0f;
-    sp6C = &gWaveModel[blockID];
-    sp90 = (gWaveController.subdivisions + 1) * (gWaveController.subdivisions + 1);
+    detailScaleStep = (1.0f - gWaveController.minDetailScale) / 255.0f;
+    model = &gWaveModel[blockID];
+    cellVertexCount = (gWaveController.subdivisions + 1) * (gWaveController.subdivisions + 1);
     for (k = 0; gWaveVisibleBlocks[k].blockID != -1; k++) {
         if (blockID != gWaveVisibleBlocks[k].blockID) {
             continue;
         }
 
         if (gWaveController.doubleDensity) {
-            sp98 = (((u32) gWaveBlockCells[sp6C->tileIndex] >> (gWaveVisibleBlocks[k].quadrant * 8)) & 0xFF) - 1;
-            sp8C = (gWaveVisibleBlocks[k].quadrant & 1) * gWaveController.subdivisions;
-            sp88 = ((gWaveVisibleBlocks[k].quadrant & 2) >> 1) * gWaveController.subdivisions;
+            cellSlot = (((u32) gWaveBlockCells[model->tileIndex] >> (gWaveVisibleBlocks[k].quadrant * 8)) & 0xFF) - 1;
+            genOffsetX = (gWaveVisibleBlocks[k].quadrant & 1) * gWaveController.subdivisions;
+            genOffsetZ = ((gWaveVisibleBlocks[k].quadrant & 2) >> 1) * gWaveController.subdivisions;
         } else {
-            sp98 = (gWaveBlockCells[sp6C->tileIndex] & 0xFF) - 1;
-            sp8C = 0;
-            sp88 = 0;
+            cellSlot = (gWaveBlockCells[model->tileIndex] & 0xFF) - 1;
+            genOffsetX = 0;
+            genOffsetZ = 0;
         }
 
-        sp84 = gWaveVisibleBlocks[k].tileOffsetZ;
-        vertices = &gWaveVertices[gWaveVertexFlip + viewportID][sp90 * sp98];
-        sp98 = gWaveCellIndexLookup[sp98];
+        tileZ = gWaveVisibleBlocks[k].tileOffsetZ;
+        vertices = &gWaveVertices[gWaveVertexFlip + viewportID][cellVertexCount * cellSlot];
+        heightBuffer = gWaveCellIndexLookup[cellSlot];
         vertexIdx = 0;
         for (i = 0; i <= gWaveController.subdivisions; i++) {
-            var_s1 = gWaveVisibleBlocks[k].tileOffsetX;
-            var_s2 = (sp84 * gWaveController.tileCount) + var_s1;
+            tileX = gWaveVisibleBlocks[k].tileOffsetX;
+            heightIndex = (tileZ * gWaveController.tileCount) + tileX;
             for (j = 0; j <= gWaveController.subdivisions; j++) {
-                vertexY = (gWaveHeightTable[gWaveHeightIndices[var_s2].s[0]] +
-                           gWaveHeightTable[gWaveHeightIndices[var_s2].s[1]]) *
+                vertexY = (gWaveHeightTable[gWaveHeightIndices[heightIndex].s[0]] +
+                           gWaveHeightTable[gWaveHeightIndices[heightIndex].s[1]]) *
                           gWaveController.magnitude;
                 if (gWaveGenCount > 0) {
-                    vertexY += waves_get_y(blockID, j + sp8C, i + sp88);
+                    vertexY += waves_get_y(blockID, j + genOffsetX, i + genOffsetZ);
                 }
-                vertexY *= gWaveHeightBuffers[sp98][vertexIdx];
-                var_v0 = gWaveDetailLevels[gWaveVisibleBlocks[k].detailLevelIndex];
+                vertexY *= gWaveHeightBuffers[heightBuffer][vertexIdx];
+                shade = gWaveDetailLevels[gWaveVisibleBlocks[k].detailLevelIndex];
 
                 // clang-format off
-                var_v0 <<= 1; \
+                shade <<= 1; \
                 gWaveVisibleBlocks[k].detailLevelIndex++;
                 // clang-format on
-                if (var_v0 < 255) {
-                    vertexY *= gWaveController.minDetailScale + ((f32) var_v0 * temp_f22);
+                if (shade < 255) {
+                    vertexY *= gWaveController.minDetailScale + ((f32) shade * detailScaleStep);
                 }
-                var_v0 += (s32) (vertexY * gWaveController.heightColourScale);
-                if (var_v0 > 255) {
-                    var_v0 = 255;
-                } else if (var_v0 < 0) {
-                    var_v0 = 0;
+                shade += (s32) (vertexY * gWaveController.heightColourScale);
+                if (shade > 255) {
+                    shade = 255;
+                } else if (shade < 0) {
+                    shade = 0;
                 }
-                var_v0 += ((255 - var_v0) *
-                           sp6C->viewportFade[viewportID >> 1].quadrantFade[gWaveVisibleBlocks[k].quadrant]) >>
-                          7;
+                shade += ((255 - shade) *
+                          model->viewportFade[viewportID >> 1].quadrantFade[gWaveVisibleBlocks[k].quadrant]) >>
+                         7; // viewportFade runs 0 to WAVE_FADE_MAX
                 vertices[vertexIdx].y = vertexY;
 
-                vertexCol = var_v0 < 192 ? 255 : ((255 - var_v0) * 4) & 255;
+                vertexCol = shade < 192 ? 255 : ((255 - shade) * 4) & 255;
                 vertices[vertexIdx].r = vertexCol;
                 vertices[vertexIdx].g = vertexCol;
                 vertices[vertexIdx].b = vertexCol;
 
-                vertexCol = var_v0 < 64 ? (var_v0 * 4) & 255 : 255;
+                vertexCol = shade < 64 ? (shade * 4) & 255 : 255;
                 vertices[vertexIdx].a = vertexCol;
                 vertexIdx++;
-                var_s1++;
-                var_s2++;
-                if (var_s1 >= gWaveController.tileCount) {
-                    var_s1 -= gWaveController.tileCount;
-                    var_s2 -= gWaveController.tileCount;
+                tileX++;
+                heightIndex++;
+                if (tileX >= gWaveController.tileCount) {
+                    tileX -= gWaveController.tileCount;
+                    heightIndex -= gWaveController.tileCount;
                 }
             }
-            sp84++;
-            if (sp84 >= gWaveController.tileCount) {
-                sp84 -= gWaveController.tileCount;
+            tileZ++;
+            if (tileZ >= gWaveController.tileCount) {
+                tileZ -= gWaveController.tileCount;
             }
             if (gWaveController.doubleDensity) {
                 gWaveVisibleBlocks[k].detailLevelIndex += gWaveController.subdivisions;
@@ -268,85 +280,91 @@ void wave_block_build_vertices(s32 blockID, s32 viewportID) {
     }
 }
 
-void wave_block_build_vertices_depth_shaded(s32 blockID, s32 arg1) {
-    s32 var_v0;
-    f32 temp_f26;
+/**
+ * Sets the height of every vertex of a segment's visible wave cells, for opaque water.
+ * Vertices are always opaque white; the height-based shade is computed but multiplied by zero.
+ */
+void wave_block_build_vertices_depth_shaded(s32 blockID, s32 viewportID) {
+    s32 shade;
+    f32 heightRange;
+    f32 lowY;
     s32 vertexIdx;
-    s32 spA8;
+    s32 cellSlot;
+    s32 heightBuffer;
     f32 y;
-    s32 spA0;
-    s32 sp9C;
-    s32 sp98;
-    s32 var_a0;
-    f32 var_f28;
-    s32 var_s1;
+    s32 cellVertexCount;
+    s32 genOffsetX;
+    s32 genOffsetZ;
+    s32 tileZ;
+    f32 invHeightRange;
+    s32 tileX;
     s32 i;
-    s32 var_s2;
+    s32 heightIndex;
     s32 j;
     Vertex *vertices;
-    LevelModel_Alternate *sp78;
+    LevelModel_Alternate *model;
     s32 k;
 
     k = 0;
-    temp_f26 = (gWaveUpperY * 2.0f) - (gWaveLowerY * 2.0f);
-    spA0 = (gWaveController.subdivisions + 1) * (gWaveController.subdivisions + 1);
-    sp78 = &gWaveModel[blockID];
-    var_f28 = temp_f26 <= 0 ? 0 : 1.0f / temp_f26;
+    heightRange = (gWaveUpperY * 2.0f) - (gWaveLowerY * 2.0f);
+    cellVertexCount = (gWaveController.subdivisions + 1) * (gWaveController.subdivisions + 1);
+    model = &gWaveModel[blockID];
+    invHeightRange = heightRange <= 0 ? 0 : 1.0f / heightRange;
 
-    temp_f26 = gWaveLowerY * 2.0f;
+    lowY = gWaveLowerY * 2.0f;
     for (; gWaveVisibleBlocks[k].blockID != -1; k++) {
         if (blockID != gWaveVisibleBlocks[k].blockID) {
             continue;
         }
 
         if (gWaveController.doubleDensity) {
-            spA8 = (((u32) gWaveBlockCells[sp78->tileIndex] >> (gWaveVisibleBlocks[k].quadrant * 8)) & 0xFF) - 1;
-            sp9C = (gWaveVisibleBlocks[k].quadrant & 1) * gWaveController.subdivisions;
-            sp98 = ((s32) (gWaveVisibleBlocks[k].quadrant & 2) >> 1) * gWaveController.subdivisions;
+            cellSlot = (((u32) gWaveBlockCells[model->tileIndex] >> (gWaveVisibleBlocks[k].quadrant * 8)) & 0xFF) - 1;
+            genOffsetX = (gWaveVisibleBlocks[k].quadrant & 1) * gWaveController.subdivisions;
+            genOffsetZ = ((s32) (gWaveVisibleBlocks[k].quadrant & 2) >> 1) * gWaveController.subdivisions;
         } else {
-            spA8 = (gWaveBlockCells[sp78->tileIndex] & 0xFF) - 1;
-            sp9C = 0;
-            sp98 = 0;
+            cellSlot = (gWaveBlockCells[model->tileIndex] & 0xFF) - 1;
+            genOffsetX = 0;
+            genOffsetZ = 0;
         }
 
-        var_a0 = gWaveVisibleBlocks[k].tileOffsetZ;
-        vertices = &gWaveVertices[gWaveVertexFlip + arg1][spA0 * spA8];
-        spA8 = gWaveCellIndexLookup[spA8];
+        tileZ = gWaveVisibleBlocks[k].tileOffsetZ;
+        vertices = &gWaveVertices[gWaveVertexFlip + viewportID][cellVertexCount * cellSlot];
+        heightBuffer = gWaveCellIndexLookup[cellSlot];
         for (i = 0, vertexIdx = 0; i <= gWaveController.subdivisions; i++) {
-            var_s1 = gWaveVisibleBlocks[k].tileOffsetX;
-            var_s2 = (var_a0 * gWaveController.tileCount) + var_s1;
+            tileX = gWaveVisibleBlocks[k].tileOffsetX;
+            heightIndex = (tileZ * gWaveController.tileCount) + tileX;
             for (j = 0; j <= gWaveController.subdivisions; j++) {
-                y = (gWaveHeightTable[gWaveHeightIndices[var_s2].s[0]] +
-                     gWaveHeightTable[gWaveHeightIndices[var_s2].s[1]]) *
+                y = (gWaveHeightTable[gWaveHeightIndices[heightIndex].s[0]] +
+                     gWaveHeightTable[gWaveHeightIndices[heightIndex].s[1]]) *
                     gWaveController.magnitude;
                 if (gWaveGenCount > 0) {
-                    y += waves_get_y(blockID, j + sp9C, i + sp98);
+                    y += waves_get_y(blockID, j + genOffsetX, i + genOffsetZ);
                 }
-                y *= gWaveHeightBuffers[spA8][vertexIdx];
+                y *= gWaveHeightBuffers[heightBuffer][vertexIdx];
                 vertices[vertexIdx].y = y;
-                y = (y - temp_f26) * var_f28;
+                y = (y - lowY) * invHeightRange;
                 if (y > 1.0f) {
                     y = 1.0f;
                 } else if (y < 0) {
                     y = 0;
                 }
-                var_v0 = (0 * y);
-                var_v0 += 0xFF;
-                vertices[vertexIdx].r = var_v0;
-                vertices[vertexIdx].g = var_v0;
-                vertices[vertexIdx].b = var_v0;
+                shade = (0 * y);
+                shade += 0xFF;
+                vertices[vertexIdx].r = shade;
+                vertices[vertexIdx].g = shade;
+                vertices[vertexIdx].b = shade;
                 vertices[vertexIdx].a = 0xFF;
                 vertexIdx++;
-                var_s1++;
-                var_s2++;
-                if (var_s1 >= gWaveController.tileCount) {
-                    var_s1 -= gWaveController.tileCount;
-                    var_s2 -= gWaveController.tileCount;
+                tileX++;
+                heightIndex++;
+                if (tileX >= gWaveController.tileCount) {
+                    tileX -= gWaveController.tileCount;
+                    heightIndex -= gWaveController.tileCount;
                 }
             }
-            var_a0++;
-            if (var_a0 >= gWaveController.tileCount) {
-                var_a0 -= gWaveController.tileCount;
+            tileZ++;
+            if (tileZ >= gWaveController.tileCount) {
+                tileZ -= gWaveController.tileCount;
             }
             if (gWaveController.doubleDensity) {
                 gWaveVisibleBlocks[k].detailLevelIndex += gWaveController.subdivisions;
@@ -362,28 +380,28 @@ void waves_update(s32 updateRate) {
     s32 i;
     s32 j;
     s32 k;
-    s32 var_a2;
-    s32 var_ra;
-    s32 var_v1;
-    s32 var_t5;
-    s32 var_t2;
-    s32 var_s0;
-    s32 k_2;
-    s32 j_2;
-    s32 i_2;
+    s32 uvV;
+    s32 nextRowIdx;
+    s32 uvU;
+    s32 uvIdx;
+    s32 bufferPairs;
+    s32 idx;
+    s32 col;
+    s32 tileIdx;
+    s32 row;
 
     gWaveVertexFlip = 1 - gWaveVertexFlip;
-    for (i_2 = 0, j_2 = 0; i_2 < gWaveController.tileCount; i_2++) {
-        for (k_2 = 0; k_2 < gWaveController.tileCount; k_2++) {
-            gWaveHeightIndices[j_2].s[0] += updateRate;
-            while (gWaveHeightIndices[j_2].s[0] >= gWaveController.seedSize) {
-                gWaveHeightIndices[j_2].s[0] -= gWaveController.seedSize;
+    for (row = 0, tileIdx = 0; row < gWaveController.tileCount; row++) {
+        for (col = 0; col < gWaveController.tileCount; col++) {
+            gWaveHeightIndices[tileIdx].s[0] += updateRate;
+            while (gWaveHeightIndices[tileIdx].s[0] >= gWaveController.seedSize) {
+                gWaveHeightIndices[tileIdx].s[0] -= gWaveController.seedSize;
             }
-            gWaveHeightIndices[j_2].s[1] += updateRate;
-            while (gWaveHeightIndices[j_2].s[1] >= gWaveController.seedSize) {
-                gWaveHeightIndices[j_2].s[1] -= gWaveController.seedSize;
+            gWaveHeightIndices[tileIdx].s[1] += updateRate;
+            while (gWaveHeightIndices[tileIdx].s[1] >= gWaveController.seedSize) {
+                gWaveHeightIndices[tileIdx].s[1] -= gWaveController.seedSize;
             }
-            j_2++;
+            tileIdx++;
         }
     }
 
@@ -398,49 +416,49 @@ void waves_update(s32 updateRate) {
 
     gWaveUVBaseX = ((gWaveController.uvScrollX * updateRate) + gWaveUVBaseX) & gWaveTexUVMaskX;
     gWaveUVBaseY = ((gWaveController.uvScrollY * updateRate) + gWaveUVBaseY) & gWaveTexUVMaskY;
-    var_a2 = gWaveUVBaseY;
-    for (i = 0, var_s0 = 0; i <= gWaveController.subdivisions; i++) {
-        var_v1 = gWaveUVBaseX;
+    uvV = gWaveUVBaseY;
+    for (i = 0, idx = 0; i <= gWaveController.subdivisions; i++) {
+        uvU = gWaveUVBaseX;
         for (j = 0; j <= gWaveController.subdivisions; j++) {
-            gWaveUVTable[var_s0].u = var_v1;
-            gWaveUVTable[var_s0].v = var_a2;
-            var_v1 += gWaveUVStepX;
-            var_s0++;
+            gWaveUVTable[idx].u = uvU;
+            gWaveUVTable[idx].v = uvV;
+            uvU += gWaveUVStepX;
+            idx++;
         }
-        var_a2 += gWaveUVStepY;
+        uvV += gWaveUVStepY;
     }
 
     if (gWavePlayerCount != 2) {
-        var_t2 = 1;
+        bufferPairs = 1;
     } else {
-        var_t2 = 2;
+        bufferPairs = 2;
     }
 
-    var_s0 = 0;
-    var_t5 = 0;
-    var_ra = gWaveController.subdivisions + 1;
+    idx = 0;
+    uvIdx = 0;
+    nextRowIdx = gWaveController.subdivisions + 1;
     for (i = 0; i < gWaveController.subdivisions; i++) {
         for (j = 0; j < gWaveController.subdivisions; j++) {
-            for (k = 0; k < var_t2; k++) {
-                gWaveTriangles[gWaveVertexFlip + (k << 1)][var_s0].uv0.u = gWaveUVTable[var_t5].u;
-                gWaveTriangles[gWaveVertexFlip + (k << 1)][var_s0].uv0.v = gWaveUVTable[var_t5 + 1].v;
-                gWaveTriangles[gWaveVertexFlip + (k << 1)][var_s0].uv1.u = gWaveUVTable[var_ra].u;
-                gWaveTriangles[gWaveVertexFlip + (k << 1)][var_s0].uv1.v = gWaveUVTable[var_ra].v;
-                gWaveTriangles[gWaveVertexFlip + (k << 1)][var_s0].uv2.u = gWaveUVTable[var_t5 + 1].u;
-                gWaveTriangles[gWaveVertexFlip + (k << 1)][var_s0].uv2.v = gWaveUVTable[var_t5 + 1].v;
-                gWaveTriangles[gWaveVertexFlip + (k << 1)][var_s0 + 1].uv0.u = gWaveUVTable[var_t5 + 1].u;
-                gWaveTriangles[gWaveVertexFlip + (k << 1)][var_s0 + 1].uv0.v = gWaveUVTable[var_t5 + 1].v;
-                gWaveTriangles[gWaveVertexFlip + (k << 1)][var_s0 + 1].uv1.u = gWaveUVTable[var_ra].u;
-                gWaveTriangles[gWaveVertexFlip + (k << 1)][var_s0 + 1].uv1.v = gWaveUVTable[var_ra + 1].v;
-                gWaveTriangles[gWaveVertexFlip + (k << 1)][var_s0 + 1].uv2.u = gWaveUVTable[var_ra + 1].u;
-                gWaveTriangles[gWaveVertexFlip + (k << 1)][var_s0 + 1].uv2.v = gWaveUVTable[var_ra + 1].v;
+            for (k = 0; k < bufferPairs; k++) {
+                gWaveTriangles[gWaveVertexFlip + (k << 1)][idx].uv0.u = gWaveUVTable[uvIdx].u;
+                gWaveTriangles[gWaveVertexFlip + (k << 1)][idx].uv0.v = gWaveUVTable[uvIdx + 1].v;
+                gWaveTriangles[gWaveVertexFlip + (k << 1)][idx].uv1.u = gWaveUVTable[nextRowIdx].u;
+                gWaveTriangles[gWaveVertexFlip + (k << 1)][idx].uv1.v = gWaveUVTable[nextRowIdx].v;
+                gWaveTriangles[gWaveVertexFlip + (k << 1)][idx].uv2.u = gWaveUVTable[uvIdx + 1].u;
+                gWaveTriangles[gWaveVertexFlip + (k << 1)][idx].uv2.v = gWaveUVTable[uvIdx + 1].v;
+                gWaveTriangles[gWaveVertexFlip + (k << 1)][idx + 1].uv0.u = gWaveUVTable[uvIdx + 1].u;
+                gWaveTriangles[gWaveVertexFlip + (k << 1)][idx + 1].uv0.v = gWaveUVTable[uvIdx + 1].v;
+                gWaveTriangles[gWaveVertexFlip + (k << 1)][idx + 1].uv1.u = gWaveUVTable[nextRowIdx].u;
+                gWaveTriangles[gWaveVertexFlip + (k << 1)][idx + 1].uv1.v = gWaveUVTable[nextRowIdx + 1].v;
+                gWaveTriangles[gWaveVertexFlip + (k << 1)][idx + 1].uv2.u = gWaveUVTable[nextRowIdx + 1].u;
+                gWaveTriangles[gWaveVertexFlip + (k << 1)][idx + 1].uv2.v = gWaveUVTable[nextRowIdx + 1].v;
             }
-            var_t5++;
-            var_ra++;
-            var_s0 += 2;
+            uvIdx++;
+            nextRowIdx++;
+            idx += 2;
         }
-        var_t5++;
-        var_ra++;
+        uvIdx++;
+        nextRowIdx++;
     }
 
     gWaveQuadTriangles[2 * gWaveVertexFlip].uv0.u = gWaveUVTable[0].u;
@@ -481,41 +499,44 @@ void waves_update(s32 updateRate) {
     }
 }
 
-void wave_blocks_decay_ripples(s32 arg0, s32 arg1) {
+/**
+ * Fades the ripples of each wavy segment for a viewport: in on the cells now visible, out on the rest.
+ */
+void wave_blocks_decay_ripples(s32 viewportID, s32 updateRate) {
     s32 i;
     s32 j;
 
-    arg1 <<= 3;
+    updateRate <<= 3; // Fade by 8 a frame.
     for (i = 0; i < gNumberOfLevelSegments; i++) {
         if (gWaveVisibilityGrid[gWaveModel[i].tileZ] & (1 << gWaveModel[i].tileX)) {
             if (gWaveController.doubleDensity) {
                 for (j = 0; j < 4; j++) {
                     if (gWaveBlockCells[gWaveModel[i].tileIndex] & (0xFF << (j << 3))) {
-                        if (arg1 < gWaveModel[i].viewportFade[arg0].quadrantFade[j]) {
-                            gWaveModel[i].viewportFade[arg0].quadrantFade[j] -= arg1;
+                        if (updateRate < gWaveModel[i].viewportFade[viewportID].quadrantFade[j]) {
+                            gWaveModel[i].viewportFade[viewportID].quadrantFade[j] -= updateRate;
                         } else {
-                            gWaveModel[i].viewportFade[arg0].quadrantFade[j] = 0;
+                            gWaveModel[i].viewportFade[viewportID].quadrantFade[j] = 0;
                         }
                     } else {
-                        if ((gWaveModel[i].viewportFade[arg0].quadrantFade[j] + arg1) < 0x80) {
-                            gWaveModel[i].viewportFade[arg0].quadrantFade[j] += arg1;
+                        if ((gWaveModel[i].viewportFade[viewportID].quadrantFade[j] + updateRate) < WAVE_FADE_MAX) {
+                            gWaveModel[i].viewportFade[viewportID].quadrantFade[j] += updateRate;
                         } else {
-                            gWaveModel[i].viewportFade[arg0].quadrantFade[j] = 0x80;
+                            gWaveModel[i].viewportFade[viewportID].quadrantFade[j] = WAVE_FADE_MAX;
                         }
                     }
                 }
             } else {
                 if (gWaveBlockCells[gWaveModel[i].tileIndex]) {
-                    if (arg1 < gWaveModel[i].viewportFade[arg0].quadrantFade[0]) {
-                        gWaveModel[i].viewportFade[arg0].quadrantFade[0] -= arg1;
+                    if (updateRate < gWaveModel[i].viewportFade[viewportID].quadrantFade[0]) {
+                        gWaveModel[i].viewportFade[viewportID].quadrantFade[0] -= updateRate;
                     } else {
-                        gWaveModel[i].viewportFade[arg0].quadrantFade[0] = 0;
+                        gWaveModel[i].viewportFade[viewportID].quadrantFade[0] = 0;
                     }
                 } else {
-                    if (gWaveModel[i].viewportFade[arg0].quadrantFade[0] + arg1 < 0x80) {
-                        gWaveModel[i].viewportFade[arg0].quadrantFade[0] += arg1;
+                    if (gWaveModel[i].viewportFade[viewportID].quadrantFade[0] + updateRate < WAVE_FADE_MAX) {
+                        gWaveModel[i].viewportFade[viewportID].quadrantFade[0] += updateRate;
                     } else {
-                        gWaveModel[i].viewportFade[arg0].quadrantFade[0] = 0x80;
+                        gWaveModel[i].viewportFade[viewportID].quadrantFade[0] = WAVE_FADE_MAX;
                     }
                 }
             }
@@ -567,17 +588,17 @@ void wave_load_material(TextureHeader *tex, s32 rtile) {
  * Renders waves in the current viewport.
  */
 void waves_render(Gfx **dList, Mtx **mtx, s32 viewportID) {
-    s32 sp11C;
+    s32 row;
     Vertex *vtx;
     Triangle *tri;
     s32 numTris;
     s32 numVerts;
     s32 j;
-    s32 sp104;
-    s32 var_fp;
-    s32 var_t0;
+    s32 cellMask;
+    s32 col;
+    s32 vertexOffset;
     ObjectTransform transform;
-    LevelModel_Alternate *spE0;
+    LevelModel_Alternate *model;
     s32 i;
     TextureHeader *tex1;
     TextureHeader *tex2;
@@ -643,32 +664,32 @@ void waves_render(Gfx **dList, Mtx **mtx, s32 viewportID) {
             } else {
                 wave_block_build_vertices_depth_shaded(gWaveBlockIDs[i], viewportID);
             }
-            spE0 = &gWaveModel[gWaveBlockIDs[i]];
-            transform.x_position = spE0->originX;
-            transform.y_position = spE0->originY;
-            transform.z_position = spE0->originZ;
-            sp104 = gWaveBlockCells[spE0->tileIndex];
+            model = &gWaveModel[gWaveBlockIDs[i]];
+            transform.x_position = model->originX;
+            transform.y_position = model->originY;
+            transform.z_position = model->originZ;
+            cellMask = gWaveBlockCells[model->tileIndex];
             if (gWaveController.doubleDensity) {
-                for (sp11C = 0; sp11C < 2; sp11C++) {
-                    transform.x_position = spE0->originX;
-                    for (var_fp = 0; var_fp < 2; var_fp++) {
+                for (row = 0; row < 2; row++) {
+                    transform.x_position = model->originX;
+                    for (col = 0; col < 2; col++) {
                         mtx_cam_push(&gWaveDL, &gWaveMtx, &transform, 1.0f, 0.0f);
                         // Tag the tile by identity rather than by the shared stack transform, so the host
                         // can pair its vertices with last frame's and interpolate the wave motion.
-                        pc_gfx_mtx_tag(gWaveMtx - 1, spE0, PC_MTX_SITE_WATER);
-                        if (sp104 & 0xFF) {
+                        pc_gfx_mtx_tag(gWaveMtx - 1, model, PC_MTX_SITE_WATER);
+                        if (cellMask & 0xFF) {
                             numTris = gWaveController.subdivisions << 1;
                             numVerts = gWaveController.subdivisions + 1;
-                            var_t0 = ((sp104 & 0xFF) - 1) * numVerts * numVerts;
+                            vertexOffset = ((cellMask & 0xFF) - 1) * numVerts * numVerts;
                             for (j = 0; j < gWaveController.subdivisions; j++) {
-                                vtx = &gWaveVertices[gWaveVertexFlip + viewportID][var_t0];
+                                vtx = &gWaveVertices[gWaveVertexFlip + viewportID][vertexOffset];
                                 tri = &gWaveTriangles[gWaveVertexFlip + viewportID]
                                                      [j * (gWaveController.subdivisions << 1)];
 
                                 gSPVertexDKR(gWaveDL++, OS_K0_TO_PHYSICAL(vtx), numVerts << 1, 0);
                                 gSPPolygon(gWaveDL++, OS_K0_TO_PHYSICAL(tri), numTris, TRIN_ENABLE_TEXTURE);
 
-                                var_t0 += gWaveController.subdivisions + 1;
+                                vertexOffset += gWaveController.subdivisions + 1;
                             }
                         } else {
                             gSPVertexDKR(gWaveDL++, OS_K0_TO_PHYSICAL(&gWaveCornerVertices[gWaveVertexFlip]), 4, 0);
@@ -676,25 +697,25 @@ void waves_render(Gfx **dList, Mtx **mtx, s32 viewportID) {
                                        TRIN_ENABLE_TEXTURE);
                         }
                         mtx_pop(&gWaveDL);
-                        sp104 >>= 8;
+                        cellMask >>= 8;
                         transform.x_position += gWaveBoundingBoxW * 0.5f;
                     }
                     transform.z_position += gWaveBoundingBoxH * 0.5f;
                 }
             } else {
                 mtx_cam_push(&gWaveDL, &gWaveMtx, &transform, 1.0f, 0.0f);
-                pc_gfx_mtx_tag(gWaveMtx - 1, spE0, PC_MTX_SITE_WATER);
+                pc_gfx_mtx_tag(gWaveMtx - 1, model, PC_MTX_SITE_WATER);
                 numTris = gWaveController.subdivisions << 1;
                 numVerts = gWaveController.subdivisions + 1;
-                var_t0 = ((sp104 & 0xFF) - 1) * numVerts * numVerts;
+                vertexOffset = ((cellMask & 0xFF) - 1) * numVerts * numVerts;
                 for (j = 0; j < gWaveController.subdivisions; j++) {
-                    vtx = &gWaveVertices[gWaveVertexFlip + viewportID][var_t0];
+                    vtx = &gWaveVertices[gWaveVertexFlip + viewportID][vertexOffset];
                     tri = &gWaveTriangles[gWaveVertexFlip + viewportID][j * (gWaveController.subdivisions << 1)];
 
                     gSPVertexDKR(gWaveDL++, OS_K0_TO_PHYSICAL(vtx), numVerts << 1, 0);
                     gSPPolygon(gWaveDL++, OS_K0_TO_PHYSICAL(tri), numTris, TRIN_ENABLE_TEXTURE);
 
-                    var_t0 += gWaveController.subdivisions + 1;
+                    vertexOffset += gWaveController.subdivisions + 1;
                 }
                 mtx_pop(&gWaveDL);
             }

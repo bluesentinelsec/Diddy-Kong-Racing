@@ -93,7 +93,7 @@ void wavegen_destroy(Object *obj);
 f32 obj_wave_height(Object_Log *log, s32 updateRate);
 void wave_blocks_decay_ripples(s32 viewportID, s32 updateRate);
 void func_800BF9F8(WaveGen *gen, f32 arg1, f32 arg2);
-WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 phase, f32 speed, f32 wavelength,
+WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 phase, f32 waveSpeed, f32 wavelength,
                           f32 amplitude, s32 flags);
 void waves_alloc(void);
 void wave_load_material(TextureHeader *tex, s32 rtile);

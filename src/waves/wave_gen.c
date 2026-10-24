@@ -70,7 +70,7 @@ void wavegen_add(Object *obj) {
 /**
  * Registers a new wave generator point with the given properties.
  */
-WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 phase, f32 speed, f32 wavelength,
+WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 phase, f32 waveSpeed, f32 wavelength,
                           f32 amplitude, s32 flags) {
     f32 stepSize;
     s32 emptyWave;
@@ -140,13 +140,13 @@ WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 pha
             result->radiusSq = waveSize * waveSize;
             result->phase = phase;
             if (osTvType == OS_TV_TYPE_PAL) {
-                result->phaseSpeed = speed * 20971.52; //(f64) (0x80000 / 25.0);
+                result->phaseSpeed = waveSpeed * 20971.52; //(f64) (0x80000 / 25.0);
             } else {
-                result->phaseSpeed = speed * 17476.27; //(f64) ((0x80000 / 1.2) / 25.0);
+                result->phaseSpeed = waveSpeed * 17476.27; //(f64) ((0x80000 / 1.2) / 25.0);
             }
             result->phasePerUnit = 65536.0f / wavelength;
             result->amplitude = amplitude;
-            result->speed = speed;
+            result->speed = waveSpeed;
             result->isLinearX = flags & WAVEGEN_LINEAR_X;
             result->isLinearZ = flags & WAVEGEN_LINEAR_Z;
             result->wavelength = wavelength;

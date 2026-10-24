@@ -41,6 +41,16 @@
 // Starting (and fully faded) value of LevelModel_Alternate.viewportFade.
 #define WAVE_FADE_MAX 0x80
 
+// gWaveController.waveViewDist: wave cells drawn in full around the camera, as a square this many cells
+// across. Two-player games always use the near distance.
+#define WAVE_VIEW_DIST_NEAR 3
+#define WAVE_VIEW_DIST_FAR 5
+// Most wave cells that can be visible at once (WAVE_VIEW_DIST_FAR squared); each vertex buffer holds a grid
+// for every one.
+#define WAVE_MAX_VISIBLE_CELLS 25
+// Two-player games always use this many wave subdivisions per segment, whatever the level header says.
+#define WAVE_SUBDIVISIONS_2P 4
+
 extern f32 *gWaveHeightTable;
 extern Vec2s *gWaveHeightIndices;
 extern TexCoords *gWaveUVTable;
@@ -113,7 +123,7 @@ void waves_build_sine_table(void);
 void waves_init_collision(LevelModel *model);
 f32 waves_get_y(s32 blockID, s32 cellX, s32 cellZ);
 void wavegen_destroy(Object *obj);
-WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 phase, f32 speed, f32 wavelength,
+WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 phase, f32 waveSpeed, f32 wavelength,
                           f32 amplitude, s32 flags);
 void wave_gens_update(s32 updateRate);
 
