@@ -1,8 +1,10 @@
-# frames 3000
+# frames 11000
 # save 100
 # level 11
+# adventure
 # Fire Mountain, the egg-collecting battle arena, started straight from the title
-# menu (# level, DKR_TRACE_LEVEL) on the 100% save and driven by the autopilot (AUTO).
-# Added from the coverage report (make coverage): no other scene reaches this level's code.
+# menu (# level, DKR_TRACE_LEVEL) on the 100% save in adventure mode, so three AI rivals
+# join (the battle AI needs all four racers), and driven by the autopilot (AUTO): eggs
+# picked up and carried, and the player's first egg scored in its nest by the last frame.
 # Format: <frame> <buttons> <stickX> <stickY> [p<N>], held until the next line (DKR_INPUT_SCRIPT).
 150 AUTO 0 0
