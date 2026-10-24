@@ -1525,6 +1525,52 @@ void sprite_init_frame(SpriteAsset *spriteAsset, Sprite *sprite, s32 frameId) {
 }
 
 /**
+ * Works out how the texture tiles: an axis whose size is not a power of two (or that the texture flags as clamped)
+ * clamps with no mask, otherwise it wraps with a mask of log2 of its size.
+ */
+static void material_tile_wrap(TextureHeader *tex, s32 width, s32 height, s32 *cmsOut, s32 *cmtOut, s32 *masksOut,
+                               s32 *masktOut) {
+    s32 i;
+    s32 uClamp;
+    s32 vClamp;
+    s32 size;
+
+    size = 1;
+    *masksOut = 1;
+    *masktOut = 1;
+    uClamp = TRUE;
+    vClamp = TRUE;
+
+    for (i = 0; i < 7; i++) {
+        if (size < width) {
+            *masksOut = i + 1;
+        } else if ((size == width) != 0) {
+            uClamp = FALSE;
+        }
+        if (size < height) {
+            *masktOut = i + 1;
+        } else if ((size == height) != 0) {
+            vClamp = FALSE;
+        }
+        size *= 2;
+    }
+
+    if (uClamp || tex->flags & RENDER_CLAMP_X) {
+        *cmsOut = G_TX_CLAMP;
+        *masksOut = G_TX_NOMASK;
+    } else {
+        *cmsOut = G_TX_WRAP;
+    }
+
+    if (vClamp || tex->flags & RENDER_CLAMP_Y) {
+        *cmtOut = G_TX_CLAMP;
+        *masktOut = G_TX_NOMASK;
+    } else {
+        *cmtOut = G_TX_WRAP;
+    }
+}
+
+/**
  * Build the display list for the texture.
  * Takes the texture properties from the header and then constructs the F3D gfx commands.
  * Certain texture types will also have draw mode flag overrides.
@@ -1538,10 +1584,6 @@ void material_init(TextureHeader *tex, Gfx *_dList) {
     s32 cmt;
     s32 masks;
     s32 maskt;
-    s32 i;
-    s32 uClamp;
-    s32 vClamp;
-    s32 size;
     uintptr_t texLut;
     Gfx *dList;
 
@@ -1550,39 +1592,7 @@ void material_init(TextureHeader *tex, Gfx *_dList) {
     texRenderMode = TEX_RENDERMODE(tex->format);
     height = tex->height;
     width = tex->width;
-    size = 1;
-    masks = 1;
-    maskt = 1;
-    uClamp = TRUE;
-    vClamp = TRUE;
-
-    for (i = 0; i < 7; i++) {
-        if (size < width) {
-            masks = i + 1;
-        } else if ((size == width) != 0) {
-            uClamp = FALSE;
-        }
-        if (size < height) {
-            maskt = i + 1;
-        } else if ((size == height) != 0) {
-            vClamp = FALSE;
-        }
-        size *= 2;
-    }
-
-    if (uClamp || tex->flags & RENDER_CLAMP_X) {
-        cms = G_TX_CLAMP;
-        masks = G_TX_NOMASK;
-    } else {
-        cms = G_TX_WRAP;
-    }
-
-    if (vClamp || tex->flags & RENDER_CLAMP_Y) {
-        cmt = G_TX_CLAMP;
-        maskt = G_TX_NOMASK;
-    } else {
-        cmt = G_TX_WRAP;
-    }
+    material_tile_wrap(tex, width, height, &cms, &cmt, &masks, &maskt);
 
     if (!(tex->flags & RENDER_LINE_SWAP)) {
         // If it is not swapped, then use the regular loadTexBlock macros.

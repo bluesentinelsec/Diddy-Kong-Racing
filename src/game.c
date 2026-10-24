@@ -14,6 +14,7 @@
 #include "menu.h"
 #include "objects.h"
 #include "particles.h"
+#include "pc_swap.h"
 #include "racer.h"
 #include "rcp_dkr.h"
 #include "save_data.h"
@@ -25,7 +26,6 @@
 #include "types.h"
 #include "video.h"
 #include "weather.h"
-#include "pc_swap.h"
 
 // LevelHeader is loaded from a 0xC4-byte big-endian N64 image and unpacked
 // into the host struct (see pc_asset.h). AILevelTable (0x20) is inline s8 data
@@ -113,7 +113,6 @@ s16 gLevelPropertyStack[5 * 4]; // Stores level info for cutscenes. 5 sets of fo
 void level_global_init(void) {
     s32 i;
     s32 size;
-    UNUSED s32 pad;
     s32 checksumCount;
     u8 *header;
     s32 j;
@@ -176,7 +175,6 @@ void level_global_init(void) {
     mempool_free(gTempAssetTable);
     // Antipiracy measure
 }
-
 
 /**
  * Iterates through the level property table and attempts to find a level ID that matches the properties you want.
@@ -316,9 +314,9 @@ Vehicle leveltable_vehicle_default(s32 mapId) {
  */
 s32 leveltable_vehicle_usable(s32 mapId) {
     if (mapId > 0 && mapId < gNumberOfLevelHeaders) {
-        s32 temp = gGlobalLevelTable[mapId].vehicles;
-        if (temp != 0) {
-            return (temp >> 4) & 0xF;
+        s32 vehicles = gGlobalLevelTable[mapId].vehicles;
+        if (vehicles != 0) {
+            return (vehicles >> 4) & 0xF;
         }
     }
     return (1 << VEHICLE_CAR);
@@ -375,32 +373,9 @@ s32 level_is_race(void) {
 }
 
 /**
- * Loads and sets up the level header, then loads and sets of the level geometry.
- * Sets weather, fog and active cutscenes where applicable.
- * Official Name: levelInit
+ * Caps how many sounds may play at once: more players get more voices.
  */
-void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicleId, s32 cutsceneId) {
-    s8 *someAsset;
-    s32 i;
-    s32 size;
-    s32 var_s0;
-    s32 wizpig;
-    s32 numPlayers;
-    s32 prevLevelID;
-    Settings *settings;
-    s32 offset;
-
-    rumble_kill();
-    if (cutsceneId == -1) {
-        cutsceneId = CUTSCENE_NONE;
-    }
-    if (numberOfPlayers == ZERO_PLAYERS) {
-        numPlayers = 1;
-        numberOfPlayers = ONE_PLAYER;
-    } else {
-        numPlayers = 0;
-    }
-
+static void level_set_sound_limit(s32 numberOfPlayers) {
     if (numberOfPlayers == ONE_PLAYER) {
         sndp_set_active_sound_limit(8);
     } else if (numberOfPlayers == TWO_PLAYERS) {
@@ -408,7 +383,18 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     } else {
         sndp_set_active_sound_limit(16);
     }
-    settings = get_settings();
+}
+
+/**
+ * Loads the level header table and the header for the given level into gCurrentLevelHeader.
+ * An out of range level falls back to the Central Area hub. Returns the level that was loaded.
+ * gTempAssetTable stays loaded for level_load to use and free.
+ */
+static s32 level_load_header(s32 levelId) {
+    s32 i;
+    s32 size;
+    s32 offset;
+
     gTempAssetTable = (s32 *) asset_table_load(ASSET_LEVEL_HEADERS_TABLE);
     pc_swap32_buf(gTempAssetTable, asset_table_size(ASSET_LEVEL_HEADERS_TABLE));
 
@@ -423,6 +409,232 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     size = gTempAssetTable[levelId + 1] - offset;
     gCurrentLevelHeader = (LevelHeader *) mempool_alloc_safe(sizeof(LevelHeader), COLOUR_TAG_YELLOW);
     pc_load_level_header(gCurrentLevelHeader, offset);
+    return levelId;
+}
+
+/**
+ * Entering a boss level for the first time (or a Wizpig level at any time) first plays the boss's intro
+ * cutscene in its own level: the requested level is pushed so it loads afterwards.
+ */
+static void level_redirect_boss_intro(Settings *settings, s32 *levelId, s32 *entranceId, Vehicle vehicleId,
+                                      s32 *cutsceneId) {
+    s8 *bossIntroLevels;
+    s32 courseFlags;
+    s32 wizpig;
+    s32 i;
+
+    courseFlags = settings->courseFlagsPtr[*levelId];
+    wizpig = FALSE;
+    if (gCurrentLevelHeader->world == WORLD_CENTRAL_AREA || gCurrentLevelHeader->world == WORLD_FUTURE_FUN_LAND) {
+        wizpig = TRUE;
+    }
+    if (!(courseFlags & 1) || wizpig) {
+        level_properties_push(*levelId, *entranceId, vehicleId, *cutsceneId);
+        if (settings->bosses & (1 << settings->worldId)) {
+            *cutsceneId = CUTSCENE_ID_UNK_7;
+        } else {
+            *cutsceneId = CUTSCENE_ID_UNK_3;
+        }
+        if (wizpig) {
+            *cutsceneId = 0;
+            if (courseFlags & 1) {
+                gPostWizpigState = 2;
+            }
+        }
+        bossIntroLevels = (s8 *) get_misc_asset(ASSET_MISC_67);
+        for (i = 0; *levelId != bossIntroLevels[i]; i += 2) {}
+        *levelId = bossIntroLevels[i + 1];
+        *entranceId = *cutsceneId;
+        if (*cutsceneId == CUTSCENE_NONE) {
+            stubbed_printf("BossLev problem\n");
+        }
+    }
+}
+
+/**
+ * Entering a world's hub after collecting its key for the first time first plays the cutscene of the key
+ * unlocking the challenge door: the requested level is pushed so it loads afterwards.
+ */
+static void level_redirect_world_key(Settings *settings, s32 *levelId, s32 *entranceId, Vehicle vehicleId,
+                                     s32 *cutsceneId) {
+    s8 *keyCutsceneLevels;
+    s32 world;
+
+    if (gCurrentLevelHeader->world > WORLD_CENTRAL_AREA && gCurrentLevelHeader->world < WORLD_FUTURE_FUN_LAND) {
+        world = gCurrentLevelHeader->world;
+        // Shifts of 32+ on an s32 are UB in C; the N64 relied on MIPS masking the
+        // count mod 32 (so +31 means -1). GCC deletes the flag checks otherwise.
+        if (settings->keys & (1 << world) &&
+            !(settings->cutsceneFlags & (CUTSCENE_DINO_DOMAIN_KEY << ((world + 31) & 31)))) {
+            // Trigger World Key unlocking Challenge Door cutscene.
+            level_properties_push(*levelId, *entranceId, vehicleId, *cutsceneId);
+            settings->cutsceneFlags |= CUTSCENE_DINO_DOMAIN_KEY << ((world + 31) & 31);
+            keyCutsceneLevels = (s8 *) get_misc_asset(ASSET_MISC_68);
+            *levelId = keyCutsceneLevels[world - 1];
+            *entranceId = 0;
+            *cutsceneId = CUTSCENE_ID_UNK_5;
+        }
+    }
+}
+
+/**
+ * Points every colour cycle in the level header at its loaded asset and resets its pulsing light.
+ */
+static void level_init_colour_cycles(void) {
+    s32 i;
+
+    for (i = 0; i < 7; i++) {
+        if (ASSET_SLOT(gCurrentLevelHeader->colourCycles[i]) != -1) {
+            gCurrentLevelHeader->colourCycles[i] =
+                (ColourCycle *) get_misc_asset(ASSET_SLOT(gCurrentLevelHeader->colourCycles[i]));
+            // The colour loop is a big-endian misc asset. Only the subset shared
+            // with a particle behaviour is swapped in init_particle_assets; swap
+            // the rest here (shared swap-once table, so no double-swap) or
+            // pulse_light_reset's count below reads big-endian and walks off the pool.
+            pc_swap_colour_loop_shared(gCurrentLevelHeader->colourCycles[i]);
+            pulse_light_reset((ColourCycle *) gCurrentLevelHeader->colourCycles[i]);
+        }
+    }
+}
+
+/**
+ * Sets the Taj challenge for the vehicle, records the world and course in the settings, and picks the vehicle:
+ * leaving Central Area remembers the world's default vehicle, and returning to it brings that vehicle back.
+ * Returns the vehicle to use.
+ */
+static Vehicle level_choose_vehicle(Settings *settings, s32 levelId, Vehicle vehicleId) {
+    s32 tajChallenge;
+    s32 prevWorldId;
+
+    tajChallenge = VEHICLE_CAR;
+    if (vehicleId >= VEHICLE_CAR && vehicleId < NUMBER_OF_PLAYER_VEHICLES) {
+        tajChallenge = gCurrentLevelHeader->tajChallengeByVehicle[vehicleId];
+    }
+    set_taj_challenge_type(tajChallenge);
+    prevWorldId = settings->worldId;
+    if (gCurrentLevelHeader->world != -1) {
+        settings->worldId = gCurrentLevelHeader->world;
+    }
+    settings->courseId = levelId;
+    if (prevWorldId == WORLD_CENTRAL_AREA && settings->worldId > 0) {
+        gCurrentDefaultVehicle = get_level_default_vehicle();
+    }
+    if (settings->worldId == WORLD_CENTRAL_AREA && prevWorldId > 0 && gCurrentDefaultVehicle != -1) {
+        vehicleId = gCurrentDefaultVehicle;
+    }
+    set_vehicle_id_for_menu(vehicleId);
+    stubbed_printf("post vehicle swap\n");
+    return vehicleId;
+}
+
+/**
+ * In a world hub, plays the balloon door opening cutscene once enough balloons are collected
+ * (and the Future Fun Land door's once the balloons and Wizpig amulet are complete).
+ * Returns the cutscene to use.
+ */
+static s32 level_balloon_door_cutscenes(Settings *settings, s32 cutsceneId) {
+    s32 doorFlag;
+
+    if (gCurrentLevelHeader->race_type == RACETYPE_HUBWORLD) {
+        if (settings->worldId - 1 >= 0) {
+            doorFlag = 8 << ((settings->worldId + 31) & 31); // MIPS shift-mask semantics; see level_redirect_world_key
+            if (settings->worldId == 5) {
+                if (settings->balloonsPtr[0] >= 47) {
+                    if (settings->ttAmulet >= 4) {
+                        if ((settings->cutsceneFlags & doorFlag) == 0) {
+                            settings->cutsceneFlags |= doorFlag;
+                            cutsceneId = CUTSCENE_ID_UNK_5;
+                        }
+                    }
+                }
+            } else {
+                if (settings->balloonsPtr[settings->worldId] >= 4) {
+                    if (!(settings->cutsceneFlags & doorFlag)) {
+                        settings->cutsceneFlags |= doorFlag;
+                        cutsceneId = CUTSCENE_ID_UNK_5;
+                    }
+                }
+                doorFlag <<= 5;
+                if (settings->balloonsPtr[settings->worldId] >= 8) {
+                    if (!(settings->cutsceneFlags & doorFlag)) {
+                        settings->cutsceneFlags |= doorFlag;
+                        cutsceneId = CUTSCENE_ID_UNK_5;
+                    }
+                }
+            }
+        }
+    }
+    return cutsceneId;
+}
+
+/**
+ * Sets every viewport's fog from the level header, or resets it when the header has none.
+ */
+static void level_init_fog(void) {
+    s32 i;
+
+    if (gCurrentLevelHeader->fogNear == 0 && gCurrentLevelHeader->fogFar == 0 && gCurrentLevelHeader->fogR == 0 &&
+        gCurrentLevelHeader->fogG == 0 && gCurrentLevelHeader->fogB == 0) {
+        for (i = 0; i < 4; i++) {
+            reset_fog(i);
+        }
+    } else {
+        for (i = 0; i < 4; i++) {
+            set_fog(i, gCurrentLevelHeader->fogNear, gCurrentLevelHeader->fogFar, (u8) gCurrentLevelHeader->fogR,
+                    gCurrentLevelHeader->fogG, gCurrentLevelHeader->fogB);
+        }
+    }
+}
+
+/**
+ * Starts the level's weather, loads its flat sky texture (when it has no sky dome) and its pulsating lights.
+ */
+static void level_init_weather_and_sky(void) {
+    if (gCurrentLevelHeader->weatherEnable > 0) {
+        weather_reset(gCurrentLevelHeader->weatherType, gCurrentLevelHeader->weatherEnable,
+                      gCurrentLevelHeader->weatherVelX << 8, gCurrentLevelHeader->weatherVelY << 8,
+                      gCurrentLevelHeader->weatherVelZ << 8, gCurrentLevelHeader->weatherIntensity * 257,
+                      gCurrentLevelHeader->weatherOpacity * 257);
+        weather_clip_planes(-1, -512);
+    }
+    if (gCurrentLevelHeader->skyDome == -1) {
+        gCurrentLevelHeader->skyTexture = load_texture(ASSET_SLOT(gCurrentLevelHeader->skyTexture));
+        gCurrentLevelHeader->skyTexScrollU = 0;
+        gCurrentLevelHeader->skyTexScrollV = 0;
+    }
+    if (ASSET_SLOT(gCurrentLevelHeader->pulseLightData) != -1) {
+        gCurrentLevelHeader->pulseLightData =
+            (PulsatingLightData *) get_misc_asset(ASSET_SLOT(gCurrentLevelHeader->pulseLightData));
+        init_pulsating_light_data(gCurrentLevelHeader->pulseLightData);
+    }
+}
+
+/**
+ * Loads and sets up the level header, then loads and sets of the level geometry.
+ * Sets weather, fog and active cutscenes where applicable.
+ * Official Name: levelInit
+ */
+void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicleId, s32 cutsceneId) {
+    s32 size;
+    s32 zeroPlayers;
+    s32 prevLevelID;
+    Settings *settings;
+    s32 offset;
+
+    rumble_kill();
+    if (cutsceneId == -1) {
+        cutsceneId = CUTSCENE_NONE;
+    }
+    if (numberOfPlayers == ZERO_PLAYERS) {
+        zeroPlayers = 1;
+        numberOfPlayers = ONE_PLAYER;
+    } else {
+        zeroPlayers = 0;
+    }
+
+    level_set_sound_limit(numberOfPlayers);
+    settings = get_settings();
+    levelId = level_load_header(levelId);
     gPostWizpigState = 0;
     prevLevelID = levelId;
     if (gCurrentLevelHeader->race_type == RACETYPE_DEFAULT) {
@@ -430,50 +642,10 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     }
     if (level_properties_get() == 0 && gLevelPropertiesLock == 0) {
         if (gCurrentLevelHeader->race_type == RACETYPE_BOSS) {
-            var_s0 = settings->courseFlagsPtr[levelId];
-            wizpig = FALSE;
-            if (gCurrentLevelHeader->world == WORLD_CENTRAL_AREA ||
-                gCurrentLevelHeader->world == WORLD_FUTURE_FUN_LAND) {
-                wizpig = TRUE;
-            }
-            if (!(var_s0 & 1) || wizpig) {
-                level_properties_push(levelId, entranceId, vehicleId, cutsceneId);
-                if (settings->bosses & (1 << settings->worldId)) {
-                    cutsceneId = CUTSCENE_ID_UNK_7;
-                } else {
-                    cutsceneId = CUTSCENE_ID_UNK_3;
-                }
-                if (wizpig) {
-                    cutsceneId = 0;
-                    if (var_s0 & 1) {
-                        gPostWizpigState = 2;
-                    }
-                }
-                someAsset = (s8 *) get_misc_asset(ASSET_MISC_67);
-                for (var_s0 = 0; levelId != someAsset[var_s0]; var_s0 += 2) {}
-                levelId = someAsset[var_s0 + 1];
-                entranceId = cutsceneId;
-                if (cutsceneId == CUTSCENE_NONE) {
-                    stubbed_printf("BossLev problem\n");
-                }
-            }
+            level_redirect_boss_intro(settings, &levelId, &entranceId, vehicleId, &cutsceneId);
         }
         if (gCurrentLevelHeader->race_type == RACETYPE_HUBWORLD) {
-            if (gCurrentLevelHeader->world > WORLD_CENTRAL_AREA && gCurrentLevelHeader->world < WORLD_FUTURE_FUN_LAND) {
-                var_s0 = gCurrentLevelHeader->world;
-                // Shifts of 32+ on an s32 are UB in C; the N64 relied on MIPS masking the
-                // count mod 32 (so +31 means -1). GCC deletes the flag checks otherwise.
-                if (settings->keys & (1 << var_s0) &&
-                    !(settings->cutsceneFlags & (CUTSCENE_DINO_DOMAIN_KEY << ((var_s0 + 31) & 31)))) {
-                    // Trigger World Key unlocking Challenge Door cutscene.
-                    level_properties_push(levelId, entranceId, vehicleId, cutsceneId);
-                    settings->cutsceneFlags |= CUTSCENE_DINO_DOMAIN_KEY << ((var_s0 + 31) & 31);
-                    someAsset = (s8 *) get_misc_asset(ASSET_MISC_68);
-                    levelId = someAsset[var_s0 - 1];
-                    entranceId = 0;
-                    cutsceneId = CUTSCENE_ID_UNK_5;
-                }
-            }
+            level_redirect_world_key(settings, &levelId, &entranceId, vehicleId, &cutsceneId);
         }
         if (gCurrentLevelHeader->race_type == RACETYPE_HUBWORLD && gCurrentLevelHeader->world == WORLD_CENTRAL_AREA &&
             !(settings->cutsceneFlags & CUTSCENE_WIZPIG_FACE) && settings->wizpigAmulet >= 4) {
@@ -497,18 +669,7 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     aitable_init((s8 *) &gCurrentLevelHeader->AILevelTable);
     object_ids_clear();
     gMapId = levelId;
-    for (var_s0 = 0; var_s0 < 7; var_s0++) {
-        if (ASSET_SLOT(gCurrentLevelHeader->colourCycles[var_s0]) != -1) {
-            gCurrentLevelHeader->colourCycles[var_s0] =
-                (ColourCycle *) get_misc_asset(ASSET_SLOT(gCurrentLevelHeader->colourCycles[var_s0]));
-            // The colour loop is a big-endian misc asset. Only the subset shared
-            // with a particle behaviour is swapped in init_particle_assets; swap
-            // the rest here (shared swap-once table, so no double-swap) or
-            // pulse_light_reset's count below reads big-endian and walks off the pool.
-            pc_swap_colour_loop_shared(gCurrentLevelHeader->colourCycles[var_s0]);
-            pulse_light_reset((ColourCycle *) gCurrentLevelHeader->colourCycles[var_s0]);
-        }
-    }
+    level_init_colour_cycles();
 
     if (cutsceneId == CUTSCENE_ID_UNK_64) {
         if (get_trophy_race_world_id() != 0) {
@@ -526,61 +687,16 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     } else {
         gIsInRace = FALSE;
     }
-    if (numPlayers && gCurrentLevelHeader->race_type != RACETYPE_CUTSCENE_2) {
+    if (zeroPlayers && gCurrentLevelHeader->race_type != RACETYPE_CUTSCENE_2) {
         gCurrentLevelHeader->race_type = RACETYPE_CUTSCENE_1;
     }
     music_voicelimit_set(gCurrentLevelHeader->voiceLimit);
     music_volume_reset();
     lights_init(32);
-    var_s0 = VEHICLE_CAR;
-    if (vehicleId >= VEHICLE_CAR && vehicleId < NUMBER_OF_PLAYER_VEHICLES) {
-        var_s0 = gCurrentLevelHeader->tajChallengeByVehicle[vehicleId];
-    }
-    set_taj_challenge_type(var_s0);
-    var_s0 = settings->worldId;
-    if (gCurrentLevelHeader->world != -1) {
-        settings->worldId = gCurrentLevelHeader->world;
-    }
-    settings->courseId = levelId;
-    if (var_s0 == WORLD_CENTRAL_AREA && settings->worldId > 0) {
-        gCurrentDefaultVehicle = get_level_default_vehicle();
-    }
-    if (settings->worldId == WORLD_CENTRAL_AREA && var_s0 > 0 && gCurrentDefaultVehicle != -1) {
-        vehicleId = gCurrentDefaultVehicle;
-    }
-    set_vehicle_id_for_menu(vehicleId);
-    stubbed_printf("post vehicle swap\n");
-    if (gCurrentLevelHeader->race_type == RACETYPE_HUBWORLD) {
-        if (settings->worldId - 1 >= 0) {
-            var_s0 = 8 << ((settings->worldId + 31) & 31); // MIPS shift-mask semantics; see above
-            if (settings->worldId == 5) {
-                if (settings->balloonsPtr[0] >= 47) {
-                    if (settings->ttAmulet >= 4) {
-                        if ((settings->cutsceneFlags & var_s0) == 0) {
-                            settings->cutsceneFlags |= var_s0;
-                            cutsceneId = CUTSCENE_ID_UNK_5;
-                        }
-                    }
-                }
-            } else {
-                if (settings->balloonsPtr[settings->worldId] >= 4) {
-                    if (!(settings->cutsceneFlags & var_s0)) {
-                        settings->cutsceneFlags |= var_s0;
-                        cutsceneId = CUTSCENE_ID_UNK_5;
-                    }
-                }
-                var_s0 <<= 5;
-                if (settings->balloonsPtr[settings->worldId] >= 8) {
-                    if (!(settings->cutsceneFlags & var_s0)) {
-                        settings->cutsceneFlags |= var_s0;
-                        cutsceneId = CUTSCENE_ID_UNK_5;
-                    }
-                }
-            }
-        }
-    }
+    vehicleId = level_choose_vehicle(settings, levelId, vehicleId);
+    cutsceneId = level_balloon_door_cutscenes(settings, cutsceneId);
 
-    var_s0 = settings->courseFlagsPtr[levelId]; // Redundant
+    (void) settings->courseFlagsPtr[levelId]; // Redundant read, kept from the original.
     if (numberOfPlayers != ONE_PLAYER && gCurrentLevelHeader->race_type == RACETYPE_DEFAULT) {
         cutsceneId = CUTSCENE_ID_UNK_64;
     }
@@ -591,7 +707,7 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     } else {
         gTwoPlayerAdvRace = FALSE;
     }
-    if (gCurrentLevelHeader->race_type == RACETYPE_DEFAULT && numPlayers == 0 && is_time_trial_enabled()) {
+    if (gCurrentLevelHeader->race_type == RACETYPE_DEFAULT && zeroPlayers == 0 && is_time_trial_enabled()) {
         cutsceneId = CUTSCENE_ID_UNK_64;
     }
     cutscene_id_set(cutsceneId);
@@ -599,39 +715,13 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     init_track(gCurrentLevelHeader->geometry, gCurrentLevelHeader->skybox, numberOfPlayers, vehicleId, entranceId,
                gCurrentLevelHeader->collectables, gCurrentLevelHeader->objectMapId);
     stubbed_printf("post init_track\n");
-    if (gCurrentLevelHeader->fogNear == 0 && gCurrentLevelHeader->fogFar == 0 && gCurrentLevelHeader->fogR == 0 &&
-        gCurrentLevelHeader->fogG == 0 && gCurrentLevelHeader->fogB == 0) {
-        for (var_s0 = 0; var_s0 < 4; var_s0++) {
-            reset_fog(var_s0);
-        }
-    } else {
-        for (var_s0 = 0; var_s0 < 4; var_s0++) {
-            set_fog(var_s0, gCurrentLevelHeader->fogNear, gCurrentLevelHeader->fogFar, (u8) gCurrentLevelHeader->fogR,
-                    gCurrentLevelHeader->fogG, gCurrentLevelHeader->fogB);
-        }
-    }
+    level_init_fog();
     settings = get_settings();
     if (gCurrentLevelHeader->world != -1) {
         settings->worldId = gCurrentLevelHeader->world;
     }
     settings->courseId = levelId;
-    if (gCurrentLevelHeader->weatherEnable > 0) {
-        weather_reset(gCurrentLevelHeader->weatherType, gCurrentLevelHeader->weatherEnable,
-                      gCurrentLevelHeader->weatherVelX << 8, gCurrentLevelHeader->weatherVelY << 8,
-                      gCurrentLevelHeader->weatherVelZ << 8, gCurrentLevelHeader->weatherIntensity * 257,
-                      gCurrentLevelHeader->weatherOpacity * 257);
-        weather_clip_planes(-1, -512);
-    }
-    if (gCurrentLevelHeader->skyDome == -1) {
-        gCurrentLevelHeader->skyTexture = load_texture(ASSET_SLOT(gCurrentLevelHeader->skyTexture));
-        gCurrentLevelHeader->skyTexScrollU = 0;
-        gCurrentLevelHeader->skyTexScrollV = 0;
-    }
-    if (ASSET_SLOT(gCurrentLevelHeader->pulseLightData) != -1) {
-        gCurrentLevelHeader->pulseLightData =
-            (PulsatingLightData *) get_misc_asset(ASSET_SLOT(gCurrentLevelHeader->pulseLightData));
-        init_pulsating_light_data(gCurrentLevelHeader->pulseLightData);
-    }
+    level_init_weather_and_sky();
     cam_set_fov(gCurrentLevelHeader->cameraFOV);
     bgdraw_primcolour(gCurrentLevelHeader->bgColorRed, gCurrentLevelHeader->bgColorGreen,
                       gCurrentLevelHeader->bgColorBlue);
@@ -749,8 +839,9 @@ void level_free(void) {
  * Apply offsets based on game mode.
  */
 void aitable_init(s8 *aiLevelTable) {
-    s32 temp;
-    UNUSED s32 temp2;
+    s32 courseFlags;
+    s32 offset;
+    s32 size;
     s16 tableIndexCount;
     s8 aiLevel;
     Settings *settings;
@@ -758,11 +849,11 @@ void aitable_init(s8 *aiLevelTable) {
     aiLevel = 0;
     if (is_in_tracks_mode() == FALSE) {
         settings = get_settings();
-        temp = settings->courseFlagsPtr[settings->courseId];
-        if (temp & 2) {
+        courseFlags = settings->courseFlagsPtr[settings->courseId];
+        if (courseFlags & 2) {
             aiLevel = 1;
         }
-        if (temp & 4) {
+        if (courseFlags & 4) {
             aiLevel = 2;
         }
     } else {
@@ -792,10 +883,10 @@ void aitable_init(s8 *aiLevelTable) {
         stubbed_printf("AITABLE Error: Table out of range\n");
         aiLevel = 0;
     }
-    temp2 = gTempAssetTable[aiLevel];
-    temp = gTempAssetTable[aiLevel + 1] - temp2;
-    gAIBehaviourTable = mempool_alloc_safe(temp, COLOUR_TAG_YELLOW);
-    asset_load(ASSET_AI_BEHAVIOUR, (uintptr_t) gAIBehaviourTable, temp2, temp);
+    offset = gTempAssetTable[aiLevel];
+    size = gTempAssetTable[aiLevel + 1] - offset;
+    gAIBehaviourTable = mempool_alloc_safe(size, COLOUR_TAG_YELLOW);
+    asset_load(ASSET_AI_BEHAVIOUR, (uintptr_t) gAIBehaviourTable, offset, size);
     mempool_free(gTempAssetTable);
 }
 
