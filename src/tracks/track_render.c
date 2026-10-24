@@ -61,29 +61,14 @@ void set_anti_aliasing(s32 setting) {
 }
 
 /**
- * Find which segments can and should be rendered, then render their opaque geometry.
- * Render all objects inside visible segments then render the level's semitransparent geometry.
- * Afterwards, render particles.
+ * Lists the visible segments in segmentIds, nearest first (the BSP tree is walked from the camera's
+ * side), and renders their opaque geometry. objectsVisible[segment + 1] is set for each segment
+ * whose objects may be drawn; entry 0 (objects outside any segment) is always set.
+ * Returns the number of visible segments.
  */
-void render_level_geometry_and_objects(void) {
-    s32 objCount;
+static s32 render_opaque_segments(u8 *segmentIds, u8 *objectsVisible) {
     s32 numberOfSegments;
-    s32 objFlags;
-    s32 sp160;
     s32 i;
-    s32 visibleFlags;
-    u8 segmentIds[LEVEL_SEGMENT_MAX];
-    u8 objectsVisible[LEVEL_SEGMENT_MAX];
-    s32 visible;
-    Object *obj;
-
-    deferred_dl_reset();
-
-    if (get_settings()->courseId == ASSET_LEVEL_OPENINGSEQUENCE) {
-        gAntiAliasing = TRUE;
-    }
-
-    sp160 = get_first_active_object(&objCount);
 
     if (gCurrentLevelModel->numberOfSegments > 1) {
         numberOfSegments = 0;
@@ -110,11 +95,63 @@ void render_level_geometry_and_objects(void) {
         objectsVisible[1] = TRUE;
     }
 
+    return numberOfSegments;
+}
+
+/**
+ * Renders the semitransparent geometry of the visible segments farthest first, then the waves,
+ * and flushes the deferred display lists.
+ */
+static void render_transparent_segments_and_waves(u8 *segmentIds, s32 numberOfSegments) {
+    s32 i;
+
+    if (gDrawLevelSegments) {
+        for (i = numberOfSegments - 1; i >= 0; i--) {
+            render_level_segment(segmentIds[i], TRUE); // Render transparent segments
+        }
+    }
+
+    if (gWaveBlockCount != 0) {
+        waves_render(&gTrackDL, &gTrackMtxPtr, get_current_viewport());
+    }
+
     rendermode_reset(&gTrackDL);
-    sort_objects_by_dist(sp160, objCount - 1);
+    material_set_no_tex_offset(&gTrackDL, NULL, RENDER_FOG_ACTIVE | RENDER_Z_COMPARE);
+    deferred_dl_flush(&gTrackDL);
+}
+
+/**
+ * Find which segments can and should be rendered, then render their opaque geometry.
+ * Render all objects inside visible segments then render the level's semitransparent geometry.
+ * Afterwards, render particles.
+ */
+void render_level_geometry_and_objects(void) {
+    s32 objCount;
+    s32 numberOfSegments;
+    s32 objFlags;
+    s32 firstObjIndex;
+    s32 i;
+    s32 visibleFlags;
+    u8 segmentIds[LEVEL_SEGMENT_MAX];
+    u8 objectsVisible[LEVEL_SEGMENT_MAX];
+    s32 visible;
+    Object *obj;
+
+    deferred_dl_reset();
+
+    if (get_settings()->courseId == ASSET_LEVEL_OPENINGSEQUENCE) {
+        gAntiAliasing = TRUE;
+    }
+
+    firstObjIndex = get_first_active_object(&objCount);
+
+    numberOfSegments = render_opaque_segments(segmentIds, objectsVisible);
+
+    rendermode_reset(&gTrackDL);
+    sort_objects_by_dist(firstObjIndex, objCount - 1);
     visibleFlags = OBJ_FLAGS_INVIS_PLAYER1 << (get_current_viewport() & 1);
 
-    for (i = sp160; i < objCount; i++) {
+    for (i = firstObjIndex; i < objCount; i++) {
         obj = get_object(i);
         visible = 255;
         objFlags = obj->trans.flags;
@@ -141,7 +178,7 @@ void render_level_geometry_and_objects(void) {
         }
     }
 
-    for (i = objCount - 1; i >= sp160; i--) {
+    for (i = objCount - 1; i >= firstObjIndex; i--) {
         obj = get_object(i);
         objFlags = obj->trans.flags;
         if (objFlags & visibleFlags) {
@@ -164,22 +201,10 @@ void render_level_geometry_and_objects(void) {
         }
     }
 
-    if (gDrawLevelSegments) {
-        for (i = numberOfSegments - 1; i >= 0; i--) {
-            render_level_segment(segmentIds[i], TRUE); // Render transparent segments
-        }
-    }
-
-    if (gWaveBlockCount != 0) {
-        waves_render(&gTrackDL, &gTrackMtxPtr, get_current_viewport());
-    }
-
-    rendermode_reset(&gTrackDL);
-    material_set_no_tex_offset(&gTrackDL, NULL, RENDER_FOG_ACTIVE | RENDER_Z_COMPARE);
-    deferred_dl_flush(&gTrackDL);
+    render_transparent_segments_and_waves(segmentIds, numberOfSegments);
 
     // Particles and FX
-    for (i = objCount - 1; i >= sp160; i--) {
+    for (i = objCount - 1; i >= firstObjIndex; i--) {
         obj = get_object(i);
         visible = 255;
         objFlags = obj->trans.flags;
@@ -240,14 +265,14 @@ void render_level_segment(s32 segmentId, s32 nonOpaque) {
     s32 isInvisible;
     s32 levelHeaderIndex;
     s32 texOffset;
-    s32 sp78;
+    s32 wavesActive;
     s32 startPos;
     s32 endPos;
     s32 batchFlags;
     s32 textureFlags;
     //! @bug: batchInfo is uninitalized (the result is recomputed below; skipped on the host)
     segment = &gCurrentLevelModel->segments[segmentId];
-    sp78 = (nonOpaque && gWaveBlockCount) ? waves_block_hq(segment) : 0;
+    wavesActive = (nonOpaque && gWaveBlockCount) ? waves_block_hq(segment) : 0;
     if (nonOpaque) {
         startPos = segment->numberofOpaqueBatches;
         endPos = segment->numberOfBatches;
@@ -280,7 +305,7 @@ void render_level_segment(s32 segmentId, s32 nonOpaque) {
         if (nonOpaque) {
             renderBatch = (renderBatch + 1) & 1;
         }
-        if (sp78 && batchFlags & RENDER_WATER) {
+        if (wavesActive && batchFlags & RENDER_WATER) {
             renderBatch = FALSE;
         }
         if (!renderBatch) {
@@ -377,16 +402,16 @@ void traverse_segments_bsp_tree(s32 nodeIndex, s32 segmentIndex, s32 segmentInde
  * Add this segment index to the specified segment ordering table if the segment in question is in view of the camera.
  */
 void add_segment_to_order(s32 segmentIndex, s32 *segmentsOrderIndex, u8 *segmentsOrder) {
-    u32 temp;
+    u32 visibilityBits;
     if (segmentIndex < gCurrentLevelModel->numberOfSegments) {
         if (gSceneStartSegment != -1) {
-            temp = gCurrentLevelModel->segmentsBitfields[gSceneStartSegment + (segmentIndex >> 3)];
-            temp >>= segmentIndex & 7;
-            temp &= 0xFF;
+            visibilityBits = gCurrentLevelModel->segmentsBitfields[gSceneStartSegment + (segmentIndex >> 3)];
+            visibilityBits >>= segmentIndex & 7;
+            visibilityBits &= 0xFF;
         } else {
-            temp = 1;
+            visibilityBits = 1;
         }
-        if (temp & 1 && block_visible(&gCurrentLevelModel->segmentsBoundingBoxes[segmentIndex])) {
+        if (visibilityBits & 1 && block_visible(&gCurrentLevelModel->segmentsBoundingBoxes[segmentIndex])) {
             segmentsOrder[(*segmentsOrderIndex)++] = segmentIndex;
         }
     }
@@ -463,16 +488,16 @@ s32 get_level_segment_index_from_position(f32 xPos, f32 yPos, f32 zPos) {
  * Because there's a tiny margin, multiple segments can be considered populated,
  * meaning that sometimes it will 2 instead of 1.
  */
-s32 get_inside_segment_count_xz(s32 x, s32 z, s32 *arg2) {
+s32 get_inside_segment_count_xz(s32 x, s32 z, s32 *segmentsOut) {
     s32 i;
     s32 cnt = 0;
     LevelModelSegmentBoundingBox *bb;
     for (i = 0; i < gCurrentLevelModel->numberOfSegments; i++) {
         bb = gCurrentLevelModel->segmentsBoundingBoxes + i;
         if (x < bb->x2 + 4 && bb->x1 - 4 < x && z < bb->z2 + 4 && bb->z1 - 4 < z) {
-            *arg2 = i;
+            *segmentsOut = i;
             cnt++;
-            arg2++;
+            segmentsOut++;
         }
     }
     return cnt;
@@ -482,7 +507,7 @@ s32 get_inside_segment_count_xz(s32 x, s32 z, s32 *arg2) {
  * Carbon copy of the above function, but takes into account the Y axis, too.
  * Official name: trackGetCubeBlockList
  */
-s32 get_inside_segment_count_xyz(s32 *arg0, s16 xPos1, s16 yPos1, s16 zPos1, s16 xPos2, s16 yPos2, s16 zPos2) {
+s32 get_inside_segment_count_xyz(s32 *segmentsOut, s16 xPos1, s16 yPos1, s16 zPos1, s16 xPos2, s16 yPos2, s16 zPos2) {
     s32 cnt;
     s32 i;
     LevelModelSegmentBoundingBox *bb;
@@ -502,7 +527,7 @@ s32 get_inside_segment_count_xyz(s32 *arg0, s16 xPos1, s16 yPos1, s16 zPos1, s16
         if ((bb->x2 >= xPos1) && (xPos2 >= bb->x1) && (bb->z2 >= zPos1) && (zPos2 >= bb->z1) && (bb->y2 >= yPos1) &&
             (yPos2 >= bb->y1)) {
             cnt++;
-            *arg0++ = i;
+            *segmentsOut++ = i;
         }
         i++;
     }
@@ -601,8 +626,7 @@ void compute_frustum_planes(void) {
  * There's a large unused portion at the bottom writing to two vars, that are never later read.
  */
 s32 block_visible(LevelModelSegmentBoundingBox *bb) {
-    UNUSED u8 unknown[0x28];
-    s64 sp48;
+    s64 planeDist;
     s32 i, j;
     s32 isVisible;
     f32 dirX, dirY, dirZ, dirW;
@@ -616,22 +640,22 @@ s32 block_visible(LevelModelSegmentBoundingBox *bb) {
 
         for (i = 0, isVisible = FALSE; i < 8 && !isVisible; i++) {
             if (i & 1) {
-                sp48 = bb->x1 * dirX;
+                planeDist = bb->x1 * dirX;
             } else {
-                sp48 = bb->x2 * dirX;
+                planeDist = bb->x2 * dirX;
             }
             if (i & 2) {
-                sp48 += bb->y1 * dirY;
+                planeDist += bb->y1 * dirY;
             } else {
-                sp48 += bb->y2 * dirY;
+                planeDist += bb->y2 * dirY;
             }
             if (i & 4) {
-                sp48 += bb->z1 * dirZ;
+                planeDist += bb->z1 * dirZ;
             } else {
-                sp48 += bb->z2 * dirZ;
+                planeDist += bb->z2 * dirZ;
             }
-            sp48 += dirW;
-            if (sp48 > 0) {
+            planeDist += dirW;
+            if (planeDist > 0) {
                 isVisible = TRUE;
             }
         }
@@ -668,7 +692,7 @@ s32 check_if_in_draw_range(Object *obj) {
     s32 i;
     Object_AnimatedObject *animatedObj;
     f32 accum;
-    s32 temp2;
+    s32 fadeRange;
     f32 dist;
     Object_Racer *racer;
 
@@ -676,7 +700,7 @@ s32 check_if_in_draw_range(Object *obj) {
         alpha = 255;
         viewDistance = obj->header->drawDistance;
         if (obj->header->drawDistance) {
-            if (gScenePlayerViewports == 3) {
+            if (gScenePlayerViewports == FOUR_PLAYERS) {
                 viewDistance *= 0.5;
             }
 
@@ -688,10 +712,10 @@ s32 check_if_in_draw_range(Object *obj) {
 
             fadeDist = viewDistance * 0.8;
             if (fadeDist < dist) {
-                temp2 = viewDistance - fadeDist;
-                if (temp2 > 0) {
+                fadeRange = viewDistance - fadeDist;
+                if (fadeRange > 0) {
                     fadeDist = dist - fadeDist;
-                    alpha = ((f32) (1.0 - ((fadeDist) / temp2)) * 255.0);
+                    alpha = ((f32) (1.0 - ((fadeDist) / fadeRange)) * 255.0);
                 }
                 if (alpha == 0) {
                     alpha = 1;

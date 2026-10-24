@@ -145,7 +145,7 @@ s32 set_scene_viewport_num(s32 numPorts) {
  * Allocates RAM to load generate the level geometry, spawn objects and generate shadows.
  */
 void init_track(u32 geometry, u32 skybox, s32 numberOfPlayers, Vehicle vehicle, u32 entranceId, u32 collectables,
-                u32 arg6) {
+                u32 objectMapId) {
     s32 i;
 
     gCurrentLevelHeader2 = level_header();
@@ -191,8 +191,8 @@ void init_track(u32 geometry, u32 skybox, s32 numberOfPlayers, Vehicle vehicle, 
     gTrackTexAnimOffset = 0;
     gTrackTexAnimFlags = RENDER_TEX_ANIM;
     path_enable();
-    track_spawn_objects(arg6, 0);
-    stubbed_printf("post track_spawn_objects arg6\n");
+    track_spawn_objects(objectMapId, 0);
+    stubbed_printf("post track_spawn_objects objectMapId\n");
     track_spawn_objects(collectables, 1);
     stubbed_printf("post track_spawn_objects collectables\n");
     gScenePlayerViewports = numberOfPlayers;
@@ -238,14 +238,91 @@ void init_track(u32 geometry, u32 skybox, s32 numberOfPlayers, Vehicle vehicle, 
 }
 
 /**
+ * Advances the level's animated parts for this frame: waves, actor shadows, colour cycles and
+ * pulsing lights. animUpdateRate is 0 while paused; shadows always use updateRate.
+ */
+static void update_level_animations(s32 updateRate, s32 animUpdateRate) {
+    s32 i;
+
+    if (gWaveBlockCount) {
+        waves_update(animUpdateRate);
+    }
+    shadow_update(SHADOW_ACTORS, SHADOW_ACTORS, updateRate);
+    for (i = 0; i < 7; i++) {
+        if (ASSET_SLOT(gCurrentLevelHeader2->colourCycles[i]) != -1) {
+            update_colour_cycle(gCurrentLevelHeader2->colourCycles[i], animUpdateRate);
+        }
+    }
+    if (gCurrentLevelHeader2->pulseLightData != (PulsatingLightData *) -1) {
+        update_pulsating_light_data(gCurrentLevelHeader2->pulseLightData, animUpdateRate);
+    }
+}
+
+/**
+ * Scrolls and animates the sky texture of the flashy background, for levels that use it
+ * instead of a skydome.
+ */
+static void scroll_flashy_sky(s32 animUpdateRate) {
+    s32 i;
+
+    if (gCurrentLevelHeader2->skyDome == -1) {
+        i = (gCurrentLevelHeader2->skyTexture->width << 9) - 1;
+        gCurrentLevelHeader2->skyTexScrollU =
+            (gCurrentLevelHeader2->skyTexScrollU + (gCurrentLevelHeader2->skyTexScrollSpeedU * animUpdateRate)) & i;
+        i = (gCurrentLevelHeader2->skyTexture->height << 9) - 1;
+        gCurrentLevelHeader2->skyTexScrollV =
+            (gCurrentLevelHeader2->skyTexScrollV + (gCurrentLevelHeader2->skyTexScrollSpeedV * animUpdateRate)) & i;
+        tex_animate_texture(gCurrentLevelHeader2->skyTexture, &gTrackTexAnimFlags, &gTrackTexAnimOffset,
+                            animUpdateRate);
+    }
+}
+
+/**
+ * Draws the current player's view: fog, camera and viewport, the sky (skydome or flashy
+ * background in single player, a gradient otherwise), the level and its objects, weather,
+ * lens flare and the player's HUD.
+ */
+static void render_player_view(s32 numViewports, s32 updateRate, s32 animUpdateRate) {
+    apply_fog(gSceneCurrentPlayerID);
+    gDPPipeSync(gTrackDL++);
+    set_active_camera(gSceneCurrentPlayerID);
+    viewport_main(&gTrackDL, &gTrackMtxPtr);
+    compute_frustum_planes();
+    // Show detailed skydome in single player.
+    if (numViewports < 2) {
+        mtx_world_origin(&gTrackDL, &gTrackMtxPtr);
+        if (gCurrentLevelHeader2->skyDome == -1) {
+            trackbg_render_flashy();
+        } else {
+            skydome_render();
+        }
+    } else {
+        mtx_perspective(&gTrackDL, &gTrackMtxPtr);
+        trackbg_render_gradient();
+        cam_set_projection_matrix(&gTrackDL, &gTrackMtxPtr);
+        mtx_world_origin(&gTrackDL, &gTrackMtxPtr);
+    }
+    gDPPipeSync(gTrackDL++);
+    initialise_player_viewport_vars(updateRate);
+    weather_clip_planes(-1, -512);
+    // Show weather effects in single player.
+    if (gCurrentLevelHeader2->weatherEnable > 0 && numViewports < 2) {
+        weather_update(&gTrackDL, &gTrackMtxPtr, &gTrackVtxPtr, &gTrackTriPtr, animUpdateRate);
+    }
+    lensflare_override(cam_get_active_camera());
+    lensflare_render(&gTrackDL, &gTrackMtxPtr, &gTrackVtxPtr, cam_get_active_camera());
+    hud_render_player(&gTrackDL, &gTrackMtxPtr, &gTrackVtxPtr, get_racer_object_by_port(gSceneCurrentPlayerID),
+                      updateRate);
+}
+
+/**
  * The root function for rendering the entire scene.
  * Handles drawing the track, objects and the majority of the HUD in single player.
  * Official name: trackDraw
  */
 void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 updateRate) {
-    s32 i;
     s32 numViewports;
-    s32 tempUpdateRate;
+    s32 animUpdateRate;
     s8 flip;
     s32 posX;
     s32 posY;
@@ -260,22 +337,11 @@ void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 upd
     gIsNearCurrBBox = FALSE;
     numViewports = cam_set_layout(gScenePlayerViewports);
     if (is_game_paused()) {
-        tempUpdateRate = 0;
+        animUpdateRate = 0;
     } else {
-        tempUpdateRate = updateRate;
+        animUpdateRate = updateRate;
     }
-    if (gWaveBlockCount) {
-        waves_update(tempUpdateRate);
-    }
-    shadow_update(SHADOW_ACTORS, SHADOW_ACTORS, updateRate);
-    for (i = 0; i < 7; i++) {
-        if (ASSET_SLOT(gCurrentLevelHeader2->colourCycles[i]) != -1) {
-            update_colour_cycle(gCurrentLevelHeader2->colourCycles[i], tempUpdateRate);
-        }
-    }
-    if (gCurrentLevelHeader2->pulseLightData != (PulsatingLightData *) -1) {
-        update_pulsating_light_data(gCurrentLevelHeader2->pulseLightData, tempUpdateRate);
-    }
+    update_level_animations(updateRate, animUpdateRate);
     gDrawLevelSegments = TRUE;
     if (gCurrentLevelHeader2->race_type == RACETYPE_CUTSCENE_2) {
         gDrawLevelSegments = FALSE;
@@ -284,16 +350,7 @@ void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 upd
     if (gCurrentLevelHeader2->race_type == RACETYPE_CUTSCENE_1 || gCurrentLevelHeader2->forceAntiAliasing) {
         gAntiAliasing = TRUE;
     }
-    if (gCurrentLevelHeader2->skyDome == -1) {
-        i = (gCurrentLevelHeader2->skyTexture->width << 9) - 1;
-        gCurrentLevelHeader2->skyTexScrollU =
-            (gCurrentLevelHeader2->skyTexScrollU + (gCurrentLevelHeader2->skyTexScrollSpeedU * tempUpdateRate)) & i;
-        i = (gCurrentLevelHeader2->skyTexture->height << 9) - 1;
-        gCurrentLevelHeader2->skyTexScrollV =
-            (gCurrentLevelHeader2->skyTexScrollV + (gCurrentLevelHeader2->skyTexScrollSpeedV * tempUpdateRate)) & i;
-        tex_animate_texture(gCurrentLevelHeader2->skyTexture, &gTrackTexAnimFlags, &gTrackTexAnimOffset,
-                            tempUpdateRate);
-    }
+    scroll_flashy_sky(animUpdateRate);
     flip = FALSE;
     if (get_filtered_cheats() & CHEAT_MIRRORED_TRACKS) {
         flip = TRUE;
@@ -305,10 +362,10 @@ void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 upd
     gDPSetPrimColor(gTrackDL++, 0, 0, 255, 255, 255, 255);
     gDPSetEnvColor(gTrackDL++, 255, 255, 255, 0);
     rain_fog();
-    update_fog(numViewports, tempUpdateRate);
-    scroll_particle_textures(tempUpdateRate);
+    update_fog(numViewports, animUpdateRate);
+    scroll_particle_textures(animUpdateRate);
     if (gCurrentLevelModel->numberOfAnimatedTextures > 0) {
-        track_tex_anim(tempUpdateRate);
+        track_tex_anim(animUpdateRate);
     }
     for (j = gSceneCurrentPlayerID = 0; j < numViewports; gSceneCurrentPlayerID++, j = gSceneCurrentPlayerID) {
         if (gCurrentLevelHeader2 && !gCurrentLevelHeader2 && !gCurrentLevelHeader2) {} // Fakematch
@@ -320,36 +377,7 @@ void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 upd
         if (flip) {
             gSPSetGeometryMode(gTrackDL++, G_CULL_FRONT);
         }
-        apply_fog(gSceneCurrentPlayerID);
-        gDPPipeSync(gTrackDL++);
-        set_active_camera(gSceneCurrentPlayerID);
-        viewport_main(&gTrackDL, &gTrackMtxPtr);
-        compute_frustum_planes();
-        // Show detailed skydome in single player.
-        if (numViewports < 2) {
-            mtx_world_origin(&gTrackDL, &gTrackMtxPtr);
-            if (gCurrentLevelHeader2->skyDome == -1) {
-                trackbg_render_flashy();
-            } else {
-                skydome_render();
-            }
-        } else {
-            mtx_perspective(&gTrackDL, &gTrackMtxPtr);
-            trackbg_render_gradient();
-            cam_set_projection_matrix(&gTrackDL, &gTrackMtxPtr);
-            mtx_world_origin(&gTrackDL, &gTrackMtxPtr);
-        }
-        gDPPipeSync(gTrackDL++);
-        initialise_player_viewport_vars(updateRate);
-        weather_clip_planes(-1, -512);
-        // Show weather effects in single player.
-        if (gCurrentLevelHeader2->weatherEnable > 0 && numViewports < 2) {
-            weather_update(&gTrackDL, &gTrackMtxPtr, &gTrackVtxPtr, &gTrackTriPtr, tempUpdateRate);
-        }
-        lensflare_override(cam_get_active_camera());
-        lensflare_render(&gTrackDL, &gTrackMtxPtr, &gTrackVtxPtr, cam_get_active_camera());
-        hud_render_player(&gTrackDL, &gTrackMtxPtr, &gTrackVtxPtr, get_racer_object_by_port(gSceneCurrentPlayerID),
-                          updateRate);
+        render_player_view(numViewports, updateRate, animUpdateRate);
     }
     // Show TT Cam toggle for the fourth viewport when playing 3 player.
     if (numViewports == 3 && level_type() != RACETYPE_CHALLENGE_EGGS && level_type() != RACETYPE_CHALLENGE_BATTLE &&
@@ -408,35 +436,35 @@ void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 upd
  * candidates. Used to pull the camera in front of walls.
  */
 s32 is_camera_behind_wall(void) {
-    LevelModelSegment *segment; // spE4
+    LevelModelSegment *segment;
     s32 ret;
-    s32 var_t4;
+    s32 candidateIndex;
     f32 playerDist;
     f32 camDist;
     f32 scalingFactor;
     s32 curViewport;
     ptrint_t flipSide;
-    s32 numRacers; // spC4
+    s32 numRacers;
     s32 i;
     s32 j;
-    f32 var_f18;
+    f32 edgeDist;
     f32 A1, B1, C1, D1;
-    f32 var_f20;
-    f32 var_f22;
-    f32 var_f24;
+    f32 hitX;
+    f32 hitY;
+    f32 hitZ;
     CollisionNode *colNode;
     Object_Racer *racer;
     f32 A, B, C, D;
-    Object **racerObjects; // sp80
-    Object *racerObj;      // sp7C
+    Object **racerObjects;
+    Object *racerObj;
     f32 *planes;
 
     racerObjects = get_racer_objects(&numRacers);
     if (numRacers == 0) {
         return FALSE;
     }
-    if ((check_if_showing_cutscene_camera() != 0) || (gSceneActiveCamera->mode >= 5) ||
-        (gSceneActiveCamera->mode == 3)) {
+    if ((check_if_showing_cutscene_camera() != 0) || (gSceneActiveCamera->mode >= CAMERA_FINISH_CHALLENGE) ||
+        (gSceneActiveCamera->mode == CAMERA_FIXED)) {
         return FALSE;
     }
     curViewport = get_current_viewport();
@@ -454,8 +482,8 @@ s32 is_camera_behind_wall(void) {
     generate_collision_candidates(1, &racerObj->trans.position, &gSceneActiveCamera->trans.position,
                                   VEHICLE_NO_OVERRIDE);
     ret = FALSE;
-    for (var_t4 = 0; var_t4 < gNumCollisionCandidates && ret == FALSE; var_t4++) {
-        flipSide = gCollisionCandidates[var_t4];
+    for (candidateIndex = 0; candidateIndex < gNumCollisionCandidates && ret == FALSE; candidateIndex++) {
+        flipSide = gCollisionCandidates[candidateIndex];
         if (COLLISION_ENTRY_IS_SEGMENT(flipSide)) {
             // this is segment Entry
             segment = COLLISION_ENTRY_SEGMENT(flipSide);
@@ -474,9 +502,9 @@ s32 is_camera_behind_wall(void) {
                 playerDist = A * racerObj->trans.x_position + B * racerObj->trans.y_position +
                              C * racerObj->trans.z_position + D;
                 if (playerDist >= -0.1) {
-                    var_f20 = (gSceneActiveCamera->trans.x_position - racerObj->trans.x_position);
-                    var_f22 = (gSceneActiveCamera->trans.y_position - racerObj->trans.y_position);
-                    var_f24 = (gSceneActiveCamera->trans.z_position - racerObj->trans.z_position);
+                    hitX = (gSceneActiveCamera->trans.x_position - racerObj->trans.x_position);
+                    hitY = (gSceneActiveCamera->trans.y_position - racerObj->trans.y_position);
+                    hitZ = (gSceneActiveCamera->trans.z_position - racerObj->trans.z_position);
 
                     if (playerDist != camDist) {
                         scalingFactor = playerDist / (playerDist - camDist);
@@ -484,15 +512,15 @@ s32 is_camera_behind_wall(void) {
                         scalingFactor = 0.0f;
                     }
 
-                    var_f20 = racerObj->trans.x_position + (var_f20 * scalingFactor);
-                    var_f22 = racerObj->trans.y_position + (var_f22 * scalingFactor);
-                    var_f24 = racerObj->trans.z_position + (var_f24 * scalingFactor);
+                    hitX = racerObj->trans.x_position + (hitX * scalingFactor);
+                    hitY = racerObj->trans.y_position + (hitY * scalingFactor);
+                    hitZ = racerObj->trans.z_position + (hitZ * scalingFactor);
 
                     for (j = 0, ret = TRUE; j < 3 && ret == TRUE; j++) {
                         flipSide = FALSE;
                         curViewport = colNode->closestTri[j];
-                        if (curViewport & 0x8000) {
-                            curViewport &= 0x7FFF;
+                        if (curViewport & EDGE_PLANE_FLIPPED) {
+                            curViewport &= EDGE_PLANE_INDEX_MASK;
                             flipSide = TRUE;
                         }
                         curViewport = curViewport << 2;
@@ -501,11 +529,11 @@ s32 is_camera_behind_wall(void) {
                         B1 = planes[1];
                         C1 = planes[2];
                         D1 = planes[3];
-                        var_f18 = A1 * var_f20 + B1 * var_f22 + C1 * var_f24 + D1;
+                        edgeDist = A1 * hitX + B1 * hitY + C1 * hitZ + D1;
                         if (flipSide) {
-                            var_f18 = -var_f18;
+                            edgeDist = -edgeDist;
                         }
-                        if (var_f18 > 4.0f) {
+                        if (edgeDist > 4.0f) {
                             ret = FALSE;
                         }
                     }
