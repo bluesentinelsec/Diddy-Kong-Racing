@@ -470,11 +470,11 @@ void hud_balloons(UNUSED Object_Racer *racer) {
         gCurrentHud->entry[HUD_BALLOON_COUNT_ICON].spriteID =
             HUD_SPRITE_BALLOON_DIAMOND; // Use the adventure two balloon sprite.
     }
-    if (cutscene_id() == 10 && get_balloon_cutscene_timer() < balloonTickTimer) {
+    if (cutscene_id() == CUTSCENE_ID_BALLOON_COUNT && get_balloon_cutscene_timer() < balloonTickTimer) {
         balloonCount = *settings->balloonsPtr - 1;
     } else {
         balloonCount = *settings->balloonsPtr;
-        if (cutscene_id() == 10) {
+        if (cutscene_id() == CUTSCENE_ID_BALLOON_COUNT) {
             if (get_balloon_cutscene_timer() < balloonTickTimer + 8 && gHudBalloonSoundMask == NULL) {
                 sound_play(SOUND_HUD_LAP_TICK, &gHudBalloonSoundMask);
             }

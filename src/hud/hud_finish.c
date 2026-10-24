@@ -1,5 +1,15 @@
 #include "hud_internal.h"
 
+// Stages of the finish banner (HUD_CHALLENGE_FINISH_POS_1) in hud_race_finish_multiplayer.
+enum MultiplayerFinishStages {
+    MPFINISH_SETUP,     // Lay out the banner and time panels, then advance.
+    MPFINISH_SLIDE_IN,  // Slide the banner (and time panels) into place.
+    MPFINISH_HOLD,      // Keep the banner onscreen for a few seconds.
+    MPFINISH_SLIDE_OUT, // Slide the banner back out.
+    MPFINISH_END,       // Fade out the crowd, then advance.
+    MPFINISH_DONE       // Do nothing.
+};
+
 /**
  * Render race result for multiplayer races or battles after that player has finished.
  * Displays the finish position, and in races, will display the race time.
@@ -71,8 +81,8 @@ static void hud_finish_mp_setup(Object_Racer *racer, s32 raceType) {
         sound_play(SOUND_WHOOSH1, NULL);
     }
     switch (gHUDNumPlayers) {
-        case 0:
-        case 1:
+        case ONE_PLAYER:
+        case TWO_PLAYERS:
             gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.targetPos = -20;
             gCurrentHud->entry[HUD_RACE_TIME_NUMBER].timer.targetPos = -15;
             gCurrentHud->entry[HUD_LAP_TIME_TEXT].timer.targetPos = -15;
@@ -100,7 +110,7 @@ static void hud_finish_mp_setup(Object_Racer *racer, s32 raceType) {
         gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_2].spriteOffset = 3;
     }
     gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].spriteOffset = racer->finishPosition - 1;
-    gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = 1;
+    gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = MPFINISH_SLIDE_IN;
     switch (gNumActivePlayers) {
         case 2:
             timeX = 360.0f;
@@ -241,7 +251,7 @@ static void hud_finish_mp_slide_in(Object_Racer *racer, s32 raceType, s32 update
         gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.x += step;
     }
     if (allInPlace) {
-        gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = 2;
+        gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = MPFINISH_HOLD;
         gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.textOutTimer = -120;
         gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.textOutTicks = 0;
         if (gHUDVoiceSoundMask == NULL) {
@@ -278,10 +288,10 @@ static void hud_finish_mp_hold(s32 updateRate) {
     }
     if (gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.textOutTicks == 2) {
         if (gNumActivePlayers == 1 || is_in_two_player_adventure()) {
-            gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = 3;
+            gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = MPFINISH_SLIDE_OUT;
             sound_play(SOUND_WHOOSH1, NULL);
         } else {
-            gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = 4;
+            gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = MPFINISH_END;
         }
     }
 }
@@ -292,12 +302,12 @@ static void hud_finish_mp_hold(s32 updateRate) {
  */
 static void hud_finish_mp_slide_out(s32 raceType, s32 updateRate) {
     if (raceType == RACETYPE_CHALLENGE_BATTLE) {
-        gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = 4;
+        gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = MPFINISH_END;
     } else {
         gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].pos.x -= (updateRate * 13);
         gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_2].pos.x -= (updateRate * 13);
         if (gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].pos.x < -200.0f) {
-            gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = 4;
+            gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = MPFINISH_END;
         }
         gCurrentHud->entry[HUD_RACE_TIME_NUMBER].pos.x += (updateRate * 13);
         gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.x += (updateRate * 13);
@@ -328,29 +338,29 @@ void hud_race_finish_multiplayer(Object_Racer *racer, s32 updateRate) {
     }
 
     switch (gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status) {
-        case 0:
+        case MPFINISH_SETUP:
             hud_finish_mp_setup(racer, raceType);
             if (gNumActivePlayers != 1) {
                 hud_finish_mp_lap_times(racer);
             }
             break;
-        case 1:
+        case MPFINISH_SLIDE_IN:
             hud_finish_mp_slide_in(racer, raceType, updateRate);
             hud_finish_position(racer);
             break;
-        case 2:
+        case MPFINISH_HOLD:
             hud_finish_mp_hold(updateRate);
             hud_finish_position(racer);
             break;
-        case 3:
+        case MPFINISH_SLIDE_OUT:
             hud_finish_mp_slide_out(raceType, updateRate);
             hud_finish_position(racer);
             break;
-        case 4:
+        case MPFINISH_END:
             if (racer->playerIndex == gHudAudioData[0].playerIndex) {
                 gHudAudioData[0].volumeRamp = -1;
             }
-            gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = 5;
+            gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.status = MPFINISH_DONE;
             gCurrentHud->entry[HUD_CHALLENGE_FINISH_POS_1].raceFinishPos.textOutTimer = 0;
             hud_finish_position(racer);
             break;

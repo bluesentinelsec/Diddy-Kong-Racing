@@ -562,7 +562,7 @@ void hud_time_trial_finish(Object_Racer *racer, s32 updateRate) {
             gHudAudioData[0].volumeRamp = 0;
             gHudAudioData[0].playerIndex = racer->playerIndex;
             sound_play(SOUND_WHOOSH1, NULL);
-            if (gHUDNumPlayers == 0 || gHUDNumPlayers == 1) {
+            if (gHUDNumPlayers == ONE_PLAYER || gHUDNumPlayers == TWO_PLAYERS) {
                 gCurrentHud->entry[HUD_RACE_END_FINISH].pos.x = -200.0f;
                 gCurrentHud->entry[HUD_RACE_END_FINISH].finishText.targetPos = 0;
             } else {

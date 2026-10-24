@@ -31,6 +31,13 @@
 #include "tracks.h"
 #include "types.h"
 
+// The cutscene that shows only the player's balloon count (see hud_balloons).
+#define CUTSCENE_ID_BALLOON_COUNT 10
+
+// LevelHeader hudFlags bits.
+#define LEVEL_HUD_FLAG_NO_MINIMAP 1    // No minimap (challenge counters are still drawn).
+#define LEVEL_HUD_FLAG_NO_PLAYER_HUD 2 // No per-player HUD at all.
+
 extern HudAudio gHudAudioData[2];
 extern u8 gShowCourseDirections;
 extern u8 gHudMapMode[4][4];

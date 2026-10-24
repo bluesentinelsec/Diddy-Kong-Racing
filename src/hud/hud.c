@@ -624,10 +624,10 @@ void hud_init_element(void) {
         gCurrentHud->entry[HUD_BALLOON_COUNT_NUMBER_2].spriteID = 9;
     }
     if (level_type() & RACETYPE_CHALLENGE) {
-        gPrevToggleSetting = gHudToggleSettings[1];
-        gHudToggleSettings[1] = 0;
+        gPrevToggleSetting = gHudToggleSettings[TWO_PLAYERS];
+        gHudToggleSettings[TWO_PLAYERS] = 0;
     } else {
-        gHudToggleSettings[1] = gPrevToggleSetting;
+        gHudToggleSettings[TWO_PLAYERS] = gPrevToggleSetting;
     }
 }
 
@@ -686,7 +686,7 @@ static void hud_minimap_fade_step(s32 updateRate) {
  * or cycles the map mode in multiplayer, and C-right toggles the HUD setting (minimap/speedometre).
  */
 static void hud_toggle_buttons(Object_Racer *racer) {
-    if (cutscene_id() != 10) {
+    if (cutscene_id() != CUTSCENE_ID_BALLOON_COUNT) {
         if (gHUDNumPlayers == ONE_PLAYER) {
             if (input_pressed(gHudController) & D_CBUTTONS && racer->raceFinished == FALSE &&
                 ((gHudLevelHeader->race_type == RACETYPE_DEFAULT) ||
@@ -787,7 +787,7 @@ static void hud_draw_mode(Object *obj, Object_Racer *racer, s32 updateRate) {
     if (is_in_time_trial()) {
         hud_main_time_trial(countdown, obj, updateRate);
     } else {
-        if (cutscene_id() == 10) {
+        if (cutscene_id() == CUTSCENE_ID_BALLOON_COUNT) {
             cam_set_sprite_anim_mode(SPRITE_ANIM_FRAME_INDEX);
             hud_balloons(racer);
             cam_set_sprite_anim_mode(SPRITE_ANIM_NORMALIZED);
@@ -860,11 +860,11 @@ void hud_render_player(Gfx **dList, Mtx **mtx, Vertex **vertexList, Object *obj,
     }
     gHudLevelHeader = level_header();
     if (obj == NULL) {
-        if (cutscene_id() == 10) {
+        if (cutscene_id() == CUTSCENE_ID_BALLOON_COUNT) {
             obj = get_racer_object_by_port(PLAYER_ONE);
         }
     }
-    if (obj != NULL && !(gHudLevelHeader->hudFlags & 2)) {
+    if (obj != NULL && !(gHudLevelHeader->hudFlags & LEVEL_HUD_FLAG_NO_PLAYER_HUD)) {
         if (get_game_mode() != GAMEMODE_MENU) {
             gHudDL = *dList;
             gHudMtx = *mtx;
@@ -1505,7 +1505,7 @@ void hud_render_general(Gfx **dList, Mtx **mtx, Vertex **vtx, s32 updateRate) {
     *dList = gHudDL;
     *mtx = gHudMtx;
     *vtx = gHudVtx;
-    if ((gHudLevelHeader->hudFlags & 1)) {
+    if ((gHudLevelHeader->hudFlags & LEVEL_HUD_FLAG_NO_MINIMAP)) {
         return;
     }
 
