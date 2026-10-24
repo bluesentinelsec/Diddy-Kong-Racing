@@ -1,219 +1,269 @@
 #include "waves_internal.h"
 
-/** The wave surface height and normal at a point of a segment. */
-f32 wave_height_at(s32 arg0, f32 arg1, f32 arg2, Vec3f *arg3) {
-    f32 spA4;
-    f32 spA0;
-    f32 var_f12;
-    f32 var_f2;
-    f32 sp94;
-    f32 sp90;
-    f32 var_f16;
-    f32 arg3X;
-    f32 arg3Y;
-    f32 arg3Z;
-    s32 var_a0;
-    f32 sp78;
-    s32 var_v0;
-    s32 sp70;
-    s32 sp6C;
-    s32 var_t0;
-    s32 var_a3;
-    s32 sp60;
-    u8 *tempD_800E3178;
-    s32 sp58;
-    s32 pad;
+/** Working state shared by the steps of wave_height_at. */
+typedef struct WaveHeightQuery {
+    s32 blockID;
+    f32 stepX;           // Width of one wave cell.
+    f32 stepZ;           // Depth of one wave cell.
+    f32 detailScaleStep; // How much each depth step below WAVE_FULL_SWELL_DEPTH adds to the swell.
+    s32 detailBase;      // Index of the segment's first entry in gWaveDetailLevels.
+    s32 detailRowStride; // Entries per row of the segment in gWaveDetailLevels.
+    f32 x;               // Position within the cell.
+    f32 z;
+    s32 cellX; // Cell column and row within the segment.
+    s32 cellZ;
+    s32 tileX; // The same cell's column and row in the repeating wave tile grid.
+    s32 tileZ;
+    f32 anchorX; // X of the triangle corner the plane is measured from, and its height.
+    f32 anchorY;
+    f32 normalX; // Unnormalised surface normal of the triangle under the point.
+    f32 normalY;
+    f32 normalZ;
+} WaveHeightQuery;
 
-    if (arg0 < 0 || arg0 >= gNumberOfLevelSegments) {
-        arg0 = 0;
+/**
+ * Clamps the point into the segment and finds the wave cell it lies in, both within the segment and in the
+ * repeating wave tile grid.
+ */
+static void wave_height_find_cell(WaveHeightQuery *q, f32 x, f32 z) {
+    x -= gWaveModel[q->blockID].originX;
+    if (x < 0.0f) {
+        x = 0.0f;
+    } else if (gWaveBoundingBoxW <= x) {
+        x = gWaveBoundingBoxW - 1; // needs to be 1 instead of 1.0f
     }
 
-    sp78 = gWaveModel[arg0].originY;
-
-    sp90 = gWaveVtxStepZ;
-    sp94 = gWaveVtxStepX;
-    var_f16 = (1.0f - gWaveController.minDetailScale) / 127.0f;
-    sp58 = arg0 * gWaveTileTotal;
-
-    if (gWaveController.doubleDensity) {
-        sp90 /= 2.0f;
-        sp94 /= 2.0f;
-        sp60 = (gWaveController.subdivisions * 2) + 1;
-    } else {
-        sp60 = gWaveController.subdivisions + 1;
+    z -= gWaveModel[q->blockID].originZ;
+    if (z < 0.0f) {
+        z = 0.0f;
+    } else if (gWaveBoundingBoxH <= z) {
+        z = gWaveBoundingBoxH - 1; // needs to be 1 instead of 1.0f
     }
 
-    arg1 -= gWaveModel[arg0].originX;
-    if (arg1 < 0.0f) {
-        arg1 = 0.0f;
-    } else if (gWaveBoundingBoxW <= arg1) {
-        arg1 = gWaveBoundingBoxW - 1; // needs to be 1 instead of 1.0f
+    q->cellX = x / q->stepX;
+    q->cellZ = z / q->stepZ;
+    x -= q->cellX * q->stepX;
+    z -= q->cellZ * q->stepZ;
+
+    q->tileX = gWaveModel[q->blockID].waveTileOffsetX + q->cellX;
+    while (q->tileX >= gWaveController.tileCount) {
+        q->tileX -= gWaveController.tileCount;
     }
 
-    arg2 -= gWaveModel[arg0].originZ;
-    if (arg2 < 0.0f) {
-        arg2 = 0.0f;
-    } else if (gWaveBoundingBoxH <= arg2) {
-        arg2 = gWaveBoundingBoxH - 1; // needs to be 1 instead of 1.0f
+    q->tileZ = gWaveModel[q->blockID].waveTileOffsetZ + q->cellZ;
+    while (q->tileZ >= gWaveController.tileCount) {
+        q->tileZ -= gWaveController.tileCount;
     }
 
-    sp70 = arg1 / sp94;
-    sp6C = arg2 / sp90;
-    arg1 -= sp70 * sp94;
-    arg2 -= sp6C * sp90;
-
-    var_t0 = gWaveModel[arg0].waveTileOffsetX + sp70;
-    while (var_t0 >= gWaveController.tileCount) {
-        var_t0 -= gWaveController.tileCount;
-    }
-
-    var_a3 = gWaveModel[arg0].waveTileOffsetZ + sp6C;
-    while (var_a3 >= gWaveController.tileCount) {
-        var_a3 -= gWaveController.tileCount;
-    }
-
-    var_v0 = 0;
-    if (arg2 != sp90 && arg1 < (((sp90 - arg2) / sp90) * sp94)) {
-        var_v0 = 1;
-    }
-
-    if (var_v0) {
-        var_a0 = (var_a3 * gWaveController.tileCount) + var_t0;
-        spA0 = (gWaveHeightTable[gWaveHeightIndices[var_a0].s[0]] + gWaveHeightTable[gWaveHeightIndices[var_a0].s[1]]) *
-               gWaveController.magnitude;
-        var_a0 = sp58 + sp70 + (sp6C * sp60);
-        if (gWaveGenCount > 0) {
-            spA0 += waves_get_y(arg0, sp70, sp6C);
-        }
-
-        var_v0 = gWaveDetailLevels[var_a0];
-        if (gWaveDetailLevels[var_a0] < 0x7F) {
-            spA0 *= gWaveController.minDetailScale + (var_v0 * var_f16);
-        }
-
-        var_a0 =
-            (var_a3 + 1) >= gWaveController.tileCount ? var_t0 : ((var_a3 + 1) * gWaveController.tileCount) + var_t0;
-        var_f12 =
-            (gWaveHeightTable[gWaveHeightIndices[var_a0].s[0]] + gWaveHeightTable[gWaveHeightIndices[var_a0].s[1]]) *
-            gWaveController.magnitude;
-        if (gWaveGenCount > 0) {
-            var_f12 += waves_get_y(arg0, sp70, sp6C + 1);
-        }
-        var_a0 = sp58 + sp70 + ((sp6C + 1) * sp60);
-        var_v0 = gWaveDetailLevels[var_a0];
-        if (gWaveDetailLevels[var_a0] < 0x7F) {
-            var_f12 *= gWaveController.minDetailScale + (var_v0 * var_f16);
-        }
-
-        if ((var_t0 + 1) >= gWaveController.tileCount) {
-            var_a0 = var_a3 * gWaveController.tileCount;
-        } else {
-            var_a0 = (var_t0 + 0) + (var_a3 * gWaveController.tileCount) + 1;
-        }
-        var_f2 =
-            (gWaveHeightTable[gWaveHeightIndices[var_a0].s[0]] + gWaveHeightTable[gWaveHeightIndices[var_a0].s[1]]) *
-            gWaveController.magnitude;
-        if (gWaveGenCount > 0) {
-            var_f2 += waves_get_y(arg0, sp70 + 1, sp6C);
-        }
-        var_a0 = sp58 + sp70 + (sp6C * sp60);
-        var_a0++;
-        var_v0 = gWaveDetailLevels[var_a0];
-        if (gWaveDetailLevels[var_a0] < 0x7F) {
-            var_f2 *= gWaveController.minDetailScale + (var_v0 * var_f16);
-        }
-
-        if (gWaveController.doubleDensity) {
-            spA0 /= 2.0f;
-            var_f12 /= 2.0f;
-            var_f2 /= 2.0f;
-        }
-
-        spA4 = 0.0f;
-        arg3X = (spA0 - var_f2) * sp90;
-        arg3Y = sp90 * sp94;
-        arg3Z = (spA0 - var_f12) * sp94;
-    } else {
-        if ((var_t0 + 1) >= gWaveController.tileCount) {
-            var_a0 = var_a3 * gWaveController.tileCount;
-        } else {
-            var_a0 = (var_t0 + 0) + (var_a3 * gWaveController.tileCount) + 1;
-        }
-        spA0 = (gWaveHeightTable[gWaveHeightIndices[var_a0].s[0]] + gWaveHeightTable[gWaveHeightIndices[var_a0].s[1]]) *
-               gWaveController.magnitude;
-        if (gWaveGenCount > 0) {
-            spA0 += waves_get_y(arg0, sp70 + 1, sp6C);
-        }
-        var_a0 = sp58 + sp70 + (sp6C * sp60);
-        var_a0++;
-        var_v0 = gWaveDetailLevels[var_a0];
-        if (gWaveDetailLevels[var_a0] < 0x7F) {
-            spA0 *= gWaveController.minDetailScale + (var_v0 * var_f16);
-        }
-
-        var_a0 =
-            (var_a3 + 1) >= gWaveController.tileCount ? var_t0 : ((var_a3 + 1) * gWaveController.tileCount) + var_t0;
-        var_f12 =
-            (gWaveHeightTable[gWaveHeightIndices[var_a0].s[0]] + gWaveHeightTable[gWaveHeightIndices[var_a0].s[1]]) *
-            gWaveController.magnitude;
-        if (gWaveGenCount > 0) {
-            var_f12 += waves_get_y(arg0, sp70, sp6C + 1);
-        }
-        var_a0 = sp58 + sp70 + ((sp6C + 1) * sp60);
-        var_v0 = (tempD_800E3178 = gWaveDetailLevels)[var_a0];
-        if (var_v0 < 0x7F) {
-            var_f12 *= gWaveController.minDetailScale + (var_v0 * var_f16);
-        }
-
-        var_a0 = (var_t0 + 1) >= gWaveController.tileCount ? 0 : (var_t0 + 1);
-        if ((var_a3 + 1) < gWaveController.tileCount) {
-            var_a0 += (var_a3 + 1) * gWaveController.tileCount;
-        }
-
-        var_f2 =
-            (gWaveHeightTable[gWaveHeightIndices[var_a0].s[0]] + gWaveHeightTable[gWaveHeightIndices[var_a0].s[1]]) *
-            gWaveController.magnitude;
-        if (gWaveGenCount > 0) {
-            var_f2 += waves_get_y(arg0, sp70 + 1, sp6C + 1);
-        }
-        var_a0 = sp58 + sp70 + ((sp6C + 1) * sp60);
-        var_a0++;
-        var_v0 = gWaveDetailLevels[var_a0];
-        if (var_v0 < 0x7F) {
-            var_f2 *= gWaveController.minDetailScale + (var_v0 * var_f16);
-        }
-
-        if (gWaveController.doubleDensity) {
-            spA0 /= 2.0f;
-            var_f12 /= 2.0f;
-            var_f2 /= 2.0f;
-        }
-
-        spA4 = sp94;
-        arg3X = sp90 * (var_f12 - var_f2);
-        arg3Y = sp90 * sp94;
-        arg3Z = sp94 * (spA0 - var_f2);
-    }
-
-    var_f16 = sqrtf((arg3X * arg3X) + (arg3Y * arg3Y) + (arg3Z * arg3Z));
-    if (var_f16 != 0.0 && arg3Y != 0.0) {
-        arg3X /= var_f16;
-        arg3Y /= var_f16;
-        arg3Z /= var_f16;
-        sp78 -= (((arg3X * arg1) + (arg3Z * arg2)) - ((spA4 * arg3X) + (spA0 * arg3Y))) / arg3Y;
-    }
-
-    if (arg3 != NULL) {
-        arg3->x = arg3X;
-        arg3->y = arg3Y;
-        arg3->z = arg3Z;
-    }
-
-    return sp78;
+    q->x = x;
+    q->z = z;
 }
 
-s32 wave_cells_in_rect(s32 arg0, ShadowWaveTri *arg1, ShadowPlane *arg2, f32 shadowXNegPosition, f32 shadowZNegPosition,
-                       f32 shadowXPosition, f32 shadowZPosition) {
+/**
+ * The point lies in the cell's first triangle (corners top-left, bottom-left and top-right):
+ * samples the three corner heights and builds the triangle's normal.
+ */
+static void wave_height_first_triangle(WaveHeightQuery *q) {
+    f32 cornerY0;
+    f32 cornerY1;
+    f32 cornerY2;
+    s32 index;
+    s32 detail;
+
+    index = (q->tileZ * gWaveController.tileCount) + q->tileX;
+    cornerY0 = (gWaveHeightTable[gWaveHeightIndices[index].s[0]] + gWaveHeightTable[gWaveHeightIndices[index].s[1]]) *
+               gWaveController.magnitude;
+    index = q->detailBase + q->cellX + (q->cellZ * q->detailRowStride);
+    if (gWaveGenCount > 0) {
+        cornerY0 += waves_get_y(q->blockID, q->cellX, q->cellZ);
+    }
+
+    detail = gWaveDetailLevels[index];
+    if (gWaveDetailLevels[index] < WAVE_FULL_SWELL_DEPTH) {
+        cornerY0 *= gWaveController.minDetailScale + (detail * q->detailScaleStep);
+    }
+
+    index = (q->tileZ + 1) >= gWaveController.tileCount ? q->tileX
+                                                        : ((q->tileZ + 1) * gWaveController.tileCount) + q->tileX;
+    cornerY1 = (gWaveHeightTable[gWaveHeightIndices[index].s[0]] + gWaveHeightTable[gWaveHeightIndices[index].s[1]]) *
+               gWaveController.magnitude;
+    if (gWaveGenCount > 0) {
+        cornerY1 += waves_get_y(q->blockID, q->cellX, q->cellZ + 1);
+    }
+    index = q->detailBase + q->cellX + ((q->cellZ + 1) * q->detailRowStride);
+    detail = gWaveDetailLevels[index];
+    if (gWaveDetailLevels[index] < WAVE_FULL_SWELL_DEPTH) {
+        cornerY1 *= gWaveController.minDetailScale + (detail * q->detailScaleStep);
+    }
+
+    if ((q->tileX + 1) >= gWaveController.tileCount) {
+        index = q->tileZ * gWaveController.tileCount;
+    } else {
+        index = (q->tileX + 0) + (q->tileZ * gWaveController.tileCount) + 1;
+    }
+    cornerY2 = (gWaveHeightTable[gWaveHeightIndices[index].s[0]] + gWaveHeightTable[gWaveHeightIndices[index].s[1]]) *
+               gWaveController.magnitude;
+    if (gWaveGenCount > 0) {
+        cornerY2 += waves_get_y(q->blockID, q->cellX + 1, q->cellZ);
+    }
+    index = q->detailBase + q->cellX + (q->cellZ * q->detailRowStride);
+    index++;
+    detail = gWaveDetailLevels[index];
+    if (gWaveDetailLevels[index] < WAVE_FULL_SWELL_DEPTH) {
+        cornerY2 *= gWaveController.minDetailScale + (detail * q->detailScaleStep);
+    }
+
+    if (gWaveController.doubleDensity) {
+        cornerY0 /= 2.0f;
+        cornerY1 /= 2.0f;
+        cornerY2 /= 2.0f;
+    }
+
+    q->anchorY = cornerY0;
+    q->anchorX = 0.0f;
+    q->normalX = (cornerY0 - cornerY2) * q->stepZ;
+    q->normalY = q->stepZ * q->stepX;
+    q->normalZ = (cornerY0 - cornerY1) * q->stepX;
+}
+
+/**
+ * The point lies in the cell's second triangle (corners top-right, bottom-left and bottom-right):
+ * samples the three corner heights and builds the triangle's normal.
+ */
+static void wave_height_second_triangle(WaveHeightQuery *q) {
+    f32 cornerY0;
+    f32 cornerY1;
+    f32 cornerY2;
+    s32 index;
+    s32 detail;
+
+    if ((q->tileX + 1) >= gWaveController.tileCount) {
+        index = q->tileZ * gWaveController.tileCount;
+    } else {
+        index = (q->tileX + 0) + (q->tileZ * gWaveController.tileCount) + 1;
+    }
+    cornerY0 = (gWaveHeightTable[gWaveHeightIndices[index].s[0]] + gWaveHeightTable[gWaveHeightIndices[index].s[1]]) *
+               gWaveController.magnitude;
+    if (gWaveGenCount > 0) {
+        cornerY0 += waves_get_y(q->blockID, q->cellX + 1, q->cellZ);
+    }
+    index = q->detailBase + q->cellX + (q->cellZ * q->detailRowStride);
+    index++;
+    detail = gWaveDetailLevels[index];
+    if (gWaveDetailLevels[index] < WAVE_FULL_SWELL_DEPTH) {
+        cornerY0 *= gWaveController.minDetailScale + (detail * q->detailScaleStep);
+    }
+
+    index = (q->tileZ + 1) >= gWaveController.tileCount ? q->tileX
+                                                        : ((q->tileZ + 1) * gWaveController.tileCount) + q->tileX;
+    cornerY1 = (gWaveHeightTable[gWaveHeightIndices[index].s[0]] + gWaveHeightTable[gWaveHeightIndices[index].s[1]]) *
+               gWaveController.magnitude;
+    if (gWaveGenCount > 0) {
+        cornerY1 += waves_get_y(q->blockID, q->cellX, q->cellZ + 1);
+    }
+    index = q->detailBase + q->cellX + ((q->cellZ + 1) * q->detailRowStride);
+    detail = gWaveDetailLevels[index];
+    if (detail < WAVE_FULL_SWELL_DEPTH) {
+        cornerY1 *= gWaveController.minDetailScale + (detail * q->detailScaleStep);
+    }
+
+    index = (q->tileX + 1) >= gWaveController.tileCount ? 0 : (q->tileX + 1);
+    if ((q->tileZ + 1) < gWaveController.tileCount) {
+        index += (q->tileZ + 1) * gWaveController.tileCount;
+    }
+
+    cornerY2 = (gWaveHeightTable[gWaveHeightIndices[index].s[0]] + gWaveHeightTable[gWaveHeightIndices[index].s[1]]) *
+               gWaveController.magnitude;
+    if (gWaveGenCount > 0) {
+        cornerY2 += waves_get_y(q->blockID, q->cellX + 1, q->cellZ + 1);
+    }
+    index = q->detailBase + q->cellX + ((q->cellZ + 1) * q->detailRowStride);
+    index++;
+    detail = gWaveDetailLevels[index];
+    if (detail < WAVE_FULL_SWELL_DEPTH) {
+        cornerY2 *= gWaveController.minDetailScale + (detail * q->detailScaleStep);
+    }
+
+    if (gWaveController.doubleDensity) {
+        cornerY0 /= 2.0f;
+        cornerY1 /= 2.0f;
+        cornerY2 /= 2.0f;
+    }
+
+    q->anchorY = cornerY0;
+    q->anchorX = q->stepX;
+    q->normalX = q->stepZ * (cornerY1 - cornerY2);
+    q->normalY = q->stepZ * q->stepX;
+    q->normalZ = q->stepX * (cornerY0 - cornerY2);
+}
+
+/**
+ * The wave surface height and normal at a point of a segment.
+ * Each wave cell is split into two triangles; the height is read off the plane of the one under the point.
+ */
+f32 wave_height_at(s32 blockID, f32 x, f32 z, Vec3f *outNormal) {
+    WaveHeightQuery q;
+    f32 surfaceY;
+    f32 normalLength;
+    s32 firstTriangle;
+
+    if (blockID < 0 || blockID >= gNumberOfLevelSegments) {
+        blockID = 0;
+    }
+    q.blockID = blockID;
+
+    surfaceY = gWaveModel[blockID].originY;
+
+    q.stepZ = gWaveVtxStepZ;
+    q.stepX = gWaveVtxStepX;
+    q.detailScaleStep = (1.0f - gWaveController.minDetailScale) / 127.0f;
+    q.detailBase = blockID * gWaveTileTotal;
+
+    if (gWaveController.doubleDensity) {
+        q.stepZ /= 2.0f;
+        q.stepX /= 2.0f;
+        q.detailRowStride = (gWaveController.subdivisions * 2) + 1;
+    } else {
+        q.detailRowStride = gWaveController.subdivisions + 1;
+    }
+
+    wave_height_find_cell(&q, x, z);
+
+    firstTriangle = 0;
+    if (q.z != q.stepZ && q.x < (((q.stepZ - q.z) / q.stepZ) * q.stepX)) {
+        firstTriangle = 1;
+    }
+
+    if (firstTriangle) {
+        wave_height_first_triangle(&q);
+    } else {
+        wave_height_second_triangle(&q);
+    }
+
+    normalLength = sqrtf((q.normalX * q.normalX) + (q.normalY * q.normalY) + (q.normalZ * q.normalZ));
+    if (normalLength != 0.0 && q.normalY != 0.0) {
+        q.normalX /= normalLength;
+        q.normalY /= normalLength;
+        q.normalZ /= normalLength;
+        surfaceY -=
+            (((q.normalX * q.x) + (q.normalZ * q.z)) - ((q.anchorX * q.normalX) + (q.anchorY * q.normalY))) / q.normalY;
+    }
+
+    if (outNormal != NULL) {
+        outNormal->x = q.normalX;
+        outNormal->y = q.normalY;
+        outNormal->z = q.normalZ;
+    }
+
+    return surfaceY;
+}
+
+/**
+ * Builds the wave triangles (and their planes) of a segment that cover a rectangle, for shadows cast on water.
+ * Returns how many were written.
+ */
+s32 wave_cells_in_rect(s32 blockID, ShadowWaveTri *tris, ShadowPlane *planes, f32 shadowXNegPosition,
+                       f32 shadowZNegPosition, f32 shadowXPosition, f32 shadowZPosition) {
     s32 colCount;
     s32 startCol;
     s32 startRow;
@@ -224,42 +274,43 @@ s32 wave_cells_in_rect(s32 arg0, ShadowWaveTri *arg1, ShadowPlane *arg2, f32 sha
     s32 colOffset;
     s32 rowOffset;
     s32 counter;
-    f32 temp_fs0;
-    f32 temp_fs1;
-    f32 temp_fs3;
-    f32 var_fs0;
-    f32 var_fs1;
-    s16 sp332;
-    s16 spD8[300];
-    s16 temp_fp;
-    s16 temp_s2;
-    s16 var_s3_2;
+    f32 normalX;
+    f32 normalZ;
+    f32 normalY;
+    f32 height;
+    f32 heightScale;
+    s16 rowZ;
+    s16 heights[300];
+    s16 nextRowZ;
+    s16 nextColX;
+    s16 colX;
     f32 stepX;
     f32 stepZ;
-    f32 temp_fs2;
-    s32 var_s0;
-    s32 var_s2;
-    s32 var_s4;
-    s32 temp_t0;
+    f32 detailScaleStep;
+    f32 normalLength;
+    s32 tileCol;
+    s32 heightIndex;
+    s32 detailIndex;
+    s32 detailBase;
 
-    temp_t0 = arg0 * gWaveTileTotal;
+    detailBase = blockID * gWaveTileTotal;
     stepX = gWaveVtxStepX;
     stepZ = gWaveVtxStepZ;
-    temp_fs2 = (1.0f - gWaveController.minDetailScale) / 127.0f;
+    detailScaleStep = (1.0f - gWaveController.minDetailScale) / 127.0f;
     if (gWaveController.doubleDensity != 0) {
-        var_fs1 = 0.5f;
+        heightScale = 0.5f;
         stepX *= 0.5;
         stepZ *= 0.5;
         colCount = gWaveController.subdivisions * 2;
     } else {
-        var_fs1 = 1.0f;
+        heightScale = 1.0f;
         colCount = gWaveController.subdivisions;
     }
 
-    shadowXNegPosition -= gWaveModel[arg0].originX;
-    shadowZNegPosition -= gWaveModel[arg0].originZ;
-    shadowXPosition -= gWaveModel[arg0].originX;
-    shadowZPosition -= gWaveModel[arg0].originZ;
+    shadowXNegPosition -= gWaveModel[blockID].originX;
+    shadowZNegPosition -= gWaveModel[blockID].originZ;
+    shadowXPosition -= gWaveModel[blockID].originX;
+    shadowZPosition -= gWaveModel[blockID].originZ;
     if (shadowXNegPosition < 0.0f) {
         startCol = 0;
     } else {
@@ -280,40 +331,41 @@ s32 wave_cells_in_rect(s32 arg0, ShadowWaveTri *arg1, ShadowPlane *arg2, f32 sha
     } else {
         endRow = (s32) (shadowZPosition / stepX) + 1;
     }
-    colOffset = gWaveModel[arg0].waveTileOffsetX + startCol;
+    colOffset = gWaveModel[blockID].waveTileOffsetX + startCol;
     while (colOffset >= gWaveController.tileCount) {
         colOffset -= gWaveController.tileCount;
     }
-    rowOffset = gWaveModel[arg0].waveTileOffsetZ + startRow;
+    rowOffset = gWaveModel[blockID].waveTileOffsetZ + startRow;
     while (rowOffset >= gWaveController.tileCount) {
         rowOffset -= gWaveController.tileCount;
     }
 
+    // First the height of every vertex in the rectangle.
     for (currentRow = startRow, counter = 0; currentRow <= endRow; currentRow++) {
-        var_s0 = colOffset;
+        tileCol = colOffset;
 
-        var_s2 = (rowOffset * gWaveController.tileCount) + var_s0;
-        var_s4 = temp_t0 + startCol + (currentRow * colCount);
+        heightIndex = (rowOffset * gWaveController.tileCount) + tileCol;
+        detailIndex = detailBase + startCol + (currentRow * colCount);
         for (currentCol = startCol; currentCol <= endCol; currentCol++) {
 
-            var_fs0 =
-                (gWaveHeightTable[gWaveHeightIndices[var_s2].x] + gWaveHeightTable[gWaveHeightIndices[var_s2].y]) *
-                gWaveController.magnitude;
+            height = (gWaveHeightTable[gWaveHeightIndices[heightIndex].x] +
+                      gWaveHeightTable[gWaveHeightIndices[heightIndex].y]) *
+                     gWaveController.magnitude;
             if (gWaveGenCount > 0) {
-                var_fs0 += waves_get_y(arg0, currentCol, currentRow);
+                height += waves_get_y(blockID, currentCol, currentRow);
             }
 
-            if (gWaveDetailLevels[var_s4] < 0x7F) {
-                var_fs0 *= gWaveController.minDetailScale + ((s32) gWaveDetailLevels[var_s4] * temp_fs2);
+            if (gWaveDetailLevels[detailIndex] < WAVE_FULL_SWELL_DEPTH) {
+                height *= gWaveController.minDetailScale + ((s32) gWaveDetailLevels[detailIndex] * detailScaleStep);
             }
-            spD8[counter] = gWaveModel[arg0].originY + (s16) (var_fs0 * var_fs1);
+            heights[counter] = gWaveModel[blockID].originY + (s16) (height * heightScale);
             counter++;
-            var_s0++;
-            var_s4++;
-            var_s2++;
-            if (var_s0 >= gWaveController.tileCount) {
-                var_s0 -= gWaveController.tileCount;
-                var_s2 -= gWaveController.tileCount;
+            tileCol++;
+            detailIndex++;
+            heightIndex++;
+            if (tileCol >= gWaveController.tileCount) {
+                tileCol -= gWaveController.tileCount;
+                heightIndex -= gWaveController.tileCount;
             }
         }
         rowOffset++;
@@ -323,107 +375,281 @@ s32 wave_cells_in_rect(s32 arg0, ShadowWaveTri *arg1, ShadowPlane *arg2, f32 sha
     }
 
     // FAKE
-    temp_fs3 = (stepX * stepZ) * (stepX * stepZ);
+    normalY = (stepX * stepZ) * (stepX * stepZ);
     colCount = (endCol - startCol) + 1;
-    sp332 = gWaveModel[arg0].originZ + (s16) (startRow * stepZ);
+    rowZ = gWaveModel[blockID].originZ + (s16) (startRow * stepZ);
 
+    // Then two triangles per cell, skipping any whose normal comes out zero.
     for (currentRow = startRow, counter = 0; currentRow < endRow; currentRow++) {
-        temp_fp = gWaveModel[arg0].originZ + (s16) ((currentRow + 1) * stepZ);
-        var_s3_2 = gWaveModel[arg0].originX + (s16) (startCol * stepX);
+        nextRowZ = gWaveModel[blockID].originZ + (s16) ((currentRow + 1) * stepZ);
+        colX = gWaveModel[blockID].originX + (s16) (startCol * stepX);
 
         for (currentCol = startCol; currentCol < endCol; currentCol++) {
-            temp_s2 = gWaveModel[arg0].originX + (s16) ((currentCol + 1) * stepX);
+            nextColX = gWaveModel[blockID].originX + (s16) ((currentCol + 1) * stepX);
 
-            arg1[counter].x1 = var_s3_2;
-            arg1[counter].x2 = var_s3_2;
-            arg1[counter].x3 = temp_s2;
-            arg1[counter].y1 = spD8[(currentCol - startCol) + ((currentRow - startRow) * colCount)];
-            arg1[counter].y2 = spD8[(currentCol - startCol) + (((currentRow - startRow) + 1) * colCount)];
-            arg1[counter].y3 = spD8[((currentCol - startCol) + 1) + ((currentRow - startRow) * colCount)];
-            arg1[counter].z1 = sp332;
-            arg1[counter].z2 = temp_fp;
-            arg1[counter].z3 = sp332;
-            temp_fs0 = (arg1[counter].y1 - arg1[counter].y3) * stepZ;
-            temp_fs3 = stepX * stepZ;
-            temp_fs1 = (arg1[counter].y1 - arg1[counter].y2) * stepX;
-            temp_fs2 = sqrtf((temp_fs0 * temp_fs0) + (temp_fs3 * temp_fs3) + (temp_fs1 * temp_fs1));
-            if (temp_fs2 > 0.0f) {
-                temp_fs2 = 1 / temp_fs2;
-                arg2[counter].x = temp_fs0 * temp_fs2;
-                arg2[counter].y = temp_fs3 * temp_fs2;
-                arg2[counter].z = temp_fs1 * temp_fs2;
+            tris[counter].x1 = colX;
+            tris[counter].x2 = colX;
+            tris[counter].x3 = nextColX;
+            tris[counter].y1 = heights[(currentCol - startCol) + ((currentRow - startRow) * colCount)];
+            tris[counter].y2 = heights[(currentCol - startCol) + (((currentRow - startRow) + 1) * colCount)];
+            tris[counter].y3 = heights[((currentCol - startCol) + 1) + ((currentRow - startRow) * colCount)];
+            tris[counter].z1 = rowZ;
+            tris[counter].z2 = nextRowZ;
+            tris[counter].z3 = rowZ;
+            normalX = (tris[counter].y1 - tris[counter].y3) * stepZ;
+            normalY = stepX * stepZ;
+            normalZ = (tris[counter].y1 - tris[counter].y2) * stepX;
+            normalLength = sqrtf((normalX * normalX) + (normalY * normalY) + (normalZ * normalZ));
+            if (normalLength > 0.0f) {
+                normalLength = 1 / normalLength;
+                planes[counter].x = normalX * normalLength;
+                planes[counter].y = normalY * normalLength;
+                planes[counter].z = normalZ * normalLength;
 
-                arg2[counter].planeD.w = -((arg1[counter].x1 * arg2[counter].x) + (arg1[counter].y1 * arg2[counter].y) +
-                                           (arg1[counter].z1 * arg2[counter].z));
+                planes[counter].planeD.w =
+                    -((tris[counter].x1 * planes[counter].x) + (tris[counter].y1 * planes[counter].y) +
+                      (tris[counter].z1 * planes[counter].z));
                 counter++;
             }
-            arg1[counter].x1 = temp_s2;
-            arg1[counter].x2 = var_s3_2;
-            arg1[counter].x3 = temp_s2;
-            arg1[counter].y1 = spD8[((currentCol - startCol) + 1) + ((currentRow - startRow) * colCount)];
-            arg1[counter].y2 = spD8[(currentCol - startCol) + (((currentRow - startRow) + 1) * colCount)];
-            arg1[counter].y3 = spD8[((currentCol - startCol) + 1) + (((currentRow - startRow) + 1) * colCount)];
-            arg1[counter].z1 = sp332;
-            arg1[counter].z2 = temp_fp;
-            arg1[counter].z3 = temp_fp;
-            temp_fs0 = (arg1[counter].y2 - arg1[counter].y3) * stepZ;
-            temp_fs3 = stepX * stepZ;
-            temp_fs1 = (arg1[counter].y1 - arg1[counter].y3) * stepX;
-            temp_fs2 = sqrtf((temp_fs0 * temp_fs0) + (temp_fs3 * temp_fs3) + (temp_fs1 * temp_fs1));
-            if (temp_fs2 > 0.0f) {
-                temp_fs2 = 1 / temp_fs2;
-                arg2[counter].x = temp_fs0 * temp_fs2;
-                arg2[counter].y = temp_fs3 * temp_fs2;
-                arg2[counter].z = temp_fs1 * temp_fs2;
+            tris[counter].x1 = nextColX;
+            tris[counter].x2 = colX;
+            tris[counter].x3 = nextColX;
+            tris[counter].y1 = heights[((currentCol - startCol) + 1) + ((currentRow - startRow) * colCount)];
+            tris[counter].y2 = heights[(currentCol - startCol) + (((currentRow - startRow) + 1) * colCount)];
+            tris[counter].y3 = heights[((currentCol - startCol) + 1) + (((currentRow - startRow) + 1) * colCount)];
+            tris[counter].z1 = rowZ;
+            tris[counter].z2 = nextRowZ;
+            tris[counter].z3 = nextRowZ;
+            normalX = (tris[counter].y2 - tris[counter].y3) * stepZ;
+            normalY = stepX * stepZ;
+            normalZ = (tris[counter].y1 - tris[counter].y3) * stepX;
+            normalLength = sqrtf((normalX * normalX) + (normalY * normalY) + (normalZ * normalZ));
+            if (normalLength > 0.0f) {
+                normalLength = 1 / normalLength;
+                planes[counter].x = normalX * normalLength;
+                planes[counter].y = normalY * normalLength;
+                planes[counter].z = normalZ * normalLength;
 
-                arg2[counter].planeD.w = -((arg1[counter].x1 * arg2[counter].x) + (arg1[counter].y1 * arg2[counter].y) +
-                                           (arg1[counter].z1 * arg2[counter].z));
+                planes[counter].planeD.w =
+                    -((tris[counter].x1 * planes[counter].x) + (tris[counter].y1 * planes[counter].y) +
+                      (tris[counter].z1 * planes[counter].z));
                 counter++;
             }
 
-            var_s3_2 = temp_s2;
+            colX = nextColX;
         }
-        sp332 = temp_fp;
+        rowZ = nextRowZ;
     }
     return counter;
 }
 
+/** Working state shared by the steps of obj_wave_init. */
+typedef struct WaveLogCell {
+    f32 stepX; // Width and depth of one wave cell.
+    f32 stepZ;
+    f32 detailScaleStep; // How much each depth step below WAVE_FULL_SWELL_DEPTH adds to the swell.
+    s32 detailBase;      // Index of the segment's first entry in gWaveDetailLevels.
+    s32 detailRowStride; // Entries per row of the segment in gWaveDetailLevels.
+    f32 x;               // Position within the cell.
+    f32 z;
+    s32 cellX; // Cell column and row within the segment.
+    s32 cellZ;
+    s32 tileX; // The same cell's column and row in the repeating wave tile grid.
+    s32 tileZ;
+    s32 firstTriangle;    // Whether the point lies in the cell's first triangle rather than its second.
+    f32 anchorX;          // X of the triangle corner the plane is measured from.
+    s32 cornerTiles[3];   // The triangle's three corners in the wave tile grid...
+    s32 detailIndices[3]; // ...and in gWaveDetailLevels.
+    s32 seedIndices[6];   // Two gWaveHeightTable entries per corner.
+    f32 cornerScale[3];   // Each corner's depth damping.
+} WaveLogCell;
+
+/**
+ * Clamps the point into the segment, finds the wave cell under it and which of the cell's two triangles
+ * it lies in. Records the cell on the log.
+ */
+static void wave_log_find_cell(WaveLogCell *cell, Object_Log *object, s32 blockID, f32 x, f32 z) {
+    // clang-format off
+    x -= gWaveModel[blockID].originX;
+    if (x < 0.0f) { x = 0.0f; }
+    else if (x >= gWaveBoundingBoxW) { x = gWaveBoundingBoxW - 1; }
+    z -= gWaveModel[blockID].originZ;
+    if (z < 0.0f) { z = 0.0f; }
+    else if (z >= gWaveBoundingBoxH) { z = gWaveBoundingBoxH - 1; }
+    // clang-format on
+    cell->cellX = x / cell->stepX;
+    cell->cellZ = z / cell->stepZ;
+    object->tileX = cell->cellX;
+    object->tileZ = cell->cellZ;
+    object->blockID = blockID;
+    x -= (cell->cellX * cell->stepX);
+    z -= (cell->cellZ * cell->stepZ);
+    cell->tileX = gWaveModel[blockID].waveTileOffsetX + cell->cellX;
+    while (cell->tileX >= gWaveController.tileCount) {
+        cell->tileX -= gWaveController.tileCount;
+    }
+
+    cell->tileZ = gWaveModel[blockID].waveTileOffsetZ + cell->cellZ;
+    while (cell->tileZ >= gWaveController.tileCount) {
+        cell->tileZ -= gWaveController.tileCount;
+    }
+
+    cell->firstTriangle = FALSE;
+    if (z != cell->stepZ && x < (((cell->stepZ - z) / cell->stepZ) * cell->stepX)) {
+        cell->firstTriangle = TRUE;
+    }
+    cell->x = x;
+    cell->z = z;
+}
+
+/** Finds the three corners of the triangle under the point, in the wave tile grid and in the depth table. */
+static void wave_log_corner_indices(WaveLogCell *cell) {
+    if (cell->firstTriangle != FALSE) {
+        cell->cornerTiles[0] = (cell->tileZ * gWaveController.tileCount) + cell->tileX;
+
+        if ((cell->tileZ + 1) >= gWaveController.tileCount) {
+            cell->cornerTiles[1] = cell->tileX;
+        } else {
+            cell->cornerTiles[1] = ((cell->tileZ + 1) * gWaveController.tileCount) + cell->tileX;
+        }
+
+        if ((cell->tileX + 1) >= gWaveController.tileCount) {
+            cell->cornerTiles[2] = (cell->tileZ * gWaveController.tileCount);
+        } else {
+            cell->cornerTiles[2] = (cell->tileZ * gWaveController.tileCount) + cell->tileX + 1;
+        }
+
+        cell->anchorX = 0.0f;
+        cell->detailIndices[0] = (cell->detailBase + cell->cellX) + (cell->cellZ * cell->detailRowStride);
+        cell->detailIndices[1] = (cell->detailBase + cell->cellX) + ((cell->cellZ + 1) * cell->detailRowStride);
+        cell->detailIndices[2] = (cell->detailBase + cell->cellX) + (cell->cellZ * cell->detailRowStride) + 1;
+    } else {
+        if ((cell->tileX + 1) >= gWaveController.tileCount) {
+            cell->cornerTiles[0] = cell->tileZ * gWaveController.tileCount;
+        } else {
+            cell->cornerTiles[0] = cell->tileX + 1 + (cell->tileZ * gWaveController.tileCount);
+        }
+
+        if ((cell->tileZ + 1) >= gWaveController.tileCount) {
+            cell->cornerTiles[1] = cell->tileX;
+        } else {
+            cell->cornerTiles[1] = ((cell->tileZ + 1) * gWaveController.tileCount) + cell->tileX;
+        }
+
+        if ((cell->tileX + 1) >= gWaveController.tileCount) {
+            cell->cornerTiles[2] = 0;
+        } else {
+            cell->cornerTiles[2] = cell->tileX + 1;
+        }
+
+        if ((cell->tileZ + 1) < gWaveController.tileCount) {
+            cell->cornerTiles[2] += (cell->tileZ + 1) * gWaveController.tileCount;
+        }
+
+        cell->anchorX = cell->stepX;
+        cell->detailIndices[0] = (cell->cellX + cell->detailBase) + (cell->cellZ * cell->detailRowStride) + 1;
+        cell->detailIndices[1] = (cell->cellX + cell->detailBase) + (cell->cellZ + 1) * cell->detailRowStride;
+        cell->detailIndices[2] = (cell->cellX + cell->detailBase) + (cell->cellZ + 1) * cell->detailRowStride + 1;
+    }
+}
+
+/** Reads each corner's current height table entries and its depth damping. */
+static void wave_log_corner_seeds(WaveLogCell *cell) {
+    s16 i;
+    s32 detail;
+
+    for (i = 0; i < 3; i++) {
+        cell->seedIndices[i * 2] = gWaveHeightIndices[cell->cornerTiles[i]].s[0];
+        cell->seedIndices[i * 2 + 1] = gWaveHeightIndices[cell->cornerTiles[i]].s[1];
+        cell->cornerScale[i] = 1.0f;
+
+        detail = gWaveDetailLevels[cell->detailIndices[i]];
+        if (detail < WAVE_FULL_SWELL_DEPTH) {
+            cell->cornerScale[i] *= gWaveController.minDetailScale + (detail * cell->detailScaleStep);
+        }
+    }
+
+    if (gWaveController.doubleDensity) {
+        cell->cornerScale[0] /= 2.0;
+        cell->cornerScale[1] /= 2.0;
+        cell->cornerScale[2] /= 2.0;
+    }
+}
+
+/**
+ * Bakes the log's bobbing cycle: the surface height under it at every other step of the height table,
+ * in 1/16 units. Samples are shifted right as far as needed to fit, and the shift is kept on the log.
+ */
+static void wave_log_bake_samples(WaveLogCell *cell, Object_Log *object) {
+    f32 cornerY0;
+    f32 cornerY1;
+    f32 cornerY2;
+    f32 normalX;
+    f32 normalY;
+    f32 normalZ;
+    f32 normalYUnscaled;
+    f32 normalLength;
+    s32 sample;
+    s16 sampleLimit;
+    s16 extraShift;
+    s16 i;
+    s16 j;
+
+    sampleLimit = 128;
+    for (i = 0; i < (gWaveController.seedSize >> 1); i++) {
+        cornerY0 =
+            (gWaveHeightTable[cell->seedIndices[0]] + gWaveHeightTable[cell->seedIndices[1]]) * cell->cornerScale[0];
+        cornerY1 =
+            (gWaveHeightTable[cell->seedIndices[2]] + gWaveHeightTable[cell->seedIndices[3]]) * cell->cornerScale[1];
+        cornerY2 =
+            (gWaveHeightTable[cell->seedIndices[4]] + gWaveHeightTable[cell->seedIndices[5]]) * cell->cornerScale[2];
+        if (cell->firstTriangle != FALSE) {
+            normalX = (cornerY0 - cornerY2) * cell->stepZ;
+            normalZ = (cornerY0 - cornerY1) * cell->stepX;
+        } else {
+            normalX = (cornerY1 - cornerY2) * cell->stepZ;
+            normalZ = (cornerY0 - cornerY2) * cell->stepX;
+        }
+        normalYUnscaled = cell->stepZ * cell->stepX;
+        normalLength = sqrtf((normalX * normalX) + (normalYUnscaled * normalYUnscaled) + (normalZ * normalZ));
+        normalX /= normalLength;
+        normalZ /= normalLength;
+        normalY = normalYUnscaled / normalLength;
+        sample =
+            -(s32) (((normalX * cell->x) + (normalZ * cell->z) - ((cell->anchorX * normalX) + (cornerY0 * normalY))) *
+                    16.0f / normalY);
+        if (sample >= sampleLimit || sample < -sampleLimit) {
+            extraShift = 0;
+            do {
+                sampleLimit += sampleLimit;
+                extraShift++;
+            } while (sample >= sampleLimit || sample < -sampleLimit);
+
+            for (j = 0; j < i; j++) {
+                object->heightSamples[j] >>= extraShift;
+            }
+            object->sampleShift += extraShift;
+        }
+        object->heightSamples[i] = (sample >> object->sampleShift);
+        for (j = 0; j < 6; j++) {
+            cell->seedIndices[j] += 2;
+            while (cell->seedIndices[j] >= gWaveController.seedSize) {
+                cell->seedIndices[j] -= gWaveController.seedSize;
+            }
+        }
+    }
+}
+
+/**
+ * Creates the bobbing state for a log floating on the waves of a segment at the given point.
+ * Returns NULL if the level has no waves or the segment is out of range.
+ */
 Object_Log *obj_wave_init(s32 blockID, f32 x, f32 z) {
-    f32 spE4;
-    f32 temp_f;
-    s32 pad;
-    f32 var_f0;
-    s32 pad2;
-    f32 var_f12;
-    s32 var_t4;
-    f32 temp_f2;
-    s32 spC4;
-    s32 spC0;
-    f32 var_f18;
-    f32 var_f20;
-    f32 var_f22;
-    s32 spB0;
-    s32 var_t1;
-    s32 var_a0;
-    s16 var_t0;
-    s16 var_v1;
-    s16 var_a3;
-    s16 var_a1;
-    f32 var_f2;
-    s32 var_v0;
-    f32 var_f14;
-    s32 var_v0_2;
-    s32 var_a2;
-    // Bisected to this array: read before it is written on some path through
-    // the branches below, which indexes gWaveHeightIndices with garbage and
-    // blacks out Future Fun Land on DC.
-    s32 sp80[3] = { 0 };
-    s32 sp68[6];
-    s32 sp5C[3];
-    f32 sp50[3];
+    // Zeroed: cornerTiles was bisected as read before it is written on some path, which indexes
+    // gWaveHeightIndices with garbage and blacks out Future Fun Land on DC.
+    WaveLogCell cell = { 0 };
     Object_Log *object;
 
-    var_t0 = 128;
     object = NULL;
     if (gWaveHeightTable != NULL && blockID >= 0 && blockID < gNumberOfLevelSegments) {
         object = mempool_alloc_safe((gWaveController.seedSize >> 1) + (sizeof(Object_Log) - 2), COLOUR_TAG_CYAN);
@@ -432,151 +658,21 @@ Object_Log *obj_wave_init(s32 blockID, f32 x, f32 z) {
         object->unused3 = 1;
         object->phase = 0;
         object->phaseCount = gWaveController.seedSize;
-        var_f20 = gWaveVtxStepZ;
-        var_f22 = gWaveVtxStepX;
-        temp_f2 = (1.0f - gWaveController.minDetailScale) / 127.0f;
-        var_f2 = temp_f2;
-        spB0 = (blockID * gWaveTileTotal);
+        cell.stepZ = gWaveVtxStepZ;
+        cell.stepX = gWaveVtxStepX;
+        cell.detailScaleStep = (1.0f - gWaveController.minDetailScale) / 127.0f;
+        cell.detailBase = (blockID * gWaveTileTotal);
         if (gWaveController.doubleDensity) {
-            var_t4 = (gWaveController.subdivisions * 2) + 1;
-            var_f20 /= 2.0f;
-            var_f22 /= 2.0f;
+            cell.detailRowStride = (gWaveController.subdivisions * 2) + 1;
+            cell.stepZ /= 2.0f;
+            cell.stepX /= 2.0f;
         } else {
-            var_t4 = gWaveController.subdivisions + 1;
+            cell.detailRowStride = gWaveController.subdivisions + 1;
         }
-        // clang-format off
-        x -= gWaveModel[blockID].originX;
-        if (x < 0.0f) { x = 0.0f; }
-        else if (x >= gWaveBoundingBoxW) { x = gWaveBoundingBoxW - 1; }
-        z -= gWaveModel[blockID].originZ;
-        if (z < 0.0f) { z = 0.0f; }
-        else if (z >= gWaveBoundingBoxH) { z = gWaveBoundingBoxH - 1; }
-        // clang-format on
-        spC4 = x / var_f22;
-        spC0 = z / var_f20;
-        object->tileX = spC4;
-        object->tileZ = spC0;
-        object->blockID = blockID;
-        x -= (spC4 * var_f22);
-        z -= (spC0 * var_f20);
-        var_a0 = gWaveModel[blockID].waveTileOffsetX + spC4;
-        while (var_a0 >= gWaveController.tileCount) {
-            var_a0 -= gWaveController.tileCount;
-        }
-
-        var_v0 = gWaveModel[blockID].waveTileOffsetZ + spC0;
-        while (var_v0 >= gWaveController.tileCount) {
-            var_v0 -= gWaveController.tileCount;
-        }
-
-        var_t1 = FALSE;
-        if (z != var_f20 && x < (((var_f20 - z) / var_f20) * var_f22)) {
-            var_t1 = TRUE;
-        }
-
-        if (var_t1 != FALSE) {
-            sp80[0] = (var_v0 * gWaveController.tileCount) + var_a0;
-
-            if ((var_v0 + 1) >= gWaveController.tileCount) {
-                sp80[1] = var_a0;
-            } else {
-                sp80[1] = ((var_v0 + 1) * gWaveController.tileCount) + var_a0;
-            }
-
-            if ((var_a0 + 1) >= gWaveController.tileCount) {
-                sp80[2] = (var_v0 * gWaveController.tileCount);
-            } else {
-                sp80[2] = (var_v0 * gWaveController.tileCount) + var_a0 + 1;
-            }
-
-            spE4 = 0.0f;
-            sp5C[0] = (spB0 + spC4) + (spC0 * var_t4);
-            sp5C[1] = (spB0 + spC4) + ((spC0 + 1) * var_t4);
-            sp5C[2] = (spB0 + spC4) + (spC0 * var_t4) + 1;
-        } else {
-            if ((var_a0 + 1) >= gWaveController.tileCount) {
-                sp80[0] = var_v0 * gWaveController.tileCount;
-            } else {
-                sp80[0] = var_a0 + 1 + (var_v0 * gWaveController.tileCount);
-            }
-
-            if ((var_v0 + 1) >= gWaveController.tileCount) {
-                sp80[1] = var_a0;
-            } else {
-                sp80[1] = ((var_v0 + 1) * gWaveController.tileCount) + var_a0;
-            }
-
-            if ((var_a0 + 1) >= gWaveController.tileCount) {
-                sp80[2] = 0;
-            } else {
-                sp80[2] = var_a0 + 1;
-            }
-
-            if ((var_v0 + 1) < gWaveController.tileCount) {
-                sp80[2] += (var_v0 + 1) * gWaveController.tileCount;
-            }
-
-            spE4 = var_f22;
-            sp5C[0] = (spC4 + spB0) + (spC0 * var_t4) + 1;
-            sp5C[1] = (spC4 + spB0) + (spC0 + 1) * var_t4;
-            sp5C[2] = (spC4 + spB0) + (spC0 + 1) * var_t4 + 1;
-        }
-
-        for (var_a3 = 0; var_a3 < 3; var_a3++) {
-            sp68[var_a3 * 2] = gWaveHeightIndices[sp80[var_a3]].s[0];
-            sp68[var_a3 * 2 + 1] = gWaveHeightIndices[sp80[var_a3]].s[1];
-            sp50[var_a3] = 1.0f;
-
-            var_a2 = gWaveDetailLevels[sp5C[var_a3]];
-            if (var_a2 < 0x7F) {
-                sp50[var_a3] *= gWaveController.minDetailScale + (var_a2 * var_f2);
-            }
-        }
-
-        if (gWaveController.doubleDensity) {
-            sp50[0] /= 2.0;
-            sp50[1] /= 2.0;
-            sp50[2] /= 2.0;
-        }
-
-        for (var_a3 = 0; var_a3 < (gWaveController.seedSize >> 1); var_a3++) {
-            temp_f = (gWaveHeightTable[sp68[0]] + gWaveHeightTable[sp68[1]]) * sp50[0];
-            var_f12 = (gWaveHeightTable[sp68[2]] + gWaveHeightTable[sp68[3]]) * sp50[1];
-            var_f0 = (gWaveHeightTable[sp68[4]] + gWaveHeightTable[sp68[5]]) * sp50[2];
-            if (var_t1 != FALSE) {
-                var_f2 = (temp_f - var_f0) * var_f20;
-                var_f14 = (temp_f - var_f12) * var_f22;
-            } else {
-                var_f2 = (var_f12 - var_f0) * var_f20;
-                var_f14 = (temp_f - var_f0) * var_f22;
-            }
-            var_f18 = var_f20 * var_f22;
-            var_f0 = sqrtf((var_f2 * var_f2) + (var_f18 * var_f18) + (var_f14 * var_f14));
-            var_f2 /= var_f0;
-            var_f14 /= var_f0;
-            var_f12 = var_f18 / var_f0;
-            var_v0_2 =
-                -(s32) (((var_f2 * x) + (var_f14 * z) - ((spE4 * var_f2) + (temp_f * var_f12))) * 16.0f / var_f12);
-            if (var_v0_2 >= var_t0 || var_v0_2 < -var_t0) {
-                var_v1 = 0;
-                do {
-                    var_t0 += var_t0;
-                    var_v1++;
-                } while (var_v0_2 >= var_t0 || var_v0_2 < -var_t0);
-
-                for (var_a1 = 0; var_a1 < var_a3; var_a1++) {
-                    object->heightSamples[var_a1] >>= var_v1;
-                }
-                object->sampleShift += var_v1;
-            }
-            object->heightSamples[var_a3] = (var_v0_2 >> object->sampleShift);
-            for (var_a1 = 0; var_a1 < 6; var_a1++) {
-                sp68[var_a1] += 2;
-                while (sp68[var_a1] >= gWaveController.seedSize) {
-                    sp68[var_a1] -= gWaveController.seedSize;
-                }
-            }
-        }
+        wave_log_find_cell(&cell, object, blockID, x, z);
+        wave_log_corner_indices(&cell);
+        wave_log_corner_seeds(&cell);
+        wave_log_bake_samples(&cell, object);
     }
 
     return object;
@@ -586,52 +682,54 @@ Object_Log *obj_wave_init(s32 blockID, f32 x, f32 z) {
  * Finds the wave height and returns it for the given object.
  */
 f32 obj_wave_height(Object_Log *log, s32 updateRate) {
-    s32 var_t0;
+    s32 sample;
     f32 y;
 
     log->phase += updateRate;
     while (log->phase >= log->phaseCount) {
         log->phase -= log->phaseCount;
     }
-    var_t0 = log->heightSamples[log->phase >> 1];
+    sample = log->heightSamples[log->phase >> 1];
     if (log->phase & 1) {
         if (log->phase + 1 >= log->phaseCount) {
-            var_t0 += log->heightSamples[0];
+            sample += log->heightSamples[0];
         } else {
-            var_t0 += log->heightSamples[(log->phase >> 1) + 1];
+            sample += log->heightSamples[(log->phase >> 1) + 1];
         }
         if (log->sampleShift > 0) {
-            var_t0 <<= (log->sampleShift - 1);
+            sample <<= (log->sampleShift - 1);
         } else {
-            var_t0 >>= 1;
+            sample >>= 1;
         }
     } else {
-        var_t0 <<= log->sampleShift;
+        sample <<= log->sampleShift;
     }
-    y = (((f32) var_t0 / 16.0) + (f32) log->baseHeight);
+    y = (((f32) sample / 16.0) + (f32) log->baseHeight);
     y *= gWaveController.magnitude;
     y += waves_get_y(log->blockID, log->tileX, log->tileZ);
     return y;
 }
 
-// height related calculation?
-f32 waves_get_y(s32 blockID, s32 arg1, s32 arg2) {
+/**
+ * The extra wave height that the wave generators (swells) add at a vertex of a segment's wave grid.
+ */
+f32 waves_get_y(s32 blockID, s32 cellX, s32 cellZ) {
     f32 dist;
     f32 distSq;
     f32 diffX;
     f32 diffZ;
-    f32 temp_f24;
+    f32 worldZ;
     f32 zeroCheck;
-    f32 temp_f30;
+    f32 worldX;
     f32 stepX;
     f32 y;
     f32 stepZ;
-    u32 var_s0;
-    s32 temp_a1;
+    u32 angle;
+    s32 gridX;
     s32 i;
-    s32 subdivisons;
-    s32 temp_0;
-    WaveGenTileSlots *temp_a3;
+    s32 subdivisions;
+    s32 gridZ;
+    WaveGenTileSlots *slots;
     WaveGen *gen;
 
     y = 0.0f;
@@ -639,52 +737,52 @@ f32 waves_get_y(s32 blockID, s32 arg1, s32 arg2) {
         return y;
     }
 
-    subdivisons = gWaveController.subdivisions;
+    subdivisions = gWaveController.subdivisions;
     stepX = gWaveVtxStepX;
     stepZ = gWaveVtxStepZ;
     if (gWaveController.doubleDensity) {
-        subdivisons *= 2;
+        subdivisions *= 2;
         stepX /= 2.0f;
         stepZ /= 2.0f;
     }
-    temp_a1 = (gWaveModel[blockID].tileX * subdivisons) + arg1;
-    temp_a3 = &gWaveGenSlots[temp_a1];
-    if (temp_a3->genIndices[0] != 0xFF) {
-        temp_0 = arg2 + (subdivisons * gWaveModel[blockID].tileZ);
-        temp_f30 = gWaveBlockPosX + (temp_a1 * stepX);
-        temp_f24 = gWaveBlockPosZ + (temp_0 * stepZ);
+    gridX = (gWaveModel[blockID].tileX * subdivisions) + cellX;
+    slots = &gWaveGenSlots[gridX];
+    if (slots->genIndices[0] != WAVE_GEN_SLOT_EMPTY) {
+        gridZ = cellZ + (subdivisions * gWaveModel[blockID].tileZ);
+        worldX = gWaveBlockPosX + (gridX * stepX);
+        worldZ = gWaveBlockPosZ + (gridZ * stepZ);
         zeroCheck = 0;
         i = 0;
         do {
-            gen = &gWaveGenList[temp_a3->genIndices[i]];
-            if (gen->minZ <= temp_f24 && temp_f24 <= gen->maxZ) {
-                diffX = temp_f30 - gen->x_position;
-                diffZ = temp_f24 - gen->z_position;
+            gen = &gWaveGenList[slots->genIndices[i]];
+            if (gen->minZ <= worldZ && worldZ <= gen->maxZ) {
+                diffX = worldX - gen->x_position;
+                diffZ = worldZ - gen->z_position;
                 distSq = (diffX * diffX) + (diffZ * diffZ);
                 if (distSq < gen->radiusSq) {
                     dist = sqrtf(distSq);
-                    var_s0 = gen->phase;
+                    angle = gen->phase;
                     if (gen->isLinearX) {
                         if (diffX < zeroCheck) {
-                            var_s0 -= (s32) (diffX * gen->phasePerUnit);
+                            angle -= (s32) (diffX * gen->phasePerUnit);
                         } else {
-                            var_s0 += (s32) (diffX * gen->phasePerUnit);
+                            angle += (s32) (diffX * gen->phasePerUnit);
                         }
                     } else if (gen->isLinearZ) {
                         if (diffX < zeroCheck) {
-                            var_s0 -= (s32) (diffZ * gen->phasePerUnit);
+                            angle -= (s32) (diffZ * gen->phasePerUnit);
                         } else {
-                            var_s0 += (s32) (diffZ * gen->phasePerUnit);
+                            angle += (s32) (diffZ * gen->phasePerUnit);
                         }
                     } else {
-                        var_s0 += (s32) (dist * gen->phasePerUnit);
+                        angle += (s32) (dist * gen->phasePerUnit);
                     }
                     diffX = coss_f((dist * 65536.0f) / gen->radius);
-                    y += gen->amplitude * sins_f(var_s0) * diffX;
+                    y += gen->amplitude * sins_f(angle) * diffX;
                 }
             }
             i++;
-        } while (i < 8 && temp_a3->genIndices[i] != 0xFF);
+        } while (i < WAVE_GEN_SLOTS && slots->genIndices[i] != WAVE_GEN_SLOT_EMPTY);
     }
 
     return y;

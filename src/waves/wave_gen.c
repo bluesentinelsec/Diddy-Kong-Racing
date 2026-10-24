@@ -8,7 +8,7 @@ void wavegen_destroy(Object *obj) {
     s32 k;
     s32 j;
     s32 hasWave;
-    WaveGenTileSlots *temp_a1;
+    WaveGenTileSlots *slots;
 
     if (gWaveGenList == NULL) {
         return;
@@ -27,16 +27,16 @@ void wavegen_destroy(Object *obj) {
 
     i--;
     for (j = 0; j < gWaveTileGridCount; j++) {
-        for (k = 0, temp_a1 = &gWaveGenSlots[j]; k < 8 && temp_a1->genIndices[k] != 0xFF; k++) {
-            if (i != temp_a1->genIndices[k]) {
+        for (k = 0, slots = &gWaveGenSlots[j]; k < WAVE_GEN_SLOTS && slots->genIndices[k] != WAVE_GEN_SLOT_EMPTY; k++) {
+            if (i != slots->genIndices[k]) {
                 continue;
             }
 
-            while (k < 7) {
-                temp_a1->genIndices[k] = temp_a1->genIndices[k + 1];
+            while (k < WAVE_GEN_SLOTS - 1) {
+                slots->genIndices[k] = slots->genIndices[k + 1];
                 k++;
             }
-            temp_a1->genIndices[k] = 0xFF;
+            slots->genIndices[k] = WAVE_GEN_SLOT_EMPTY;
             k++;
         }
     }
@@ -55,11 +55,11 @@ void wavegen_add(Object *obj) {
     waveGen = &obj->level_entry->waveGenerator;
     flags = 0;
     if (waveGen->linearAlongX != 0) {
-        flags = 1;
+        flags = WAVEGEN_LINEAR_X;
     }
 
     if (waveGen->linearAlongZ != 0) {
-        flags |= 2;
+        flags |= WAVEGEN_LINEAR_Z;
     }
 
     wavegen_register(obj, obj->trans.x_position, obj->trans.z_position, (f32) waveGen->waveSize,
@@ -70,8 +70,8 @@ void wavegen_add(Object *obj) {
 /**
  * Registers a new wave generator point with the given properties.
  */
-WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 arg4, f32 arg5, f32 arg6, f32 arg7,
-                          s32 flags) {
+WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 phase, f32 speed, f32 wavelength,
+                          f32 amplitude, s32 flags) {
     f32 stepSize;
     s32 emptyWave;
     s32 minX;
@@ -79,12 +79,12 @@ WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 arg
     s32 maxX;
     s32 k;
     s32 i;
-    WaveGenTileSlots *temp;
+    WaveGenTileSlots *slots;
     WaveGen *result;
 
     result = NULL;
     if (gWaveGenList != NULL) {
-        for (i = 0, emptyWave = FALSE; i < 32 && emptyWave == FALSE; i++) {
+        for (i = 0, emptyWave = FALSE; i < WAVE_GEN_MAX && emptyWave == FALSE; i++) {
             if (gWaveGenObjs[i] == NULL) {
                 emptyWave = -1; // Why it is -1 is anyone's guess. Though all that's important is that it's nonzero.
             }
@@ -119,16 +119,16 @@ WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 arg
             }
 
             for (j = minX; j <= maxX; j++) {
-                temp = &gWaveGenSlots[j];
-                if (temp->genIndices[7] != 0xFF) {
+                slots = &gWaveGenSlots[j];
+                if (slots->genIndices[WAVE_GEN_SLOTS - 1] != WAVE_GEN_SLOT_EMPTY) {
                     continue;
                 }
 
                 k = 0;
-                while (temp->genIndices[k] != 0xFF) {
+                while (slots->genIndices[k] != WAVE_GEN_SLOT_EMPTY) {
                     k++;
                 }
-                temp->genIndices[k] = i;
+                slots->genIndices[k] = i;
             }
             result = &gWaveGenList[i];
             result->minZ = zPos - waveSize;
@@ -138,25 +138,25 @@ WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 arg
             result->radius = waveSize;
             result->index = i;
             result->radiusSq = waveSize * waveSize;
-            result->phase = arg4;
+            result->phase = phase;
             if (osTvType == OS_TV_TYPE_PAL) {
-                result->phaseSpeed = arg5 * 20971.52; //(f64) (0x80000 / 25.0);
+                result->phaseSpeed = speed * 20971.52; //(f64) (0x80000 / 25.0);
             } else {
-                result->phaseSpeed = arg5 * 17476.27; //(f64) ((0x80000 / 1.2) / 25.0);
+                result->phaseSpeed = speed * 17476.27; //(f64) ((0x80000 / 1.2) / 25.0);
             }
-            result->phasePerUnit = 65536.0f / arg6;
-            result->amplitude = arg7;
-            result->speed = arg5;
-            result->isLinearX = flags & 1;
-            result->isLinearZ = flags & 2;
-            result->wavelength = arg6;
+            result->phasePerUnit = 65536.0f / wavelength;
+            result->amplitude = amplitude;
+            result->speed = speed;
+            result->isLinearX = flags & WAVEGEN_LINEAR_X;
+            result->isLinearZ = flags & WAVEGEN_LINEAR_Z;
+            result->wavelength = wavelength;
         }
     }
 
     return result;
 }
 
-UNUSED void wavegen_scale(WaveGen *gen, f32 radiusAdd, f32 arg2, f32 arg3, f32 arg4) {
+UNUSED void wavegen_scale(WaveGen *gen, f32 radiusAdd, f32 speedAdd, f32 wavelengthAdd, f32 amplitudeAdd) {
     if (gen == NULL) {
         return;
     }
@@ -168,26 +168,26 @@ UNUSED void wavegen_scale(WaveGen *gen, f32 radiusAdd, f32 arg2, f32 arg3, f32 a
 
     gen->minZ = (gen->z_position - gen->radius);
     gen->maxZ = (gen->z_position + gen->radius);
-    gen->speed += arg2;
+    gen->speed += speedAdd;
     if (osTvType == OS_TV_TYPE_PAL) {
         gen->phaseSpeed = gen->speed * 20971.52; //(f64) (0x80000 / 25.0);
     } else {
         gen->phaseSpeed = gen->speed * 17476.27; //(f64) ((0x80000 / 1.2) / 25.0);
     }
 
-    gen->wavelength = gen->wavelength + arg3;
+    gen->wavelength = gen->wavelength + wavelengthAdd;
     if (gen->wavelength < 1.0) {
         gen->wavelength = 1.0f;
     }
 
     gen->phasePerUnit = 65536.0f / gen->wavelength; // 0x10000
-    gen->amplitude += arg4;
+    gen->amplitude += amplitudeAdd;
 }
 
 void wave_gens_update(s32 updateRate) {
     s32 i;
 
-    for (i = 0; i < 32; i++) {
+    for (i = 0; i < WAVE_GEN_MAX; i++) {
         if (gWaveGenObjs[i] != NULL) {
             gWaveGenList[i].phase += (0, gWaveGenList[i].phaseSpeed * updateRate) >> 4;
         }

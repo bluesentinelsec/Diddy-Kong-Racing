@@ -88,13 +88,13 @@ void wave_gens_update(s32 updateRate);
 void waves_init_header(LevelHeader *header);
 void waves_find_water_texture(LevelModel *level, LevelHeader *header);
 void obj_loop_wavepower(Object *obj, s32 updateRate);
-void wavegen_scale(WaveGen *gen, f32 radiusAdd, f32 arg2, f32 arg3, f32 arg4);
+void wavegen_scale(WaveGen *gen, f32 radiusAdd, f32 speedAdd, f32 wavelengthAdd, f32 amplitudeAdd);
 void wavegen_destroy(Object *obj);
 f32 obj_wave_height(Object_Log *log, s32 updateRate);
-void wave_blocks_decay_ripples(s32 arg0, s32 arg1);
+void wave_blocks_decay_ripples(s32 viewportID, s32 updateRate);
 void func_800BF9F8(WaveGen *gen, f32 arg1, f32 arg2);
-WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 arg4, f32 arg5, f32 arg6, f32 arg7,
-                          s32 flags);
+WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 phase, f32 speed, f32 wavelength,
+                          f32 amplitude, s32 flags);
 void waves_alloc(void);
 void wave_load_material(TextureHeader *tex, s32 rtile);
 Object_Log *obj_wave_init(s32, f32, f32);

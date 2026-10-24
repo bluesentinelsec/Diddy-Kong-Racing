@@ -30,7 +30,7 @@ void waves_visibility(s32 xPosition, s32 yPosition, s32 zPosition, s32 currentVi
 
     if (0) {}
 
-    for (var_v1 = 0; var_v1 != D_8012A600_COUNT; var_v1 += 4) {
+    for (var_v1 = 0; var_v1 != WAVE_VISIBLE_BLOCKS_BODY_COUNT; var_v1 += 4) {
         gWaveVisibleBlocks[0].blockID = -1;
         gWaveVisibleBlocks[1].blockID = -1;
         gWaveVisibleBlocksBody[var_v1].blockID = -1;
