@@ -125,7 +125,6 @@ void obj_loop_fogchanger(Object *obj, UNUSED s32 updateRate) {
     s32 views;
     s32 playerIndex;
     s32 index;
-    UNUSED s32 pad;
     s32 fogFar;
     s32 i;
     s32 fogR;
@@ -137,7 +136,6 @@ void obj_loop_fogchanger(Object *obj, UNUSED s32 updateRate) {
     LevelObjectEntry_FogChanger *fogChanger;
     Object **racers;
     Object_Racer *racer;
-    UNUSED s32 pad2;
     FogData *fog;
     Camera *camera;
 
