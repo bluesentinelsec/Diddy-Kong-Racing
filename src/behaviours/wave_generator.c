@@ -36,7 +36,7 @@
  * Wave Generator init func.
  * Calls a function to add a wave generator point for the waves system.
  */
-void obj_init_wavegenerator(Object *obj, UNUSED LevelObjectEntry *levelEntry, UNUSED s32 arg2) {
+void obj_init_wavegenerator(Object *obj, UNUSED LevelObjectEntry *levelEntry, UNUSED s32 param) {
     wavegen_add(obj);
 }
 

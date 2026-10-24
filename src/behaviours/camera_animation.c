@@ -37,14 +37,14 @@
  * Follows a path and then writes to the view perspective.
  */
 void obj_loop_animcamera(Object *obj, s32 updateRate) {
-    s32 temp_v0;
+    s32 pathIdle;
     s32 updateCam;
     Object_AnimatedObject *camera;
 
-    temp_v0 = anim_object_follow_path(obj, updateRate, obj);
+    pathIdle = anim_object_follow_path(obj, updateRate, obj);
     obj->trans.flags |= OBJ_FLAGS_INVISIBLE;
     camera = obj->animatedObject;
-    if (temp_v0 == 0) {
+    if (pathIdle == 0) {
         if (cam_get_viewport_layout() == VIEWPORT_LAYOUT_1_PLAYER) {
             updateCam = anim_stage_reached(camera->cameraStage);
         } else {

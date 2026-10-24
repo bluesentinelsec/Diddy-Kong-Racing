@@ -33,7 +33,7 @@
 #include "weather.h"
 
 /* Official name: texscrollInit */
-void obj_init_texscroll(Object *obj, LevelObjectEntry *levelEntry, s32 arg2) {
+void obj_init_texscroll(Object *obj, LevelObjectEntry *levelEntry, s32 param) {
     LevelObjectEntry_TexScroll *entry = &levelEntry->texScroll;
     Object_TexScroll *texscroll;
     LevelModel *levelModel;
@@ -51,7 +51,7 @@ void obj_init_texscroll(Object *obj, LevelObjectEntry *levelEntry, s32 arg2) {
     }
     texscroll->scrollSpeedU = entry->scrollSpeedU;
     texscroll->scrollSpeedV = entry->scrollSpeedV;
-    if (arg2 == 0) {
+    if (param == 0) {
         texscroll->scrollAccumU = 0;
         texscroll->scrollAccumV = 0;
     }
@@ -74,9 +74,6 @@ void obj_loop_texscroll(Object *obj, s32 updateRate) {
     TextureInfo *texture;
     TextureHeader *tex;
     s32 texIndex;
-    s32 temp;
-    s32 temp2;
-    u8 temp3;
     s32 t0;
     s32 t1;
     s32 i;

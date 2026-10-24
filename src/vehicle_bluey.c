@@ -58,8 +58,7 @@ void update_bluey(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
     s32 tempStartTimer;
     ObjectModel *objModel;
     ModelInstance *modInst;
-    s32 sp3C;
-    UNUSED s32 pad;
+    s32 useTurnAnim;
     Object *firstRacerObj;
 
     set_boss_voice_clip_offset(gBlueyVoiceTable);
@@ -117,13 +116,13 @@ void update_bluey(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *ra
         diffZ = obj->z_velocity * obj->z_velocity;
         racer->velocity = -sqrtf((diffX * diffX) + (diffZ * diffZ));
     }
-    sp3C = FALSE;
+    useTurnAnim = FALSE;
     if ((find_next_checkpoint_node(racer->nextCheckpoint, racer->isOnAlternateRoute))->laneAction[racer->aiLane] == 1) {
-        sp3C = TRUE;
+        useTurnAnim = TRUE;
     }
     if (obj->animationID != ANIM_BLUEY_DAMAGE) {
         if (racer->velocity < -2.0) {
-            if (sp3C) {
+            if (useTurnAnim) {
                 if (racer->currentAnimId != 3) {
                     racer->animationSpeed = 40.0f;
                 }

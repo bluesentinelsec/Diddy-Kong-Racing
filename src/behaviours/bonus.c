@@ -82,9 +82,9 @@ void obj_loop_bonus(Object *obj, UNUSED s32 updateRate) {
                 diffX = racerObj->trans.x_position - obj->trans.x_position;
                 diffZ = racerObj->trans.z_position - obj->trans.z_position;
                 if (sqrtf((diffX * diffX) + (diffY * diffY) + (diffZ * diffZ)) < dist) {
-                    f32 temp = (obj64->directionX * racerObj->trans.x_position) +
-                               (obj64->directionZ * racerObj->trans.z_position) + obj64->rotationDiff;
-                    if (temp < 0.0f) {
+                    f32 sideOfLine = (obj64->directionX * racerObj->trans.x_position) +
+                                     (obj64->directionZ * racerObj->trans.z_position) + obj64->rotationDiff;
+                    if (sideOfLine < 0.0f) {
                         if (racer->bananas < 10) {
                             racer->bananas = 10;
                             audspat_play_sound_at_position(SOUND_SELECT, racerObj->trans.x_position,

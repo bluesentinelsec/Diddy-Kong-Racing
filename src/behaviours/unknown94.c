@@ -32,7 +32,7 @@
 #include "waves.h"
 #include "weather.h"
 
-void obj_init_unknown94(UNUSED Object *obj, UNUSED LevelObjectEntry *levelEntry, UNUSED s32 arg2) {
+void obj_init_unknown94(UNUSED Object *obj, UNUSED LevelObjectEntry *levelEntry, UNUSED s32 param) {
 }
 
 void obj_loop_unknown94(UNUSED Object *obj, s32 UNUSED updateRate) {

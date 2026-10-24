@@ -36,7 +36,7 @@
  * Floating buoy init behaviour.
  * Sets hitbox data from spawn info.
  */
-void obj_init_buoy_pirateship(Object *obj, UNUSED LevelObjectEntry *levelEntry, UNUSED s32 arg2) {
+void obj_init_buoy_pirateship(Object *obj, UNUSED LevelObjectEntry *levelEntry, UNUSED s32 param) {
     obj->log = obj_wave_init(obj->segmentID, obj->trans.x_position, obj->trans.z_position);
     obj->interactObj->flags = INTERACT_FLAGS_SOLID;
     obj->interactObj->hitboxKind = 0;

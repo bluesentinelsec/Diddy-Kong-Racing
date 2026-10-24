@@ -45,7 +45,6 @@ void obj_init_rangetrigger(UNUSED Object *obj, UNUSED LevelObjectEntry *levelEnt
  * Official name: rangetriggerControl
  */
 void obj_loop_rangetrigger(Object *obj, s32 updateRate) {
-    UNUSED s32 pad;
     LevelObjectEntry_RangeTrigger *entry;
     Object *objs[8];
 

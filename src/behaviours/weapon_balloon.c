@@ -97,11 +97,9 @@ void obj_init_weaponballoon(Object *obj, LevelObjectEntry *levelEntry, UNUSED s3
  * It gives them a weapon, then marks as disappeared, before slowly regrowing and becoming tangible again.
  */
 void obj_loop_weaponballoon(Object *weaponBalloonObj, s32 updateRate) {
-    UNUSED s32 pad;
     Object_Racer *racer;
     Object_WeaponBalloon *weaponBalloon;
     s8 *powerupTable;
-    UNUSED s8 pad3;
     s8 prevBalloonQuantity;
     s8 levelMask;
     Object *whatObjInteracted;

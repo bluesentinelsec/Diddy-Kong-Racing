@@ -36,7 +36,7 @@
  * Spinning log init behaviour.
  * Sets scale, angle and hitbox data based off the spawn info.
  */
-void obj_init_log(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 arg2) {
+void obj_init_log(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param) {
     LevelObjectEntry_Log *entry = &levelEntry->log;
     f32 radius;
     obj->log = obj_wave_init(obj->segmentID, obj->trans.x_position, obj->trans.z_position);

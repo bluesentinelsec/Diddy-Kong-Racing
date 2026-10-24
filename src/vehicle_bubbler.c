@@ -58,12 +58,11 @@ void update_bubbler(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *
     f32 diffZ;
     ModelInstance *modInst;
     s32 timer;
-    UNUSED s32 pad;
     s32 headAngleRange;
     ObjectModel *model;
     Object *firstRacerObj;
     f32 diffX;
-    s32 temp2;
+    s32 bossRace;
 
     set_boss_voice_clip_offset(gBubblerVoiceTable);
     *buttonsPressed &= ~R_TRIG;
@@ -134,10 +133,10 @@ void update_bubbler(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *
     }
     obj->animFrame = racer->animationSpeed;
     if (racer->playerIndex == PLAYER_COMPUTER) {
-        temp2 = boss_race_number();
-        if (temp2 != 0) {
+        bossRace = boss_race_number();
+        if (bossRace != 0) {
             objectID = ASSET_OBJECT_ID_OCTOBUBBLE;
-            if (temp2 == 6) {
+            if (bossRace == 6) {
                 objectID = ASSET_OBJECT_ID_OCTOBOMB;
             }
             spawn_boss_hazard(obj, racer, 0.0f, objectID, SOUND_VOICE_BUBBLER_HOHO2);

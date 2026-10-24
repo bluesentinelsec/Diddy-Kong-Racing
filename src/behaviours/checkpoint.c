@@ -37,7 +37,7 @@
  * Sets direction and scale based off spawn info.
  * Uses bit shifting to convert a u8 angle to an s16 angle.
  */
-void obj_init_checkpoint(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 arg2) {
+void obj_init_checkpoint(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param) {
     LevelObjectEntry_Checkpoint *entry = &levelEntry->checkpoint;
     f32 scale = (s32) (entry->scale & 0xFF);
     if (scale < 5.0f) {

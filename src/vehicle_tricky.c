@@ -81,7 +81,6 @@ void update_tricky(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
     s32 tempStartTimer;
     ModelInstance *modInst;
     s32 headAngleRange;
-    UNUSED s32 pad;
     Object *firstRacerObj;
 
     set_boss_voice_clip_offset(gTrickyVoiceTable);
@@ -261,7 +260,6 @@ void racer_boss_finish(Object_Racer *racer, s8 *sceneTimer) {
     s8 *asset;
     s32 worldBit;
     s32 finishPos;
-    UNUSED s32 pad;
     s32 miscAsset68Byte5;
     s32 miscAsset68Byte6;
     s32 miscAsset68Byte7;

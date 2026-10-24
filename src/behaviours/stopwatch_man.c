@@ -51,6 +51,143 @@ void obj_init_stopwatchman(Object *obj, UNUSED LevelObjectEntry *levelEntry, UNU
 }
 
 /**
+ * Walks towards the player until within 10 units, then turns to face them.
+ * Switches to the dialogue camera once within 100 units.
+ */
+static void tt_approach_player(Object *obj, Object_NPC *tt, f32 distance, f32 diffX, f32 diffZ, f32 updateRateF) {
+    s32 angleDiff;
+    f32 targetSpeed;
+
+    obj->animationID = 0;
+    tt->nodeCurrent = 255;
+    if (distance < 100.0) {
+        racer_set_dialogue_camera();
+    }
+    if (distance > 10.0) {
+        angleDiff =
+            (arctan2_f(diffX / distance, diffZ / distance) - (obj->trans.rotation.y_rotation & 0xFFFF)) + 0x8000;
+        WRAP(angleDiff, -0x8000, 0x8000);
+        if (angleDiff > 0) {
+            if (angleDiff < 0x10) {
+                angleDiff = 0x10;
+            }
+        }
+        obj->trans.rotation.y_rotation += angleDiff >> 4;
+        targetSpeed = -2.0f;
+        if (angleDiff > 0x800 || angleDiff < -0x800) {
+            targetSpeed = -0.5f;
+        }
+        tt->forwardVel += (targetSpeed - tt->forwardVel) * 0.125;
+        obj->x_velocity = sins_f(obj->trans.rotation.y_rotation) * tt->forwardVel;
+        obj->z_velocity = coss_f(obj->trans.rotation.y_rotation) * tt->forwardVel;
+        tt->animFrameF -= (tt->forwardVel * 2 * updateRateF);
+    } else {
+        obj->properties.tt.action = TT_MODE_TURN_TOWARDS_PLAYER;
+    }
+    move_object(obj, obj->x_velocity * updateRateF, obj->y_velocity * updateRateF, obj->z_velocity * updateRateF);
+    set_pause_lockout_timer(1);
+}
+
+/**
+ * Turns to face the player while sliding into place in front of them, then introduces himself.
+ */
+static void tt_turn_towards_player(Object *obj, Object_NPC *tt, Object *racerObj, f32 diffX, f32 diffZ,
+                                   f32 updateRateF) {
+    s32 angleDiff;
+
+    racer_set_dialogue_camera();
+    obj->animationID = 0;
+    tt->animFrameF += 3.0 * updateRateF;
+    angleDiff = (racerObj->trans.rotation.y_rotation - (obj->trans.rotation.y_rotation & 0xFFFF)) + 0x8000;
+    WRAP(angleDiff, -0x8000, 0x8000);
+    if (angleDiff > 0) {
+        if (angleDiff < 0x10) {
+            angleDiff = 0x10;
+        }
+    }
+    obj->trans.rotation.y_rotation += (angleDiff >> 4);
+    obj->x_velocity = diffX * 0.05;
+    obj->z_velocity = diffZ * 0.05;
+    if (angleDiff < 0x500) {
+        if (angleDiff >= -0x4FF) {
+            obj->properties.tt.action = TT_MODE_DIALOGUE;
+            play_tt_voice_clip(SOUND_VOICE_TT_INTRO, 1); // Hi there, I'm T.T!
+        }
+    }
+    move_object(obj, obj->x_velocity * updateRateF, obj->y_velocity * updateRateF, obj->z_velocity * updateRateF);
+}
+
+/**
+ * Talking: keeps in place in front of the player. Leaving the dialogue says goodbye and restores the fog,
+ * the level music and the player's engine sound.
+ */
+static void tt_dialogue(Object *obj, Object_NPC *tt, Object_Racer *racer, LevelHeader *header, s32 dialogueID,
+                        f32 diffX, f32 diffZ, f32 updateRateF) {
+    obj->x_velocity = diffX * 0.05;
+    obj->z_velocity = diffZ * 0.05;
+    obj->animationID = 1;
+    tt->animFrameF += 1.0 * updateRateF;
+    racer_set_dialogue_camera();
+    if (dialogueID == 3) {
+        obj->properties.tt.action = TT_MODE_DIALOGUE_END;
+        if (is_time_trial_enabled()) {
+            play_tt_voice_clip(SOUND_VOICE_TT_SEE_YOU, 1);
+        } else {
+            play_tt_voice_clip(SOUND_VOICE_TT_OK, 1);
+        }
+        slowly_change_fog(PLAYER_ONE, tt->fogR, tt->fogG, tt->fogB, tt->fogNear, tt->fogFar, 180);
+        music_play(header->music);
+        music_dynamic_set(header->instruments);
+        racer->vehicleSound = racer_sound_init(racer->characterId, racer->vehicleID);
+    }
+    obj->properties.tt.timer = 180;
+    move_object(obj, obj->x_velocity * updateRateF, obj->y_velocity * updateRateF, obj->z_velocity * updateRateF);
+}
+
+/**
+ * Roaming: finds the nearest AI node to start from, then follows the path.
+ */
+static void tt_roam(Object *obj, Object_NPC *tt, f32 updateRateF) {
+    f32 pathStep;
+
+    obj->animationID = 0;
+    tt->forwardVel = 0.0f;
+    if (tt->nodeCurrent == NODE_NONE) {
+        tt->nodeCurrent =
+            ainode_find_nearest(obj->trans.x_position, obj->trans.y_position, obj->trans.z_position, FALSE);
+        if (tt->nodeCurrent != NODE_NONE) {
+            tt->nodeBack2 = ainode_find_next(tt->nodeCurrent, -1, 0);
+            tt->nodeForward1 = ainode_find_next(tt->nodeBack2, tt->nodeCurrent, 0);
+            tt->nodeForward2 = ainode_find_next(tt->nodeForward1, tt->nodeBack2, 0);
+            tt->nodeBack1 = tt->nodeCurrent;
+        }
+    } else {
+        pathStep = npc_follow_ai_nodes(tt, obj, updateRateF, 1.0f, 0);
+        tt->animFrameF += pathStep * 1.5;
+    }
+}
+
+/**
+ * Lifts T.T onto the surface of any water he stands in, other than calm or wavy water.
+ */
+static void tt_float_on_water(Object *obj) {
+    s32 waterIndex;
+    struct WaterProperties **water;
+
+    waterIndex = get_level_segment_waves(obj->segmentID, obj->trans.x_position, obj->trans.z_position, &water);
+    if (waterIndex != 0) {
+        waterIndex--;
+        while (waterIndex >= 0) {
+            if ((water[waterIndex]->type != SURFACE_WATER_CALM) && (water[waterIndex]->type != SURFACE_WATER_WAVY) &&
+                (water[waterIndex]->rot.y > 0.0)) {
+                obj->trans.y_position = water[waterIndex]->waveHeight;
+            }
+            waterIndex--;
+        }
+    }
+}
+
+/**
  * Hub world T.T loop behaviour.
  * Handles all the behaviour for the T.T NPC found in the overworld.
  * This uses a state machine to handle whether to wander around, approach the player and engage dialogue.
@@ -63,13 +200,11 @@ void obj_loop_stopwatchman(Object *obj, s32 updateRate) {
     f32 tempPosY;
     Object_NPC *tt;
     Object *racerObj;
-    UNUSED s32 pad;
     s32 angleDiff;
-    s32 index;
-    UNUSED s32 pad2;
+    s32 buttonsPressed;
+    s32 dialogueID;
     Object_Racer *racer;
     LevelHeader *header;
-    struct WaterProperties **water;
 
     tempPosY = obj->trans.y_position;
     updateRateF = updateRate;
@@ -106,12 +241,12 @@ void obj_loop_stopwatchman(Object *obj, s32 updateRate) {
             obj->properties.tt.timer = 1;
         }
     }
-    index = input_pressed(PLAYER_ONE);
+    buttonsPressed = input_pressed(PLAYER_ONE);
     if (obj->properties.tt.action == TT_MODE_ROAM && distance < 300.0 && obj->properties.tt.timer == 0) {
         if (angleDiff > -0x2000 && angleDiff < 0x2000) {
             if ((obj->interactObj->flags & INTERACT_FLAGS_PUSHING && racerObj == obj->interactObj->obj) ||
-                index & Z_TRIG) {
-                if (index & Z_TRIG) {
+                buttonsPressed & Z_TRIG) {
+                if (buttonsPressed & Z_TRIG) {
                     play_char_horn_sound(racerObj, racer);
                 }
                 obj->properties.tt.action = TT_MODE_APPROACH_PLAYER;
@@ -131,88 +266,20 @@ void obj_loop_stopwatchman(Object *obj, s32 updateRate) {
         minimap_fade(3);
     }
     if (obj->properties.tt.action >= TT_MODE_TURN_TOWARDS_PLAYER) {
-        index = npc_dialogue_loop(DIALOGUE_TT);
+        dialogueID = npc_dialogue_loop(DIALOGUE_TT);
     } else {
         dialogue_npc_finish(2);
-        index = 0;
+        dialogueID = 0;
     }
     switch (obj->properties.tt.action) {
         case TT_MODE_APPROACH_PLAYER:
-            obj->animationID = 0;
-            tt->nodeCurrent = 255;
-            if (distance < 100.0) {
-                racer_set_dialogue_camera();
-            }
-            if (distance > 10.0) {
-                angleDiff =
-                    (arctan2_f(diffX / distance, diffZ / distance) - (obj->trans.rotation.y_rotation & 0xFFFF)) +
-                    0x8000;
-                WRAP(angleDiff, -0x8000, 0x8000);
-                if (angleDiff > 0) {
-                    if (angleDiff < 0x10) {
-                        angleDiff = 0x10;
-                    }
-                }
-                obj->trans.rotation.y_rotation += angleDiff >> 4;
-                distance = -2.0f;
-                if (angleDiff > 0x800 || angleDiff < -0x800) {
-                    distance = -0.5f;
-                }
-                tt->forwardVel += (distance - tt->forwardVel) * 0.125;
-                obj->x_velocity = sins_f(obj->trans.rotation.y_rotation) * tt->forwardVel;
-                obj->z_velocity = coss_f(obj->trans.rotation.y_rotation) * tt->forwardVel;
-                tt->animFrameF -= (tt->forwardVel * 2 * updateRateF);
-            } else {
-                obj->properties.tt.action = TT_MODE_TURN_TOWARDS_PLAYER;
-            }
-            move_object(obj, obj->x_velocity * updateRateF, obj->y_velocity * updateRateF,
-                        obj->z_velocity * updateRateF);
-            set_pause_lockout_timer(1);
+            tt_approach_player(obj, tt, distance, diffX, diffZ, updateRateF);
             break;
         case TT_MODE_TURN_TOWARDS_PLAYER:
-            racer_set_dialogue_camera();
-            obj->animationID = 0;
-            tt->animFrameF += 3.0 * updateRateF;
-            angleDiff = (racerObj->trans.rotation.y_rotation - (obj->trans.rotation.y_rotation & 0xFFFF)) + 0x8000;
-            WRAP(angleDiff, -0x8000, 0x8000);
-            if (angleDiff > 0) {
-                if (angleDiff < 0x10) {
-                    angleDiff = 0x10;
-                }
-            }
-            obj->trans.rotation.y_rotation += (angleDiff >> 4);
-            obj->x_velocity = diffX * 0.05;
-            obj->z_velocity = diffZ * 0.05;
-            if (angleDiff < 0x500) {
-                if (angleDiff >= -0x4FF) {
-                    obj->properties.tt.action = TT_MODE_DIALOGUE;
-                    play_tt_voice_clip(SOUND_VOICE_TT_INTRO, 1); // Hi there, I'm T.T!
-                }
-            }
-            move_object(obj, obj->x_velocity * updateRateF, obj->y_velocity * updateRateF,
-                        obj->z_velocity * updateRateF);
+            tt_turn_towards_player(obj, tt, racerObj, diffX, diffZ, updateRateF);
             break;
         case TT_MODE_DIALOGUE:
-            obj->x_velocity = diffX * 0.05;
-            obj->z_velocity = diffZ * 0.05;
-            obj->animationID = 1;
-            tt->animFrameF += 1.0 * updateRateF;
-            racer_set_dialogue_camera();
-            if (index == 3) {
-                obj->properties.tt.action = TT_MODE_DIALOGUE_END;
-                if (is_time_trial_enabled()) {
-                    play_tt_voice_clip(SOUND_VOICE_TT_SEE_YOU, 1);
-                } else {
-                    play_tt_voice_clip(SOUND_VOICE_TT_OK, 1);
-                }
-                slowly_change_fog(PLAYER_ONE, tt->fogR, tt->fogG, tt->fogB, tt->fogNear, tt->fogFar, 180);
-                music_play(header->music);
-                music_dynamic_set(header->instruments);
-                racer->vehicleSound = racer_sound_init(racer->characterId, racer->vehicleID);
-            }
-            obj->properties.tt.timer = 180;
-            move_object(obj, obj->x_velocity * updateRateF, obj->y_velocity * updateRateF,
-                        obj->z_velocity * updateRateF);
+            tt_dialogue(obj, tt, racer, header, dialogueID, diffX, diffZ, updateRateF);
             break;
         case TT_MODE_DIALOGUE_END:
             tt->animFrameF += 1.0 * updateRateF;
@@ -224,35 +291,11 @@ void obj_loop_stopwatchman(Object *obj, s32 updateRate) {
             }
             break;
         default:
-            obj->animationID = 0;
-            tt->forwardVel = 0.0f;
-            if (tt->nodeCurrent == NODE_NONE) {
-                tt->nodeCurrent =
-                    ainode_find_nearest(obj->trans.x_position, obj->trans.y_position, obj->trans.z_position, FALSE);
-                if (tt->nodeCurrent != NODE_NONE) {
-                    tt->nodeBack2 = ainode_find_next(tt->nodeCurrent, -1, 0);
-                    tt->nodeForward1 = ainode_find_next(tt->nodeBack2, tt->nodeCurrent, 0);
-                    tt->nodeForward2 = ainode_find_next(tt->nodeForward1, tt->nodeBack2, 0);
-                    tt->nodeBack1 = tt->nodeCurrent;
-                }
-            } else {
-                diffZ = npc_follow_ai_nodes(tt, obj, updateRateF, 1.0f, 0);
-                tt->animFrameF += diffZ * 1.5;
-            }
+            tt_roam(obj, tt, updateRateF);
             break;
     }
     obj->trans.y_position = tempPosY;
-    index = get_level_segment_waves(obj->segmentID, obj->trans.x_position, obj->trans.z_position, &water);
-    if (index != 0) {
-        index--;
-        while (index >= 0) {
-            if ((water[index]->type != SURFACE_WATER_CALM) && (water[index]->type != SURFACE_WATER_WAVY) &&
-                (water[index]->rot.y > 0.0)) {
-                obj->trans.y_position = water[index]->waveHeight;
-            }
-            index--;
-        }
-    }
+    tt_float_on_water(obj);
     obj->trans.rotation.x_rotation = 0;
     obj->trans.rotation.z_rotation = 0;
     if (obj->properties.tt.action != TT_MODE_ROAM) {

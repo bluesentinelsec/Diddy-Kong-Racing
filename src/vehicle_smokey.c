@@ -3,10 +3,10 @@
 
 #include "audio.h"
 #include "audio_spatial.h"
+#include "behaviours.h"
 #include "camera.h"
 #include "macros.h"
 #include "math_util.h"
-#include "behaviours.h"
 #include "objects.h"
 #include "particles.h"
 #include "racer.h"
@@ -67,7 +67,6 @@ void update_smokey(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *r
     ModelInstance *modInst;
     s32 headAngleRange;
     f32 animVelocity;
-    UNUSED s32 pad;
     s16 stepFrame;
     Object *firstRacerObj;
 

@@ -58,7 +58,6 @@ void obj_loop_trophycab(Object *obj, s32 updateRate) {
     f32 diffX;
     s32 dialogueID;
     f32 diffZ;
-    UNUSED s32 pad2;
     s32 worldBalloons;
     s32 bossFlags;
 
