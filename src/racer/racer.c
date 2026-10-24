@@ -666,12 +666,34 @@ static void racer_hand_over_to_ai(Object_Racer *tempRacer, s32 context) {
 }
 
 /**
+ * Port addition for the trace autopilot: whether this is an ordinary race with only human
+ * racers in it (a multiplayer race with no computer racers). Boss races are left out.
+ */
+static s32 racer_autopilot_humans_only_race(void) {
+    Object **racerGroup;
+    s32 numRacers;
+    s32 i;
+
+    if (level_type() != RACETYPE_DEFAULT || boss_race_number() != 0) {
+        return FALSE;
+    }
+    racerGroup = get_racer_objects_by_position(&numRacers);
+    for (i = 0; i < numRacers; i++) {
+        if (racerGroup[i]->racer->playerIndex == PLAYER_COMPUTER) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+/**
  * Port addition for the trace autopilot. The AI only presses the accelerator from its race
- * tactics, which give up when there are no computer racers to race against. In a time trial
- * the autopilot holds the throttle itself, except while it reverses out of a stall.
+ * tactics, which give up when there are no computer racers to race against. In a time trial,
+ * and in a race of human racers only, the autopilot holds the throttle itself, except while
+ * it reverses out of a stall.
  */
 static void racer_autopilot_solo_throttle(Object_Racer *racer) {
-    if (!is_in_time_trial() || racer->aiReverseTimer != 0) {
+    if (racer->aiReverseTimer != 0 || !(is_in_time_trial() || racer_autopilot_humans_only_race())) {
         return;
     }
     // Leave the start-grid line for the racing lanes, as the tactics would once the race is on.

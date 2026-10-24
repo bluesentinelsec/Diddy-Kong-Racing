@@ -203,8 +203,10 @@ the port honest:
   exercises it: a car race, a hovercraft race and a plane race on Ancient Lake
   with the AI, a time trial against the ghost, a full autopilot time trial
   (record, initials, Save Ghost, then a rerun against the new player ghost), a race paused and resumed from
-  the pause menu, a race driven to the finish and through the results menu, a
-  two-player split-screen race joined through the menus, a race against each
+  the pause menu, every other pause option (restart, select track, select character,
+  quit), a race driven to the finish and through the results menu, a
+  two-player split-screen race joined through the menus, a four-player race driven to
+  the finish and through the multiplayer rankings, a race against each
   boss (Tricky, Bluey, Bubbler, Smokey and both Wizpig races), the three battle
   arenas played to scoring against three AI rivals (eggs hatched, racers knocked
   out, bananas counted), the Dino Domain trophy race through all four rounds and
@@ -222,8 +224,8 @@ the port honest:
   each racer its own character. A script line may end in `p2`..`p4` to
   drive another controller, which plugs it in, and the `AUTO` token hands a
   human racer to the AI's driving so a scene can finish a race (in a time
-  trial, where the AI's race tactics never run, the autopilot holds the throttle
-  itself; in a hub it holds the throttle too, and where a hub has no checkpoints
+  trial or a race of human players only, where the AI's race tactics never run, the
+  autopilot holds the throttle itself; in a hub it holds the throttle too, and where a hub has no checkpoints
   it drives round the loop of AI nodes T.T. walks). AUTO overrides the racer's
   input, so buttons held alongside it (`B,AUTO`) reach only the menus.
   `tests/golden/scenes.sh` runs them all; adding a scene is adding a script
