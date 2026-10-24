@@ -1,4 +1,4 @@
-/* Decompiled from src/hasm/ido/obj_shade_fast.s (hand-written asm in retail).
+/* Decompiled from the retail game's hand-written assembly (obj_shade_fast.s).
  * Cheap per-vertex dynamic lighting for objects: dots each vertex normal
  * against a light direction and writes greyscale vertex colours. The fancier
  * sibling (obj_shade_fancy / calc_dynamic_lighting_for_object_1 in objects.c)

@@ -1,4 +1,4 @@
-/* Decompiled from src/hasm/ido/obj_animate.s (hand-written asm in retail). */
+/* Decompiled from the retail game's hand-written assembly (obj_animate.s). */
 #include "objects.h"
 #include "structs.h"
 #include "types.h"
