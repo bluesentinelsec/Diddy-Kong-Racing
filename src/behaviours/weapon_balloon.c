@@ -61,7 +61,7 @@ void obj_init_weaponballoon(Object *obj, LevelObjectEntry *levelEntry, UNUSED s3
         entry->balloonType = BALLOON_TYPE_MAGNET;
     }
 
-    // I guess unk8 is unused?
+    // unused8 is kept in range here, but nothing reads it.
     if (entry->unused8 >= 6) {
         entry->unused8 = 0;
     }

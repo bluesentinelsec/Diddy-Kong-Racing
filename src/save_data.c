@@ -1262,14 +1262,6 @@ typedef struct GhostHeaderAlt {
     s16 dataOffset; // where this ghost's header sits in the file data
 } GhostHeaderAlt;
 
-typedef struct GhostData {
-    /* 0x00 */ s32 headerId;
-    /* 0x04 */ GhostHeader *ghostHeader;
-    /* 0x08 */ u8 unk8_pad[0x14];
-    /* 0x1C */ u8 unk1C;
-    /* 0x1E */ s16 unk1E;
-} GhostData;
-
 SIDeviceStatus ghost_file_create(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
                                  s16 ghostNodeCount, u8 *dest) {
     GhostPakDirEntry *ghostBody;

@@ -312,7 +312,7 @@ static void pc_swap_colour_loop(ColorLoopEntry *cl) {
 }
 
 // Public entry point sharing the swap-once table above. The per-level HUD colour
-// cycles reached through LevelHeader.unk74 (game.c) are the same misc-asset
+// cycles reached through LevelHeader.colourCycles (game.c) are the same misc-asset
 // colour loops, but only the subset referenced by a particle behaviour gets
 // swapped in the loop below — the rest reach pulse_light_reset still big-endian and
 // its count walks off the pool. Routing those through here swaps each loop

@@ -156,7 +156,7 @@ ObjectLight *light_add_from_object_header(Object *obj, ObjectHeader24 *lightHead
     light = NULL;
     if (gNumActiveLights < gMaxLights) {
         light = gActiveLights[gNumActiveLights++];
-        // Big-endian u32 read: top nibble of the union's first byte (unk8A).
+        // Big-endian u32 read: top nibble of the union's first byte (shapeAndEnabled).
         light->volumeShape = lightHeader->shapeAndEnabled >> 4;
         light->directionMode = lightHeader->directionMode;
         light->objectTypeMask = lightHeader->affectedObjectMask;

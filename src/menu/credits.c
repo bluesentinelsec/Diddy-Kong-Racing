@@ -54,9 +54,9 @@ static s16 gCreditsImageIndices[2] = { -1, 0 };
 
 typedef struct CreditsBackgroundLevelData {
     s8 levelId;
-    s8 unk1;
+    s8 unused1;
     s8 cutsceneId;
-    s8 unk3;
+    s8 unused3;
 } CreditsBackgroundLevelData;
 
 // Data used to control the credits.

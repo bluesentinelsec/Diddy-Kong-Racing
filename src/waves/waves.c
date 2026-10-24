@@ -17,7 +17,7 @@ Triangle gWaveQuadTriangles[4] = {
 };
 
 TextureHeader *gWaveTextureHeader = NULL;
-s32 *gWaveBlockCells = NULL; // indexed by gWaveModel.unkC
+s32 *gWaveBlockCells = NULL; // indexed by gWaveModel.tileIndex
 LevelModel_Alternate *gWaveModel = NULL;
 s32 gVisibleWaveTiles = 0; // Tracks an index into gWaveBlockIDs
 s16 *gWaveCellLookup =

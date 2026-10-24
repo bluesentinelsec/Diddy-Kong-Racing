@@ -30,7 +30,7 @@
 // LevelHeader is loaded from a 0xC4-byte big-endian N64 image and unpacked
 // into the host struct (see pc_asset.h). AILevelTable (0x20) is inline s8 data
 // read by aitable_init, so everything from 0x20 up to `geometry` is copied raw
-// and contiguous from the pointer slot. unk74/unkA4/pulseLightData hold asset
+// and contiguous from the pointer slot. colourCycles/skyTexture/pulseLightData hold asset
 // indices that the game converts to pointers after load.
 #define LEVEL_HEADER_DISK_SIZE 0xC4
 static const PcField sLevelHeaderFields[] = {
