@@ -454,8 +454,8 @@ static void mode_game_postrace_menu(s32 updateRate, LevelEndRequest *req) {
 }
 
 /**
- * Updates the onscreen textbox: a message that pauses the game pauses it, and once that message has gone the
- * game unpauses and the dialogue closes.
+ * Updates the onscreen textbox. While a message shows, one that pauses the game pauses it, and any other
+ * unpauses it and closes the pause dialogue.
  */
 static void mode_game_textbox(s32 updateRate) {
     s32 i;
