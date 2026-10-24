@@ -236,6 +236,10 @@ the port honest:
   game function no trace enters). Code listed there can change without a
   trace noticing, so give it a scene before rewriting it. The traces execute
   about 71% of the game's lines today.
+- `make golden-asan` runs every trace on an AddressSanitizer build, so an
+  out-of-bounds read or use after free on any traced path stops the run with
+  a report. The game is also built with pointer truncation as an error
+  (`-Werror=pointer-to-int-cast` and friends), the port's most common bug.
 
 ## Running
 

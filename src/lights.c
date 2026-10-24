@@ -116,7 +116,7 @@ ObjectLight *light_add_from_level_object_entry(Object *obj, LevelObjectEntry_Rgb
         light->keyframes = NULL;
         if (lightEntry->colourAnimIndex < 7) {
             levelHeader = level_header();
-            if (((s32) levelHeader->colourCycles[lightEntry->colourAnimIndex]) != -1) {
+            if ((ASSET_SLOT(levelHeader->colourCycles[lightEntry->colourAnimIndex])) != -1) {
                 light->colourAnim = (MiscAssetObjectHeader24 *) levelHeader->colourCycles[lightEntry->colourAnimIndex];
                 light->keyframeCount = light->colourAnim->keyframeCount;
                 light->keyframeIndex = 0;

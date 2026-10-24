@@ -223,6 +223,12 @@ set(DKR_C_FLAGS
     -Wno-pointer-sign
     -Wno-unknown-attributes
     -Wno-unknown-warning-option
+    # A host pointer squeezed into 32 bits is the port's most common bug class (subtitle
+    # table, snowball sound, boost owner); these are errors so a new one cannot land.
+    -Werror=pointer-to-int-cast
+    -Werror=int-to-pointer-cast
+    -Werror=incompatible-pointer-types
+    -Werror=int-conversion
 )
 if(DKR_SANITIZE)
     list(APPEND DKR_C_FLAGS -fsanitize=address -fno-omit-frame-pointer)

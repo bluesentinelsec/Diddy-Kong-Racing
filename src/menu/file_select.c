@@ -25,7 +25,9 @@ static char *gNameEntryString;
 
 static s32 gNameEntryAllowedLength;
 
-static char gCurFilenameCharBeingDrawn = '\0';
+// One letter of the name-entry wheel, drawn as a string. The N64 relied on the next byte in
+// memory being zero; the terminator makes it so.
+static char gCurFilenameCharBeingDrawn[2] = { '\0', '\0' };
 
 static s32 gEnterInitalsY = 192;
 
@@ -939,8 +941,8 @@ void filename_render(UNUSED s32 updateRate) {
             }
             if (charIndex < 28) {
                 set_text_font(ASSET_FONTS_BIGFONT);
-                gCurFilenameCharBeingDrawn = gFileNameValidChars[charIndex];
-                draw_text(&gMenuFrame.displayList, x, y, &gCurFilenameCharBeingDrawn, ALIGN_MIDDLE_CENTER);
+                gCurFilenameCharBeingDrawn[0] = gFileNameValidChars[charIndex];
+                draw_text(&gMenuFrame.displayList, x, y, gCurFilenameCharBeingDrawn, ALIGN_MIDDLE_CENTER);
             } else {
                 set_text_font(ASSET_FONTS_FUNFONT);
                 if (charIndex == 28) {

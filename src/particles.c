@@ -330,19 +330,20 @@ void init_particle_assets(void) {
     free_particle_assets();
     gParticlesAssetTable = (ParticleDescriptor **) asset_table_load_pointers(ASSET_PARTICLES_TABLE);
     gParticlesAssetTableCount = -1;
-    while (((s32) gParticlesAssetTable[gParticlesAssetTableCount + 1]) != -1) {
+    while ((ASSET_SLOT(gParticlesAssetTable[gParticlesAssetTableCount + 1])) != -1) {
         gParticlesAssetTableCount++;
     }
 
     gParticlesAssets = (s32 *) asset_table_load(ASSET_PARTICLES);
     for (i = 0; i < gParticlesAssetTableCount; i++) {
-        gParticlesAssetTable[i] = (ParticleDescriptor *) (((u8 *) gParticlesAssets) + ((s32) gParticlesAssetTable[i]));
+        gParticlesAssetTable[i] =
+            (ParticleDescriptor *) (((u8 *) gParticlesAssets) + (ASSET_SLOT(gParticlesAssetTable[i])));
         pc_swap_record(gParticlesAssetTable[i], sizeof(ParticleDescriptor), sParticleDescriptorFields);
     }
 
     gParticleBehavioursAssetTable = (ParticleBehaviour **) asset_table_load_pointers(ASSET_PARTICLE_BEHAVIORS_TABLE);
     gParticleBehavioursAssetTableCount = -1;
-    while (((s32) gParticleBehavioursAssetTable[gParticleBehavioursAssetTableCount + 1]) != -1) {
+    while ((ASSET_SLOT(gParticleBehavioursAssetTable[gParticleBehavioursAssetTableCount + 1])) != -1) {
         gParticleBehavioursAssetTableCount++;
     }
 
@@ -355,9 +356,9 @@ void init_particle_assets(void) {
                   (u8 *) gParticleBehavioursAssets + (uintptr_t) gParticleBehavioursAssetTable[i],
                   PARTICLE_BEHAVIOUR_DISK_SIZE, sParticleBehaviourFields);
         gParticleBehavioursAssetTable[i] = &sPcBehaviours[i];
-        if (((u32) gParticleBehavioursAssetTable[i]->colourLoop) != 0xFFFFFFFF) {
+        if (((u32) ASSET_SLOT(gParticleBehavioursAssetTable[i]->colourLoop)) != 0xFFFFFFFF) {
             gParticleBehavioursAssetTable[i]->colourLoop =
-                (ColorLoopEntry *) get_misc_asset((s32) gParticleBehavioursAssetTable[i]->colourLoop);
+                (ColorLoopEntry *) get_misc_asset(ASSET_SLOT(gParticleBehavioursAssetTable[i]->colourLoop));
             pc_swap_colour_loop(gParticleBehavioursAssetTable[i]->colourLoop);
         }
     }
@@ -1547,7 +1548,7 @@ Particle *create_line_particle(Object *obj, ParticleEmitter *emitter) {
 
     // The first vertex sits at the emitter; update_line_particle grows the chevron from it.
     model = particle->model;
-    if ((u32) colourLoop != -1U) {
+    if ((u32) ASSET_SLOT(colourLoop) != -1U) {
         emitter->colourIndex++;
         if (emitter->colourIndex >= colourLoop[0].numEntries) {
             emitter->colourIndex = 0;
@@ -1603,7 +1604,7 @@ static void general_particle_init_colour(Particle *particle, ParticleEmitter *em
     colourLoop = behaviour->colourLoop;
     if (gParticleOverrideColor[0].word != 0) {
         particle->colour.word = gParticleOverrideColor[0].word;
-    } else if ((s32) colourLoop != -1) {
+    } else if (ASSET_SLOT(colourLoop) != -1) {
         emitter->colourIndex++;
         if (emitter->colourIndex >= colourLoop->numEntries) {
             emitter->colourIndex = 0;
@@ -2124,7 +2125,7 @@ static void line_particle_begin_mesh(Particle *particle, ParticleEmitter *emitte
     colourLoop = emitter->behaviour->colourLoop;
     vertex_set(&verts[1], vtxOffset->x + ref->x, vtxOffset->y + ref->y, vtxOffset->z + ref->z, verts[0].r, verts[0].g,
                verts[0].b, emitter->lineOpacity);
-    if ((s32) colourLoop != -1) {
+    if (ASSET_SLOT(colourLoop) != -1) {
         vertex_set(&verts[2], ref->x, ref->y, ref->z, colourLoop[emitter->colourIndex + 2].r,
                    colourLoop[emitter->colourIndex + 2].g, colourLoop[emitter->colourIndex + 2].b,
                    emitter->lineOpacity);

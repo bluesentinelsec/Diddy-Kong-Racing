@@ -256,13 +256,13 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
         return NULL;
     }
     pc_unpack_object_model(objMdl);
-    objMdl->textures = (TextureInfo *) ((s32) objMdl->textures + (u8 *) objMdl);
-    objMdl->vertices = (Vertex *) ((s32) objMdl->vertices + (u8 *) objMdl);
-    objMdl->triangles = (Triangle *) ((s32) objMdl->triangles + (u8 *) objMdl);
-    objMdl->batches = (TriangleBatchInfo *) ((s32) objMdl->batches + (u8 *) objMdl);
-    objMdl->attachPoints = (s16 *) ((s32) objMdl->attachPoints + (u8 *) objMdl);
-    objMdl->collisionSpheres = (s16 *) ((s32) objMdl->collisionSpheres + (u8 *) objMdl);
-    objMdl->animatedVertexIndices = (s32 *) ((s32) objMdl->animatedVertexIndices + (u8 *) objMdl);
+    objMdl->textures = (TextureInfo *) (ASSET_SLOT(objMdl->textures) + (u8 *) objMdl);
+    objMdl->vertices = (Vertex *) (ASSET_SLOT(objMdl->vertices) + (u8 *) objMdl);
+    objMdl->triangles = (Triangle *) (ASSET_SLOT(objMdl->triangles) + (u8 *) objMdl);
+    objMdl->batches = (TriangleBatchInfo *) (ASSET_SLOT(objMdl->batches) + (u8 *) objMdl);
+    objMdl->attachPoints = (s16 *) (ASSET_SLOT(objMdl->attachPoints) + (u8 *) objMdl);
+    objMdl->collisionSpheres = (s16 *) (ASSET_SLOT(objMdl->collisionSpheres) + (u8 *) objMdl);
+    objMdl->animatedVertexIndices = (s32 *) (ASSET_SLOT(objMdl->animatedVertexIndices) + (u8 *) objMdl);
     objMdl->references = 1;
     objMdl->collisionFacets = NULL;
     objMdl->collisionPlanes = NULL;
@@ -273,7 +273,7 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
     objMdl->animations = NULL;
     sp3F = 0;
     for (i = 0; i < objMdl->numberOfTextures; i++) {
-        objMdl->textures[i].texture = load_texture(((s32) objMdl->textures[i].texture) | 0x8000);
+        objMdl->textures[i].texture = load_texture(ASSET_SLOT(objMdl->textures[i].texture) | 0x8000);
         if (objMdl->textures[i].texture == NULL) {
             sp3F = 1;
         }

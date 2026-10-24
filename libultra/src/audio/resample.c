@@ -134,7 +134,7 @@ s32 alResampleParam(void *filter, s32 paramID, void *param)
             break;
             
         case (AL_FILTER_SET_PITCH):
-            data.i = (s32) param;
+            data.i = (s32) (intptr_t) param;
             r->ratio = data.f * gPcPitchScale; // the host may mix faster than the samples were authored for
             break;
             

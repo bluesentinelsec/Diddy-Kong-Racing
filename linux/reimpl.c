@@ -24,7 +24,6 @@ typedef unsigned long long u64;
 // ---------------------------------------------------------------------------
 // Becomes the real asset LUT/data location once the PC asset loader exists.
 #include "pc_rom.h"
-u8 *__ROM_END; // cheat-menu checksum bound
 
 // N64: the main heap is [end of BSS .. RAM_END], carved out by the linker.
 // PC: a static pool. memory.c's "ramEnd - (s32)&gMainMemoryPool" sizing math
@@ -212,6 +211,11 @@ void pc_asset_swap16_region(u32 romOffset, u32 numBytes) {
         return;
     }
     pc_swap16_buf(sAssetsBin + offset, numBytes);
+}
+
+u32 pc_rom_end(void) {
+    pc_assets_init();
+    return (u32) (uintptr_t) __ASSETS_LUT_END + sAssetsBinSize;
 }
 
 void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes) {

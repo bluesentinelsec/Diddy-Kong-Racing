@@ -308,8 +308,8 @@ void waves_init(LevelModel *model, LevelHeader *header, s32 playerCount) {
         playerCount = 4;
     }
     stubbed_printf("pre vertex loop playerCount=%d v0=%x v1=%x v2=%x v3=%x\n", playerCount,
-                   (u32) gWaveVertices[0], (u32) gWaveVertices[1], (u32) gWaveVertices[2],
-                   (u32) gWaveVertices[3]);
+                   (u32) (uintptr_t) gWaveVertices[0], (u32) (uintptr_t) gWaveVertices[1],
+                   (u32) (uintptr_t) gWaveVertices[2], (u32) (uintptr_t) gWaveVertices[3]);
     for (var_s3 = 0; var_s3 < 25; var_s3++) {
         if (0 <= gWaveController.subdivisions) {
             do {
