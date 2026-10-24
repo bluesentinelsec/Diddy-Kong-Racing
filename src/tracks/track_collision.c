@@ -274,7 +274,7 @@ s32 get_level_segment_waves(s32 levelSegmentIndex, f32 xIn, f32 zIn, WaterProper
                             gWaterSurfaceHits[yOutCount].rot.y = B;
                             gWaterSurfaceHits[yOutCount].rot.z = C;
                             yOutCount++;
-                            if (yOutCount >= ARRAY_COUNT(gWaterSurfaceHits)) {
+                            if (yOutCount >= WATER_POLYGON_HITS_MAX) {
                                 batchNum = currentSegment->numberOfBatches;
                                 faceNum = nextFaceOffset;
                                 i = segmentCount;
