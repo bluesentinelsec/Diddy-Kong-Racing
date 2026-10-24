@@ -95,7 +95,7 @@ static void car_update_drift_countersteer(Object *obj, Object_Racer *racer, s32 
 
 /**
  * On deep water, or frozen water, the car is carried along the checkpoint path and lifted
- * out (unk1F0 marks the car as being carried).
+ * out (waterEscapeActive marks the car as being carried).
  */
 static void car_follow_path_on_water(Object *obj, Object_Racer *racer) {
     f32 goalX;
@@ -324,7 +324,7 @@ void update_car(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer 
         update_onscreen_AI_racer(racerObj, racer, updateRate, updateRateF);
         return;
     }
-    // A spin-out from counter-steering (unk1D4) decays while it blocks hopping and sliding.
+    // A spin-out from counter-steering (spinDirection) decays while it blocks hopping and sliding.
     if (racer->spinDirection != 0) {
         gCurrentButtonsPressed &= ~(Z_TRIG | R_TRIG);
         if (racer->spinDirection > 0) {

@@ -1,5 +1,10 @@
 #include "racer_internal.h"
 
+// What the AI does with a balloon's weapon (gRacerAIBalloonActionTable).
+#define AI_BALLOON_FIRE_AHEAD 1  // fired forward: chase the racer ahead
+#define AI_BALLOON_DROP_BEHIND 2 // dropped behind: wait for the racer behind
+#define AI_BALLOON_BOOST 4       // a nitro boost
+
 // Used to know how the AI should use a balloon when they have one.
 static s8 gRacerAIBalloonActionTable[NUM_WEAPON_TYPES] = { 1, 1, 2, 2, 4, 3, 0, 6, 4, 3, 2, 2, 5, 5, 5, 0 };
 
@@ -171,7 +176,7 @@ static void racer_ai_tactics_use_balloon(Object_Racer *racer, s8 balloonType, Ob
                                          Object_Racer *racerBehind, s16 firstHumanPos, s16 aiAheadCount,
                                          s16 balloonChance, s16 attackChance, s16 blueBalloonChance, s8 *miscAsset2,
                                          s8 racerCharacterId) {
-    if (racer->aiFlags & 1) {
+    if (racer->aiFlags & AI_FLAG_NEW_BALLOON) {
         if (racer->aiPhysicsTimer == 0) {
             if (racer->balloon_level == 0) {
                 if (roll_percent_chance(balloonChance)) {
@@ -184,36 +189,36 @@ static void racer_ai_tactics_use_balloon(Object_Racer *racer, s8 balloonType, Ob
                 }
             }
         }
-        if (racer->boostTimer == 0 && gRacerAIBalloonActionTable[balloonType] == 4) {
+        if (racer->boostTimer == 0 && gRacerAIBalloonActionTable[balloonType] == AI_BALLOON_BOOST) {
             if (roll_percent_chance(blueBalloonChance)) {
                 gCurrentButtonsReleased |= Z_TRIG;
             }
         }
         if (racer->balloon_quantity != 0) {
-            if (gRacerAIBalloonActionTable[balloonType] == 1) {
+            if (gRacerAIBalloonActionTable[balloonType] == AI_BALLOON_FIRE_AHEAD) {
                 if (racerAhead != NULL && racerAhead->playerIndex == PLAYER_COMPUTER) {
                     if (firstHumanPos < 4) {
                         racer->aiBehaviourTimer = miscAsset2[racerCharacterId] * 60;
-                        racer->aiBehaviour = 4;
+                        racer->aiBehaviour = AI_BEHAVIOUR_FIRE_AHEAD;
                     }
                 } else if (roll_percent_chance(attackChance) && firstHumanPos < 2) {
                     racer->aiBehaviourTimer = miscAsset2[racerCharacterId] * 60;
-                    racer->aiBehaviour = 4;
+                    racer->aiBehaviour = AI_BEHAVIOUR_FIRE_AHEAD;
                 }
             }
-            if (gRacerAIBalloonActionTable[balloonType] == 2) {
+            if (gRacerAIBalloonActionTable[balloonType] == AI_BALLOON_DROP_BEHIND) {
                 if (racerBehind != NULL && racerBehind->playerIndex == PLAYER_COMPUTER) {
                     if (firstHumanPos < 4) {
                         racer->aiBehaviourTimer = miscAsset2[racerCharacterId] * 60;
-                        racer->aiBehaviour = 5;
+                        racer->aiBehaviour = AI_BEHAVIOUR_DROP_BEHIND;
                     }
                 } else if (roll_percent_chance(attackChance) && firstHumanPos < 2) {
                     racer->aiBehaviourTimer = miscAsset2[racerCharacterId] * 60;
-                    racer->aiBehaviour = 5;
+                    racer->aiBehaviour = AI_BEHAVIOUR_DROP_BEHIND;
                 }
             }
         }
-        racer->aiFlags &= ~1;
+        racer->aiFlags &= ~AI_FLAG_NEW_BALLOON;
     }
 }
 
@@ -223,22 +228,22 @@ static void racer_ai_tactics_use_balloon(Object_Racer *racer, s8 balloonType, Ob
  */
 static void racer_ai_tactics_boost_throttle(Object_Racer *racer, s16 boostChance) {
     if (racer->boostTimer != 0) {
-        if (!(racer->aiFlags & 2)) {
+        if (!(racer->aiFlags & AI_FLAG_BOOST_ROLLED)) {
             if (roll_percent_chance(boostChance)) {
-                racer->aiFlags |= 4;
+                racer->aiFlags |= AI_FLAG_BOOST_COAST;
             }
-            racer->aiFlags |= 2;
+            racer->aiFlags |= AI_FLAG_BOOST_ROLLED;
         }
-        if (racer->aiFlags & 4) {
+        if (racer->aiFlags & AI_FLAG_BOOST_COAST) {
             gCurrentRacerInput &= ~A_BUTTON;
         }
     } else {
-        racer->aiFlags &= ~2;
+        racer->aiFlags &= ~AI_FLAG_BOOST_ROLLED;
         if (racer->velocity > -12.0) {
-            racer->aiFlags &= ~4;
+            racer->aiFlags &= ~AI_FLAG_BOOST_COAST;
         }
     }
-    if (racer->aiFlags & 4) {
+    if (racer->aiFlags & AI_FLAG_BOOST_COAST) {
         gCurrentRacerInput &= ~A_BUTTON;
     }
 }
@@ -251,13 +256,13 @@ static void racer_ai_tactics_renew_behaviour(Object_Racer *racer, Object_Racer *
                                              s16 aiAheadCount, s16 firstHumanPos, s8 *miscAsset1, s8 racerCharacterId,
                                              s8 aheadCharacterId, s16 blueBalloonChance) {
     if (racer->aiBehaviourTimer == 0) {
-        if (racer->aiBehaviour == 4 || racer->aiBehaviour == 5) {
+        if (racer->aiBehaviour == AI_BEHAVIOUR_FIRE_AHEAD || racer->aiBehaviour == AI_BEHAVIOUR_DROP_BEHIND) {
             gCurrentButtonsReleased |= Z_TRIG;
         }
-        racer->aiBehaviour = 0;
+        racer->aiBehaviour = AI_BEHAVIOUR_LANE;
         if (racerBehind != NULL && racerBehind->playerIndex != PLAYER_COMPUTER && distBehind < 200.0f &&
             aiAheadCount != 0 && firstHumanPos < 3 && miscAsset1[(racerCharacterId * 10) + aheadCharacterId] < 5) {
-            racer->aiBehaviour = 5;
+            racer->aiBehaviour = AI_BEHAVIOUR_DROP_BEHIND;
         }
         if (gAiStartDelay == 0.0f) {
             racer->aiLane = gAiLaneByAiCount[aiAheadCount];
@@ -308,8 +313,9 @@ static void racer_ai_tactics_follow_behaviour(Object_Racer *racer, Object_Racer 
         racer->aiLane = 2;
     }
     switch (racer->aiBehaviour) {
-        case 0:
-            if (racerAhead != NULL && racerAhead->playerIndex == PLAYER_COMPUTER && racerAhead->aiBehaviour == 0) {
+        case AI_BEHAVIOUR_LANE:
+            if (racerAhead != NULL && racerAhead->playerIndex == PLAYER_COMPUTER &&
+                racerAhead->aiBehaviour == AI_BEHAVIOUR_LANE) {
                 if (racerAhead->aiLane == racer->aiLane && 100.0 > distAhead) {
                     racer->aiLane++;
                     if (racer->aiLane > 3) {
@@ -318,12 +324,12 @@ static void racer_ai_tactics_follow_behaviour(Object_Racer *racer, Object_Racer 
                 }
             }
             break;
-        case 4:
+        case AI_BEHAVIOUR_FIRE_AHEAD:
             if (racerAhead != NULL) {
                 racer->trackOffsetX = racerAhead->trackOffsetX;
             }
             break;
-        case 5:
+        case AI_BEHAVIOUR_DROP_BEHIND:
             if (racerBehind != NULL) {
                 racer->trackOffsetX = racerBehind->trackOffsetX;
             }
@@ -344,7 +350,7 @@ static void racer_ai_tactics_scripted_speed(Object_Racer *racer, s16 bossRace) {
     if (index != 0 || bossRace != 0) {
         // clang-format on
         racer->aiLane = 0;
-        racer->aiBehaviour = 0;
+        racer->aiBehaviour = AI_BEHAVIOUR_LANE;
         if (bossRace != 0) {
             miscAsset3 = (f32 *) get_misc_asset(ASSET_MISC_18);
             index = bossRace;
@@ -496,7 +502,7 @@ void racer_ai_tactics(Object *obj, Object_Racer *racer, s32 updateRate) {
                                      racerCharacterId, aheadCharacterId, blueBalloonChance);
     // @fake
     if ((7 - aiAheadCount) == (7 & 0xFFFFFFFFu) && racerBehind != NULL && distBehind < -2500.0) {
-        racer->aiFlags &= ~4;
+        racer->aiFlags &= ~AI_FLAG_BOOST_COAST;
         racer->aiLane = 1;
     }
     racer_ai_tactics_target_speed(racer, aiTable, aiAheadCount);
@@ -562,7 +568,7 @@ void increment_ai_behaviour_chances(Object *obj, Object_Racer *racer, s32 update
         } else {
             balloonType = racer->balloon_type;
         }
-        if (gRacerAIBalloonActionTable[balloonType] == 1) {
+        if (gRacerAIBalloonActionTable[balloonType] == AI_BALLOON_FIRE_AHEAD) {
             aiTable->percentages[AI_UNK_2][AI_MIN] += aiTable->percentages[AI_UNK_2][AI_MIN_STEP];
             aiTable->percentages[AI_UNK_2][AI_MAX] += aiTable->percentages[AI_UNK_2][AI_MAX_STEP];
         }
@@ -624,7 +630,7 @@ void racer_AI_pathing_inputs(Object *obj, Object_Racer *racer, s32 updateRate) {
             if (!(raceType & RACETYPE_CHALLENGE)) {
                 racer->aiLane = (racer->aiLane + 1) & 3;
             } else if (raceType == RACETYPE_CHALLENGE_BATTLE || raceType == RACETYPE_CHALLENGE_BANANAS) {
-                if (racer->aiNodeId != 0xFF) {
+                if (racer->aiNodeId != NODE_NONE) {
                     racer->aiNodeObj = ainode_get(racer->aiNodeId);
                 }
             }
@@ -665,13 +671,13 @@ s32 roll_percent_chance(s32 chance) {
 static void racer_ai_challenge_find_first_node(Object *aiRacerObj, Object_Racer *aiRacer) {
     s32 nodeId;
 
-    if (aiRacer->currentAnimId == 0) {
+    if (aiRacer->currentAnimId == CHALLENGE_GOAL_FIND_NODE) {
         nodeId = ainode_find_nearest(aiRacerObj->trans.x_position, aiRacerObj->trans.y_position,
                                      aiRacerObj->trans.z_position, 0);
-        if (nodeId != 0xFF) {
+        if (nodeId != NODE_NONE) {
             aiRacer->aiNodeObj = ainode_get(nodeId);
-            aiRacer->currentAnimId = 1;
-            aiRacer->aiNodeId = 0xFF;
+            aiRacer->currentAnimId = CHALLENGE_GOAL_CHOOSE;
+            aiRacer->aiNodeId = NODE_NONE;
         }
     }
 }
@@ -714,7 +720,8 @@ static void racer_ai_challenge_tick_behaviour_timer(Object_Racer *aiRacer, s32 u
     if (gRaceStartTimer != 0) {
         aiRacer->aiBehaviourTimer = 0;
     }
-    if ((aiRacer->currentAnimId == 2) || (aiRacer->currentAnimId == 4) || (aiRacer->currentAnimId == 5)) {
+    if ((aiRacer->currentAnimId == CHALLENGE_GOAL_WANDER) || (aiRacer->currentAnimId == CHALLENGE_GOAL_HUNT) ||
+        (aiRacer->currentAnimId == CHALLENGE_GOAL_DEFEND)) {
         if (aiRacer->aiBehaviourTimer > 0) {
             aiRacer->aiBehaviourTimer -= updateRate;
         } else {
@@ -783,10 +790,10 @@ static void racer_ai_challenge_pick_rival(Object_Racer *aiRacer, s8 *chances) {
     if (rivalIndex >= 0) {
         aiRacer->eggHudCounter = (s8) rivalIndex;
         gAiEggCounts[rivalIndex] = aiRacer->racerIndex + 1;
-        aiRacer->currentAnimId = 4;
+        aiRacer->currentAnimId = CHALLENGE_GOAL_HUNT;
         aiRacer->aiBehaviourTimer = 0x4B0;
     } else {
-        aiRacer->currentAnimId = 2;
+        aiRacer->currentAnimId = CHALLENGE_GOAL_WANDER;
         aiRacer->aiBehaviourTimer = 0x4B0;
     }
 }
@@ -799,25 +806,25 @@ static void racer_ai_challenge_choose_goal(Object_Racer *aiRacer, s8 *chances, s
     rand_range(0, 9);
     if (aiRacer->balloon_quantity == 0) {
         if (roll_percent_chance(chances[3]) != 0) {
-            aiRacer->currentAnimId = 3;
+            aiRacer->currentAnimId = CHALLENGE_GOAL_BALLOON;
         } else if ((roll_percent_chance(chances[6]) != 0) && (raceType == RACETYPE_CHALLENGE_BANANAS) &&
                    (aiRacer->bananas >= 2)) {
-            aiRacer->currentAnimId = 7;
+            aiRacer->currentAnimId = CHALLENGE_GOAL_BANK_BANANAS;
         } else if ((roll_percent_chance(chances[5]) != 0) && (gAiEggCounts[aiRacer->racerIndex] != 0)) {
             aiRacer->aiBehaviourTimer = 1200;
             aiRacer->eggHudCounter = gAiEggCounts[aiRacer->racerIndex] - 1;
-            aiRacer->currentAnimId = 5;
+            aiRacer->currentAnimId = CHALLENGE_GOAL_DEFEND;
         } else {
-            aiRacer->currentAnimId = 2;
+            aiRacer->currentAnimId = CHALLENGE_GOAL_WANDER;
             aiRacer->aiBehaviourTimer = 300;
         }
     } else if ((roll_percent_chance(chances[6]) != 0) && (raceType == RACETYPE_CHALLENGE_BANANAS) &&
                (aiRacer->bananas >= 2)) {
-        aiRacer->currentAnimId = 7;
+        aiRacer->currentAnimId = CHALLENGE_GOAL_BANK_BANANAS;
     } else if (roll_percent_chance(chances[0]) != 0) {
         racer_ai_challenge_pick_rival(aiRacer, chances);
     } else {
-        aiRacer->currentAnimId = 2;
+        aiRacer->currentAnimId = CHALLENGE_GOAL_WANDER;
         aiRacer->aiBehaviourTimer = 0x12C;
     }
 }
@@ -827,31 +834,31 @@ static void racer_ai_challenge_choose_goal(Object_Racer *aiRacer, s8 *chances, s
  */
 static void racer_ai_challenge_check_goal_done(Object_Racer *aiRacer) {
     switch (aiRacer->currentAnimId) {
-        case 2:
+        case CHALLENGE_GOAL_WANDER:
             if (aiRacer->aiBehaviourTimer == 0) {
-                aiRacer->currentAnimId = 1;
+                aiRacer->currentAnimId = CHALLENGE_GOAL_CHOOSE;
             }
             break;
-        case 3:
+        case CHALLENGE_GOAL_BALLOON:
             if (aiRacer->balloon_type != 0) {
-                aiRacer->currentAnimId = 2;
+                aiRacer->currentAnimId = CHALLENGE_GOAL_WANDER;
                 aiRacer->aiBehaviourTimer = 180;
             }
             break;
-        case 4:
+        case CHALLENGE_GOAL_HUNT:
             if ((aiRacer->balloon_quantity == 0) || (aiRacer->aiBehaviourTimer == 0)) {
-                aiRacer->currentAnimId = 1;
+                aiRacer->currentAnimId = CHALLENGE_GOAL_CHOOSE;
                 gAiEggCounts[aiRacer->eggHudCounter] = 0;
             }
             break;
-        case 5:
+        case CHALLENGE_GOAL_DEFEND:
             if ((gAiEggCounts[aiRacer->racerIndex] == 0) || (aiRacer->aiBehaviourTimer == 0)) {
-                aiRacer->currentAnimId = 1;
+                aiRacer->currentAnimId = CHALLENGE_GOAL_CHOOSE;
             }
             break;
-        case 7:
+        case CHALLENGE_GOAL_BANK_BANANAS:
             if (aiRacer->bananas == 0) {
-                aiRacer->currentAnimId = 1;
+                aiRacer->currentAnimId = CHALLENGE_GOAL_CHOOSE;
             }
             break;
     }
@@ -867,7 +874,7 @@ static void racer_ai_challenge_check_off_route(Object_Racer *aiRacer, LevelObjec
     s16 offRoute;
     Object *prevNodeObj;
 
-    if (aiRacer->aiNodeId != 0xFF) {
+    if (aiRacer->aiNodeId != NODE_NONE) {
         racerElevation = aiRacer->elevation;
         prevNodeObj = ainode_get(aiRacer->aiNodeId); // I'm assuming this is a Ai Node (Take with a grain of salt!)
         prevNodeEntry = prevNodeObj->level_entry;
@@ -881,10 +888,10 @@ static void racer_ai_challenge_check_off_route(Object_Racer *aiRacer, LevelObjec
             offRoute = TRUE;
         }
         if (offRoute) {
-            if (aiRacer->currentAnimId == 4) {
+            if (aiRacer->currentAnimId == CHALLENGE_GOAL_HUNT) {
                 gAiEggCounts[aiRacer->eggHudCounter] = 0;
             }
-            aiRacer->currentAnimId = 6;
+            aiRacer->currentAnimId = CHALLENGE_GOAL_RECOVER;
         }
     }
 }
@@ -956,14 +963,14 @@ static void racer_ai_challenge_pick_next_node(Object_Racer *aiRacer, LevelObject
     if (dist < 300.0) {
         if (aiRacer->nodeCurrent == NULL) {
             switch (aiRacer->currentAnimId) {
-                case 3:
+                case CHALLENGE_GOAL_BALLOON:
                     nextNodeId =
                         ainode_pick_next(nodeEntry->animation.x_rotation, 1, aiRacer->aiNodeId, aiRacer->racerIndex);
                     break;
-                case 4:
+                case CHALLENGE_GOAL_HUNT:
                     tempRacerObj = get_racer_object(aiRacer->eggHudCounter);
                     tempRacer = tempRacerObj->racer;
-                    if (tempRacer->playerIndex == -1) {
+                    if (tempRacer->playerIndex == PLAYER_COMPUTER) {
                         tempRacerObj = tempRacer->aiNodeObj;
                         newvar = tempRacerObj->level_entry;
                         nextNodeId =
@@ -976,11 +983,11 @@ static void racer_ai_challenge_pick_next_node(Object_Racer *aiRacer, LevelObject
                                                       aiRacer->aiNodeId, aiRacer->racerIndex);
                     }
                     break;
-                case 5:
+                case CHALLENGE_GOAL_DEFEND:
                     nextNodeId =
                         ainode_pick_next(nodeEntry->animation.x_rotation, 1, aiRacer->aiNodeId, aiRacer->racerIndex);
                     break;
-                case 7:
+                case CHALLENGE_GOAL_BANK_BANANAS:
                     nextNodeId = ainode_pick_next(nodeEntry->animation.x_rotation, aiRacer->racerIndex + 4,
                                                   aiRacer->aiNodeId, aiRacer->racerIndex);
                     break;
@@ -990,10 +997,10 @@ static void racer_ai_challenge_pick_next_node(Object_Racer *aiRacer, LevelObject
                     break;
             }
 
-            if (nextNodeId != 0xFF) {
+            if (nextNodeId != NODE_NONE) {
                 aiRacer->nodeCurrent = ainode_get(nextNodeId);
             } else {
-                if (aiRacer->aiNodeId != 0xFF) {
+                if (aiRacer->aiNodeId != NODE_NONE) {
                     aiRacer->nodeCurrent = ainode_get(aiRacer->aiNodeId);
                 } else {
                     aiRacer->nodeCurrent = NULL;
@@ -1012,7 +1019,7 @@ static void racer_ai_challenge_advance_node(Object_Racer *aiRacer, LevelObjectEn
         aiRacer->aiNodeId = nodeEntry->animation.x_rotation;
         aiRacer->aiNodeObj = aiRacer->nodeCurrent;
         if (aiRacer->nodeCurrent == NULL) {
-            aiRacer->currentAnimId = 0;
+            aiRacer->currentAnimId = CHALLENGE_GOAL_FIND_NODE;
         }
         aiRacer->nodeCurrent = NULL;
     }
@@ -1040,10 +1047,10 @@ static void racer_ai_challenge_recover(Object *aiRacerObj, Object_Racer *aiRacer
 
     nodeId = ainode_find_nearest(aiRacerObj->trans.x_position, aiRacerObj->trans.y_position,
                                  aiRacerObj->trans.z_position, 2);
-    if (nodeId != 0xFF) {
+    if (nodeId != NODE_NONE) {
         aiRacer->aiNodeObj = ainode_get(nodeId);
-        aiRacer->currentAnimId = 1;
-        aiRacer->aiNodeId = 0xFF;
+        aiRacer->currentAnimId = CHALLENGE_GOAL_CHOOSE;
+        aiRacer->aiNodeId = NODE_NONE;
     }
     aiRacer->aiBehaviour = 1;
 }
@@ -1065,7 +1072,7 @@ static void racer_ai_challenge_fire_at_rivals(Object *aiRacerObj, Object_Racer *
         if (i != aiRacer->racerIndex) {
             tempRacerObj = get_racer_object(i);
             tempRacer = tempRacerObj->racer;
-            if (tempRacer->playerIndex != -1) {
+            if (tempRacer->playerIndex != PLAYER_COMPUTER) {
                 gAiRacerElevations[i] = tempRacer->elevation;
             }
             if (gAiRacerElevations[aiRacer->racerIndex] == gAiRacerElevations[i]) {
@@ -1123,17 +1130,17 @@ void racer_ai_challenge(Object *aiRacerObj, Object_Racer *aiRacer, s32 updateRat
     racer_ai_challenge_tick_behaviour_timer(aiRacer, updateRate);
     aiRacer->elevation = obj_elevation(aiRacerObj->trans.y_position);
     switch (aiRacer->currentAnimId) {
-        case 1:
+        case CHALLENGE_GOAL_CHOOSE:
             racer_ai_challenge_choose_goal(aiRacer, chances, raceType);
             break;
-        case 2:
-        case 3:
-        case 4:
-        case 5:
-        case 7:
+        case CHALLENGE_GOAL_WANDER:
+        case CHALLENGE_GOAL_BALLOON:
+        case CHALLENGE_GOAL_HUNT:
+        case CHALLENGE_GOAL_DEFEND:
+        case CHALLENGE_GOAL_BANK_BANANAS:
             racer_ai_challenge_pursue_goal(aiRacer, nodeObj, nodeEntry, dist);
             break;
-        case 6:
+        case CHALLENGE_GOAL_RECOVER:
             racer_ai_challenge_recover(aiRacerObj, aiRacer);
             break;
     }
@@ -1591,7 +1598,7 @@ static f32 racer_ai_drive_lane_spline(Object_Racer *racer, s32 checkpointCount, 
         splineX[i] = checkpoint->x;
         splineY[i] = checkpoint->y;
         splineZ[i] = checkpoint->z;
-        if (racer->aiBehaviour == 0) {
+        if (racer->aiBehaviour == AI_BEHAVIOUR_LANE) {
             laneOffsetX[i] = checkpoint->laneOffsetX[racer->aiLane];
             laneOffsetY[i] = checkpoint->laneOffsetY[racer->aiLane];
             splineX[i] += checkpoint->scale * checkpoint->rotationZFrac * checkpoint->laneOffsetX[racer->aiLane];
@@ -1605,7 +1612,7 @@ static f32 racer_ai_drive_lane_spline(Object_Racer *racer, s32 checkpointCount, 
         }
     }
 
-    if (racer->aiBehaviour == 0) {
+    if (racer->aiBehaviour == AI_BEHAVIOUR_LANE) {
         racer->trackOffsetX = laneOffsetX[1] + (laneOffsetX[2] - laneOffsetX[1]) * progress;
         racer->trackOffsetY = laneOffsetY[1] + (laneOffsetY[2] - laneOffsetY[1]) * progress;
     }
@@ -1688,7 +1695,7 @@ static f32 racer_ai_drive_offset_spline(Object_Racer *racer, s32 checkpointCount
         progress = 1.0;
     }
 
-    if (racer->aiBehaviour != 0) {
+    if (racer->aiBehaviour != AI_BEHAVIOUR_LANE) {
         if (checkpointIdx < 0) {
             checkpointIdx += checkpointCount;
         }
@@ -1759,7 +1766,7 @@ static void racer_ai_drive_steer(Object *obj, Object_Racer *racer, f32 *splineX,
         shift = 6;
     }
 
-    if (racer->vehicleID == 1 && racer->spinDirection == 0) {
+    if (racer->vehicleID == VEHICLE_HOVERCRAFT && racer->spinDirection == 0) {
         racer->steerVisualRotation -= yawDiff >> 1;
     }
 
@@ -2325,22 +2332,22 @@ static void update_AI_racer_checkpoints(Object *obj, Object_Racer *racer, LevelH
         racer_update_progress(racer);
     }
     checkpoint = find_next_checkpoint_node(racer->nextCheckpoint, racer->isOnAlternateRoute);
-    if (checkpoint->laneAction[racer->aiLane] == 5) {
+    if (checkpoint->laneAction[racer->aiLane] == LANE_ACTION_WATER_ROUTE) {
         racer->aiPhysicsTimer = 30;
         if (racer->waterTimer) {
             racer->isOnAlternateRoute = TRUE;
         }
     }
-    if (checkpoint->laneAction[racer->aiLane] == 6) {
+    if (checkpoint->laneAction[racer->aiLane] == LANE_ACTION_END_RACE) {
         racer->lap = levelHeader->laps + 1;
     }
-    if (checkpoint->laneAction[racer->aiLane] == 4) {
+    if (checkpoint->laneAction[racer->aiLane] == LANE_ACTION_SLOW_DOWN) {
         if (racer->velocity < -4.0) {
             racer->velocity *= 0.9; //!@Delta
         }
     }
     if (passResult == 0) {
-        if (checkpoint->laneAction[racer->aiLane] == 2) {
+        if (checkpoint->laneAction[racer->aiLane] == LANE_ACTION_ALT_ROUTE) {
             racer->isOnAlternateRoute = TRUE;
         }
         checkpointCount = get_checkpoint_count();
@@ -2462,7 +2469,7 @@ void update_AI_racer(Object *obj, Object_Racer *racer, s32 updateRate, f32 updat
     f32 playerDistSq;
     LevelHeader *levelHeader;
 
-    gCurrentPlayerIndex = -1;
+    gCurrentPlayerIndex = PLAYER_COMPUTER;
     gameMode = get_game_mode();
     levelHeader = level_header();
     update_AI_racer_timers(racer, updateRate);
@@ -2528,7 +2535,7 @@ static void racer_ai_spline_speed(Object_Racer *racer) {
     f32 turnSlowdown;
     f32 targetSpeed;
 
-    racer->aiBehaviour = 0;
+    racer->aiBehaviour = AI_BEHAVIOUR_LANE;
     racer->zipperDirCorrection = 0;
     racer->attackType = ATTACK_NONE;
     racer->lateral_velocity = 0;

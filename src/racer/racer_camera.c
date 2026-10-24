@@ -274,7 +274,7 @@ static void camera_car_roll(Object *obj, Object_Racer *racer) {
     gCameraObject->trans.y_position -= racer->cameraLateralOffset * sins_f(gCameraObject->trans.rotation.z_rotation);
     segmentIndex = get_level_segment_index_from_position(
         gCameraObject->trans.x_position, gCameraObject->trans.y_position, gCameraObject->trans.z_position);
-    if (segmentIndex != -1) {
+    if (segmentIndex != SEGMENT_NONE) {
         gCameraObject->cameraSegmentID = segmentIndex;
     }
     racer->cameraYaw = gCameraObject->trans.rotation.y_rotation;

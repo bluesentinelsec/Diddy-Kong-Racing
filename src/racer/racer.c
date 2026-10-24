@@ -100,12 +100,12 @@ s16 gAiCatchupTimer;
  * The two per-vehicle f32 tables reached through the object header, swapped
  * where they are fetched because their misc-asset index is not a constant:
  *
- *   unk5C - the acceleration/velocity curve (gCurrentRacerMiscAssetPtr)
- *   unk5D - the wheel table, 4 wheels x { x, y, z, radius } (gRacerWheelTable)
+ *   miscAssetIds[0] - the acceleration/velocity curve (gCurrentRacerMiscAssetPtr)
+ *   miscAssetIds[1] - the wheel table, 4 wheels x { x, y, z, radius } (gRacerWheelTable)
  *
  * Both were being read big-endian. A wheel offset of 8.0 (0x41000000) becomes
  * 0x00000041 — a denormal, i.e. zero — so all four wheels collapsed onto the
- * racer's origin with radius 0. That made the ground probe in func_80054FD0
+ * racer's origin with radius 0. That made the ground probe in update_racer_collision
  * zero-length (origin == target), and resolve_collisions can never satisfy
  * "origin above the plane, target below it" with a zero-length probe: no wheel
  * ever touched the ground. The acceleration curve read as zeros the same way,
@@ -1080,15 +1080,16 @@ static void racer_update_checkpoints(Object *obj, Object_Racer *tempRacer, Level
         racer_update_progress(tempRacer);
     }
     checkpointNode = find_next_checkpoint_node(tempRacer->nextCheckpoint, tempRacer->isOnAlternateRoute);
-    if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->laneAction[tempRacer->aiLane] == 5 &&
-        tempRacer->waterTimer) {
+    if (tempRacer->playerIndex == PLAYER_COMPUTER &&
+        checkpointNode->laneAction[tempRacer->aiLane] == LANE_ACTION_WATER_ROUTE && tempRacer->waterTimer) {
         tempRacer->isOnAlternateRoute = TRUE;
     }
-    if (checkpointNode->laneAction[tempRacer->aiLane] == 6) {
+    if (checkpointNode->laneAction[tempRacer->aiLane] == LANE_ACTION_END_RACE) {
         tempRacer->lap = header->laps + 1;
     }
     if (passResult == 0) {
-        if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->laneAction[tempRacer->aiLane] == 2) {
+        if (tempRacer->playerIndex == PLAYER_COMPUTER &&
+            checkpointNode->laneAction[tempRacer->aiLane] == LANE_ACTION_ALT_ROUTE) {
             tempRacer->isOnAlternateRoute = TRUE;
         }
         checkpointCount = get_checkpoint_count();

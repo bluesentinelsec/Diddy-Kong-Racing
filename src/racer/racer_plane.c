@@ -179,7 +179,7 @@ static void plane_apply_gravity(Object *obj, Object_Racer *racer, s32 updateRate
 }
 
 /**
- * A spun-out plane tumbles until it lands and slows. unk1F1 marks the tumble: 1 in the
+ * A spun-out plane tumbles until it lands and slows. launchedState marks the tumble: 1 in the
  * air, 2 once it has touched down and started rolling out.
  */
 static void plane_update_spinout(Object *obj, Object_Racer *racer, s32 updateRate) {
@@ -235,7 +235,7 @@ static void plane_update_spinout(Object *obj, Object_Racer *racer, s32 updateRat
 }
 
 /**
- * A barrel roll (trickType +/-1) rolls the plane a full turn at full throttle. unk1D4 is set
+ * A barrel roll (trickType +/-1) rolls the plane a full turn at full throttle. spinDirection is set
  * once past the halfway point so the roll ends when the angle comes back round.
  */
 static void plane_update_barrel_roll(Object_Racer *racer, s32 updateRate, f32 *throttle) {
@@ -964,7 +964,7 @@ static void plane_camera_follow_yaw(Object_Racer *racer, s32 delta) {
     s32 angleVel;
     s32 angle;
 
-    if (((!(gCurrentRacerInput & 0x10)) || racer->groundedWheels < 3) && !racer->zipperDirCorrection) {
+    if (((!(gCurrentRacerInput & R_TRIG)) || racer->groundedWheels < 3) && !racer->zipperDirCorrection) {
         angle = (-racer->steerVisualRotation - (racer->cameraYaw & 0xFFFF)) + 0x8000;
         if (angle > 0x8000) {
             angle -= 0xFFFF;
@@ -1186,7 +1186,7 @@ void update_camera_plane(f32 updateRate, Object *obj, Object_Racer *racer) {
     plane_camera_roll(racer);
     segmentIndex = get_level_segment_index_from_position(
         gCameraObject->trans.x_position, gCameraObject->trans.y_position, gCameraObject->trans.z_position);
-    if (segmentIndex != -1) {
+    if (segmentIndex != SEGMENT_NONE) {
         gCameraObject->cameraSegmentID = segmentIndex;
     }
     racer->cameraYaw = gCameraObject->trans.rotation.y_rotation;

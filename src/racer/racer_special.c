@@ -315,7 +315,7 @@ void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Obje
     velZ = racerObj->z_velocity;
     racer->bumpTimer = 0;
     moveObjResult = move_object(racerObj, velX * updateRateF, racerObj->y_velocity * updateRateF, velZ * updateRateF);
-    if ((moveObjResult) && (gCurrentPlayerIndex != -1)) {
+    if ((moveObjResult) && (gCurrentPlayerIndex != PLAYER_COMPUTER)) {
         objectMoved = TRUE;
     }
     if (gCurrentPlayerIndex == PLAYER_COMPUTER) {

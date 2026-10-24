@@ -1,7 +1,7 @@
 #include "racer_internal.h"
 
 /**
- * Hovercraft spin-outs turn the craft on the spot: unk1D4 ramps to +/-10 while the spin
+ * Hovercraft spin-outs turn the craft on the spot: spinDirection ramps to +/-10 while the spin
  * lasts and drives the heading offset, then spinRecoverTimer eases the offset back. Braking at
  * speed also yaws the craft.
  */
