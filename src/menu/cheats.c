@@ -711,7 +711,7 @@ void cheatmenu_checksum(void) {
         numBytes = 0x1000;
         size = 0x5000;
         blockOffs = 0x1000;
-        numLeft = (s32) &__ROM_END;
+        numLeft = pc_rom_end(); // the N64 linker put the ROM size in &__ROM_END
         numLeft -= 0x1000;
         tempBuffer = mempool_alloc_safe(size, COLOUR_TAG_BLACK);
 
@@ -735,7 +735,7 @@ void cheatmenu_checksum(void) {
 
     set_render_printf_background_colour(0, 0, 0, 128);
     set_render_printf_position(32, 136);
-    numLeft = (s32) &__ROM_END;
+    numLeft = pc_rom_end();
     render_printf("ROM checksum %08X,%d\n", cksum, numLeft);
 }
 

@@ -498,9 +498,9 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
     object_ids_clear();
     gMapId = levelId;
     for (var_s0 = 0; var_s0 < 7; var_s0++) {
-        if ((s32) gCurrentLevelHeader->colourCycles[var_s0] != -1) {
+        if (ASSET_SLOT(gCurrentLevelHeader->colourCycles[var_s0]) != -1) {
             gCurrentLevelHeader->colourCycles[var_s0] =
-                (ColourCycle *) get_misc_asset((s32) gCurrentLevelHeader->colourCycles[var_s0]);
+                (ColourCycle *) get_misc_asset(ASSET_SLOT(gCurrentLevelHeader->colourCycles[var_s0]));
             // The colour loop is a big-endian misc asset. Only the subset shared
             // with a particle behaviour is swapped in init_particle_assets; swap
             // the rest here (shared swap-once table, so no double-swap) or
@@ -623,13 +623,13 @@ void level_load(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle vehicl
         weather_clip_planes(-1, -512);
     }
     if (gCurrentLevelHeader->skyDome == -1) {
-        gCurrentLevelHeader->skyTexture = load_texture((s32) gCurrentLevelHeader->skyTexture);
+        gCurrentLevelHeader->skyTexture = load_texture(ASSET_SLOT(gCurrentLevelHeader->skyTexture));
         gCurrentLevelHeader->skyTexScrollU = 0;
         gCurrentLevelHeader->skyTexScrollV = 0;
     }
-    if ((s32) gCurrentLevelHeader->pulseLightData != -1) {
+    if (ASSET_SLOT(gCurrentLevelHeader->pulseLightData) != -1) {
         gCurrentLevelHeader->pulseLightData =
-            (PulsatingLightData *) get_misc_asset((s32) gCurrentLevelHeader->pulseLightData);
+            (PulsatingLightData *) get_misc_asset(ASSET_SLOT(gCurrentLevelHeader->pulseLightData));
         init_pulsating_light_data(gCurrentLevelHeader->pulseLightData);
     }
     cam_set_fov(gCurrentLevelHeader->cameraFOV);

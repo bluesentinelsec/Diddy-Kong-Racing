@@ -311,7 +311,7 @@ void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 upd
     }
     shadow_update(SHADOW_ACTORS, SHADOW_ACTORS, updateRate);
     for (i = 0; i < 7; i++) {
-        if ((s32) gCurrentLevelHeader2->colourCycles[i] != -1) {
+        if (ASSET_SLOT(gCurrentLevelHeader2->colourCycles[i]) != -1) {
             update_colour_cycle(gCurrentLevelHeader2->colourCycles[i], tempUpdateRate);
         }
     }
@@ -1478,9 +1478,9 @@ void trackbg_render_flashy(void) {
     var_t2 = *gCurrentLevelHeader2->colourCycles;
     var_a2 = -1;
 
-    if ((u32) var_t2 != -1U) {
+    if ((u32) ASSET_SLOT(var_t2) != -1U) {
         levelHeader = gCurrentLevelHeader2->colourCycles[1];
-        if ((u32) levelHeader == -1U) {
+        if ((u32) ASSET_SLOT(levelHeader) == -1U) {
             levelHeader = var_t2;
         }
     } else {
@@ -1958,15 +1958,14 @@ void render_level_segment(s32 segmentId, s32 nonOpaque) {
         } while (0);
         triangles = (ptrint_t) &segment->triangles[batchInfo->facesOffset];
         texOffset = batchInfo->texOffset << 14;
+        // Batches tagged 1..7 take their colour from that colour cycle; the original indexed the
+        // header as an array of 4-byte pointers, which on a 64-bit host read the wrong bytes.
         levelHeaderIndex = (batchFlags >> 28) & 7;
         if (levelHeaderIndex != (batchInfo->verticesOffset * 0)) {
-            gDPSetEnvColor(
-                gTrackDL++,
-                ((ColourCycle *) ((u8 **) (&((LevelHeader **) gCurrentLevelHeader2)[levelHeaderIndex]))[28])->rgba.r,
-                ((ColourCycle *) ((u8 **) (&((LevelHeader **) gCurrentLevelHeader2)[levelHeaderIndex]))[28])->rgba.g,
-                ((ColourCycle *) ((u8 **) (&((LevelHeader **) gCurrentLevelHeader2)[levelHeaderIndex]))[28])->rgba.b,
-                ((ColourCycle *) ((u8 **) (&((LevelHeader **) gCurrentLevelHeader2)[levelHeaderIndex]))[28])
-                    ->rgba.a);
+            gDPSetEnvColor(gTrackDL++, gCurrentLevelHeader2->colourCycles[levelHeaderIndex - 1]->rgba.r,
+                           gCurrentLevelHeader2->colourCycles[levelHeaderIndex - 1]->rgba.g,
+                           gCurrentLevelHeader2->colourCycles[levelHeaderIndex - 1]->rgba.b,
+                           gCurrentLevelHeader2->colourCycles[levelHeaderIndex - 1]->rgba.a);
         } else {
             gDPSetEnvColor(gTrackDL++, 255, 255, 255, 0);
         }
@@ -2997,19 +2996,19 @@ void generate_track(s32 modelId) {
     }
     for (k = 0; k < gCurrentLevelModel->numberOfTextures; k++) {
         gCurrentLevelModel->textures[k].texture =
-            load_texture(((s32) gCurrentLevelModel->textures[k].texture) | 0x8000);
+            load_texture(ASSET_SLOT(gCurrentLevelModel->textures[k].texture) | 0x8000);
     }
     j = (ptrint_t) gCurrentLevelModel + gCurrentLevelModel->modelSize;
     for (k = 0; k < gCurrentLevelModel->numberOfSegments; k++) {
         gCurrentLevelModel->segments[k].triangleGridMasks = (s16 *) j;
-        j = (ptrint_t) align16(((u8 *) (gCurrentLevelModel->segments[k].numberOfTriangles * 2)) + j);
+        j = (ptrint_t) align16(((u8 *) (uintptr_t) (gCurrentLevelModel->segments[k].numberOfTriangles * 2)) + j);
         gCurrentLevelModel->segments[k].collisionPlanes = (f32 *) j;
         j = (ptrint_t) & ((u8 *) j)[track_init_collision(&gCurrentLevelModel->segments[k])];
         segment_compute_triangle_grid_masks(&gCurrentLevelModel->segments[k], &gCurrentLevelModel->segmentsBoundingBoxes[k], k);
         gCurrentLevelModel->segments[k].unused30 = 0;
         gCurrentLevelModel->segments[k].waterBatchIndices = (s16 *) j;
         segment_find_water_batches(&gCurrentLevelModel->segments[k]);
-        j = (ptrint_t) align16(((u8 *) (gCurrentLevelModel->segments[k].numWaterBatches * 2)) + j);
+        j = (ptrint_t) align16(((u8 *) (uintptr_t) (gCurrentLevelModel->segments[k].numWaterBatches * 2)) + j);
     }
     temp_s4 = (s32) (j - (ptrint_t) gCurrentLevelModel);
     if (temp_s4 > LEVEL_MODEL_MAX_SIZE) {

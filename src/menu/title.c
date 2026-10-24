@@ -382,8 +382,7 @@ s32 menu_title_screen_loop(s32 updateRate) {
             gTitleScreenCurrentOption--;
         }
         if (temp0 != gTitleScreenCurrentOption) {
-            sound_play(SOUND_MENU_PICK2,
-                       (SoundHandle *) (s32 *) (0 * contrIndex)); // TODO: The `* contrIndex` here is a fake match.
+            sound_play(SOUND_MENU_PICK2, NULL);
         }
         if (gMenuInput.buttons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
             for (contrIndex = 3; contrIndex > 0 && !(gMenuInput.buttons[contrIndex] & (A_BUTTON | START_BUTTON));

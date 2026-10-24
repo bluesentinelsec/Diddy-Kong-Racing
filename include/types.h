@@ -33,4 +33,9 @@ void isv_printf(const char *fmt, ...);
 #define OS_K0_TO_PHYSICAL(x) (uintptr_t) (x)
 #define OS_PHYSICAL_TO_K0(x) (void *) (x)
 
+// Asset headers carry ids and file offsets in fields typed as pointers until they are loaded
+// (-1 means none). On a 64-bit host those slots are 8 bytes; this reads the 32-bit value the
+// file stored. Never use it on a slot that already holds a real host pointer.
+#define ASSET_SLOT(p) ((s32) (intptr_t) (p))
+
 #endif

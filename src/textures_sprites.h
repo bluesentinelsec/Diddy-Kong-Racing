@@ -149,7 +149,7 @@ void directional_lighting_on(void);
 void directional_lighting_off(void);
 void material_set_no_tex_offset(Gfx **dList, TextureHeader *texhead, u32 flags);
 void sprite_opaque(s32 setting);
-s32 tex_palette_id(s16 paletteID);
+uintptr_t tex_palette_id(s16 paletteID);
 void material_set(Gfx **dList, TextureHeader *texhead, s32 flags, s32 texOffset);
 void sprite_free(Sprite *sprite);
 void tex_free(TextureHeader *tex);

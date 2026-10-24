@@ -945,7 +945,7 @@ void material_set_blinking_lights(Gfx **dList, TextureHeader *texture_list, u32 
     u16 *mblock;
     u16 *tblock;
     if (texture_index != 0 && texture_index < (texture_list->numOfTextures * 256)) {
-        texture_list = (TextureHeader *) ((s32) texture_list + ((texture_index >> 16) * texture_list->textureSize));
+        texture_list = (TextureHeader *) ((u8 *) texture_list + ((texture_index >> 16) * texture_list->textureSize));
     }
     mblock = (u16 *) (texture_list + 1);
     tblock = mblock + 0x400;
@@ -1093,8 +1093,8 @@ Sprite *tex_load_sprite(s32 spriteID, s32 arg1) {
     allocSize += spriteAsset->numberOfFrames * sizeof(Gfx);
     allocSize += numTextures << 4 << 1;
     allocSize += numTextures * sizeof(TextureHeader *);
-    allocSize += (s32) align16((u8 *) sizeof(Sprite));
-    allocSize += (s32) align16((u8 *) (spriteAsset->numberOfFrames * sizeof(Gfx *)));
+    allocSize += (s32) (uintptr_t) align16((u8 *) sizeof(Sprite));
+    allocSize += (s32) (uintptr_t) align16((u8 *) (spriteAsset->numberOfFrames * sizeof(Gfx *)));
     sprite = (Sprite *) mempool_alloc(allocSize, COLOUR_TAG_MAGENTA);
     if (sprite == NULL) {
         if (cacheFull) {
@@ -1543,7 +1543,7 @@ void material_init(TextureHeader *tex, Gfx *_dList) {
     s32 uClamp;
     s32 vClamp;
     s32 size;
-    s32 texLut;
+    uintptr_t texLut;
     Gfx *dList;
 
     tex->cmd = dList = _dList;
@@ -1693,8 +1693,8 @@ void material_init(TextureHeader *tex, Gfx *_dList) {
 /**
  * Returns the palette offset from the heap.
  */
-s32 tex_palette_id(s16 paletteID) {
-    return (s32) (paletteID + gCiPalettes);
+uintptr_t tex_palette_id(s16 paletteID) {
+    return (uintptr_t) (paletteID + gCiPalettes);
 }
 
 /**

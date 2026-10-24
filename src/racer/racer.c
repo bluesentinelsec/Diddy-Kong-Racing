@@ -1644,7 +1644,8 @@ void obj_destroy_racer(Object *obj, UNUSED s32 keepAnimTarget) {
     }
     racer_sound_free(obj);
     for (j = 0; j < gObjectCount; j++) {
-        if ((gObjPtrList[j]->trans.flags & OBJ_FLAGS_PARTICLE) && ((s32) gObjPtrList[j]->level_entry == (s32) obj)) {
+        if ((gObjPtrList[j]->trans.flags & OBJ_FLAGS_PARTICLE) &&
+            ((void *) gObjPtrList[j]->level_entry == (void *) obj)) {
             gObjPtrList[j]->level_entry = NULL;
         }
         if (gObjPtrList[j]->behaviorId == BHV_WEAPON_2 || gObjPtrList[j]->behaviorId == BHV_FLY_COIN ||

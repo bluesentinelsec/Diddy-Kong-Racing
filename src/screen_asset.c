@@ -21,8 +21,8 @@ Gfx gRdpSetModeScreenAsset[] = {
  * Unused.
  * Official Name: screenLoad
  */
-UNUSED u32 screenimage_load(s32 screenIndex) {
-    u32 someAddr;
+UNUSED uintptr_t screenimage_load(s32 screenIndex) {
+    uintptr_t someAddr;
     s32 screenTableCount, start, size;
     u32 *screenTable;
 
@@ -39,7 +39,7 @@ UNUSED u32 screenimage_load(s32 screenIndex) {
     // since there are no screen assets in the ROM.
     if (screenTableCount == 0) {
         mempool_free(screenTable);
-        return (u32) OS_PHYSICAL_TO_K0(0x100000);
+        return (uintptr_t) OS_PHYSICAL_TO_K0(0x100000);
     } else {
         if (screenIndex < 0 || screenIndex >= screenTableCount) {
             pc_log("SCREEN: No out of range!!\n");
@@ -48,7 +48,7 @@ UNUSED u32 screenimage_load(s32 screenIndex) {
 
         start = screenTable[screenIndex];
         size = screenTable[screenIndex + 1] - start;
-        someAddr = (u32) mempool_alloc_safe(size, COLOUR_TAG_BLUE);
+        someAddr = (uintptr_t) mempool_alloc_safe(size, COLOUR_TAG_BLUE);
 
         asset_load(ASSET_SCREENS, someAddr, start, size);
         mempool_free(screenTable);

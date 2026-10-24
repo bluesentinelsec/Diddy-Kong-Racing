@@ -33,6 +33,8 @@ u32 pc_clock_count(void);
 u32 pc_asset_lut_size(void);
 void pc_dmacopy(u32 romOffset, uintptr_t ramAddress, s32 numBytes);
 s32 pc_asset_image_inflated(void);
+// The size of the "ROM" pc_dmacopy serves: the end of the asset image in ROM address space.
+u32 pc_rom_end(void);
 void pc_asset_swap16_region(u32 romOffset, u32 numBytes);
 
 // --- Display (linux/main.c) -----------------------------------------------------

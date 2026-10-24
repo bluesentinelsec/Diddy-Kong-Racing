@@ -156,7 +156,7 @@ Acmd *alEnvmixerPull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset,
                       } data;                    
                       data.f = param->pitch;
                       (*f->source->setParam)(f->source, AL_FILTER_SET_PITCH,
-                                            (void *)data.i);
+                                            (void *) (intptr_t) data.i);
                   }
                   
               }
@@ -279,7 +279,7 @@ Acmd *alEnvmixerPull(void *filter, s16 *outp, s32 outCount, s32 sampleOffset,
 	      ptr = _pullSubFrame(e, &inp, &loutp, samples, sampleOffset, ptr);
           e->delta += samples;
               (*e->filter.setParam)(&e->filter, e->ctrlList->type,
-                                    (void *) e->ctrlList->data.i);
+                                    (void *) (intptr_t) e->ctrlList->data.i);
               break;
         }
         loutp  += (samples<<1);
