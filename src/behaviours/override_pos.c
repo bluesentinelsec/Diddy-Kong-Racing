@@ -35,7 +35,7 @@
 void obj_init_overridepos(UNUSED Object *obj, UNUSED LevelObjectEntry *levelEntry, UNUSED s32 param) {
 }
 
-UNUSED void obj_loop_overridepos(UNUSED Object *obj, UNUSED s32 arg1) {
+UNUSED void obj_loop_overridepos(UNUSED Object *obj, UNUSED s32 updateRate) {
 }
 
 /**

@@ -45,7 +45,7 @@ void obj_init_lensflare(Object *obj, UNUSED LevelObjectEntry *levelEntry, UNUSED
  * Calls a function adding the object to the lens flare system,
  * so the rendering portion knows to disable lens flares when inside.
  */
-void obj_init_lensflareswitch(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 arg2) {
+void obj_init_lensflareswitch(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param) {
     LevelObjectEntry_LensFlareSwitch *entry = &levelEntry->lensFlareSwitch;
     lensflare_override_add(obj);
     obj->trans.scale = entry->radius;

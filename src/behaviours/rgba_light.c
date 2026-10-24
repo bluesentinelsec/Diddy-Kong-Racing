@@ -33,7 +33,7 @@
 #include "weather.h"
 
 /* Official name: rgbalightInit */
-void obj_init_rgbalight(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 arg2) {
+void obj_init_rgbalight(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param) {
     LevelObjectEntry_RgbaLight *entry = &levelEntry->rgbaLighting;
     obj->light = light_add_from_level_object_entry(obj, entry);
 }

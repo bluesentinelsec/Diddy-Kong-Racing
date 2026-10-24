@@ -41,7 +41,6 @@ void obj_init_midifade(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 par
     f32 oy;
     f32 oz;
     ObjectModel *objModel;
-    UNUSED s32 pad;
     MtxF mtx;
     f32 sinYRot;
     f32 tempF3;
@@ -184,8 +183,8 @@ void obj_init_midifadepoint(Object *obj, LevelObjectEntry *levelEntry, UNUSED s3
 
 void obj_init_midichset(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param) {
     LevelObjectEntry_Midichset *entry = &levelEntry->midichset;
-    Object_MidiChannelSet *temp = obj->midi_channel_set;
-    temp->channelMask = entry->channelMask;
-    temp->radius = entry->radius;
-    temp->sequenceID = entry->sequenceId;
+    Object_MidiChannelSet *channelSet = obj->midi_channel_set;
+    channelSet->channelMask = entry->channelMask;
+    channelSet->radius = entry->radius;
+    channelSet->sequenceID = entry->sequenceId;
 }

@@ -79,8 +79,7 @@ void weapon_projectile(Object *obj, s32 updateRate) {
     Object *interactObj;
     Object_Racer *weaponOwner;
     Object_Weapon *weapon;
-    Object *temp_s1_2;
-    UNUSED s32 pad;
+    Object *attachedObj;
     Vec3f offset;
     f32 radius;
     f32 updateRateF;
@@ -201,13 +200,13 @@ void weapon_projectile(Object *obj, s32 updateRate) {
 block_37:
     obj->properties.projectile.age += updateRate;
     if (obj->attachPoints != NULL) {
-        temp_s1_2 = obj->attachPoints->obj[0];
+        attachedObj = obj->attachPoints->obj[0];
         if (obj->properties.projectile.age < 8) {
-            temp_s1_2->trans.scale = obj->properties.projectile.age * 0.5f;
+            attachedObj->trans.scale = obj->properties.projectile.age * 0.5f;
         } else if (obj->properties.projectile.age < 16) {
-            temp_s1_2->trans.scale = 4.0f - ((obj->properties.projectile.age - 8) * 0.25f);
+            attachedObj->trans.scale = 4.0f - ((obj->properties.projectile.age - 8) * 0.25f);
         } else {
-            temp_s1_2->trans.scale = (sins_f(obj->properties.projectile.age << 12) * 0.25f) + 2.0f;
+            attachedObj->trans.scale = (sins_f(obj->properties.projectile.age << 12) * 0.25f) + 2.0f;
         }
     }
     obj->properties.projectile.timer -= updateRate;
@@ -274,7 +273,7 @@ void homing_rocket_prevent_overshoot(Object *obj, s32 updateRate, Object_Weapon 
     f32 diffY;
     f32 diffZ;
     f32 distY;
-    s32 sp58;
+    s32 followTrack;
     s32 angle;
     s32 sineY;
     s32 angleDiff;
@@ -296,19 +295,20 @@ void homing_rocket_prevent_overshoot(Object *obj, s32 updateRate, Object_Weapon 
         }
         dist = sqrtf(dist + distY);
         if (dist > 300.0f && rocket->checkpoint != -1 && rocket->hitObj == NULL) {
-            sp58 = homing_rocket_get_next_direction(obj, rocket->checkpoint, racer->isOnAlternateRoute, rocket->targetTrackOffsetX,
-                                                    rocket->targetTrackOffsetY, rocket->checkpointDist, &diffX, &diffY, &diffZ);
+            followTrack = homing_rocket_get_next_direction(obj, rocket->checkpoint, racer->isOnAlternateRoute,
+                                                           rocket->targetTrackOffsetX, rocket->targetTrackOffsetY,
+                                                           rocket->checkpointDist, &diffX, &diffY, &diffZ);
             sineY = arctan2_f(diffY, 500.0f) & 0xFFFF;
             shift = 3;
         } else {
             rocket->hitObj = targetObj;
             rocket->forwardVel = -25.0f;
-            sp58 = FALSE;
+            followTrack = FALSE;
         }
         angle = (arctan2_f(diffX, diffZ) - 0x8000) & 0xFFFF;
         angleDiff = angle - (obj->trans.rotation.y_rotation & 0xFFFF);
         WRAP(angleDiff, -0x8000, 0x8000);
-        if (sp58) {
+        if (followTrack) {
             obj->trans.rotation.y_rotation += (angleDiff * updateRate) >> shift;
             angleDiff = sineY - (obj->trans.rotation.x_rotation & 0xFFFF);
             WRAP(angleDiff, -0x8000, 0x8000);
@@ -394,6 +394,213 @@ void play_rocket_trailing_sound(Object *obj, struct Object_Weapon *weapon, u16 s
 }
 
 /**
+ * A dropped trap falls and collides with the track. It arms once it lands (or straight away when dropped
+ * from a plane), or once it sinks below the water surface. Bubble traps sit 16 units higher once armed.
+ */
+static void weapon_trap_fall(Object *weaponObj, Object_Weapon *weapon, Object_Racer *weaponOwner,
+                             ObjPropertyWeapon *weaponProperties, f32 updateRateF) {
+    Vec3f intendedPos;
+    f32 radius;
+    s32 hasCollision;
+    s8 surface;
+
+    intendedPos.x = weaponObj->trans.x_position + (weaponObj->x_velocity * updateRateF);
+    intendedPos.y = weaponObj->trans.y_position + (weaponObj->y_velocity * updateRateF);
+    intendedPos.z = weaponObj->trans.z_position + (weaponObj->z_velocity * updateRateF);
+    radius = 9.0f;
+    generate_collision_candidates(1, &weaponObj->trans.position, &intendedPos, VEHICLE_NO_OVERRIDE);
+    hasCollision = FALSE;
+    surface = SURFACE_NONE;
+    resolve_collisions(&weaponObj->trans.position, &intendedPos, &radius, &surface, 1, &hasCollision);
+    weaponObj->x_velocity = (intendedPos.x - weaponObj->trans.x_position) / updateRateF;
+    weaponObj->y_velocity = (intendedPos.y - weaponObj->trans.y_position) / updateRateF;
+    weaponObj->z_velocity = (intendedPos.z - weaponObj->trans.z_position) / updateRateF;
+    weaponObj->trans.x_position = intendedPos.x;
+    weaponObj->trans.y_position = intendedPos.y;
+    weaponObj->trans.z_position = intendedPos.z;
+    if (hasCollision || weaponOwner->vehicleID == VEHICLE_PLANE) {
+        weaponObj->x_velocity = 0.0f;
+        weaponObj->z_velocity = 0.0f;
+        weaponProperties->status = WEAPON_ARMED;
+        weaponProperties->submerged = 0;
+        weaponProperties->scale = 0;
+        if (weapon->weaponID == WEAPON_BUBBLE_TRAP) {
+            weaponObj->trans.y_position += 16.0f;
+        }
+    }
+    radius = -10000.0f;
+    if (get_object_water_height(weaponObj, &radius, NULL, 1) && (weaponObj->trans.y_position < radius)) {
+        weaponProperties->status = WEAPON_ARMED;
+        weaponProperties->submerged = 1;
+        weaponProperties->scale = 0;
+        if (weapon->weaponID == WEAPON_BUBBLE_TRAP) {
+            weaponObj->trans.y_position += 16.0f;
+        }
+    }
+}
+
+/**
+ * Oil slick: grows to full size once armed, and shrinks away (then frees itself) once triggered.
+ * Its size is drawn through its shadow, or its water effect when submerged.
+ */
+static void weapon_trap_oil_slick(Object *weaponObj, Object_Racer *weaponOwner, ObjPropertyWeapon *weaponProperties,
+                                  s32 updateRate) {
+    if (weaponProperties->status != WEAPON_DROPPED) {
+        if (weaponProperties->status == WEAPON_ARMED) {
+            weaponProperties->scale += updateRate;
+            if (weaponProperties->scale > 12) {
+                weaponProperties->scale = 12;
+            }
+        } else {
+            weaponProperties->scale -= updateRate;
+            if (weaponProperties->scale <= 0) {
+                weaponProperties->scale = 1;
+                free_object(weaponObj);
+            }
+        }
+        if (weaponOwner->vehicleID != VEHICLE_PLANE) {
+            if (weaponProperties->submerged != 0) {
+                weaponObj->waterEffect->scale = weaponProperties->scale * 0.6f;
+            } else {
+                weaponObj->shadow->scale = weaponProperties->scale * 0.6f;
+            }
+            weaponObj->trans.flags |= OBJ_FLAGS_SHADOW_ONLY;
+        }
+    }
+}
+
+/**
+ * Bubble trap: follows the racer it caught, grows to full size, and pops two seconds after catching
+ * someone. Once popped it bursts into particles and shrinks away, then frees itself.
+ */
+static void weapon_trap_bubble(Object *weaponObj, Object_Weapon *weapon, ObjPropertyWeapon *weaponProperties,
+                               s32 updateRate) {
+    if (weapon->target != NULL) {
+        weaponObj->trans.x_position = 0.0f;
+        weaponObj->trans.y_position = 0.0f;
+        weaponObj->trans.z_position = 0.0f;
+        ignore_bounds_check();
+        move_object(weaponObj, weapon->target->trans.x_position, weapon->target->trans.y_position,
+                    weapon->target->trans.z_position);
+    }
+    if (weaponProperties->status == WEAPON_ARMED || weaponProperties->status == WEAPON_TRIGGERED) {
+        weaponProperties->scale += updateRate;
+        if (weaponProperties->scale > 20) {
+            weaponProperties->scale = 20;
+        }
+    }
+    if (weaponProperties->status == WEAPON_TRIGGERED) {
+        weaponProperties->submerged += updateRate;
+        if (weaponProperties->submerged > 120) {
+            weaponProperties->status = WEAPON_DESTROY;
+            if (weapon->soundMask != NULL) {
+                audspat_point_stop(weapon->soundMask);
+                weapon->soundMask = NULL;
+            }
+            audspat_play_sound_at_position(SOUND_POP, weaponObj->trans.x_position, weaponObj->trans.y_position,
+                                           weaponObj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
+        }
+    }
+    if (weaponProperties->status == WEAPON_DESTROY) {
+        weaponObj->particleEmittersEnabled = OBJ_EMIT_1;
+        obj_spawn_particle(weaponObj, updateRate);
+        weaponObj->trans.flags |= OBJ_FLAGS_INVISIBLE;
+        weaponProperties->scale -= updateRate;
+        if (weaponProperties->scale < 1) {
+            weaponProperties->scale = 1;
+            free_object(weaponObj);
+        }
+    }
+    if (weaponProperties->status != WEAPON_DROPPED) {
+        weaponObj->trans.scale = weaponProperties->scale * 0.075f;
+    }
+    weaponObj->animFrame += updateRate * 16;
+}
+
+/**
+ * Springs the trap on a racer within hitDist (on its dropper only once its decay timer has run down a little):
+ * mines explode, bubbles catch the racer (or pop on a level 3 shield) and oil slicks spin them out.
+ * Returns TRUE if the trap was used up and freed.
+ */
+static s32 weapon_trap_hit(Object *weaponObj, Object_Weapon *weapon, ObjPropertyWeapon *weaponProperties, s32 hitDist) {
+    Object *weaponInteractObj;
+    Object_Racer *weaponHit;
+    Object_Racer *weaponOwner;
+
+    weaponInteractObj = weaponObj->interactObj->obj;
+    if (weaponInteractObj != NULL) {
+        if (weapon->owner != weaponObj->interactObj->obj || weaponProperties->decayTimer < normalise_time(450)) {
+            if (weaponObj->interactObj->distance < hitDist) {
+                weaponInteractObj = weaponObj->interactObj->obj;
+                if (weaponInteractObj->header->behaviorId == BHV_RACER) {
+                    weaponHit = weaponInteractObj->racer;
+                    weaponHit->attackType = ATTACK_EXPLOSION;
+                    if (weapon->weaponID == WEAPON_TRIPMINE) {
+                        obj_spawn_effect(weaponObj->trans.x_position, weaponObj->trans.y_position,
+                                         weaponObj->trans.z_position, ASSET_OBJECT_ID_BOMBEXPLOSION, SOUND_EXPLOSION,
+                                         1.0f, 1);
+                    } else if (weapon->weaponID == WEAPON_BUBBLE_TRAP) {
+                        if (weaponHit->shieldTimer > 0 && weaponHit->shieldType >= SHIELD_LEVEL3) {
+                            weaponProperties->status = WEAPON_DESTROY;
+
+                            audspat_play_sound_at_position(SOUND_POP, weaponObj->trans.x_position,
+                                                           weaponObj->trans.y_position, weaponObj->trans.z_position,
+                                                           AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
+                        } else {
+                            weapon->target = weaponInteractObj;
+
+                            audspat_play_sound_at_position(SOUND_BUBBLE, weaponInteractObj->trans.x_position,
+                                                           weaponInteractObj->trans.y_position,
+                                                           weaponInteractObj->trans.z_position,
+                                                           AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, &weapon->soundMask);
+                            weaponHit->attackType = ATTACK_BUBBLE;
+                            weaponProperties->status = WEAPON_TRIGGERED;
+                            weaponProperties->submerged = 0;
+                        }
+                    } else if (weapon->weaponID == WEAPON_OIL_SLICK) {
+                        weaponHit->attackType = ATTACK_SPIN;
+                        weaponProperties->status = WEAPON_TRIGGERED;
+                    }
+                    if (!weaponHit->raceFinished) {
+                        rumble_set(weaponHit->playerIndex, RUMBLE_TYPE_13);
+                    }
+                    weaponOwner = weapon->owner->racer;
+                    if (weaponHit->playerIndex != PLAYER_COMPUTER || weaponOwner->playerIndex != PLAYER_COMPUTER) {
+                        weaponOwner->boost_sound |= BOOST_SOUND_UNK2;
+                    }
+                    if (weapon->weaponID != WEAPON_OIL_SLICK && weapon->weaponID != WEAPON_BUBBLE_TRAP) {
+                        free_object(weaponObj);
+                        return TRUE;
+                    }
+                }
+            }
+        }
+    }
+    return FALSE;
+}
+
+/**
+ * An untriggered trap left too long expires: oil slicks shrink away, bubbles pop and mines explode.
+ */
+static void weapon_trap_decay(Object *weaponObj, Object_Weapon *weapon, ObjPropertyWeapon *weaponProperties) {
+    if (weaponProperties->status < WEAPON_TRIGGERED) {
+        if (weaponProperties->decayTimer < normalise_time(-1320)) {
+            if (weapon->weaponID == WEAPON_OIL_SLICK) {
+                weaponProperties->status = WEAPON_TRIGGERED;
+            } else if (weapon->weaponID == WEAPON_BUBBLE_TRAP) {
+                weaponProperties->status = WEAPON_DESTROY;
+                audspat_play_sound_at_position(SOUND_POP, weaponObj->trans.x_position, weaponObj->trans.y_position,
+                                               weaponObj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
+            } else {
+                obj_spawn_effect(weaponObj->trans.x_position, weaponObj->trans.y_position, weaponObj->trans.z_position,
+                                 ASSET_OBJECT_ID_BOMBEXPLOSION, SOUND_EXPLOSION, 1.0f, 1);
+                free_object(weaponObj);
+            }
+        }
+    }
+}
+
+/**
  * Handles all the trap weapon behaviour.
  * When dropped, will fall to the ground, provided the user wasn't in a plane.
  * Once on the ground, will count up until it reaches the target and consider itself armed.
@@ -401,15 +608,9 @@ void play_rocket_trailing_sound(Object *obj, struct Object_Weapon *weapon, u16 s
  * If triggered, the trap will perform different behaviours depending on what it is, then remove itself.
  */
 void weapon_trap(Object *weaponObj, s32 updateRate) {
-    Object *weaponInteractObj;
-    Object_Racer *weaponHit;
     Object_Racer *weaponOwner;
-    Vec3f intendedPos;
-    f32 radius;
     f32 updateRateF;
-    s32 hasCollision;
     s32 hitDist;
-    s8 surface;
     Object_Weapon *weapon;
     ObjPropertyWeapon *weaponProperties;
 
@@ -421,105 +622,13 @@ void weapon_trap(Object *weaponObj, s32 updateRate) {
         updateRateF *= 1.2;
     }
     if (weaponProperties->status == WEAPON_DROPPED) {
-        intendedPos.x = weaponObj->trans.x_position + (weaponObj->x_velocity * updateRateF);
-        intendedPos.y = weaponObj->trans.y_position + (weaponObj->y_velocity * updateRateF);
-        intendedPos.z = weaponObj->trans.z_position + (weaponObj->z_velocity * updateRateF);
-        radius = 9.0f;
-        generate_collision_candidates(1, &weaponObj->trans.position, &intendedPos, VEHICLE_NO_OVERRIDE);
-        hasCollision = FALSE;
-        surface = SURFACE_NONE;
-        resolve_collisions(&weaponObj->trans.position, &intendedPos, &radius, &surface, 1, &hasCollision);
-        weaponObj->x_velocity = (intendedPos.x - weaponObj->trans.x_position) / updateRateF;
-        weaponObj->y_velocity = (intendedPos.y - weaponObj->trans.y_position) / updateRateF;
-        weaponObj->z_velocity = (intendedPos.z - weaponObj->trans.z_position) / updateRateF;
-        weaponObj->trans.x_position = intendedPos.x;
-        weaponObj->trans.y_position = intendedPos.y;
-        weaponObj->trans.z_position = intendedPos.z;
-        if (hasCollision || weaponOwner->vehicleID == VEHICLE_PLANE) {
-            weaponObj->x_velocity = 0.0f;
-            weaponObj->z_velocity = 0.0f;
-            weaponProperties->status = WEAPON_ARMED;
-            weaponProperties->submerged = 0;
-            weaponProperties->scale = 0;
-            if (weapon->weaponID == WEAPON_BUBBLE_TRAP) {
-                weaponObj->trans.y_position += 16.0f;
-            }
-        }
-        radius = -10000.0f;
-        if (get_object_water_height(weaponObj, &radius, NULL, 1) && (weaponObj->trans.y_position < radius)) {
-            weaponProperties->status = WEAPON_ARMED;
-            weaponProperties->submerged = 1;
-            weaponProperties->scale = 0;
-            if (weapon->weaponID == WEAPON_BUBBLE_TRAP) {
-                weaponObj->trans.y_position += 16.0f;
-            }
-        }
+        weapon_trap_fall(weaponObj, weapon, weaponOwner, weaponProperties, updateRateF);
     }
     if (weapon->weaponID == WEAPON_OIL_SLICK) {
-        if (weaponProperties->status != WEAPON_DROPPED) {
-            if (weaponProperties->status == WEAPON_ARMED) {
-                weaponProperties->scale += updateRate;
-                if (weaponProperties->scale > 12) {
-                    weaponProperties->scale = 12;
-                }
-            } else {
-                weaponProperties->scale -= updateRate;
-                if (weaponProperties->scale <= 0) {
-                    weaponProperties->scale = 1;
-                    free_object(weaponObj);
-                }
-            }
-            if (weaponOwner->vehicleID != VEHICLE_PLANE) {
-                if (weaponProperties->submerged != 0) {
-                    weaponObj->waterEffect->scale = weaponProperties->scale * 0.6f;
-                } else {
-                    weaponObj->shadow->scale = weaponProperties->scale * 0.6f;
-                }
-                weaponObj->trans.flags |= OBJ_FLAGS_SHADOW_ONLY;
-            }
-        }
+        weapon_trap_oil_slick(weaponObj, weaponOwner, weaponProperties, updateRate);
     }
     if (weapon->weaponID == WEAPON_BUBBLE_TRAP) {
-        if (weapon->target != NULL) {
-            weaponObj->trans.x_position = 0.0f;
-            weaponObj->trans.y_position = 0.0f;
-            weaponObj->trans.z_position = 0.0f;
-            ignore_bounds_check();
-            move_object(weaponObj, weapon->target->trans.x_position, weapon->target->trans.y_position,
-                        weapon->target->trans.z_position);
-        }
-        if (weaponProperties->status == WEAPON_ARMED || weaponProperties->status == WEAPON_TRIGGERED) {
-            weaponProperties->scale += updateRate;
-            if (weaponProperties->scale > 20) {
-                weaponProperties->scale = 20;
-            }
-        }
-        if (weaponProperties->status == WEAPON_TRIGGERED) {
-            weaponProperties->submerged += updateRate;
-            if (weaponProperties->submerged > 120) {
-                weaponProperties->status = WEAPON_DESTROY;
-                if (weapon->soundMask != NULL) {
-                    audspat_point_stop(weapon->soundMask);
-                    weapon->soundMask = NULL;
-                }
-                audspat_play_sound_at_position(SOUND_POP, weaponObj->trans.x_position, weaponObj->trans.y_position,
-                                               weaponObj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
-            }
-        }
-        if (weaponProperties->status == WEAPON_DESTROY) {
-            weaponObj->particleEmittersEnabled = OBJ_EMIT_1;
-            obj_spawn_particle(weaponObj, updateRate);
-            weaponObj->trans.flags |= OBJ_FLAGS_INVISIBLE;
-            weaponProperties->scale -= updateRate;
-            if (weaponProperties->scale < 1) {
-                weaponProperties->scale = 1;
-                free_object(weaponObj);
-            }
-        }
-        if (weaponProperties->status != WEAPON_DROPPED) {
-            weaponObj->trans.scale = weaponProperties->scale * 0.075f;
-        }
-        weaponObj->animFrame += updateRate * 16;
+        weapon_trap_bubble(weaponObj, weapon, weaponProperties, updateRate);
     }
     if (weaponProperties->status < WEAPON_TRIGGERED) {
         hitDist = 60;
@@ -535,73 +644,11 @@ void weapon_trap(Object *weaponObj, s32 updateRate) {
         if (weapon->weaponID == WEAPON_BUBBLE_TRAP || weapon->weaponID == WEAPON_OIL_SLICK) {
             hitDist += hitDist >> 1;
         }
-        weaponInteractObj = weaponObj->interactObj->obj;
-        if (weaponInteractObj != NULL) {
-            if (weapon->owner != weaponObj->interactObj->obj || weaponProperties->decayTimer < normalise_time(450)) {
-                if (weaponObj->interactObj->distance < hitDist) {
-                    weaponInteractObj = weaponObj->interactObj->obj;
-                    if (weaponInteractObj->header->behaviorId == BHV_RACER) {
-                        weaponHit = weaponInteractObj->racer;
-                        weaponHit->attackType = ATTACK_EXPLOSION;
-                        if (weapon->weaponID == WEAPON_TRIPMINE) {
-                            obj_spawn_effect(weaponObj->trans.x_position, weaponObj->trans.y_position,
-                                             weaponObj->trans.z_position, ASSET_OBJECT_ID_BOMBEXPLOSION,
-                                             SOUND_EXPLOSION, 1.0f, 1);
-                        } else if (weapon->weaponID == WEAPON_BUBBLE_TRAP) {
-                            if (weaponHit->shieldTimer > 0 && weaponHit->shieldType >= SHIELD_LEVEL3) {
-                                weaponProperties->status = WEAPON_DESTROY;
-
-                                audspat_play_sound_at_position(SOUND_POP, weaponObj->trans.x_position,
-                                                               weaponObj->trans.y_position, weaponObj->trans.z_position,
-                                                               AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
-                            } else {
-                                weapon->target = weaponInteractObj;
-
-                                audspat_play_sound_at_position(SOUND_BUBBLE, weaponInteractObj->trans.x_position,
-                                                               weaponInteractObj->trans.y_position,
-                                                               weaponInteractObj->trans.z_position,
-                                                               AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, &weapon->soundMask);
-                                weaponHit->attackType = ATTACK_BUBBLE;
-                                weaponProperties->status = WEAPON_TRIGGERED;
-                                weaponProperties->submerged = 0;
-                            }
-                        } else if (weapon->weaponID == WEAPON_OIL_SLICK) {
-                            weaponHit->attackType = ATTACK_SPIN;
-                            weaponProperties->status = WEAPON_TRIGGERED;
-                        }
-                        if (!weaponHit->raceFinished) {
-                            rumble_set(weaponHit->playerIndex, RUMBLE_TYPE_13);
-                        }
-                        weaponOwner = weapon->owner->racer;
-                        if (weaponHit->playerIndex != PLAYER_COMPUTER || weaponOwner->playerIndex != PLAYER_COMPUTER) {
-                            weaponOwner->boost_sound |= BOOST_SOUND_UNK2;
-                        }
-                        if (weapon->weaponID != WEAPON_OIL_SLICK && weapon->weaponID != WEAPON_BUBBLE_TRAP) {
-                            free_object(weaponObj);
-                            return;
-                        }
-                    }
-                }
-            }
+        if (weapon_trap_hit(weaponObj, weapon, weaponProperties, hitDist)) {
+            return;
         }
         weaponProperties->decayTimer -= updateRate;
-        if (weaponProperties->status < WEAPON_TRIGGERED) {
-            if (weaponProperties->decayTimer < normalise_time(-1320)) {
-                if (weapon->weaponID == WEAPON_OIL_SLICK) {
-                    weaponProperties->status = WEAPON_TRIGGERED;
-                } else if (weapon->weaponID == WEAPON_BUBBLE_TRAP) {
-                    weaponProperties->status = WEAPON_DESTROY;
-                    audspat_play_sound_at_position(SOUND_POP, weaponObj->trans.x_position, weaponObj->trans.y_position,
-                                                   weaponObj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER,
-                                                   NULL);
-                } else {
-                    obj_spawn_effect(weaponObj->trans.x_position, weaponObj->trans.y_position,
-                                     weaponObj->trans.z_position, ASSET_OBJECT_ID_BOMBEXPLOSION, SOUND_EXPLOSION, 1.0f,
-                                     1);
-                    free_object(weaponObj);
-                }
-            }
-        }
+        weapon_trap_decay(weaponObj, weapon, weaponProperties);
     }
 }
 
@@ -609,7 +656,7 @@ void weapon_trap(Object *weaponObj, s32 updateRate) {
  * Create a special effect at the given position.
  * Plays a sound if one is given.
  */
-void obj_spawn_effect(f32 x, f32 y, f32 z, s32 objectID, s32 soundID, f32 scale, s32 arg6) {
+void obj_spawn_effect(f32 x, f32 y, f32 z, s32 objectID, s32 soundID, f32 scale, s32 explosionRepeats) {
     LevelObjectEntry_EffectSpawn spawnObj;
     Object *newObj;
 
@@ -618,7 +665,7 @@ void obj_spawn_effect(f32 x, f32 y, f32 z, s32 objectID, s32 soundID, f32 scale,
     spawnObj.common.z = z;
     spawnObj.common.size = 10;
     spawnObj.common.objectID = objectID;
-    spawnObj.explosionRepeats = arg6;
+    spawnObj.explosionRepeats = explosionRepeats;
     newObj = spawn_object((LevelObjectEntryCommon *) &spawnObj, OBJECT_SPAWN_UNK01);
     if (newObj != NULL) {
         newObj->level_entry = NULL;

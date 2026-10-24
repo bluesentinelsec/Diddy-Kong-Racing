@@ -32,6 +32,15 @@
 #include "waves.h"
 #include "weather.h"
 
+// Butterfly states.
+enum ButterflyState {
+    BUTTERFLY_REST,          // Sitting at its home position.
+    BUTTERFLY_RETURN_SEARCH, // Flying home, but looking for something to chase.
+    BUTTERFLY_RETURN,        // Flying home.
+    BUTTERFLY_CHASE,         // Flying towards its target.
+    BUTTERFLY_CIRCLE         // Circling its target.
+};
+
 // Butterfly Object Related
 Triangle sButterflyTriangles[8] = {
     { { { 0, 0, 3, 1 } }, { { { 0, 0 } } }, { { { -1, -1 } } }, { { { 0, -1 } } } },
@@ -61,7 +70,7 @@ void obj_init_butterfly(Object *butterflyObj, LevelObjectEntry *levelEntry, s32 
         butterfly->isAscending = 0;
         butterfly->targetObj = 0;
         butterfly->retargetTimer = 0;
-        butterfly->state = 0;
+        butterfly->state = BUTTERFLY_REST;
         butterfly->turnSpeed = 0x180;
         butterfly->forwardSpeed = 0.0f;
         for (i = 0; i < 8; i++) {
@@ -113,277 +122,303 @@ void obj_init_butterfly(Object *butterflyObj, LevelObjectEntry *levelEntry, s32 
     }
 }
 
-void obj_loop_butterfly(Object *butterflyObj, s32 updateRate) {
+/**
+ * Resting at home: waits until a racer, or failing that a butterfly node, comes within the home radius,
+ * then chases it. Butterflies of the fast type hold their wings still while resting.
+ */
+static void butterfly_rest(Object *butterflyObj, Object_Butterfly *butterfly,
+                           LevelObjectEntry_Butterfly *butterflyEntry, s32 isFastType, s32 updateRate) {
+    f32 searchRadius;
+    s16 racersFound;
+    Object *nearbyRacers[8];
+
+    butterfly->forwardSpeed = 0.0f;
+    searchRadius = butterflyEntry->homeRadius;
+    racersFound =
+        obj_dist_racer(butterflyEntry->common.x, 0.0f, butterflyEntry->common.z, searchRadius, 1, nearbyRacers);
+    if (racersFound > 0) {
+        butterfly->targetObj = nearbyRacers[0];
+        butterfly->retargetTimer = 0xF0;
+        butterfly->state = BUTTERFLY_CHASE;
+    } else {
+        butterfly->targetObj =
+            obj_butterfly_node(butterflyEntry->common.x, 0.0f, butterflyEntry->common.z, searchRadius, 1);
+        if (butterfly->targetObj != 0) {
+            butterfly->retargetTimer = 0xF0;
+            butterfly->state = BUTTERFLY_CHASE;
+        }
+    }
+    butterflyObj->animFrame = (butterflyObj->animFrame + updateRate) & 0xFF;
+    if (isFastType) {
+        butterflyObj->animFrame = 0x78;
+    }
+}
+
+/**
+ * Flying home: turns and climbs towards the home position. While searching, a racer or butterfly node in
+ * the home radius sets it chasing again. Within 4 units of home it snaps there and rests.
+ */
+static void butterfly_return_home(Object *butterflyObj, Object_Butterfly *butterfly,
+                                  LevelObjectEntry_Butterfly *butterflyEntry, s16 turnStep, f32 climbRate,
+                                  s32 updateRate) {
     f32 xDiff;
     f32 yDiff;
     f32 zDiff;
-    f32 radius;
-    f32 sp84;
-    f32 var_f0;
-    f32 sp7C;
-    f32 sp78;
-    s16 var_v1;
-    s16 shiftAmount;
-    s16 sp72;
-    s16 temp;
-    s32 xPos;
-    s32 yPos;
-    s32 sp64;
-    Object *sp44[8];
-    Vertex *vertices;
-    Object_Butterfly *butterfly;
-    LevelObjectEntry_Butterfly *butterflyEntry;
+    f32 heightDiff;
+    f32 searchRadius;
+    s16 angleDiff;
+    s16 racersFound;
+    Object *nearbyRacers[8];
 
-    butterflyEntry = &butterflyObj->level_entry->butterfly;
-    butterfly = butterflyObj->butterfly;
-    sp64 = butterflyEntry->textureIndex == 2;
-    sp72 = butterfly->turnSpeed;
-    if (sp72 < 0) {
-        sp72 = -sp72;
+    if (butterfly->turnSpeed < 0x480) {
+        butterfly->turnSpeed += (updateRate * 0x10);
+        if (butterfly->turnSpeed >= 0x481) {
+            butterfly->turnSpeed = 0x480;
+        }
     }
-    sp7C = 0.1f;
-    sp72 *= updateRate;
-    if (sp64) {
-        sp7C *= 1.6f;
+    xDiff = butterflyObj->trans.x_position - butterflyEntry->common.x;
+    zDiff = butterflyObj->trans.z_position - butterflyEntry->common.z;
+    angleDiff = arctan2_f(xDiff, zDiff);
+    angleDiff -= butterflyObj->trans.rotation.y_rotation & 0xffff & 0xffff;
+    if (angleDiff < 0) {
+        if (angleDiff > -turnStep) {
+            butterflyObj->trans.rotation.y_rotation += angleDiff;
+        } else {
+            butterflyObj->trans.rotation.y_rotation -= turnStep;
+        }
+    } else if ((angleDiff > 0)) {
+        if (angleDiff < turnStep) {
+            butterflyObj->trans.rotation.y_rotation += angleDiff;
+        } else {
+            butterflyObj->trans.rotation.y_rotation += turnStep;
+        }
     }
-    sp78 = 3.0f;
-    if (sp64) {
-        sp78 *= 1.6f;
+    heightDiff = butterflyEntry->common.y - butterflyObj->trans.y_position;
+    if (heightDiff < 0.0f) {
+        butterflyObj->y_velocity -= climbRate * updateRate;
+        if (butterflyObj->y_velocity < heightDiff) {
+            butterflyObj->y_velocity = heightDiff;
+        }
+    } else if ((heightDiff > 0.0f)) {
+        butterflyObj->y_velocity += climbRate * updateRate;
+        if (heightDiff < butterflyObj->y_velocity) {
+            butterflyObj->y_velocity = heightDiff;
+        }
+    } else {
+        butterflyObj->y_velocity = 0.0f;
     }
-    switch (butterfly->state) {
-        case 0:
-            butterfly->forwardSpeed = 0.0f;
-            sp84 = butterflyEntry->homeRadius;
-            temp = obj_dist_racer(butterflyEntry->common.x, 0.0f, butterflyEntry->common.z, sp84, 1, sp44);
-            if (temp > 0) {
-                butterfly->targetObj = sp44[0];
+    if (butterfly->state == BUTTERFLY_RETURN_SEARCH) {
+        searchRadius = butterflyEntry->homeRadius;
+        racersFound =
+            obj_dist_racer(butterflyEntry->common.x, 0.0f, butterflyEntry->common.z, searchRadius, 1, nearbyRacers);
+        if (racersFound > 0) {
+            butterfly->targetObj = nearbyRacers[0];
+            butterfly->retargetTimer = 0x78;
+            butterfly->state = BUTTERFLY_CHASE;
+        } else {
+            butterfly->targetObj =
+                obj_butterfly_node(butterflyEntry->common.x, 0.0f, butterflyEntry->common.z, searchRadius, 1);
+            if (butterfly->targetObj != NULL) {
                 butterfly->retargetTimer = 0xF0;
-                butterfly->state = 3;
-            } else {
-                butterfly->targetObj =
-                    obj_butterfly_node(butterflyEntry->common.x, 0.0f, butterflyEntry->common.z, sp84, 1);
-                if (butterfly->targetObj != 0) {
-                    butterfly->retargetTimer = 0xF0;
-                    butterfly->state = 3;
-                }
+                butterfly->state = BUTTERFLY_CHASE;
             }
-            butterflyObj->animFrame = (butterflyObj->animFrame + updateRate) & 0xFF;
-            if (sp64) {
-                butterflyObj->animFrame = 0x78;
-            }
-            break;
-        case 1:
-        case 2:
-            if (butterfly->turnSpeed < 0x480) {
-                butterfly->turnSpeed += (updateRate * 0x10);
-                if (butterfly->turnSpeed >= 0x481) {
-                    butterfly->turnSpeed = 0x480;
-                }
-            }
-            xDiff = butterflyObj->trans.x_position - butterflyEntry->common.x;
-            zDiff = butterflyObj->trans.z_position - butterflyEntry->common.z;
-            temp = arctan2_f(xDiff, zDiff);
-            temp -= butterflyObj->trans.rotation.y_rotation & 0xffff & 0xffff;
-            if (temp < 0) {
-                if (temp > -sp72) {
-                    butterflyObj->trans.rotation.y_rotation += temp;
-                } else {
-                    butterflyObj->trans.rotation.y_rotation -= sp72;
-                }
-            } else if ((temp > 0)) {
-                if (temp < sp72) {
-                    butterflyObj->trans.rotation.y_rotation += temp;
-                } else {
-                    butterflyObj->trans.rotation.y_rotation += sp72;
-                }
-            }
-            sp84 = butterflyEntry->common.y - butterflyObj->trans.y_position;
-            if (sp84 < 0.0f) {
-                butterflyObj->y_velocity -= sp7C * updateRate;
-                if (butterflyObj->y_velocity < sp84) {
-                    butterflyObj->y_velocity = sp84;
-                }
-            } else if ((sp84 > 0.0f)) {
-                butterflyObj->y_velocity += sp7C * updateRate;
-                if (sp84 < butterflyObj->y_velocity) {
-                    butterflyObj->y_velocity = sp84;
-                }
-            } else {
-                butterflyObj->y_velocity = 0.0f;
-            }
-            if (butterfly->state == 1) {
-                sp84 = butterflyEntry->homeRadius;
-                temp = obj_dist_racer(butterflyEntry->common.x, 0.0f, butterflyEntry->common.z, sp84, 1, sp44);
-                if (temp > 0) {
-                    butterfly->targetObj = sp44[0];
-                    butterfly->retargetTimer = 0x78;
-                    butterfly->state = 3;
-                } else {
-                    butterfly->targetObj =
-                        obj_butterfly_node(butterflyEntry->common.x, 0.0f, butterflyEntry->common.z, sp84, 1);
-                    if (butterfly->targetObj != NULL) {
-                        butterfly->retargetTimer = 0xF0;
-                        butterfly->state = 3;
-                    }
-                }
-            }
-            if (butterfly->state != 3) {
-                yDiff = butterflyObj->trans.y_position - butterflyEntry->common.y;
-                if (sqrtf((xDiff * xDiff) + (yDiff * yDiff) + (zDiff * zDiff)) < 4.0f) {
-                    ignore_bounds_check();
-                    move_object(butterflyObj, -xDiff, -yDiff, -zDiff);
-                    butterflyObj->y_velocity = 0.0f;
-                    butterfly->state = 0;
-                    butterfly->forwardSpeed = 0.0f;
-                }
-            }
-            butterflyObj->animFrame = (butterflyObj->animFrame + (updateRate * 0x10)) & 0xFF;
-            break;
-        case 3:
-            if (butterfly->turnSpeed < 0x480) {
-                butterfly->turnSpeed += (updateRate * 0x10);
-                if (butterfly->turnSpeed >= 0x481) {
-                    butterfly->turnSpeed = 0x480;
-                }
-            }
-            xDiff = butterfly->targetObj->trans.x_position - butterflyEntry->common.x;
-            zDiff = butterfly->targetObj->trans.z_position - butterflyEntry->common.z;
-            radius = (butterflyEntry->homeRadius * 2);
-            radius *= radius;
-            if (radius < ((xDiff * xDiff) + (zDiff * zDiff))) {
-                butterfly->targetObj = 0;
-                sp84 = butterflyEntry->homeRadius;
-                temp = obj_dist_racer(butterflyEntry->common.x, 0.0f, butterflyEntry->common.z, sp84, 1, sp44);
-                if (temp > 0) {
-                    butterfly->targetObj = sp44[0];
-                    butterfly->retargetTimer = 0xF0;
-                } else {
-                    butterfly->targetObj =
-                        obj_butterfly_node(butterflyEntry->common.x, 0.0f, butterflyEntry->common.z, sp84, 1);
-                    if (butterfly->targetObj != 0) {
-                        butterfly->retargetTimer = 0xF0;
-                    }
-                }
-            }
-            if (butterfly->targetObj != 0) {
-                xDiff = butterflyObj->trans.x_position - butterfly->targetObj->trans.x_position;
-                zDiff = butterflyObj->trans.z_position - butterfly->targetObj->trans.z_position;
-                temp = arctan2_f(xDiff, zDiff);
-                temp -= butterflyObj->trans.rotation.y_rotation & 0xffff & 0xffff;
-                if (temp < 0) {
-                    if (-sp72 < temp) {
-                        butterflyObj->trans.rotation.y_rotation += temp;
-                    } else {
-                        butterflyObj->trans.rotation.y_rotation -= sp72;
-                    }
-                } else if ((temp > 0)) {
-                    if (temp < sp72) {
-                        butterflyObj->trans.rotation.y_rotation += temp;
-                    } else {
-                        butterflyObj->trans.rotation.y_rotation += sp72;
-                    }
-                }
-                sp84 = (butterfly->targetObj->trans.y_position + 16.0f) - butterflyObj->trans.y_position;
-                if (sp84 < 0.0f) {
-                    butterflyObj->y_velocity -= sp7C * updateRate;
-                    if (butterflyObj->y_velocity < sp84) {
-                        butterflyObj->y_velocity = sp84;
-                    }
-                } else if ((sp84 > 0.0f)) {
-                    butterflyObj->y_velocity += sp7C * updateRate;
-                    if (sp84 < butterflyObj->y_velocity) {
-                        butterflyObj->y_velocity = sp84;
-                    }
-                }
-                if (((xDiff * xDiff) + (zDiff * zDiff)) < 256.0f) {
-                    butterfly->state = 4;
-                }
-            } else {
-                butterfly->state = 1;
-            }
-            butterflyObj->animFrame = (butterflyObj->animFrame + (updateRate * 0x10)) & 0xFF;
-            break;
-        case 4:
-            if (butterfly->turnSpeed >= 0x181) {
-                butterfly->turnSpeed -= (updateRate * 0x10);
-                if (butterfly->turnSpeed < 0x180) {
-                    butterfly->turnSpeed = 0x180;
-                }
-            }
-            xDiff = butterflyObj->trans.x_position - butterflyEntry->common.x;
-            zDiff = butterflyObj->trans.z_position - butterflyEntry->common.z;
-            radius = (butterflyEntry->homeRadius * 2);
-            radius *= radius;
-            if (radius < ((xDiff * xDiff) + (zDiff * zDiff))) {
-                butterfly->state = 2;
-            } else {
-                if (updateRate < butterfly->retargetTimer) {
-                    butterfly->retargetTimer -= updateRate;
-                } else {
-                    butterfly->retargetTimer = 0;
-                    var_v1 = obj_dist_racer(butterflyObj->trans.x_position, 0.0f, butterflyObj->trans.z_position,
-                                            150.0f, 1, sp44);
-                    if (var_v1 == 0) {
-                        butterfly->targetObj = 0;
-                        butterfly->state = 1;
-                    } else {
-                        if (var_v1 >= 2) {
-                            var_v1 = rand_range(1, var_v1);
-                        }
-                        var_v1--;
-                        butterfly->targetObj = sp44[var_v1];
-                        butterfly->retargetTimer = 0xF0;
-                    }
-                }
-                if (butterfly->state == 4) {
-                    xDiff = butterflyObj->trans.x_position - butterfly->targetObj->trans.x_position;
-                    zDiff = butterflyObj->trans.z_position - butterfly->targetObj->trans.z_position;
-                    if (((xDiff * xDiff) + (zDiff * zDiff)) > 22500.0f) {
-                        butterfly->state = 3;
-                    } else {
-                        if (rand_range(0, 0x64) >= 0x63) {
-                            butterfly->turnSpeed = -butterfly->turnSpeed;
-                        }
-                        butterflyObj->trans.rotation.y_rotation += updateRate * butterfly->turnSpeed;
-                        if ((butterfly->targetObj->trans.y_position + 64.0f) < butterflyObj->trans.y_position) {
-                            butterfly->isAscending = 0;
-                        } else if (butterflyObj->trans.y_position < (butterfly->targetObj->trans.y_position + 8.0f)) {
-                            butterfly->isAscending = 1;
-                        }
-                        if (butterfly->isAscending != 0) {
-                            butterflyObj->y_velocity += (sp7C * updateRate);
-                        } else {
-                            butterflyObj->y_velocity -= (sp7C * updateRate);
-                        }
-                        butterflyObj->trans.rotation.y_rotation += butterfly->turnSpeed;
-                    }
-                }
-            }
-            butterflyObj->animFrame = (butterflyObj->animFrame + (updateRate * 0x10)) & 0xFF;
-            break;
+        }
     }
-    if (butterfly->state != 0) {
-        if (butterfly->forwardSpeed < sp78) {
+    if (butterfly->state != BUTTERFLY_CHASE) {
+        yDiff = butterflyObj->trans.y_position - butterflyEntry->common.y;
+        if (sqrtf((xDiff * xDiff) + (yDiff * yDiff) + (zDiff * zDiff)) < 4.0f) {
+            ignore_bounds_check();
+            move_object(butterflyObj, -xDiff, -yDiff, -zDiff);
+            butterflyObj->y_velocity = 0.0f;
+            butterfly->state = BUTTERFLY_REST;
+            butterfly->forwardSpeed = 0.0f;
+        }
+    }
+    butterflyObj->animFrame = (butterflyObj->animFrame + (updateRate * 0x10)) & 0xFF;
+}
+
+/**
+ * Chasing a target: if the target strays over twice the home radius from home, looks for a new one.
+ * Turns and climbs towards a point 16 units above the target, and starts circling it once within 16 units.
+ * With no target left, flies home.
+ */
+static void butterfly_chase(Object *butterflyObj, Object_Butterfly *butterfly,
+                            LevelObjectEntry_Butterfly *butterflyEntry, s16 turnStep, f32 climbRate, s32 updateRate) {
+    f32 xDiff;
+    f32 zDiff;
+    f32 radius;
+    f32 heightDiff;
+    f32 searchRadius;
+    s16 angleDiff;
+    s16 racersFound;
+    Object *nearbyRacers[8];
+
+    if (butterfly->turnSpeed < 0x480) {
+        butterfly->turnSpeed += (updateRate * 0x10);
+        if (butterfly->turnSpeed >= 0x481) {
+            butterfly->turnSpeed = 0x480;
+        }
+    }
+    xDiff = butterfly->targetObj->trans.x_position - butterflyEntry->common.x;
+    zDiff = butterfly->targetObj->trans.z_position - butterflyEntry->common.z;
+    radius = (butterflyEntry->homeRadius * 2);
+    radius *= radius;
+    if (radius < ((xDiff * xDiff) + (zDiff * zDiff))) {
+        butterfly->targetObj = 0;
+        searchRadius = butterflyEntry->homeRadius;
+        racersFound =
+            obj_dist_racer(butterflyEntry->common.x, 0.0f, butterflyEntry->common.z, searchRadius, 1, nearbyRacers);
+        if (racersFound > 0) {
+            butterfly->targetObj = nearbyRacers[0];
+            butterfly->retargetTimer = 0xF0;
+        } else {
+            butterfly->targetObj =
+                obj_butterfly_node(butterflyEntry->common.x, 0.0f, butterflyEntry->common.z, searchRadius, 1);
+            if (butterfly->targetObj != 0) {
+                butterfly->retargetTimer = 0xF0;
+            }
+        }
+    }
+    if (butterfly->targetObj != 0) {
+        xDiff = butterflyObj->trans.x_position - butterfly->targetObj->trans.x_position;
+        zDiff = butterflyObj->trans.z_position - butterfly->targetObj->trans.z_position;
+        angleDiff = arctan2_f(xDiff, zDiff);
+        angleDiff -= butterflyObj->trans.rotation.y_rotation & 0xffff & 0xffff;
+        if (angleDiff < 0) {
+            if (-turnStep < angleDiff) {
+                butterflyObj->trans.rotation.y_rotation += angleDiff;
+            } else {
+                butterflyObj->trans.rotation.y_rotation -= turnStep;
+            }
+        } else if ((angleDiff > 0)) {
+            if (angleDiff < turnStep) {
+                butterflyObj->trans.rotation.y_rotation += angleDiff;
+            } else {
+                butterflyObj->trans.rotation.y_rotation += turnStep;
+            }
+        }
+        heightDiff = (butterfly->targetObj->trans.y_position + 16.0f) - butterflyObj->trans.y_position;
+        if (heightDiff < 0.0f) {
+            butterflyObj->y_velocity -= climbRate * updateRate;
+            if (butterflyObj->y_velocity < heightDiff) {
+                butterflyObj->y_velocity = heightDiff;
+            }
+        } else if ((heightDiff > 0.0f)) {
+            butterflyObj->y_velocity += climbRate * updateRate;
+            if (heightDiff < butterflyObj->y_velocity) {
+                butterflyObj->y_velocity = heightDiff;
+            }
+        }
+        if (((xDiff * xDiff) + (zDiff * zDiff)) < 256.0f) {
+            butterfly->state = BUTTERFLY_CIRCLE;
+        }
+    } else {
+        butterfly->state = BUTTERFLY_RETURN_SEARCH;
+    }
+    butterflyObj->animFrame = (butterflyObj->animFrame + (updateRate * 0x10)) & 0xFF;
+}
+
+/**
+ * Circling a target: heads home once it strays over twice the home radius from home. Every 240 frames it picks a
+ * random racer within 150 units to follow instead (going home if there are none). Otherwise it circles,
+ * now and then reversing direction, and bobs between 8 and 64 units above the target. A target
+ * more than 150 units away is chased again.
+ */
+static void butterfly_circle(Object *butterflyObj, Object_Butterfly *butterfly,
+                             LevelObjectEntry_Butterfly *butterflyEntry, f32 climbRate, s32 updateRate) {
+    f32 xDiff;
+    f32 zDiff;
+    f32 radius;
+    s16 racersFound;
+    Object *nearbyRacers[8];
+
+    if (butterfly->turnSpeed >= 0x181) {
+        butterfly->turnSpeed -= (updateRate * 0x10);
+        if (butterfly->turnSpeed < 0x180) {
+            butterfly->turnSpeed = 0x180;
+        }
+    }
+    xDiff = butterflyObj->trans.x_position - butterflyEntry->common.x;
+    zDiff = butterflyObj->trans.z_position - butterflyEntry->common.z;
+    radius = (butterflyEntry->homeRadius * 2);
+    radius *= radius;
+    if (radius < ((xDiff * xDiff) + (zDiff * zDiff))) {
+        butterfly->state = BUTTERFLY_RETURN;
+    } else {
+        if (updateRate < butterfly->retargetTimer) {
+            butterfly->retargetTimer -= updateRate;
+        } else {
+            butterfly->retargetTimer = 0;
+            racersFound = obj_dist_racer(butterflyObj->trans.x_position, 0.0f, butterflyObj->trans.z_position, 150.0f,
+                                         1, nearbyRacers);
+            if (racersFound == 0) {
+                butterfly->targetObj = 0;
+                butterfly->state = BUTTERFLY_RETURN_SEARCH;
+            } else {
+                if (racersFound >= 2) {
+                    racersFound = rand_range(1, racersFound);
+                }
+                racersFound--;
+                butterfly->targetObj = nearbyRacers[racersFound];
+                butterfly->retargetTimer = 0xF0;
+            }
+        }
+        if (butterfly->state == BUTTERFLY_CIRCLE) {
+            xDiff = butterflyObj->trans.x_position - butterfly->targetObj->trans.x_position;
+            zDiff = butterflyObj->trans.z_position - butterfly->targetObj->trans.z_position;
+            if (((xDiff * xDiff) + (zDiff * zDiff)) > 22500.0f) {
+                butterfly->state = BUTTERFLY_CHASE;
+            } else {
+                if (rand_range(0, 0x64) >= 0x63) {
+                    butterfly->turnSpeed = -butterfly->turnSpeed;
+                }
+                butterflyObj->trans.rotation.y_rotation += updateRate * butterfly->turnSpeed;
+                if ((butterfly->targetObj->trans.y_position + 64.0f) < butterflyObj->trans.y_position) {
+                    butterfly->isAscending = 0;
+                } else if (butterflyObj->trans.y_position < (butterfly->targetObj->trans.y_position + 8.0f)) {
+                    butterfly->isAscending = 1;
+                }
+                if (butterfly->isAscending != 0) {
+                    butterflyObj->y_velocity += (climbRate * updateRate);
+                } else {
+                    butterflyObj->y_velocity -= (climbRate * updateRate);
+                }
+                butterflyObj->trans.rotation.y_rotation += butterfly->turnSpeed;
+            }
+        }
+    }
+    butterflyObj->animFrame = (butterflyObj->animFrame + (updateRate * 0x10)) & 0xFF;
+}
+
+/**
+ * Speeds up towards the top forward speed while flying, clamps the climb speed, then moves forwards.
+ */
+static void butterfly_move(Object *butterflyObj, Object_Butterfly *butterfly, s32 isFastType, f32 maxForwardSpeed,
+                           s32 updateRate) {
+    f32 maxClimbSpeed;
+
+    if (butterfly->state != BUTTERFLY_REST) {
+        if (butterfly->forwardSpeed < maxForwardSpeed) {
             butterfly->forwardSpeed += (0.25f * updateRate);
-            if (sp78 < butterfly->forwardSpeed) {
-                butterfly->forwardSpeed = sp78;
+            if (maxForwardSpeed < butterfly->forwardSpeed) {
+                butterfly->forwardSpeed = maxForwardSpeed;
             }
         }
     }
     if (butterfly->forwardSpeed != 0.0f) {
-        if (butterfly->state != 4) {
-            var_f0 = 1.2f;
+        if (butterfly->state != BUTTERFLY_CIRCLE) {
+            maxClimbSpeed = 1.2f;
         } else {
-            var_f0 = 1.6f;
+            maxClimbSpeed = 1.6f;
         }
-        if (sp64) {
-            var_f0 *= 1.6f;
+        if (isFastType) {
+            maxClimbSpeed *= 1.6f;
         }
-        if (butterflyObj->y_velocity < -var_f0) {
-            butterflyObj->y_velocity = -var_f0;
+        if (butterflyObj->y_velocity < -maxClimbSpeed) {
+            butterflyObj->y_velocity = -maxClimbSpeed;
         }
-        if (var_f0 < butterflyObj->y_velocity) {
-            butterflyObj->y_velocity = var_f0;
+        if (maxClimbSpeed < butterflyObj->y_velocity) {
+            butterflyObj->y_velocity = maxClimbSpeed;
         }
         if (butterfly->forwardSpeed != 0.0f) {
             butterflyObj->x_velocity = sins_f(butterflyObj->trans.rotation.y_rotation) * -butterfly->forwardSpeed;
@@ -391,25 +426,81 @@ void obj_loop_butterfly(Object *butterflyObj, s32 updateRate) {
             move_object(butterflyObj, butterflyObj->x_velocity, butterflyObj->y_velocity, butterflyObj->z_velocity);
         }
     }
+}
+
+/**
+ * Flaps the wings: swaps to the other vertex buffer and sets the wing tip vertices from the animation frame.
+ * The fast type flaps twice as fast and its wings can dip below the body.
+ */
+static void butterfly_flap_wings(Object *butterflyObj, Object_Butterfly *butterfly, s32 isFastType) {
+    s16 wingShift;
+    s32 wingX;
+    s32 wingY;
+    Vertex *vertices;
+
     butterfly->vertexBufferIndex = 1 - butterfly->vertexBufferIndex;
     vertices = &butterfly->vertices[butterfly->vertexBufferIndex * 6];
-    var_v1 = sp64 == 0 ? 7 : 8;
-    xPos = sins_s16((butterflyObj->animFrame << var_v1)) >> 10;
-    yPos = coss_s16((butterflyObj->animFrame << var_v1)) >> 10;
-    if (xPos < 0) {
-        xPos = -xPos;
+    wingShift = isFastType == 0 ? 7 : 8;
+    wingX = sins_s16((butterflyObj->animFrame << wingShift)) >> 10;
+    wingY = coss_s16((butterflyObj->animFrame << wingShift)) >> 10;
+    if (wingX < 0) {
+        wingX = -wingX;
     }
-    if ((!sp64) && (yPos < 0)) {
-        yPos = -yPos;
+    if ((!isFastType) && (wingY < 0)) {
+        wingY = -wingY;
     }
-    vertices[0].x = -xPos;
-    vertices[0].y = yPos;
-    vertices[1].x = -xPos;
-    vertices[1].y = yPos;
-    vertices[4].x = xPos;
-    vertices[4].y = yPos;
-    vertices[5].x = xPos;
-    vertices[5].y = yPos;
+    vertices[0].x = -wingX;
+    vertices[0].y = wingY;
+    vertices[1].x = -wingX;
+    vertices[1].y = wingY;
+    vertices[4].x = wingX;
+    vertices[4].y = wingY;
+    vertices[5].x = wingX;
+    vertices[5].y = wingY;
+}
+
+void obj_loop_butterfly(Object *butterflyObj, s32 updateRate) {
+    f32 climbRate;
+    f32 maxForwardSpeed;
+    s16 turnStep;
+    s32 isFastType;
+    Object_Butterfly *butterfly;
+    LevelObjectEntry_Butterfly *butterflyEntry;
+
+    butterflyEntry = &butterflyObj->level_entry->butterfly;
+    butterfly = butterflyObj->butterfly;
+    // Butterflies using the third texture fly, climb and flap faster.
+    isFastType = butterflyEntry->textureIndex == 2;
+    turnStep = butterfly->turnSpeed;
+    if (turnStep < 0) {
+        turnStep = -turnStep;
+    }
+    climbRate = 0.1f;
+    turnStep *= updateRate;
+    if (isFastType) {
+        climbRate *= 1.6f;
+    }
+    maxForwardSpeed = 3.0f;
+    if (isFastType) {
+        maxForwardSpeed *= 1.6f;
+    }
+    switch (butterfly->state) {
+        case BUTTERFLY_REST:
+            butterfly_rest(butterflyObj, butterfly, butterflyEntry, isFastType, updateRate);
+            break;
+        case BUTTERFLY_RETURN_SEARCH:
+        case BUTTERFLY_RETURN:
+            butterfly_return_home(butterflyObj, butterfly, butterflyEntry, turnStep, climbRate, updateRate);
+            break;
+        case BUTTERFLY_CHASE:
+            butterfly_chase(butterflyObj, butterfly, butterflyEntry, turnStep, climbRate, updateRate);
+            break;
+        case BUTTERFLY_CIRCLE:
+            butterfly_circle(butterflyObj, butterfly, butterflyEntry, climbRate, updateRate);
+            break;
+    }
+    butterfly_move(butterflyObj, butterfly, isFastType, maxForwardSpeed, updateRate);
+    butterfly_flap_wings(butterflyObj, butterfly, isFastType);
 }
 
 /**
@@ -426,7 +517,7 @@ void butterfly_forget_target(Object *obj) {
             butterfly = other->butterfly;
             if (obj == butterfly->targetObj) {
                 butterfly->targetObj = 0;
-                butterfly->state = 1;
+                butterfly->state = BUTTERFLY_RETURN_SEARCH;
             }
         }
     }
@@ -434,6 +525,6 @@ void butterfly_forget_target(Object *obj) {
 
 void obj_render_butterfly(Object *obj) {
     Object_Butterfly *butterfly = obj->butterfly;
-    render_misc_model(obj, &butterfly->vertices[butterfly->vertexBufferIndex * 6], 6, butterfly->triangles, 8, butterfly->texture,
-                      RENDER_Z_COMPARE | RENDER_FOG_ACTIVE, 0, 1.0f);
+    render_misc_model(obj, &butterfly->vertices[butterfly->vertexBufferIndex * 6], 6, butterfly->triangles, 8,
+                      butterfly->texture, RENDER_Z_COMPARE | RENDER_FOG_ACTIVE, 0, 1.0f);
 }

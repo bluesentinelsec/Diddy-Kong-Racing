@@ -36,12 +36,12 @@ void hud_sound_stop(u16 soundID, s32 playerIndex) {
  */
 void hud_weapon(Object *obj, s32 updateRate) {
     Object_Racer *racer;
-    s32 temp_a0;
+    s32 weaponSpriteOffset;
 
     racer = obj->racer;
     if (racer->raceFinished == FALSE) {
         enable_pal_viewport_height_adjust(TRUE);
-        temp_a0 = (racer->balloon_type * 3) + (racer->balloon_level);
+        weaponSpriteOffset = (racer->balloon_type * 3) + (racer->balloon_level);
         if (gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.prevLevel != racer->balloon_level) {
             if (racer->balloon_level == 0) {
                 gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.scale = 120;
@@ -62,7 +62,7 @@ void hud_weapon(Object *obj, s32 updateRate) {
                 gCurrentHud->entry[HUD_WEAPON_DISPLAY].rotation.z_rotation = 0;
                 gCurrentHud->entry[HUD_WEAPON_DISPLAY].scale = 1.0f;
             }
-            gCurrentHud->entry[HUD_WEAPON_DISPLAY].spriteOffset = temp_a0;
+            gCurrentHud->entry[HUD_WEAPON_DISPLAY].spriteOffset = weaponSpriteOffset;
             gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.rotation += updateRate;
             if (gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.rotation > 16) {
                 gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.rotation = 16;
@@ -104,7 +104,7 @@ void hud_weapon(Object *obj, s32 updateRate) {
                 gCurrentHud->entry[HUD_WEAPON_DISPLAY].scale =
                     (gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.rotation * 0.04687) + 0.25;
                 gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.rotation -= updateRate;
-                gCurrentHud->entry[HUD_WEAPON_DISPLAY].spriteOffset = temp_a0;
+                gCurrentHud->entry[HUD_WEAPON_DISPLAY].spriteOffset = weaponSpriteOffset;
                 if (gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.rotation < 0) {
                     gCurrentHud->entry[HUD_WEAPON_DISPLAY].weaponDisplay.rotation = 0;
                 }

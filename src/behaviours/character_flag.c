@@ -64,8 +64,8 @@ void obj_init_characterflag(Object *obj, LevelObjectEntry *levelEntry, UNUSED s3
  * and set the texture based on the character ID, then write the character ID.
  */
 void obj_loop_characterflag(Object *obj, UNUSED s32 updateRate) {
-    s32 temp_t4;
-    s32 temp_t5;
+    s32 maxU;
+    s32 maxV;
     Object *racerObj;
     CharacterFlagModel *flagModel;
     Object_Racer *racer;
@@ -82,17 +82,17 @@ void obj_loop_characterflag(Object *obj, UNUSED s32 updateRate) {
             }
             flagModel->vertices = gCharacterFlagVertices;
             flagModel->texture = obj->textures[obj->properties.characterFlag.characterID];
-            temp_t4 = (flagModel->texture->width - 1) << 21;
-            temp_t5 = (flagModel->texture->height - 1) << 5;
+            maxU = (flagModel->texture->width - 1) << 21;
+            maxV = (flagModel->texture->height - 1) << 5;
             // 0x40 = Draw backface
             flagModel->triangles[0].vertices = DKR_TRIANGLE(BACKFACE_DRAW, 0, 1, 3);
             flagModel->triangles[0].uv0.texCoords = 0;
-            flagModel->triangles[0].uv1.texCoords = temp_t4;
-            flagModel->triangles[0].uv2.texCoords = temp_t5;
+            flagModel->triangles[0].uv1.texCoords = maxU;
+            flagModel->triangles[0].uv2.texCoords = maxV;
             flagModel->triangles[1].vertices = DKR_TRIANGLE(BACKFACE_DRAW, 1, 2, 3);
-            flagModel->triangles[1].uv0.texCoords = temp_t4;
-            flagModel->triangles[1].uv1.texCoords = (temp_t4 | temp_t5);
-            flagModel->triangles[1].uv2.texCoords = temp_t5;
+            flagModel->triangles[1].uv0.texCoords = maxU;
+            flagModel->triangles[1].uv1.texCoords = (maxU | maxV);
+            flagModel->triangles[1].uv2.texCoords = maxV;
         }
     }
 }

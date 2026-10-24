@@ -36,7 +36,7 @@
  * Racer cutscene target init behaviour.
  * Does nothing. Not even called.
  */
-UNUSED void obj_init_animcar(UNUSED Object *obj, UNUSED s32 arg1) {
+UNUSED void obj_init_animcar(UNUSED Object *obj, UNUSED s32 param) {
 }
 
 /**

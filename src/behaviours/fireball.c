@@ -50,10 +50,8 @@ void obj_loop_fireball_octoweapon(Object *obj, s32 updateRate) {
     Object *someObj;
     f32 diff;
     f32 updateRateF;
-    UNUSED s32 pad;
     Object_Weapon *weapon;
     Object_Racer *racer;
-    UNUSED s32 pad2[6];
     ObjectInteraction *interactObj;
     SoundHandle soundMask;
     f32 waveHeight;

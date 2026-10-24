@@ -70,6 +70,141 @@ void obj_init_frog(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param) 
 }
 
 /**
+ * Sitting still: a racer within 40 units squashes the frog (or unlocks Drumstick, freeing the frog).
+ * A racer within 96 units makes it hop away, and otherwise it hops in a random direction when its timer runs out.
+ */
+static void frog_idle(Object *obj, Object_Frog *frog, s32 updateRate) {
+    s32 i;
+    s32 hopping;
+    s32 hopInRange;
+    f32 diffX;
+    f32 diffY;
+    f32 diffZ;
+    Object *racerObj;
+
+    hopping = FALSE;
+    if (frog->squishCooldown > 0) {
+        frog->squishCooldown -= updateRate;
+    }
+    if (obj_dist_racer(obj->trans.x_position, obj->trans.y_position, obj->trans.z_position, 96.0f, 1, &racerObj) > 0) {
+        diffX = obj->trans.x_position - racerObj->trans.x_position;
+        diffY = obj->trans.y_position - racerObj->trans.y_position;
+        diffZ = obj->trans.z_position - racerObj->trans.z_position;
+        if (frog->squishCooldown <= 0 && (diffX * diffX) + (diffY * diffY) + (diffZ * diffZ) < 40.0f * 40.0f) {
+            if (frog->drumstick) {
+                audspat_play_sound_at_position(SOUND_VOICE_DRUMSTICK_POSITIVE2, obj->trans.x_position,
+                                               obj->trans.y_position, obj->trans.z_position,
+                                               AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
+                set_eeprom_settings_value(2);
+                set_magic_code_flags(CHEAT_CONTROL_DRUMSTICK);
+                set_drumstick_unlock_transition();
+                free_object(obj);
+                return;
+            } else {
+                frog->action = FROG_SQUISH;
+                audspat_play_sound_at_position(SOUND_SPLAT, obj->trans.x_position, obj->trans.y_position,
+                                               obj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
+            }
+        } else {
+            frog->forwardVel = 72.0f;
+            if (frog->drumstick) {
+                frog->forwardVel *= 1.34f;
+            }
+            frog->hopDirection = arctan2_f(-diffX, -diffZ) + 0x8000;
+            hopping = TRUE;
+        }
+    } else {
+        frog->hopTimer -= updateRate;
+        if (frog->hopTimer < 0) {
+            hopping = TRUE;
+            frog->forwardVel = rand_range(40, 72);
+            frog->hopDirection = rand_range(-0x4000, 0x4000) + obj->trans.rotation.y_rotation;
+        }
+    }
+    if (hopping) {
+        for (i = 0, hopInRange = FALSE; i < 4 && hopInRange == FALSE; i++) {
+            frog->hopTargetX = sins_f(frog->hopDirection) * frog->forwardVel;
+            frog->hopTargetZ = coss_f(frog->hopDirection) * -frog->forwardVel;
+            diffX = (obj->trans.x_position + frog->hopTargetX) - frog->homeX;
+            diffZ = (obj->trans.z_position + frog->hopTargetZ) - frog->homeZ;
+            if ((diffX * diffX) + (diffZ * diffZ) < frog->homeRadiusSquare) {
+                hopInRange = TRUE;
+            } else {
+                frog->hopDirection += 0x4000;
+            }
+        }
+        if (hopInRange == FALSE) {
+            diffX = frog->homeX - obj->trans.x_position;
+            diffZ = frog->homeZ - obj->trans.z_position;
+            frog->hopDirection = arctan2_f(diffX, diffZ);
+        }
+        if (frog->drumstick) {
+            audspat_play_sound_at_position(SOUND_VOICE_DRUMSTICK_POSITIVE6, obj->trans.x_position,
+                                           obj->trans.y_position, obj->trans.z_position,
+                                           AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
+        } else {
+            audspat_play_sound_at_position(SOUND_RIBBIT, obj->trans.x_position, obj->trans.y_position,
+                                           obj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
+        }
+        frog->action = FROG_HOP;
+        frog->hopStartX = obj->trans.x_position;
+        frog->hopStartZ = obj->trans.z_position;
+        frog->hopFrame = 32;
+        obj->trans.rotation.y_rotation = -frog->hopDirection;
+    }
+}
+
+/**
+ * Mid hop: moves along the hop's arc, snaps to the ground, and lands back in the idle state.
+ * A racer within 40 units near the start or end of the hop squashes the frog (or unlocks Drumstick).
+ */
+static void frog_hop(Object *obj, Object_Frog *frog, s32 updateRate) {
+    f32 colY[8];
+    f32 cosine;
+    Object *racerObj;
+
+    frog->hopFrame -= updateRate;
+    if (frog->squishCooldown > 0) {
+        frog->squishCooldown -= updateRate;
+    }
+    if (frog->hopFrame < 0) {
+        frog->action = FROG_IDLE;
+        frog->hopTimer = rand_range(0, 300);
+        frog->hopFrame = 0;
+    }
+    obj->animFrame = ((32 - frog->hopFrame) << 3) / 3;
+    cosine = (coss_f(frog->hopFrame << 10) + 1.0f) * 0.5f;
+    obj->trans.x_position = frog->hopStartX;
+    obj->trans.z_position = frog->hopStartZ;
+    obj->x_velocity = frog->hopTargetX * cosine;
+    obj->z_velocity = frog->hopTargetZ * cosine;
+    ignore_bounds_check();
+    move_object(obj, obj->x_velocity, 0.0f, obj->z_velocity);
+    if (collision_get_y(obj->segmentID, obj->trans.x_position, obj->trans.z_position, colY, 8) != 0) {
+        obj->trans.y_position = 0.0f;
+        ignore_bounds_check();
+        move_object(obj, 0.0f, (f32) colY[0], 0.0f);
+    }
+    if (frog->squishCooldown <= 0 && (frog->hopFrame < 6 || frog->hopFrame >= 27)) {
+        if (obj_dist_racer(obj->trans.x_position, obj->trans.y_position, obj->trans.z_position, 40.0f, 0, &racerObj)) {
+            if (frog->drumstick) {
+                audspat_play_sound_at_position(SOUND_VOICE_DRUMSTICK_POSITIVE2, obj->trans.x_position,
+                                               obj->trans.y_position, obj->trans.z_position,
+                                               AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
+                set_eeprom_settings_value(2);
+                set_magic_code_flags(CHEAT_CONTROL_DRUMSTICK);
+                set_drumstick_unlock_transition();
+                free_object(obj);
+            } else {
+                frog->action = FROG_SQUISH;
+                audspat_play_sound_at_position(SOUND_SPLAT, obj->trans.x_position, obj->trans.y_position,
+                                               obj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
+            }
+        }
+    }
+}
+
+/**
  * Overworld frog loop function.
  * Hops, skips, jumps around. Can be flattened by players.
  * If a Drumstick frog exists after beating all 4 trophy races, he can be squashed and will be unlocked as a playable
@@ -77,18 +212,7 @@ void obj_init_frog(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param) 
  */
 void obj_loop_frog(Object *obj, s32 updateRate) {
     Object_Frog *frog;
-    s32 i;
-    s32 hopping;
-    s32 var_v1;
-    UNUSED s32 pad0[29]; // Wtf is this large gap here?
-    f32 colY[8];
-    UNUSED s32 pad2[4];
-    f32 cosine;
-    f32 diffX;
-    f32 diffY;
-    f32 diffZ;
     f32 updateRateF;
-    Object *racerObj;
 
     updateRateF = updateRate;
     if (osTvType == OS_TV_TYPE_PAL) {
@@ -98,120 +222,11 @@ void obj_loop_frog(Object *obj, s32 updateRate) {
 
     switch (frog->action) {
         case FROG_IDLE:
-            hopping = FALSE;
-            if (frog->squishCooldown > 0) {
-                frog->squishCooldown -= updateRate;
-            }
-            if (obj_dist_racer(obj->trans.x_position, obj->trans.y_position, obj->trans.z_position, 96.0f, 1,
-                               &racerObj) > 0) {
-                diffX = obj->trans.x_position - racerObj->trans.x_position;
-                diffY = obj->trans.y_position - racerObj->trans.y_position;
-                diffZ = obj->trans.z_position - racerObj->trans.z_position;
-                if (frog->squishCooldown <= 0 && (diffX * diffX) + (diffY * diffY) + (diffZ * diffZ) < 40.0f * 40.0f) {
-                    if (frog->drumstick) {
-                        audspat_play_sound_at_position(SOUND_VOICE_DRUMSTICK_POSITIVE2, obj->trans.x_position,
-                                                       obj->trans.y_position, obj->trans.z_position,
-                                                       AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
-                        set_eeprom_settings_value(2);
-                        set_magic_code_flags(CHEAT_CONTROL_DRUMSTICK);
-                        set_drumstick_unlock_transition();
-                        free_object(obj);
-                        break;
-                    } else {
-                        frog->action = FROG_SQUISH;
-                        audspat_play_sound_at_position(SOUND_SPLAT, obj->trans.x_position, obj->trans.y_position,
-                                                       obj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
-                    }
-                } else {
-                    frog->forwardVel = 72.0f;
-                    if (frog->drumstick) {
-                        frog->forwardVel *= 1.34f;
-                    }
-                    frog->hopDirection = arctan2_f(-diffX, -diffZ) + 0x8000;
-                    hopping = TRUE;
-                }
-            } else {
-                frog->hopTimer -= updateRate;
-                if (frog->hopTimer < 0) {
-                    hopping = TRUE;
-                    frog->forwardVel = rand_range(40, 72);
-                    frog->hopDirection = rand_range(-0x4000, 0x4000) + obj->trans.rotation.y_rotation;
-                }
-            }
-            if (hopping) {
-                for (i = 0, var_v1 = FALSE; i < 4 && var_v1 == FALSE; i++) {
-                    frog->hopTargetX = sins_f(frog->hopDirection) * frog->forwardVel;
-                    frog->hopTargetZ = coss_f(frog->hopDirection) * -frog->forwardVel;
-                    diffX = (obj->trans.x_position + frog->hopTargetX) - frog->homeX;
-                    diffZ = (obj->trans.z_position + frog->hopTargetZ) - frog->homeZ;
-                    if ((diffX * diffX) + (diffZ * diffZ) < frog->homeRadiusSquare) {
-                        var_v1 = TRUE;
-                    } else {
-                        frog->hopDirection += 0x4000;
-                    }
-                }
-                if (var_v1 == FALSE) {
-                    diffX = frog->homeX - obj->trans.x_position;
-                    diffZ = frog->homeZ - obj->trans.z_position;
-                    frog->hopDirection = arctan2_f(diffX, diffZ);
-                }
-                if (frog->drumstick) {
-                    audspat_play_sound_at_position(SOUND_VOICE_DRUMSTICK_POSITIVE6, obj->trans.x_position,
-                                                   obj->trans.y_position, obj->trans.z_position,
-                                                   AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
-                } else {
-                    audspat_play_sound_at_position(SOUND_RIBBIT, obj->trans.x_position, obj->trans.y_position,
-                                                   obj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
-                }
-                frog->action = FROG_HOP;
-                frog->hopStartX = obj->trans.x_position;
-                frog->hopStartZ = obj->trans.z_position;
-                frog->hopFrame = 32;
-                obj->trans.rotation.y_rotation = -frog->hopDirection;
-            }
+            frog_idle(obj, frog, updateRate);
         default:
             break;
         case FROG_HOP:
-            frog->hopFrame -= updateRate;
-            if (frog->squishCooldown > 0) {
-                frog->squishCooldown -= updateRate;
-            }
-            if (frog->hopFrame < 0) {
-                frog->action = FROG_IDLE;
-                frog->hopTimer = rand_range(0, 300);
-                frog->hopFrame = 0;
-            }
-            obj->animFrame = ((32 - frog->hopFrame) << 3) / 3;
-            cosine = (coss_f(frog->hopFrame << 10) + 1.0f) * 0.5f;
-            obj->trans.x_position = frog->hopStartX;
-            obj->trans.z_position = frog->hopStartZ;
-            obj->x_velocity = frog->hopTargetX * cosine;
-            obj->z_velocity = frog->hopTargetZ * cosine;
-            ignore_bounds_check();
-            move_object(obj, obj->x_velocity, 0.0f, obj->z_velocity);
-            if (collision_get_y(obj->segmentID, obj->trans.x_position, obj->trans.z_position, colY, 8) != 0) {
-                obj->trans.y_position = 0.0f;
-                ignore_bounds_check();
-                move_object(obj, 0.0f, (f32) colY[0], 0.0f);
-            }
-            if (frog->squishCooldown <= 0 && (frog->hopFrame < 6 || frog->hopFrame >= 27)) {
-                if (obj_dist_racer(obj->trans.x_position, obj->trans.y_position, obj->trans.z_position, 40.0f, 0,
-                                   &racerObj)) {
-                    if (frog->drumstick) {
-                        audspat_play_sound_at_position(SOUND_VOICE_DRUMSTICK_POSITIVE2, obj->trans.x_position,
-                                                       obj->trans.y_position, obj->trans.z_position,
-                                                       AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
-                        set_eeprom_settings_value(2);
-                        set_magic_code_flags(CHEAT_CONTROL_DRUMSTICK);
-                        set_drumstick_unlock_transition();
-                        free_object(obj);
-                    } else {
-                        frog->action = FROG_SQUISH;
-                        audspat_play_sound_at_position(SOUND_SPLAT, obj->trans.x_position, obj->trans.y_position,
-                                                       obj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
-                    }
-                }
-            }
+            frog_hop(obj, frog, updateRate);
             break;
         case FROG_SQUISH:
             frog->scaleY -= 0.15f * updateRateF;

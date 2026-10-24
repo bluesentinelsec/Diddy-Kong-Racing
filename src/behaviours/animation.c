@@ -32,7 +32,7 @@
 #include "waves.h"
 #include "weather.h"
 
-void obj_init_animation(Object *obj, LevelObjectEntry *levelEntry, s32 arg2) {
+void obj_init_animation(Object *obj, LevelObjectEntry *levelEntry, s32 param) {
     LevelObjectEntry_Animation *entry = &levelEntry->animation;
     Object *animTarget;
     s8 tempOrderIndex;
@@ -77,8 +77,8 @@ void obj_init_animation(Object *obj, LevelObjectEntry *levelEntry, s32 arg2) {
     }
     path_enable();
     obj->properties.animation.behaviourID = entry->actorIndex;
-    obj->properties.animation.action = arg2;
-    if (arg2 != 0 && (input_pressed(PLAYER_ONE) & R_CBUTTONS)) {
+    obj->properties.animation.action = param;
+    if (param != 0 && (input_pressed(PLAYER_ONE) & R_CBUTTONS)) {
         obj->properties.animation.action = 2;
     }
     if (((cutscene_id() == entry->channel) || (entry->channel == 20)) && (obj->animTarget == NULL) &&

@@ -60,7 +60,6 @@ void obj_init_bridge_whaleramp(Object *obj, LevelObjectEntry *levelEntry, UNUSED
  */
 void obj_loop_bridge_whaleramp(Object *obj, s32 updateRate) {
     Object *racerObj;
-    UNUSED ObjectTransform *temp_v0_4;
     f32 bobAmount;
     Object_Bridge_WhaleRamp *whaleRamp;
     LevelObjectEntry_Bridge_WhaleRamp *entry;

@@ -31,6 +31,13 @@
 #include "tracks.h"
 #include "types.h"
 
+// The cutscene that shows only the player's balloon count (see hud_balloons).
+#define CUTSCENE_ID_BALLOON_COUNT 10
+
+// LevelHeader hudFlags bits.
+#define LEVEL_HUD_FLAG_NO_MINIMAP 1    // No minimap (challenge counters are still drawn).
+#define LEVEL_HUD_FLAG_NO_PLAYER_HUD 2 // No per-player HUD at all.
+
 extern HudAudio gHudAudioData[2];
 extern u8 gShowCourseDirections;
 extern u8 gHudMapMode[4][4];
@@ -79,7 +86,7 @@ extern u8 sMinimapTexIndexA;
 extern u8 sMinimapTexIndexB;
 extern u8 gStopwatchAnimID;
 extern u8 sHudMapVisible;
-extern s8 D_80126D69;
+extern s8 gStopwatchAnimStep;
 extern s32 gWrongWayNagTimer;
 extern u8 gHudAudioReset;
 extern u8 gHudTimeTrialGhost;
@@ -105,7 +112,7 @@ void hud_battle_portraits(Object *racerObj, s32 updateRate);
 void hud_main_boss(s32 countdown, Object *obj, s32 updateRate);
 void hud_main_taj(s32 countdown, Object *obj, s32 updateRate);
 void hud_main_hub(Object *obj, s32 updateRate);
-void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate);
+void hud_main_time_trial(s32 countdown, Object *playerRacerObj, s32 updateRate);
 void hud_speedometre(Object *obj, s32 updateRate);
 void hud_race_start(s32 countdown, s32 updateRate);
 void hud_bananas(Object_Racer *racer, s32 updateRate);

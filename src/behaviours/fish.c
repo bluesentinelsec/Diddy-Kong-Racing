@@ -51,7 +51,6 @@ Triangle sFishTriangles[8] = {
 void obj_init_fish(Object *fishObj, LevelObjectEntry *levelEntry, s32 param) {
     LevelObjectEntry_Fish *fishEntry = &levelEntry->fish;
     Object_Fish *fish;
-    s32 pad0[2];
     f32 xPos;
     f32 zPos;
     f32 sins104;
@@ -156,10 +155,11 @@ void obj_loop_fish(Object *fishObj, s32 updateRate) {
     f32 sinUnk104;
     Object_Fish *fish;
     f32 cosUnk104;
-    s16 temp_v0_2;
-    s32 temp_s0_2;
-    s32 temp_t1;
-    s32 temp_t9;
+    s16 targetPitch;
+    s32 tailOffsetZ;
+    s32 pitchDown;
+    s32 tailOffsetX;
+    s32 pitchUp;
     f32 prevXThing, prevZThing;
     Vertex *verts;
     s32 randNumber;
@@ -185,7 +185,7 @@ void obj_loop_fish(Object *fishObj, s32 updateRate) {
             randNumber = rand_range(0, fish->verticalRange);
             fishObj->y_velocity = fish->homeY - fishObj->trans.y_position;
             fishObj->y_velocity = (fishObj->trans.y_position < fish->homeY) ? (fishObj->y_velocity + randNumber)
-                                                                             : (fishObj->y_velocity - randNumber);
+                                                                            : (fishObj->y_velocity - randNumber);
             fishObj->y_velocity /= fish->verticalMoveTimer;
         }
     }
@@ -215,23 +215,23 @@ void obj_loop_fish(Object *fishObj, s32 updateRate) {
     dist2D = sqrtf(dist2D);
     fish->tailWavePhase += (s32) (dist3D * 0x600);
     fishObj->trans.rotation.y_rotation = arctan2_f(xDiff, zDiff);
-    temp_v0_2 = arctan2_f(-yDiff, dist2D);
-    temp_t9 = (temp_v0_2 - fishObj->trans.rotation.x_rotation) & 0xFFFF;
-    temp_t1 = (fishObj->trans.rotation.x_rotation - temp_v0_2) & 0xFFFF;
-    if (temp_t9 < temp_t1) {
-        fishObj->trans.rotation.x_rotation += ((temp_t9 * updateRate) >> 3);
+    targetPitch = arctan2_f(-yDiff, dist2D);
+    pitchUp = (targetPitch - fishObj->trans.rotation.x_rotation) & 0xFFFF;
+    pitchDown = (fishObj->trans.rotation.x_rotation - targetPitch) & 0xFFFF;
+    if (pitchUp < pitchDown) {
+        fishObj->trans.rotation.x_rotation += ((pitchUp * updateRate) >> 3);
     } else {
-        fishObj->trans.rotation.x_rotation -= ((temp_t1 * updateRate) >> 3);
+        fishObj->trans.rotation.x_rotation -= ((pitchDown * updateRate) >> 3);
     }
     fish->vertexBufferIndex = 1 - fish->vertexBufferIndex;
     verts = &fish->vertices[fish->vertexBufferIndex * 6];
     randNumber = sins_s16(fish->tailWavePhase) >> 3;
-    temp_s0_2 = (s32) (coss_f(randNumber) * 32);
-    temp_t1 = (s32) (sins_f(randNumber) * 32);
-    verts[4].x = (verts[2].x + temp_t1);
-    verts[4].z = (verts[2].z + temp_s0_2);
-    verts[5].x = (verts[3].x + temp_t1);
-    verts[5].z = (verts[3].z + temp_s0_2);
+    tailOffsetZ = (s32) (coss_f(randNumber) * 32);
+    tailOffsetX = (s32) (sins_f(randNumber) * 32);
+    verts[4].x = (verts[2].x + tailOffsetX);
+    verts[4].z = (verts[2].z + tailOffsetZ);
+    verts[5].x = (verts[3].x + tailOffsetX);
+    verts[5].z = (verts[3].z + tailOffsetZ);
 }
 
 void obj_render_fish(Object *obj) {
