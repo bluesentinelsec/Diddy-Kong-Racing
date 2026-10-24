@@ -168,9 +168,8 @@ void render_subtitles(void) {
  * Close the subtitles if none can be found.
  */
 void find_next_subtitle(void) {
-    u32 new_var3;
-    u8 new_var;
-    s32 new_var2;
+    u8 textByte;
+    s32 nextByte;
     s32 done;
 
     gSubtitleLineCount = 0;
@@ -182,8 +181,8 @@ void find_next_subtitle(void) {
         gSubtitleTimer = normalise_time(gCurrentTextProperties[7] * 6);
         gCurrentTextProperties += 8;
         do {
-            new_var = gCurrentTextProperties[0];
-            if (new_var & 0x80) {
+            textByte = gCurrentTextProperties[0];
+            if (textByte & 0x80) {
                 gCurrentTextProperties += 2;
             } else {
                 gCurrentTextProperties++;
@@ -194,10 +193,10 @@ void find_next_subtitle(void) {
             done = TRUE;
         }
         gCurrentTextProperties++;
-        new_var2 = gCurrentTextProperties[0];
+        nextByte = gCurrentTextProperties[0];
         if (gCurrentTextProperties[0] == 10) {
             gCurrentTextProperties++;
-        } else if (new_var2 == 12) {
+        } else if (nextByte == 12) {
             gCurrentTextProperties++;
             done = TRUE;
         }

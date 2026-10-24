@@ -1177,13 +1177,13 @@ UNUSED s32 sprite_cache_index(s32 cacheID) {
 
 s32 tex_asset_size(s32 id) {
     s32 textureRomOffset;
-    TempTexHeader *new_var2;
+    TempTexHeader *tempHeader;
     u32 textureTable;
     s32 size;
-    s32 new_var3;
+    s32 offset;
     s32 textureTableType;
     u16 numOfTextures;
-    TempTexHeader *new_var4;
+    TempTexHeader *reloadedHeader;
 
     textureTable = ASSET_TEXTURES_2D;
     textureTableType = TEX_TABLE_2D;
@@ -1196,16 +1196,16 @@ s32 tex_asset_size(s32 id) {
         return 0;
     }
     textureRomOffset = gTextureAssetTable[textureTableType][id];
-    new_var3 = textureRomOffset;
-    size = gTextureAssetTable[textureTableType][id + 1] - new_var3;
-    new_var2 = gTempTextureHeader;
-    if (new_var2->header.isCompressed) {
+    offset = textureRomOffset;
+    size = gTextureAssetTable[textureTableType][id + 1] - offset;
+    tempHeader = gTempTextureHeader;
+    if (tempHeader->header.isCompressed) {
         pc_load_temp_tex_header(textureTable, textureRomOffset);
-        new_var4 = gTempTextureHeader;
-        size = byteswap32((u8 *) (&new_var4->uncompressedSize));
+        reloadedHeader = gTempTextureHeader;
+        size = byteswap32((u8 *) (&reloadedHeader->uncompressedSize));
     }
-    new_var2 = gTempTextureHeader;
-    numOfTextures = new_var2->header.numOfTextures;
+    tempHeader = gTempTextureHeader;
+    numOfTextures = tempHeader->header.numOfTextures;
     return (((numOfTextures >> 8) & 0xFFFF) * (TEXTURE_GFX_SIZE + TEXTURE_HEADER_PC_DELTA)) + size;
 }
 
@@ -1239,7 +1239,7 @@ s32 load_sprite_info(s32 spriteIndex, s32 *anchorXOut, s32 *anchorYOut, s32 *num
     s32 j;
     s32 start;
     s32 size;
-    s32 new_var;
+    s32 loadSize;
 
     if ((spriteIndex < 0) || (spriteIndex >= gSpriteTableSize)) {
     textureCouldNotBeLoaded:
@@ -1251,8 +1251,8 @@ s32 load_sprite_info(s32 spriteIndex, s32 *anchorXOut, s32 *anchorYOut, s32 *num
     start = gSpriteOffsetTable[spriteIndex];
     size = gSpriteOffsetTable[spriteIndex + 1] - start;
     spriteAsset = gCurrentSpriteAsset;
-    new_var = size;
-    asset_load(ASSET_SPRITES, (uintptr_t) spriteAsset, start, new_var);
+    loadSize = size;
+    asset_load(ASSET_SPRITES, (uintptr_t) spriteAsset, start, loadSize);
     pc_swap_sprite_asset(spriteAsset);
     tex = load_texture(spriteAsset->frameTexOffsets[0] + spriteAsset->baseTextureId);
     if (tex != NULL) {
