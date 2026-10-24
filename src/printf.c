@@ -852,7 +852,7 @@ int vsprintf(char *s, const char *fmt, va_list args) {
                         base = 16;
                         fc = 'x';
                         alt = 1;
-                        num = (unsigned long int) ptr;
+                        num = (unsigned long int) (uintptr_t) ptr; // truncated where long is 32 bits (Windows); debug text only
                         is_neg = 0;
                         goto number;
                     } else {
