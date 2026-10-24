@@ -69,10 +69,13 @@ s32 alAuxBusParam(void *filter, s32 paramID, void *param) {
     
 }
 
-void func_80065A80(ALSynth *arg0, struct PVoice_s *arg1, s16 arg2) {
-    if (arg2 != arg1->auxBusIndex) {
-        alAuxBusParam(&arg0->auxBus[arg1->auxBusIndex], AL_FILTER_UNK11, &arg1->envmixer);
-        alAuxBusParam(&arg0->auxBus[arg2], AL_FILTER_ADD_SOURCE, &arg1->envmixer);
-        arg1->auxBusIndex = arg2;
+/**
+ * Moves a voice's envelope mixer from its current aux bus to the given one.
+ */
+void alSynSetVoiceAuxBus(ALSynth *synth, struct PVoice_s *pvoice, s16 auxBusIndex) {
+    if (auxBusIndex != pvoice->auxBusIndex) {
+        alAuxBusParam(&synth->auxBus[pvoice->auxBusIndex], AL_FILTER_UNK11, &pvoice->envmixer);
+        alAuxBusParam(&synth->auxBus[auxBusIndex], AL_FILTER_ADD_SOURCE, &pvoice->envmixer);
+        pvoice->auxBusIndex = auxBusIndex;
     }
 }

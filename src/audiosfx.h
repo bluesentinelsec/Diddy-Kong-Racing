@@ -43,7 +43,7 @@ typedef struct ALSoundState {
     /* 0x00 */ struct ALSoundState *next;
     /* 0x04 */ struct ALSoundState *prev;
     /* 0x08 */ ALSound *sound;
-    /* 0x0C */ ALVoice     voice;
+    /* 0x0C */ ALVoice voice;
     /* 0x28 */ f32 slideMult;
     /* 0x2C */ f32 pitch;
     /* 0x30 */ struct ALSoundState **userHandle;
@@ -59,61 +59,61 @@ typedef struct ALSoundState {
 #endif
 } ALSoundState;
 
-typedef struct ALSoundState* SoundHandle;
+typedef struct ALSoundState *SoundHandle;
 
 typedef struct ALSoundStateLists {
     /* 0x00 */ ALSoundState *allocHead;
     /* 0x04 */ ALSoundState *allocTail;
     /* 0x08 */ ALSoundState *freeHead;
-  } ALSoundStateLists;
+} ALSoundStateLists;
 
 /* Unknown Size */
 typedef struct SoundPlayer {
-    ALPlayer        node;
-    ALEventQueue    evtq;
-    ALEvent         nextEvent;
-    ALSynth        *drvr;
-    ALSoundState   *lastSoundState;
-    ALSoundState   *soundStatesArray;
-    s32             maxSystemSoundChannels;
-    s32             maxActiveSounds;
-    s32             frameTime;
-    ALMicroTime     nextDelta;
-    ALMicroTime     curTime;
+    ALPlayer node;
+    ALEventQueue evtq;
+    ALEvent nextEvent;
+    ALSynth *drvr;
+    ALSoundState *lastSoundState;
+    ALSoundState *soundStatesArray;
+    s32 maxSystemSoundChannels;
+    s32 maxActiveSounds;
+    s32 frameTime;
+    ALMicroTime nextDelta;
+    ALMicroTime curTime;
 } SoundPlayer;
 
 typedef union {
 
-    ALEvent             msg;
+    ALEvent msg;
 
     struct {
-        u16             type;
-        ALSoundState    *state;
-        s32             param;
+        u16 type;
+        ALSoundState *state;
+        s32 param;
     } common;
 
     struct {
-        s16             type;
-        ALSoundState    *state;
-        s32             soundIndex;
-        ALBank          *bank;
+        s16 type;
+        ALSoundState *state;
+        s32 soundIndex;
+        ALBank *bank;
     } retrigger;
-    
+
 } ALSndpEvent;
 
-typedef struct audioMgrConfig_s{
+typedef struct audioMgrConfig_s {
     /* 0x00 */ s32 maxSounds; // Number of ALSoundState structures
     /* 0x04 */ s32 maxEvents; // Maximum number of events that can be held in the queue
     /* 0x08 */ s32 maxChannels;
     /* 0x0C */ ALHeap *heap;
-    /* 0x10 */ u16  numGroups;
+    /* 0x10 */ u16 numGroups;
 } audioMgrConfig;
 
 void sndp_set_global_volume(u32 volume);
 s32 sndp_get_global_volume(void);
 void sndp_set_active_sound_limit(s32 numSounds);
 void sndp_init_player(audioMgrConfig *c);
-ALMicroTime  sndp_voice_handler(void *node);
+ALMicroTime sndp_voice_handler(void *node);
 void sndp_end(ALSoundState *state);
 u16 sndp_get_state_counts(u16 *numFree, u16 *numAllocated);
 void sndp_set_priority(ALSoundState *sndp, u8 priority);
@@ -125,7 +125,7 @@ void sndp_set_group_volume(u8 groupID, u16 volume);
 void sndp_apply_pitch_slide(ALSoundState *soundState);
 void sndp_stop_with_flags(u8 flags);
 void sndp_stop(SoundHandle state);
-ALSoundState *sndp_allocate(UNUSED ALBank *arg0, ALSound *sound);
+ALSoundState *sndp_allocate(UNUSED ALBank *bank, ALSound *sound);
 void sndp_deallocate(ALSoundState *);
 ALSoundState *sndp_play_with_priority(ALBank *bank, s16 sndIndx, u8 priority, SoundHandle *handlePtr);
 void sndp_handle_event(SoundPlayer *sndp, ALSndpEvent *event);

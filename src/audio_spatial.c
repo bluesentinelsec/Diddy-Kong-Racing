@@ -115,7 +115,7 @@ void audspat_reset(void) {
         gAudioLines[i].numSegments = -1;
 
         coords = gAudioLines[i].coords;
-        for (j = 0; j < 30; j++) {
+        for (j = 0; j < AUDIO_LINE_MAX_VERTICES; j++) {
             *coords++ = -100000.0f;
             *coords++ = -100000.0f;
             *coords++ = -100000.0f;
@@ -128,7 +128,7 @@ void audspat_reset(void) {
         gReverbLines[i].totalLength = 0.0f;
 
         coords = gReverbLines[i].coords;
-        for (j = 0; j < 15; j++) {
+        for (j = 0; j < REVERB_LINE_MAX_VERTICES; j++) {
             *coords++ = -100000.0f;
             *coords++ = -100000.0f;
             *coords++ = -100000.0f;
@@ -139,265 +139,343 @@ void audspat_reset(void) {
 }
 
 /**
+ * State shared by the steps of audspat_update_all.
+ * The pan is shared across every point and line, as in the original, where one local
+ * carried its value from one sound source to the next.
+ */
+typedef struct SpatialUpdateState {
+    Camera *cameras;
+    s32 numCameras;
+    s32 pan;
+    s32 jingleVolume;
+    s32 jinglePan;
+    s32 jingleSound;
+} SpatialUpdateState;
+
+/**
+ * Single player audio point: start the sound when the camera enters its range,
+ * and set its volume, pitch, pan, echo and priority once on entry.
+ */
+static void audspat_update_point_single_player(AudioPoint *audioPoint, SpatialUpdateState *state) {
+    Camera *cameras;
+    f32 dx, dy, dz;
+    s32 distance;
+    s32 pan;
+    f32 pitch;
+
+    cameras = state->cameras;
+    if (state->numCameras == 1) {
+        dx = audioPoint->pos.x - cameras[0].trans.x_position;
+        dy = audioPoint->pos.y - cameras[0].trans.y_position;
+        dz = audioPoint->pos.z - cameras[0].trans.z_position;
+        distance = sqrtf(dx * dx + dy * dy + dz * dz);
+        if (distance < audioPoint->range && !audioPoint->inRange) {
+            if (audioPoint->soundHandle == NULL &&
+                (!audioPoint->triggeredOnce || !(audioPoint->flags & AUDIO_POINT_FLAG_ONE_TIME_TRIGGER))) {
+                sound_play_direct(audioPoint->soundBite, &audioPoint->soundHandle);
+                audioPoint->triggeredOnce = TRUE;
+            }
+
+            if (audioPoint->soundHandle != NULL) {
+                pitch = audioPoint->pitch / 100.0f;
+                sndp_set_param(audioPoint->soundHandle, AL_SNDP_VOL_EVT, audioPoint->volume * 256);
+                sndp_set_param(audioPoint->soundHandle, AL_SNDP_PITCH_EVT, *(s32 *) &pitch);
+                pan = audspat_calculate_spatial_pan(dx, dz, cameras[0].trans.rotation.y_rotation);
+                // This can never be true
+                if (state->numCameras != 1) {
+                    pan = PAN_CENTRE;
+                }
+                sndp_set_param(audioPoint->soundHandle, AL_SNDP_PAN_EVT, pan);
+                audspat_calculate_echo(audioPoint->soundHandle, audioPoint->pos.x, audioPoint->pos.y,
+                                       audioPoint->pos.z);
+                sndp_set_priority(audioPoint->soundHandle, audioPoint->priority);
+            }
+
+            audioPoint->inRange = TRUE;
+        } else if (distance > audioPoint->range && audioPoint->inRange) {
+            audioPoint->inRange = FALSE;
+        }
+    }
+}
+
+/**
+ * Audio point heard by every camera: the loudest camera sets the volume and pan,
+ * falling back to the minimum volume and the closest camera's pan.
+ * Starts, updates or stops the sound, and frees a finished one-time point.
+ */
+static void audspat_update_point(AudioPoint *audioPoint, s32 index, SpatialUpdateState *state) {
+    Camera *cameras;
+    s32 numCameras;
+    s32 j;
+    s32 volume;
+    f32 dx, dy, dz;
+    s32 distance;
+    s32 adjustedVolume;
+    f32 falloff;
+    f32 minDistance;
+    f32 pitch;
+
+    cameras = state->cameras;
+    numCameras = state->numCameras;
+    volume = 0;
+
+    // Calculate volume and pan for all cameras and find the max volume
+    for (j = 0; j < numCameras; j++) {
+        dx = audioPoint->pos.x - cameras[j].trans.x_position;
+        dy = audioPoint->pos.y - cameras[j].trans.y_position;
+        dz = audioPoint->pos.z - cameras[j].trans.z_position;
+        distance = sqrtf(dx * dx + dy * dy + dz * dz);
+        if (distance < audioPoint->range) {
+            if (!audioPoint->fastFalloff) {
+                adjustedVolume = (1.0f - (f32) distance / (f32) audioPoint->range) * audioPoint->volume;
+            } else {
+                falloff = (f32) (audioPoint->range - distance) / (f32) audioPoint->range;
+                adjustedVolume = falloff * falloff * audioPoint->volume;
+            }
+
+            if (volume < adjustedVolume) {
+                volume = adjustedVolume;
+                state->pan = audspat_calculate_spatial_pan(dx, dz, cameras[j].trans.rotation.y_rotation);
+            }
+        }
+    }
+
+    // If all cameras are far enough then set volume to minVolume
+    // and calculate pan based on the closest camera
+    if (volume < audioPoint->minVolume) {
+        minDistance = 999999.0f;
+
+        for (j = 0; j < numCameras; j++) {
+            dx = audioPoint->pos.x - cameras[j].trans.x_position;
+            dy = audioPoint->pos.y - cameras[j].trans.y_position;
+            dz = audioPoint->pos.z - cameras[j].trans.z_position;
+            distance = sqrtf(dx * dx + dy * dy + dz * dz);
+            if (distance < minDistance) {
+                state->pan = audspat_calculate_spatial_pan(dx, dz, cameras[j].trans.rotation.y_rotation);
+                minDistance = distance;
+            }
+        }
+
+        volume = audioPoint->minVolume;
+    }
+
+    if (volume > MIN_VOLUME_THRESHOLD) {
+        if (audioPoint->soundHandle == NULL &&
+            (!audioPoint->triggeredOnce || !(audioPoint->flags & AUDIO_POINT_FLAG_ONE_TIME_TRIGGER))) {
+            sound_play_direct(audioPoint->soundBite, &audioPoint->soundHandle);
+            audioPoint->triggeredOnce = TRUE;
+        }
+
+        if (audioPoint->soundHandle != NULL) {
+            pitch = audioPoint->pitch / 100.0f;
+            sndp_set_param(audioPoint->soundHandle, AL_SNDP_VOL_EVT, volume * 256);
+            sndp_set_param(audioPoint->soundHandle, AL_SNDP_PITCH_EVT, *(s32 *) &pitch);
+            if (numCameras != 1) {
+                state->pan = PAN_CENTRE;
+            }
+            sndp_set_param(audioPoint->soundHandle, AL_SNDP_PAN_EVT, state->pan);
+            sndp_set_priority(audioPoint->soundHandle, audioPoint->priority);
+            audspat_calculate_echo(audioPoint->soundHandle, audioPoint->pos.x, audioPoint->pos.y, audioPoint->pos.z);
+        }
+    } else {
+        if (audioPoint->soundHandle != NULL) {
+            sndp_stop(audioPoint->soundHandle);
+        } else {
+            audioPoint->triggeredOnce = TRUE;
+        }
+    }
+
+    if ((audioPoint->flags & AUDIO_POINT_FLAG_ONE_TIME_TRIGGER) && audioPoint->triggeredOnce &&
+        audioPoint->soundHandle == NULL) {
+        audspat_point_stop_by_index(index);
+    }
+}
+
+/**
+ * Finds the loudest camera for an audio line. The volume comes from the nearest segment, and the pan
+ * is a blend of every segment's pan, weighted towards the nearer ones and pulled to the centre up close.
+ * Returns the volume; the pan is left in state->pan.
+ */
+static s32 audspat_line_volume_and_pan(AudioLine *line, SpatialUpdateState *state) {
+    Camera *cameras;
+    s32 numCameras;
+    s32 j;
+    s32 k;
+    s32 volume;
+    f32 outX;
+    f32 outY;
+    f32 outZ;
+    s32 minDist;
+    s32 adjustedVolume;
+    s32 lineDistances[AUDIO_LINE_MAX_VERTICES - 1];
+    s32 inverseSum;
+    s32 linePans[AUDIO_LINE_MAX_VERTICES - 1];
+    s32 inverseDistances[AUDIO_LINE_MAX_VERTICES - 1];
+    s32 sumOfDistances;
+    f32 falloff;
+    f32 *coords;
+
+    cameras = state->cameras;
+    numCameras = state->numCameras;
+    volume = 0;
+
+    for (j = 0; j < numCameras; j++) {
+        coords = line->coords;
+        sumOfDistances = 0;
+        minDist = line->range;
+        for (k = 0; k < line->numSegments; k++) {
+            lineDistances[k] = audspat_distance_to_segment(cameras[j].trans.x_position, cameras[j].trans.y_position,
+                                                           cameras[j].trans.z_position, coords, &outX, &outY, &outZ);
+            linePans[k] =
+                audspat_calculate_spatial_pan(outX - cameras[j].trans.x_position, outZ - cameras[j].trans.z_position,
+                                              cameras[j].trans.rotation.y_rotation);
+            if (minDist > lineDistances[k]) {
+                minDist = lineDistances[k];
+            }
+            coords += 3;
+            sumOfDistances += lineDistances[k];
+        }
+
+        if (!line->fastFalloff) {
+            adjustedVolume = (1.0f - (f32) minDist / (f32) line->range) * line->volume;
+        } else {
+            falloff = (f32) (line->range - minDist) / (f32) line->range;
+            adjustedVolume = falloff * falloff * line->volume;
+        }
+
+        if (volume <= adjustedVolume) {
+            volume = adjustedVolume;
+
+            if (line->numSegments == 1) {
+                state->pan = linePans[0];
+            } else {
+                inverseSum = 0;
+                for (k = 0; k < line->numSegments; k++) {
+                    inverseDistances[k] = sumOfDistances - lineDistances[k];
+                    inverseSum += inverseDistances[k];
+                }
+
+                state->pan = 0;
+                for (k = 0; k < line->numSegments; k++) {
+                    state->pan += (f32) inverseDistances[k] / (f32) inverseSum * (f32) linePans[k];
+                }
+            }
+
+            if (minDist < 400) {
+                state->pan = (state->pan - 64) * (minDist / 400.0f) + 64;
+            }
+        }
+    }
+
+    return volume;
+}
+
+/**
+ * Plays, updates or stops a sound audio line at the given volume, never quieter than its maximum volume.
+ */
+static void audspat_update_sound_line(AudioLine *line, s32 volume, SpatialUpdateState *state) {
+    f32 pitch;
+
+    if (volume < line->maxVolume) {
+        volume = line->maxVolume;
+    }
+
+    if (volume > MIN_VOLUME_THRESHOLD) {
+        pitch = line->pitch / 100.0f;
+
+        if (line->soundHandle == NULL) {
+            sound_play_direct(line->soundBite, &line->soundHandle);
+        }
+
+        if (line->soundHandle != NULL) {
+            sndp_set_param(line->soundHandle, AL_SNDP_VOL_EVT, volume * 256);
+            sndp_set_param(line->soundHandle, AL_SNDP_PITCH_EVT, *(s32 *) &pitch);
+            if (state->numCameras != 1) {
+                state->pan = PAN_CENTRE;
+            }
+            sndp_set_param(line->soundHandle, AL_SNDP_PAN_EVT, state->pan);
+            sndp_set_priority(line->soundHandle, line->priority);
+        }
+    } else {
+        if (line->soundHandle != NULL) {
+            sndp_stop(line->soundHandle);
+        }
+    }
+}
+
+/**
+ * Updates every valid audio line. Sound lines are played directly; the loudest jingle line
+ * is recorded in the state for audspat_update_jingle.
+ */
+static void audspat_update_lines(SpatialUpdateState *state) {
+    s32 i;
+    s32 volume;
+
+    for (i = 0; i < MAX_AUDIO_LINES; i++) {
+        AudioLine *line = &gAudioLines[i];
+
+        if (line->soundBite != SOUND_NONE && audspat_line_validate(i)) {
+            volume = audspat_line_volume_and_pan(line, state);
+
+            if (line->type == AUDIO_LINE_TYPE_SOUND) {
+                audspat_update_sound_line(line, volume, state);
+            } else if (line->type == AUDIO_LINE_TYPE_JINGLE && volume > state->jingleVolume) {
+                state->jingleVolume = volume;
+                state->jinglePan = state->pan;
+                state->jingleSound = line->soundBite;
+            }
+        }
+    }
+}
+
+/**
+ * Plays the loudest jingle line found this frame, or stops the jingle when none is loud enough
+ * or jingles are switched off.
+ */
+static void audspat_update_jingle(SpatialUpdateState *state) {
+    if (state->jingleVolume > MIN_VOLUME_THRESHOLD && !gJinglesOff) {
+        if (music_jingle_current() != state->jingleSound) {
+            music_jingle_play_safe(state->jingleSound);
+        }
+        music_jingle_volume_set(state->jingleVolume);
+        music_jingle_pan_set(state->jinglePan);
+    } else {
+        music_jingle_stop();
+    }
+}
+
+/**
  * Updates the parameters for audio points and lines, and invokes the handler for vehicle sounds.
  * Official Name: amPlayAudioMap
  */
 void audspat_update_all(Object **objList, s32 numObjects, s32 updateRate) {
     s32 viewportLayout;
     s32 i;
-    s32 j;
-    s32 k;
-    s32 volume;
-    s32 pan;
-    s32 jingleVolume;
-    s32 jinglePan;
-    s32 jingleSound;
-    f32 dx, dy, dz;
-    s32 distance;
     AudioPoint *audioPoint;
-    f32 outX;
-    f32 outY;
-    f32 outZ;
-    s32 minDist;
-    s32 adjustedVolume;
-    s32 lineDistances[29];
-    s32 pan2;
-    s32 inverseSum;
-    s32 linePans[29];
-    s32 inverseDistances[29];
-    s32 sumOfDistances;
-    s32 numCameras;
-    Camera *cameras;
-    f32 pitch1;
-    f32 temp;
-    f32 minDistance;
-    f32 *coords;
-    f32 pitch2;
-    s32 unused;
-    f32 pitch3;
+    SpatialUpdateState state;
 
-    jingleVolume = 0;
+    state.jingleVolume = 0;
     viewportLayout = cam_get_viewport_layout();
-    numCameras = cam_set_layout(viewportLayout);
-    cameras = cam_get_cameras();
+    state.numCameras = cam_set_layout(viewportLayout);
+    state.cameras = cam_get_cameras();
 
     // Update audio points
     for (i = 0; i < gNumAudioPoints; i++) {
         audioPoint = gAudioPoints[i];
-        volume = 0;
 
         if (audioPoint->flags & AUDIO_POINT_FLAG_SINGLE_PLAYER) {
-            if (numCameras == 1) {
-                dx = audioPoint->pos.x - cameras[0].trans.x_position;
-                dy = audioPoint->pos.y - cameras[0].trans.y_position;
-                dz = audioPoint->pos.z - cameras[0].trans.z_position;
-                distance = sqrtf(dx * dx + dy * dy + dz * dz);
-                if (distance < audioPoint->range && !audioPoint->inRange) {
-                    if (audioPoint->soundHandle == NULL &&
-                        (!audioPoint->triggeredOnce || !(audioPoint->flags & AUDIO_POINT_FLAG_ONE_TIME_TRIGGER))) {
-                        sound_play_direct(audioPoint->soundBite, &audioPoint->soundHandle);
-                        audioPoint->triggeredOnce = TRUE;
-                    }
-
-                    if (audioPoint->soundHandle != NULL) {
-                        pitch1 = audioPoint->pitch / 100.0f;
-                        sndp_set_param(audioPoint->soundHandle, AL_SNDP_VOL_EVT, audioPoint->volume * 256);
-                        sndp_set_param(audioPoint->soundHandle, AL_SNDP_PITCH_EVT, *(s32 *) &pitch1);
-                        pan2 = audspat_calculate_spatial_pan(dx, dz, cameras[0].trans.rotation.y_rotation);
-                        // This can never be true
-                        if (numCameras != 1) {
-                            pan2 = 64;
-                        }
-                        sndp_set_param(audioPoint->soundHandle, AL_SNDP_PAN_EVT, pan2);
-                        audspat_calculate_echo(audioPoint->soundHandle, audioPoint->pos.x, audioPoint->pos.y,
-                                               audioPoint->pos.z);
-                        sndp_set_priority(audioPoint->soundHandle, audioPoint->priority);
-                    }
-
-                    audioPoint->inRange = TRUE;
-                } else if (distance > audioPoint->range && audioPoint->inRange) {
-                    audioPoint->inRange = FALSE;
-                }
-            }
+            audspat_update_point_single_player(audioPoint, &state);
         } else {
-            // Calculate volume and pan for all cameras and find the max volume
-            for (j = 0; j < numCameras; j++) {
-                dx = audioPoint->pos.x - cameras[j].trans.x_position;
-                dy = audioPoint->pos.y - cameras[j].trans.y_position;
-                dz = audioPoint->pos.z - cameras[j].trans.z_position;
-                distance = sqrtf(dx * dx + dy * dy + dz * dz);
-                if (distance < audioPoint->range) {
-                    if (!audioPoint->fastFalloff) {
-                        adjustedVolume = (1.0f - (f32) distance / (f32) audioPoint->range) * audioPoint->volume;
-                    } else {
-                        temp = (f32) (audioPoint->range - distance) / (f32) audioPoint->range;
-                        adjustedVolume = temp * temp * audioPoint->volume;
-                    }
-
-                    if (volume < adjustedVolume) {
-                        volume = adjustedVolume;
-                        pan = audspat_calculate_spatial_pan(dx, dz, cameras[j].trans.rotation.y_rotation);
-                    }
-                }
-            }
-
-            // If all cameras are far enough then set volume to minVolume
-            // and calculate pan based on the closest camera
-            if (volume < audioPoint->minVolume) {
-                minDistance = 999999.0f;
-
-                for (j = 0; j < numCameras; j++) {
-                    dx = audioPoint->pos.x - cameras[j].trans.x_position;
-                    dy = audioPoint->pos.y - cameras[j].trans.y_position;
-                    dz = audioPoint->pos.z - cameras[j].trans.z_position;
-                    distance = sqrtf(dx * dx + dy * dy + dz * dz);
-                    if (distance < minDistance) {
-                        pan = audspat_calculate_spatial_pan(dx, dz, cameras[j].trans.rotation.y_rotation);
-                        minDistance = distance;
-                    }
-                }
-
-                volume = audioPoint->minVolume;
-            }
-
-            if (volume > MIN_VOLUME_THRESHOLD) {
-                if (audioPoint->soundHandle == NULL &&
-                    (!audioPoint->triggeredOnce || !(audioPoint->flags & AUDIO_POINT_FLAG_ONE_TIME_TRIGGER))) {
-                    sound_play_direct(audioPoint->soundBite, &audioPoint->soundHandle);
-                    audioPoint->triggeredOnce = TRUE;
-                }
-
-                if (audioPoint->soundHandle != NULL) {
-                    pitch2 = audioPoint->pitch / 100.0f;
-                    sndp_set_param(audioPoint->soundHandle, AL_SNDP_VOL_EVT, volume * 256);
-                    sndp_set_param(audioPoint->soundHandle, AL_SNDP_PITCH_EVT, *(s32 *) &pitch2);
-                    if (numCameras != 1) {
-                        pan = 64;
-                    }
-                    sndp_set_param(audioPoint->soundHandle, AL_SNDP_PAN_EVT, pan);
-                    sndp_set_priority(audioPoint->soundHandle, audioPoint->priority);
-                    audspat_calculate_echo(audioPoint->soundHandle, audioPoint->pos.x, audioPoint->pos.y,
-                                           audioPoint->pos.z);
-                }
-            } else {
-                if (audioPoint->soundHandle != NULL) {
-                    sndp_stop(audioPoint->soundHandle);
-                } else {
-                    audioPoint->triggeredOnce = TRUE;
-                }
-            }
-
-            if ((audioPoint->flags & AUDIO_POINT_FLAG_ONE_TIME_TRIGGER) && audioPoint->triggeredOnce &&
-                audioPoint->soundHandle == NULL) {
-                audspat_point_stop_by_index(i);
-            }
+            audspat_update_point(audioPoint, i, &state);
         }
     }
 
-    // Update audio lines
-    for (i = 0; i < MAX_AUDIO_LINES; i++) {
-        AudioLine *line = &gAudioLines[i];
-
-        if (line->soundBite != SOUND_NONE && audspat_line_validate(i)) {
-            volume = 0;
-
-            for (j = 0; j < numCameras; j++) {
-                coords = line->coords;
-                sumOfDistances = 0;
-                minDist = line->range;
-                for (k = 0; k < line->numSegments; k++) {
-                    lineDistances[k] =
-                        audspat_distance_to_segment(cameras[j].trans.x_position, cameras[j].trans.y_position,
-                                                    cameras[j].trans.z_position, coords, &outX, &outY, &outZ);
-                    linePans[k] = audspat_calculate_spatial_pan(outX - cameras[j].trans.x_position,
-                                                                outZ - cameras[j].trans.z_position,
-                                                                cameras[j].trans.rotation.y_rotation);
-                    if (minDist > lineDistances[k]) {
-                        minDist = lineDistances[k];
-                    }
-                    coords += 3;
-                    sumOfDistances += lineDistances[k];
-                }
-
-                if (!line->fastFalloff) {
-                    adjustedVolume = (1.0f - (f32) minDist / (f32) line->range) * line->volume;
-                } else {
-                    temp = (f32) (line->range - minDist) / (f32) line->range;
-                    adjustedVolume = temp * temp * line->volume;
-                }
-
-                if (volume <= adjustedVolume) {
-                    volume = adjustedVolume;
-
-                    if (line->numSegments == 1) {
-                        pan = linePans[0];
-                    } else {
-                        inverseSum = 0;
-                        for (k = 0; k < line->numSegments; k++) {
-                            inverseDistances[k] = sumOfDistances - lineDistances[k];
-                            inverseSum += inverseDistances[k];
-                        }
-
-                        pan = 0;
-                        for (k = 0; k < line->numSegments; k++) {
-                            pan += (f32) inverseDistances[k] / (f32) inverseSum * (f32) linePans[k];
-                        }
-                    }
-
-                    if (minDist < 400) {
-                        pan = (pan - 64) * (minDist / 400.0f) + 64;
-                    }
-                }
-            }
-
-            if (line->type == AUDIO_LINE_TYPE_SOUND) {
-                if (volume < line->maxVolume) {
-                    volume = line->maxVolume;
-                }
-
-                if (volume > MIN_VOLUME_THRESHOLD) {
-                    pitch3 = line->pitch / 100.0f;
-
-                    if (line->soundHandle == NULL) {
-                        sound_play_direct(line->soundBite, &line->soundHandle);
-                    }
-
-                    if (line->soundHandle != NULL) {
-                        sndp_set_param(line->soundHandle, AL_SNDP_VOL_EVT, volume * 256);
-                        sndp_set_param(line->soundHandle, AL_SNDP_PITCH_EVT, *(s32 *) &pitch3);
-                        if (numCameras != 1) {
-                            pan = 64;
-                        }
-                        sndp_set_param(line->soundHandle, AL_SNDP_PAN_EVT, pan);
-                        sndp_set_priority(line->soundHandle, line->priority);
-                    }
-                } else {
-                    if (line->soundHandle != NULL) {
-                        sndp_stop(line->soundHandle);
-                    }
-                }
-            } else if (line->type == AUDIO_LINE_TYPE_JINGLE && volume > jingleVolume) {
-                jingleVolume = volume;
-                jinglePan = pan;
-                jingleSound = line->soundBite;
-            }
-        }
-    }
-
-    // Update jingle parameters
-    if (jingleVolume > MIN_VOLUME_THRESHOLD && !gJinglesOff) {
-        if (music_jingle_current() != jingleSound) {
-            music_jingle_play_safe(jingleSound);
-        }
-        music_jingle_volume_set(jingleVolume);
-        music_jingle_pan_set(jinglePan);
-    } else {
-        music_jingle_stop();
-    }
+    audspat_update_lines(&state);
+    audspat_update_jingle(&state);
 
     // Update vehicle sounds
     if (numObjects != 0) {
-        racer_sound_update_all(objList, numObjects, cameras, numCameras, updateRate);
+        racer_sound_update_all(objList, numObjects, state.cameras, state.numCameras, updateRate);
     }
 }
 
@@ -586,15 +664,16 @@ void audspat_point_create(u16 soundBite, f32 x, f32 y, f32 z, u8 flags, u8 minVo
  * The first vertex defines the sound ID and other properties.
  * Official Name: amAudioLineAddVertex
  */
-void audspat_line_add_vertex(u8 type, u16 soundBite, f32 x, f32 y, f32 z, u8 arg5, u8 arg6, u8 arg7, u8 priority,
-                             u16 arg9, u8 argA, u8 lineID, u8 vertexIndex) {
+void audspat_line_add_vertex(u8 type, u16 soundBite, f32 x, f32 y, f32 z, u8 maxVolume, u8 volume, u8 pitch,
+                             u8 priority, u16 range, u8 fastFalloff, u8 lineID, u8 vertexIndex) {
     AudioLine *line;
     f32 *coords;
 
     if (lineID >= MAX_AUDIO_LINES) {
         stubbed_printf("amAudioLineAddVertex: Exceeded maximum number of lines (%d)\n", MAX_AUDIO_LINES);
-    } else if (vertexIndex >= 30) {
-        stubbed_printf("amAudioLineAddVertex: Exceeded maximum number of line vertices (%d)\n", 30);
+    } else if (vertexIndex >= AUDIO_LINE_MAX_VERTICES) {
+        stubbed_printf("amAudioLineAddVertex: Exceeded maximum number of line vertices (%d)\n",
+                       AUDIO_LINE_MAX_VERTICES);
     } else {
         line = &gAudioLines[lineID];
         coords = &line->coords[vertexIndex * 3];
@@ -604,11 +683,11 @@ void audspat_line_add_vertex(u8 type, u16 soundBite, f32 x, f32 y, f32 z, u8 arg
         if (vertexIndex == 0) {
             line->soundBite = soundBite;
             line->type = type;
-            line->range = arg9;
-            line->fastFalloff = argA;
-            line->volume = arg6;
-            line->maxVolume = arg5;
-            line->pitch = arg7;
+            line->range = range;
+            line->fastFalloff = fastFalloff;
+            line->volume = volume;
+            line->maxVolume = maxVolume;
+            line->pitch = pitch;
             line->priority = priority;
         }
         if (line->numSegments < vertexIndex) {
@@ -627,8 +706,9 @@ void audspat_reverb_add_vertex(f32 x, f32 y, f32 z, u8 reverbAmount, u8 lineID, 
     ReverbLine *line;
     if (lineID >= MAX_AUDIO_LINES) {
         stubbed_printf("amReverbLineAddVertex: Exceeded maximum number of lines (%d)\n", MAX_AUDIO_LINES);
-    } else if (vertexIndex >= 15) {
-        stubbed_printf("amReverbLineAddVertex: Exceeded maximum number of line vertices (%d)\n", 15);
+    } else if (vertexIndex >= REVERB_LINE_MAX_VERTICES) {
+        stubbed_printf("amReverbLineAddVertex: Exceeded maximum number of line vertices (%d)\n",
+                       REVERB_LINE_MAX_VERTICES);
     } else {
         line = &gReverbLines[lineID];
         line->coords[3 * vertexIndex + 0] = x;
@@ -821,6 +901,7 @@ u8 audspat_reverb_get_strength_at_point(ReverbLine *line, f32 x, f32 y, f32 z) {
                 projection = 0.0f;
             }
 
+            // ABS here is the original's integer abs on a float; kept as is, changing it would change behaviour.
             if (ABS(dy * projection + y1 - y) < 2.0f && ABS(dz * projection + z1 - z) < 2.0f) {
                 segmentFound = TRUE;
                 distanceAlong += projection * segmentLength;
@@ -903,9 +984,9 @@ void audspat_point_stop_by_index(s32 index) {
  * Allows use of a colour, that interpolates from bright to dark from the beginning to the end of the line.
  */
 void audspat_debug_render_line(Gfx **dList, Vertex **verts, Triangle **tris, f32 coords[6], u8 red, u8 green, u8 blue) {
-    Gfx *temp_dlist;
-    Vertex *temp_verts;
-    Triangle *temp_tris;
+    Gfx *dlist;
+    Vertex *vertsOut;
+    Triangle *trisOut;
     s16 x1;
     s16 y1;
     s16 z1;
@@ -919,66 +1000,66 @@ void audspat_debug_render_line(Gfx **dList, Vertex **verts, Triangle **tris, f32
     x2 = coords[3];
     y2 = coords[4];
     z2 = coords[5];
-    temp_dlist = *dList;
+    dlist = *dList;
 
-    temp_verts = *verts;
-    temp_tris = *tris;
-    material_set_no_tex_offset(&temp_dlist, NULL, RENDER_NONE);
-    gSPVertexDKR(temp_dlist++, OS_K0_TO_PHYSICAL(temp_verts), 4, 0);
-    gSPPolygon(temp_dlist++, OS_K0_TO_PHYSICAL(temp_tris), 2, 0);
-    temp_verts[0].x = x1;
-    temp_verts[0].y = (y1 + 5);
-    temp_verts[0].z = z1;
-    temp_verts[0].r = red;
-    temp_verts[0].g = green;
-    temp_verts[0].b = blue;
-    temp_verts[0].a = 255;
-    temp_verts[1].x = x1;
-    temp_verts[1].y = (y1 - 5);
-    temp_verts[1].z = z1;
-    temp_verts[1].r = red;
-    temp_verts[1].g = green;
-    temp_verts[1].b = blue;
-    temp_verts[1].a = 255;
-    temp_verts[2].x = x2;
-    temp_verts[2].y = (y2 + 5);
-    temp_verts[2].z = z2;
-    temp_verts[2].r = 255;
-    temp_verts[2].g = 255;
-    temp_verts[2].b = 255;
-    temp_verts[2].a = 255;
-    temp_verts[3].x = x2;
-    temp_verts[3].y = (y2 - 5);
-    temp_verts[3].z = z2;
-    temp_verts[3].r = 255;
-    temp_verts[3].g = 255;
-    temp_verts[3].b = 255;
-    temp_verts[3].a = 255;
-    temp_verts += 4;
+    vertsOut = *verts;
+    trisOut = *tris;
+    material_set_no_tex_offset(&dlist, NULL, RENDER_NONE);
+    gSPVertexDKR(dlist++, OS_K0_TO_PHYSICAL(vertsOut), 4, 0);
+    gSPPolygon(dlist++, OS_K0_TO_PHYSICAL(trisOut), 2, 0);
+    vertsOut[0].x = x1;
+    vertsOut[0].y = (y1 + 5);
+    vertsOut[0].z = z1;
+    vertsOut[0].r = red;
+    vertsOut[0].g = green;
+    vertsOut[0].b = blue;
+    vertsOut[0].a = 255;
+    vertsOut[1].x = x1;
+    vertsOut[1].y = (y1 - 5);
+    vertsOut[1].z = z1;
+    vertsOut[1].r = red;
+    vertsOut[1].g = green;
+    vertsOut[1].b = blue;
+    vertsOut[1].a = 255;
+    vertsOut[2].x = x2;
+    vertsOut[2].y = (y2 + 5);
+    vertsOut[2].z = z2;
+    vertsOut[2].r = 255;
+    vertsOut[2].g = 255;
+    vertsOut[2].b = 255;
+    vertsOut[2].a = 255;
+    vertsOut[3].x = x2;
+    vertsOut[3].y = (y2 - 5);
+    vertsOut[3].z = z2;
+    vertsOut[3].r = 255;
+    vertsOut[3].g = 255;
+    vertsOut[3].b = 255;
+    vertsOut[3].a = 255;
+    vertsOut += 4;
 
-    temp_tris[0].flags = BACKFACE_DRAW;
-    temp_tris[0].vi0 = 2;
-    temp_tris[0].vi1 = 1;
-    temp_tris[0].vi2 = 0;
-    temp_tris[0].uv0.u = 1024 - 32;
-    temp_tris[0].uv0.v = 1024 - 32;
-    temp_tris[0].uv1.u = 1024 - 32;
-    temp_tris[0].uv1.v = 0;
-    temp_tris[0].uv2.u = 1;
-    temp_tris[0].uv2.v = 0;
-    temp_tris[1].flags = BACKFACE_DRAW;
-    temp_tris[1].vi0 = 3;
-    temp_tris[1].vi1 = 2;
-    temp_tris[1].vi2 = 1;
-    temp_tris[1].uv0.u = 1;
-    temp_tris[1].uv0.v = 1024 - 32;
-    temp_tris[1].uv1.u = 1024 - 32;
-    temp_tris[1].uv1.v = 1024 - 32;
-    temp_tris[1].uv2.u = 1;
-    temp_tris[1].uv2.v = 0;
-    temp_tris += 2;
+    trisOut[0].flags = BACKFACE_DRAW;
+    trisOut[0].vi0 = 2;
+    trisOut[0].vi1 = 1;
+    trisOut[0].vi2 = 0;
+    trisOut[0].uv0.u = 1024 - 32;
+    trisOut[0].uv0.v = 1024 - 32;
+    trisOut[0].uv1.u = 1024 - 32;
+    trisOut[0].uv1.v = 0;
+    trisOut[0].uv2.u = 1;
+    trisOut[0].uv2.v = 0;
+    trisOut[1].flags = BACKFACE_DRAW;
+    trisOut[1].vi0 = 3;
+    trisOut[1].vi1 = 2;
+    trisOut[1].vi2 = 1;
+    trisOut[1].uv0.u = 1;
+    trisOut[1].uv0.v = 1024 - 32;
+    trisOut[1].uv1.u = 1024 - 32;
+    trisOut[1].uv1.v = 1024 - 32;
+    trisOut[1].uv2.u = 1;
+    trisOut[1].uv2.v = 0;
+    trisOut += 2;
 
-    *dList = temp_dlist;
-    *verts = temp_verts;
-    *tris = temp_tris;
+    *dList = dlist;
+    *verts = vertsOut;
+    *tris = trisOut;
 }

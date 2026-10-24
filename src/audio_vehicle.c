@@ -27,6 +27,11 @@ extern void pc_trace_event(const char *fmt, ...);
 #define log dkr_log
 f32 log(f32 x);
 
+#define SOUND_BITE_BRAKE 25 // Sound bank entry played directly for the brake screech
+#define ENGINE_SOUND_PRIORITY 80
+#define BACKGROUND_ENGINE_SOUND_PRIORITY 70
+#define BACKGROUND_SOUND_SWAP_DELAY 60 // Frames before the background sound slots may change again
+
 /************ .data ************/
 
 u8 gVehicleSounds = TRUE;
@@ -48,7 +53,6 @@ Object_Racer *gSoundRacerObj;
  * Sets the initial pitch and volume values for the engine sound.
  */
 VehicleSoundData *racer_sound_init(s32 characterId, s32 vehicleId) {
-    s32 unused[2];
     s32 i;
     u8 *ptr;
     VehicleSoundData *soundData;
@@ -58,7 +62,7 @@ VehicleSoundData *racer_sound_init(s32 characterId, s32 vehicleId) {
     s32 assetOffset;
     u16 j;
     f32 interpFrac;
-    u16 v1;
+    u16 pitchLevel;
 
     static s32 resetAmbient = TRUE;
 
@@ -139,12 +143,12 @@ VehicleSoundData *racer_sound_init(s32 characterId, s32 vehicleId) {
         soundData->basePitch[1] = soundData->pitchLevels[1][0] / 10000.0f;
     } else {
         soundData->basePitch[0] = soundData->planeHovercraftBasePitch;
-        v1 = soundData->basePitch[0] * 10000.0f;
+        pitchLevel = soundData->basePitch[0] * 10000.0f;
 
-        for (j = 0; v1 >= soundData->pitchLevels[0][j] && j < 4; j++) {}
+        for (j = 0; pitchLevel >= soundData->pitchLevels[0][j] && j < 4; j++) {}
         j--;
 
-        interpFrac = (f32) (v1 - soundData->pitchLevels[0][j]) /
+        interpFrac = (f32) (pitchLevel - soundData->pitchLevels[0][j]) /
                      (soundData->pitchLevels[0][j + 1] - soundData->pitchLevels[0][j]);
         soundData->baseVolume[0] = soundData->volumeLevels[0][j] +
                                    (soundData->volumeLevels[0][j + 1] - soundData->volumeLevels[0][j]) * interpFrac;
@@ -197,25 +201,12 @@ void racer_sound_update(Object *obj, u32 buttonsPressed, u32 buttonsHeld, s32 ti
 }
 
 /**
- * Calculates car engine sound pitch and volume, as well as the brake sound pitch and volume.
- * Engine sound depends on speed, number of bananas collected, acceleration button state, drifting, and whether the car
- * is airborne.
+ * Converts the car's speed to an engine intensity from 5 to 100, with 16 being maximum speed.
+ * Wheelspin counts as a speed of 12.
  */
-void racer_sound_car(Object *obj, u32 buttonsPressed, u32 buttonsHeld, s32 ticksDelta) {
-    f32 interpFrac;
-    f32 pitch1;
-    f32 pitch2;
-    u8 targetVolume;
+static s32 racer_sound_car_intensity(void) {
     f32 speed;
     s32 intensity;
-    s32 j;
-    f32 absVelocity;
-    s32 i;
-    f32 deltaVolume;
-    f32 deltaPitch;
-    f32 targetPitch;
-    f32 brakePitch;
-    s32 bananas;
 
     if (gSoundRacerObj->wheelspinTimer != 0) {
         speed = 12.0f;
@@ -232,118 +223,144 @@ void racer_sound_car(Object *obj, u32 buttonsPressed, u32 buttonsHeld, s32 ticks
     if (intensity > 100) {
         intensity = 100;
     }
+    return intensity;
+}
 
-    // Only process the main engine sound; the secondary sound uses fixed pitch and volume
-    for (i = 0; i < 1; i++) {
-        if ((gRacerSound->soundId[i]) != 0) {
-            // Calculate volume by interpolating between control points based on intensity
-            j = 0;
-            while ((intensity < gRacerSound->intensityLevelsForVolume[i][j] ||
-                    intensity > gRacerSound->intensityLevelsForVolume[i][j + 1]) &&
-                   j < 4) {
-                j++;
+/**
+ * Finds the target volume and pitch of engine sound i for the given intensity,
+ * then applies the banana, drift and airborne pitch modifiers.
+ */
+static void racer_sound_car_engine_targets(s32 i, s32 intensity, u8 *targetVolume, f32 *targetPitch) {
+    f32 interpFrac;
+    f32 lowerPitch;
+    f32 upperPitch;
+    s32 j;
+    s32 bananas;
+
+    // Calculate volume by interpolating between control points based on intensity
+    j = 0;
+    while ((intensity < gRacerSound->intensityLevelsForVolume[i][j] ||
+            intensity > gRacerSound->intensityLevelsForVolume[i][j + 1]) &&
+           j < 4) {
+        j++;
+    }
+    interpFrac =
+        (intensity - gRacerSound->intensityLevelsForVolume[i][j]) /
+        ((f32) (gRacerSound->intensityLevelsForVolume[i][j + 1] - gRacerSound->intensityLevelsForVolume[i][j]));
+    *targetVolume = gRacerSound->volumeLevels[i][j] +
+                    (gRacerSound->volumeLevels[i][j + 1] - gRacerSound->volumeLevels[i][j]) * interpFrac;
+
+    // Calculate base pitch similarly by interpolating between control points
+    j = 0;
+    while ((intensity < gRacerSound->intensityLevelsForPitch[i][j] ||
+            intensity > gRacerSound->intensityLevelsForPitch[i][j + 1]) &&
+           j < 4) {
+        j++;
+    }
+
+    interpFrac = (intensity - gRacerSound->intensityLevelsForPitch[i][j]) /
+                 ((f32) (gRacerSound->intensityLevelsForPitch[i][j + 1] - gRacerSound->intensityLevelsForPitch[i][j]));
+    lowerPitch = gRacerSound->pitchLevels[i][j] / 10000.0f;
+    upperPitch = gRacerSound->pitchLevels[i][j + 1] / 10000.0f;
+
+    // Apply pitch modifiers
+
+    // Each banana adds 0.05 to the pitch (up to 0.5), with smooth transitions,
+    // but only if engine intensity is above 50%. Below 50%, this bonus fades out smoothly.
+    if (intensity > 50 && gSoundRacerObj->bananas != 0) {
+        if (gSoundRacerObj->bananas <= 10) {
+            bananas = gSoundRacerObj->bananas;
+        } else {
+            bananas = 10;
+        }
+        if (gRacerSound->bananaPitch < 0.05 * bananas) {
+            gRacerSound->bananaPitch += (0.05 * bananas) / (bananas * 64);
+        } else if (gRacerSound->bananaPitch > 0.05 * bananas) {
+            gRacerSound->bananaPitch = 0.05 * bananas;
+        }
+        *targetPitch = ((upperPitch - lowerPitch) * interpFrac) + lowerPitch + gRacerSound->bananaPitch;
+    } else {
+        gRacerSound->bananaPitch *= 0.95;
+        *targetPitch = ((upperPitch - lowerPitch) * interpFrac) + lowerPitch + gRacerSound->bananaPitch;
+    }
+
+    // Add 0.13 pitch boost when drifting, with smooth increase and fast decay when drifting stops
+    if (gSoundRacerObj->drift_direction != 0) {
+        gRacerSound->driftPitch += (0.13 - gRacerSound->driftPitch) / 8;
+    } else {
+        gRacerSound->driftPitch /= 4;
+    }
+    *targetPitch += gRacerSound->driftPitch;
+
+    // Add instant 0.3 pitch boost when the car is in the air (not grounded), but only for player cars
+    if (gSoundRacerObj->groundedWheels == 0 && (gSoundRacerObj->playerIndex != PLAYER_COMPUTER)) {
+        *targetPitch += 0.3;
+    }
+}
+
+/**
+ * Moves engine sound i halfway towards its target pitch and volume, with jitter for player cars,
+ * and ramps the throttle pitch boost up or down with the A button.
+ */
+static void racer_sound_car_engine_smooth(s32 i, u8 targetVolume, f32 targetPitch, u32 buttonsHeld, s32 ticksDelta) {
+    f32 deltaVolume;
+    f32 deltaPitch;
+
+    // Smooth pitch and volume changes over two frames to allow jitter effects
+    deltaPitch = (targetPitch - gRacerSound->basePitch[i]) / 2;
+    deltaVolume = (targetVolume - gRacerSound->baseVolume[i]) / 2;
+
+    // Add engine jitter effect for player cars to simulate engine vibration
+    // Max pitch variation ±0.02, volume variation ±5
+    if (gSoundRacerObj->playerIndex != PLAYER_COMPUTER) {
+        if (rand_range(0, 10) < 7) {
+            gRacerSound->engineJitter += rand_range(0, 10) - 5;
+            if (gRacerSound->engineJitter > 5) {
+                gRacerSound->engineJitter = 5;
+            } else if (gRacerSound->engineJitter < -5) {
+                gRacerSound->engineJitter = -5;
             }
-            interpFrac =
-                (intensity - gRacerSound->intensityLevelsForVolume[i][j]) /
-                ((f32) (gRacerSound->intensityLevelsForVolume[i][j + 1] - gRacerSound->intensityLevelsForVolume[i][j]));
-            targetVolume = gRacerSound->volumeLevels[i][j] +
-                           (gRacerSound->volumeLevels[i][j + 1] - gRacerSound->volumeLevels[i][j]) * interpFrac;
+        }
+        deltaPitch += 0.02 * (gRacerSound->engineJitter / 5.0f);
+        deltaVolume += 5.0f * (gRacerSound->engineJitter / 5.0f);
+    }
 
-            // Calculate base pitch similarly by interpolating between control points
-            j = 0;
-            while ((intensity < gRacerSound->intensityLevelsForPitch[i][j] ||
-                    intensity > gRacerSound->intensityLevelsForPitch[i][j + 1]) &&
-                   j < 4) {
-                j++;
-            }
-
-            interpFrac =
-                (intensity - gRacerSound->intensityLevelsForPitch[i][j]) /
-                ((f32) (gRacerSound->intensityLevelsForPitch[i][j + 1] - gRacerSound->intensityLevelsForPitch[i][j]));
-            pitch1 = gRacerSound->pitchLevels[i][j] / 10000.0f;
-            pitch2 = gRacerSound->pitchLevels[i][j + 1] / 10000.0f;
-
-            // Apply pitch modifiers
-
-            // Each banana adds 0.05 to the pitch (up to 0.5), with smooth transitions,
-            // but only if engine intensity is above 50%. Below 50%, this bonus fades out smoothly.
-            if (intensity > 50 && gSoundRacerObj->bananas != 0) {
-                if (gSoundRacerObj->bananas <= 10) {
-                    bananas = gSoundRacerObj->bananas;
-                } else {
-                    bananas = 10;
-                }
-                if (gRacerSound->bananaPitch < 0.05 * bananas) {
-                    gRacerSound->bananaPitch += (0.05 * bananas) / (bananas * 64);
-                } else if (gRacerSound->bananaPitch > 0.05 * bananas) {
-                    gRacerSound->bananaPitch = 0.05 * bananas;
-                }
-                targetPitch = ((pitch2 - pitch1) * interpFrac) + pitch1 + gRacerSound->bananaPitch;
-            } else {
-                gRacerSound->bananaPitch *= 0.95;
-                targetPitch = ((pitch2 - pitch1) * interpFrac) + pitch1 + gRacerSound->bananaPitch;
-            }
-
-            // Add 0.13 pitch boost when drifting, with smooth increase and fast decay when drifting stops
-            if (gSoundRacerObj->drift_direction != 0) {
-                gRacerSound->driftPitch += (0.13 - gRacerSound->driftPitch) / 8;
-            } else {
-                gRacerSound->driftPitch /= 4;
-            }
-            targetPitch += gRacerSound->driftPitch;
-
-            // Add instant 0.3 pitch boost when the car is in the air (not grounded), but only for player cars
-            if (gSoundRacerObj->groundedWheels == 0 && (gSoundRacerObj->playerIndex != PLAYER_COMPUTER)) {
-                targetPitch += 0.3;
-            }
-
-            // Smooth pitch and volume changes over two frames to allow jitter effects
-            deltaPitch = (targetPitch - gRacerSound->basePitch[i]) / 2;
-            deltaVolume = (targetVolume - gRacerSound->baseVolume[i]) / 2;
-
-            // Add engine jitter effect for player cars to simulate engine vibration
-            // Max pitch variation ±0.02, volume variation ±5
-            if (gSoundRacerObj->playerIndex != PLAYER_COMPUTER) {
-                if (rand_range(0, 10) < 7) {
-                    gRacerSound->engineJitter += rand_range(0, 10) - 5;
-                    if (gRacerSound->engineJitter > 5) {
-                        gRacerSound->engineJitter = 5;
-                    } else if (gRacerSound->engineJitter < -5) {
-                        gRacerSound->engineJitter = -5;
-                    }
-                }
-                deltaPitch += 0.02 * (gRacerSound->engineJitter / 5.0f);
-                deltaVolume += 5.0f * (gRacerSound->engineJitter / 5.0f);
-            }
-
-            // While acceleration button is held, gradually increase pitch boost up to 0.4 (by 0.01 per frame)
-            if ((buttonsHeld & A_BUTTON) && gRacerSound->enginePitch < 0.4) {
-                gRacerSound->enginePitch += ((f32) ticksDelta * 0.01);
-                if (gRacerSound->enginePitch > 0.4) {
-                    gRacerSound->enginePitch = 0.4f;
-                }
-            }
-
-            // When acceleration is released, decrease pitch boost smoothly (by 0.005 per frame)
-            if (!(buttonsHeld & A_BUTTON) && (gRacerSound->enginePitch > 0.0f)) {
-                gRacerSound->enginePitch -= ((f32) ticksDelta * 0.005);
-                if (gRacerSound->enginePitch < 0.0f) {
-                    gRacerSound->enginePitch = 0.0f;
-                }
-            }
-            gRacerSound->basePitch[i] += deltaPitch;
-            if (buttonsHeld & A_BUTTON) {
-                gRacerSound->baseVolume[i] += deltaVolume;
-            } else {
-                // When acceleration isn't pressed, volume stays fixed at 35 regardless of speed
-                gRacerSound->baseVolume[i] = 35.0f;
-            }
+    // While acceleration button is held, gradually increase pitch boost up to 0.4 (by 0.01 per frame)
+    if ((buttonsHeld & A_BUTTON) && gRacerSound->enginePitch < 0.4) {
+        gRacerSound->enginePitch += ((f32) ticksDelta * 0.01);
+        if (gRacerSound->enginePitch > 0.4) {
+            gRacerSound->enginePitch = 0.4f;
         }
     }
 
+    // When acceleration is released, decrease pitch boost smoothly (by 0.005 per frame)
+    if (!(buttonsHeld & A_BUTTON) && (gRacerSound->enginePitch > 0.0f)) {
+        gRacerSound->enginePitch -= ((f32) ticksDelta * 0.005);
+        if (gRacerSound->enginePitch < 0.0f) {
+            gRacerSound->enginePitch = 0.0f;
+        }
+    }
+    gRacerSound->basePitch[i] += deltaPitch;
+    if (buttonsHeld & A_BUTTON) {
+        gRacerSound->baseVolume[i] += deltaVolume;
+    } else {
+        // When acceleration isn't pressed, volume stays fixed at 35 regardless of speed
+        gRacerSound->baseVolume[i] = 35.0f;
+    }
+}
+
+/**
+ * Starts the brake sound when B is pressed while moving forward, stops it when braking ends,
+ * and mutes it after the car has been airborne for 10 frames.
+ */
+static void racer_sound_car_brake(Object *obj, u32 buttonsPressed, u32 buttonsHeld, s32 ticksDelta) {
+    f32 absVelocity;
+    f32 brakePitch;
+
     // Start or stop the brake sound based on conditions
-    if ((gSoundRacerObj->slideSoundHandle != NULL || gSoundRacerObj->unusedSoundHandle14 != NULL || !(buttonsHeld & B_BUTTON) ||
-         gSoundRacerObj->velocity > -0.1 || gSoundRacerObj->vehicleID == VEHICLE_LOOPDELOOP) &&
+    if ((gSoundRacerObj->slideSoundHandle != NULL || gSoundRacerObj->unusedSoundHandle14 != NULL ||
+         !(buttonsHeld & B_BUTTON) || gSoundRacerObj->velocity > -0.1 ||
+         gSoundRacerObj->vehicleID == VEHICLE_LOOPDELOOP) &&
         gRacerSound->brakeSound != NULL) {
         sndp_stop(gRacerSound->brakeSound);
         gRacerSound->brakeSound = NULL;
@@ -356,7 +373,7 @@ void racer_sound_car(Object *obj, u32 buttonsPressed, u32 buttonsHeld, s32 ticks
         if (absVelocity > 12.0f) {
             absVelocity = 12.0f;
         }
-        sound_play_direct(25, &gRacerSound->brakeSound);
+        sound_play_direct(SOUND_BITE_BRAKE, &gRacerSound->brakeSound);
         // Brake pitch depends on speed, ranges from 0.5 to 1.0
         brakePitch = absVelocity * 0.5 / 12.0 + 0.5;
         if (gRacerSound->brakeSound != NULL) {
@@ -381,6 +398,30 @@ void racer_sound_car(Object *obj, u32 buttonsPressed, u32 buttonsHeld, s32 ticks
                                    obj->trans.z_position);
         }
     }
+}
+
+/**
+ * Calculates car engine sound pitch and volume, as well as the brake sound pitch and volume.
+ * Engine sound depends on speed, number of bananas collected, acceleration button state, drifting, and whether the car
+ * is airborne.
+ */
+void racer_sound_car(Object *obj, u32 buttonsPressed, u32 buttonsHeld, s32 ticksDelta) {
+    u8 targetVolume;
+    s32 intensity;
+    s32 i;
+    f32 targetPitch;
+
+    intensity = racer_sound_car_intensity();
+
+    // Only process the main engine sound; the secondary sound uses fixed pitch and volume
+    for (i = 0; i < 1; i++) {
+        if ((gRacerSound->soundId[i]) != 0) {
+            racer_sound_car_engine_targets(i, intensity, &targetVolume, &targetPitch);
+            racer_sound_car_engine_smooth(i, targetVolume, targetPitch, buttonsHeld, ticksDelta);
+        }
+    }
+
+    racer_sound_car_brake(obj, buttonsPressed, buttonsHeld, ticksDelta);
 
     // Store current engine intensity for later use (e.g. idle sound calculation)
     gRacerSound->engine_intensity = intensity;
@@ -396,7 +437,6 @@ void racer_sound_car(Object *obj, u32 buttonsPressed, u32 buttonsHeld, s32 ticks
  * Those values are calculated in this function.
  */
 void racer_sound_hovercraft(Object *obj, UNUSED u32 buttonsPressed, u32 buttonsHeld, s32 tickDelta) {
-    UNUSED s32 pad;
     f32 speed;
     f32 fracPart;
     u16 pitchLevel;
@@ -522,8 +562,8 @@ void racer_sound_plane(Object *obj, UNUSED u32 buttonsPressed, u32 buttonsHeld, 
     u8 i;
     s32 bananas;
     u8 volume;
-    f32 temp;
-    f32 temp2;
+    f32 pitchAnglePitch;
+    f32 rollAnglePitch;
 
     if (get_race_countdown() == 0) {
         speed = sqrtf((obj->x_velocity * obj->x_velocity) + (obj->z_velocity * obj->z_velocity) +
@@ -577,10 +617,10 @@ void racer_sound_plane(Object *obj, UNUSED u32 buttonsPressed, u32 buttonsHeld, 
     // Add pitch modifiers based on pitch and roll angles of the plane.
     xSine = sins_f(obj->trans.rotation.x_rotation);
     zSine = sins_f(obj->trans.rotation.z_rotation);
-    temp = gRacerSound->pitchAnglePitchScale * xSine;
-    temp2 = gRacerSound->rollAnglePitchScale * zSine;
-    temp2 = ABSF(temp2);
-    targetPitch += temp + temp2;
+    pitchAnglePitch = gRacerSound->pitchAnglePitchScale * xSine;
+    rollAnglePitch = gRacerSound->rollAnglePitchScale * zSine;
+    rollAnglePitch = ABSF(rollAnglePitch);
+    targetPitch += pitchAnglePitch + rollAnglePitch;
 
     // Apply additional pitch if speed exceeds 10.
     if (speed > 10.0) {
@@ -788,160 +828,153 @@ void racer_sound_doppler_effect(Object *observerObj, Camera *camera, Object *sou
 }
 
 /**
- * Updates sound parameters for player-controlled vehicles,
- * as well as AI-controlled vehicles that drive in the background.
+ * Returns the engine volume multiplier for a player's own vehicle (gRacerSound) and sets its pan.
+ * After the race or in a cutscene the vehicle is heard from the camera, fading out by 1500 units;
+ * otherwise it plays at full volume in the centre with no Doppler shift.
  */
-void racer_sound_update_all(Object **racerObjs, s32 numRacers, Camera *cameras, u8 numCameras, s32 tickDelta) {
+static f32 racer_sound_player_volume_mult(Object **racerObjs, Object_Racer *racer, s32 i, Camera *cameras,
+                                          s32 tickDelta) {
     f32 deltaX;
     f32 deltaY;
     f32 deltaZ;
-    Object_Racer *racer;
-    f32 idle_intensity;
-    s32 j;
-    s32 i;
-    s32 unused;
     f32 volumeMult;
-    u8 volume;
-    u8 backgroundVolume;
-    s32 curDiff;
-    s32 k;
-    s32 maxDiff;
-    s32 curIndex;
-    f32 pitch;
-    VehicleSoundData *soundData;
-    s32 bestSlot;
 
-    // First, calculate engine and idle sound parameters for each player.
-    for (i = 0; i < numCameras; i++) {
-        racer = racerObjs[i]->racer;
-        if (racer != NULL) {
-            gRacerSound = racer->vehicleSound;
+    if (racer->raceFinished || check_if_showing_cutscene_camera()) {
+        // If the race is finished or a cutscene is playing, the vehicle is considered to move relative to the
+        // camera, so we calculate the engine sound's pitch, volume, and stereo pan accordingly.
+        deltaX = racerObjs[i]->trans.x_position - cameras[i].trans.x_position;
+        deltaY = racerObjs[i]->trans.y_position - cameras[i].trans.y_position;
+        deltaZ = racerObjs[i]->trans.z_position - cameras[i].trans.z_position;
+        racer_sound_doppler_effect(racerObjs[i], cameras, racerObjs[i], tickDelta);
+        gRacerSound->distToCamera = sqrtf((deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ));
+
+        // Engine sounds are inaudible beyond 1500 units.
+        if (gRacerSound->distToCamera < 1500.0f) {
+            volumeMult = 2250000.0f; // 1500.0f * 1500.0f;
+            volumeMult = (volumeMult - (gRacerSound->distToCamera * gRacerSound->distToCamera)) / volumeMult;
+            volumeMult *= volumeMult;
+            gRacerSound->pan = audspat_calculate_spatial_pan(deltaX, deltaZ, cameras[i].trans.rotation.y_rotation);
         } else {
-            gRacerSound = NULL;
+            volumeMult = 0.0f;
+        }
+        if (!racer->raceFinished) {
+            // In cutscenes, engine volume is reduced by half.
+            volumeMult *= 0.5;
+        }
+    } else {
+        volumeMult = 1.0f;
+        gRacerSound->pan = PAN_CENTRE;
+        gRacerSound->dopplerPitch = 0.0f;
+    }
+    return volumeMult;
+}
+
+/**
+ * Plays the idle engine sound of a player's vehicle (gRacerSound) while the engine intensity is below 70:
+ * the lower the intensity, the louder the idle sound. Only in 1 or 2 player mode.
+ */
+static void racer_sound_player_idle(Object *racerObj, u8 numCameras, f32 volumeMult) {
+    f32 idleIntensity;
+    u8 volume;
+    f32 pitch;
+
+    // If the engine intensity is below 70, play an idle engine sound.
+    // The lower the intensity, the louder the idle sound.
+    // This is only applied when there are 1 or 2 players to avoid excessive sound generation.
+    if (gRacerSound->engine_intensity < 70 && gRacerSound->engineIdleSound != 0 && numCameras <= 2 &&
+        volumeMult != 0.0 && !(gRacerSound->soundDisabled[0] & 1)) {
+
+        idleIntensity = gRacerSound->engine_intensity / 70.0f;
+        volume = (gRacerSound->engineIdleMaxVolume - gRacerSound->engineIdleMaxVolume * idleIntensity) * volumeMult;
+
+        // If volume is above threshold, update idle sound parameters.
+        if (volume >= 16) {
+            if (gRacerSound->engineIdleSoundHandle == NULL) {
+                pc_trace_event("vehicle_sound snd=%d", (int) gRacerSound->engineIdleSound);
+                sound_play_direct(gRacerSound->engineIdleSound, &gRacerSound->engineIdleSoundHandle);
+            }
+            pitch = gRacerSound->engineIdleMaxPitch / 100.0f +
+                    ((f32) gRacerSound->engineIdleMinPitch / 100.0f - gRacerSound->engineIdleMaxPitch / 100.0f) *
+                        idleIntensity;
+            if (gRacerSound->engineIdleSoundHandle != NULL) {
+                audspat_calculate_echo(gRacerSound->engineIdleSoundHandle, racerObj->trans.x_position,
+                                       racerObj->trans.y_position, racerObj->trans.z_position);
+                sndp_set_param(gRacerSound->engineIdleSoundHandle, AL_SNDP_VOL_EVT, volume << 8);
+                sndp_set_param(gRacerSound->engineIdleSoundHandle, AL_SNDP_PITCH_EVT, *((u32 *) &pitch));
+                sndp_set_priority(gRacerSound->engineIdleSoundHandle, ENGINE_SOUND_PRIORITY);
+                sndp_set_param(gRacerSound->engineIdleSoundHandle, AL_SNDP_PAN_EVT, gRacerSound->pan);
+            }
+        } else if (gRacerSound->engineIdleSoundHandle != NULL) {
+            // Otherwise, stop the idle sound if it was playing.
+            sndp_stop(gRacerSound->engineIdleSoundHandle);
+            gRacerSound->engineIdleSoundHandle = NULL;
+        }
+    } else if (gRacerSound->engineIdleSoundHandle != NULL) {
+        sndp_stop(gRacerSound->engineIdleSoundHandle);
+        gRacerSound->engineIdleSoundHandle = NULL;
+    }
+}
+
+/**
+ * Starts, updates or stops the two engine sounds of a player's vehicle (gRacerSound).
+ */
+static void racer_sound_player_engine(Object *racerObj, u8 numCameras, f32 volumeMult) {
+    s32 j;
+    u8 volume;
+    f32 pitch;
+
+    // Start or stop engine sounds based on current conditions.
+    for (j = 0; j < 2 && gRacerSound->soundId[j] != 0 && volumeMult != 0.0; j++) {
+        volume = gRacerSound->baseVolume[j] * volumeMult;
+
+        //!@bug bananaPitch is added twice.
+        pitch =
+            gRacerSound->basePitch[j] + gRacerSound->bananaPitch + gRacerSound->enginePitch + gRacerSound->dopplerPitch;
+        if (pitch < 0.05) {
+            pitch = 0.05f;
         }
 
-        if (gRacerSound != NULL && gRacerSound->soundId[0] != 0) {
-            if (racer->raceFinished || check_if_showing_cutscene_camera()) {
-                // If the race is finished or a cutscene is playing, the vehicle is considered to move relative to the
-                // camera, so we calculate the engine sound's pitch, volume, and stereo pan accordingly.
-                deltaX = racerObjs[i]->trans.x_position - cameras[i].trans.x_position;
-                deltaY = racerObjs[i]->trans.y_position - cameras[i].trans.y_position;
-                deltaZ = racerObjs[i]->trans.z_position - cameras[i].trans.z_position;
-                racer_sound_doppler_effect(racerObjs[i], cameras, racerObjs[i], tickDelta);
-                gRacerSound->distToCamera = sqrtf((deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ));
-
-                // Engine sounds are inaudible beyond 1500 units.
-                if (gRacerSound->distToCamera < 1500.0f) {
-                    volumeMult = 2250000.0f; // 1500.0f * 1500.0f;
-                    volumeMult = (volumeMult - (gRacerSound->distToCamera * gRacerSound->distToCamera)) / volumeMult;
-                    volumeMult *= volumeMult;
-                    gRacerSound->pan =
-                        audspat_calculate_spatial_pan(deltaX, deltaZ, cameras[i].trans.rotation.y_rotation);
-                } else {
-                    volumeMult = 0.0f;
-                }
-                if (!racer->raceFinished) {
-                    // In cutscenes, engine volume is reduced by half.
-                    volumeMult *= 0.5;
-                }
+        // If engine sound is disabled, stop it.
+        if (j == 0 && (gRacerSound->soundDisabled[0] & 1)) {
+            if (gRacerSound->soundHandle[0] != NULL) {
+                sndp_stop(gRacerSound->soundHandle[0]);
+                gRacerSound->soundHandle[0] = NULL;
+            }
+        } else {
+            // If sound handle exists but volume is zero, stop the sound.
+            if (gRacerSound->soundHandle[j] != NULL && volume == 0) {
+                sndp_stop(gRacerSound->soundHandle[j]);
+                gRacerSound->soundHandle[j] = NULL;
             } else {
-                volumeMult = 1.0f;
-                gRacerSound->pan = 64;
-                gRacerSound->dopplerPitch = 0.0f;
-            }
-
-            // If the engine intensity is below 70, play an idle engine sound.
-            // The lower the intensity, the louder the idle sound.
-            // This is only applied when there are 1 or 2 players to avoid excessive sound generation.
-            if (gRacerSound->engine_intensity < 70 && gRacerSound->engineIdleSound != 0 && numCameras <= 2 &&
-                volumeMult != 0.0 && !(gRacerSound->soundDisabled[0] & 1)) {
-
-                idle_intensity = gRacerSound->engine_intensity / 70.0f;
-                volume =
-                    (gRacerSound->engineIdleMaxVolume - gRacerSound->engineIdleMaxVolume * idle_intensity) * volumeMult;
-
-                // If volume is above threshold, update idle sound parameters.
-                if (volume >= 16) {
-                    if (gRacerSound->engineIdleSoundHandle == NULL) {
-                        pc_trace_event("vehicle_sound snd=%d", (int) gRacerSound->engineIdleSound);
-                        sound_play_direct(gRacerSound->engineIdleSound, &gRacerSound->engineIdleSoundHandle);
-                    }
-                    pitch = gRacerSound->engineIdleMaxPitch / 100.0f + ((f32) gRacerSound->engineIdleMinPitch / 100.0f -
-                                                                        gRacerSound->engineIdleMaxPitch / 100.0f) *
-                                                                           idle_intensity;
-                    if (gRacerSound->engineIdleSoundHandle != NULL) {
-                        audspat_calculate_echo(gRacerSound->engineIdleSoundHandle, racerObjs[i]->trans.x_position,
-                                               racerObjs[i]->trans.y_position, racerObjs[i]->trans.z_position);
-                        sndp_set_param(gRacerSound->engineIdleSoundHandle, AL_SNDP_VOL_EVT, volume << 8);
-                        sndp_set_param(gRacerSound->engineIdleSoundHandle, AL_SNDP_PITCH_EVT, *((u32 *) &pitch));
-                        sndp_set_priority(gRacerSound->engineIdleSoundHandle, 80);
-                        sndp_set_param(gRacerSound->engineIdleSoundHandle, AL_SNDP_PAN_EVT, gRacerSound->pan);
-                    }
-                } else if (gRacerSound->engineIdleSoundHandle != NULL) {
-                    // Otherwise, stop the idle sound if it was playing.
-                    sndp_stop(gRacerSound->engineIdleSoundHandle);
-                    gRacerSound->engineIdleSoundHandle = NULL;
+                // Otherwise, start or update the engine sound parameters.
+                if (gRacerSound->soundHandle[j] == NULL) {
+                    pc_trace_event("vehicle_sound snd=%d", (int) gRacerSound->soundId[j]);
+                    sound_play_direct(gRacerSound->soundId[j], &gRacerSound->soundHandle[j]);
                 }
-            } else if (gRacerSound->engineIdleSoundHandle != NULL) {
-                sndp_stop(gRacerSound->engineIdleSoundHandle);
-                gRacerSound->engineIdleSoundHandle = NULL;
-            }
-
-            // Start or stop engine sounds based on current conditions.
-            for (j = 0; j < 2 && gRacerSound->soundId[j] != 0 && volumeMult != 0.0; j++) {
-                volume = gRacerSound->baseVolume[j] * volumeMult;
-
-                //!@bug bananaPitch is added twice.
-                pitch = gRacerSound->basePitch[j] + gRacerSound->bananaPitch + gRacerSound->enginePitch +
-                        gRacerSound->dopplerPitch;
-                if (pitch < 0.05) {
-                    pitch = 0.05f;
-                }
-
-                // If engine sound is disabled, stop it.
-                if (j == 0 && (gRacerSound->soundDisabled[0] & 1)) {
-                    if (gRacerSound->soundHandle[0] != NULL) {
-                        sndp_stop(gRacerSound->soundHandle[0]);
-                        gRacerSound->soundHandle[0] = NULL;
+                if (gRacerSound->soundHandle[j] != NULL) {
+                    audspat_calculate_echo(gRacerSound->soundHandle[j], racerObj->trans.x_position,
+                                           racerObj->trans.y_position, racerObj->trans.z_position);
+                    sndp_set_param(gRacerSound->soundHandle[j], AL_SNDP_VOL_EVT, volume << 8);
+                    sndp_set_param(gRacerSound->soundHandle[j], AL_SNDP_PITCH_EVT, *((u32 *) &pitch));
+                    sndp_set_priority(gRacerSound->soundHandle[j], ENGINE_SOUND_PRIORITY);
+                    if (numCameras != 1) {
+                        gRacerSound->pan = PAN_CENTRE;
                     }
-                } else {
-                    // If sound handle exists but volume is zero, stop the sound.
-                    if (gRacerSound->soundHandle[j] != NULL && volume == 0) {
-                        sndp_stop(gRacerSound->soundHandle[j]);
-                        gRacerSound->soundHandle[j] = NULL;
-                    } else {
-                        // Otherwise, start or update the engine sound parameters.
-                        if (gRacerSound->soundHandle[j] == NULL) {
-                            pc_trace_event("vehicle_sound snd=%d", (int) gRacerSound->soundId[j]);
-                            sound_play_direct(gRacerSound->soundId[j], &gRacerSound->soundHandle[j]);
-                        }
-                        if (gRacerSound->soundHandle[j] != NULL) {
-                            audspat_calculate_echo(gRacerSound->soundHandle[j], racerObjs[i]->trans.x_position,
-                                                   racerObjs[i]->trans.y_position, racerObjs[i]->trans.z_position);
-                            sndp_set_param(gRacerSound->soundHandle[j], AL_SNDP_VOL_EVT, volume << 8);
-                            sndp_set_param(gRacerSound->soundHandle[j], AL_SNDP_PITCH_EVT, *((u32 *) &pitch));
-                            sndp_set_priority(gRacerSound->soundHandle[j], 80);
-                            if (numCameras != 1) {
-                                gRacerSound->pan = 64;
-                            }
-                            sndp_set_param(gRacerSound->soundHandle[j], AL_SNDP_PAN_EVT, gRacerSound->pan);
-                        }
-                    }
+                    sndp_set_param(gRacerSound->soundHandle[j], AL_SNDP_PAN_EVT, gRacerSound->pan);
                 }
             }
         }
     }
+}
 
-    // Next: manage engine sounds for AI-controlled vehicles.
-    // These background engine sounds are only active in 1-2 player mode,
-    // and only the two loudest sounds are allowed to play simultaneously.
+/**
+ * Clears the background volume of every AI vehicle (the racers after the players).
+ */
+static void racer_sound_reset_background_volumes(Object **racerObjs, s32 numRacers, u8 numCameras) {
+    Object_Racer *racer;
+    s32 j;
+    VehicleSoundData *soundData;
 
-    // Skip background sounds entirely if more than 2 players.
-    if (numCameras > 2) {
-        return;
-    }
-
-    // First, reset background volume for each AI vehicle.
     for (j = numCameras; j < numRacers; j++) {
         racer = racerObjs[j]->racer;
         if (racer != NULL) {
@@ -952,10 +985,22 @@ void racer_sound_update_all(Object **racerObjs, s32 numRacers, Camera *cameras, 
             }
         }
     }
+}
 
-    // Then, calculate the background volume for each AI vehicle,
-    // determining which camera hears it the loudest (volume decreases with distance).
-    // Doppler effect is the only pitch modifier applied here.
+/**
+ * Calculates the background volume of each AI vehicle, keeping the pan and Doppler pitch
+ * of the camera that hears it the loudest (volume decreases with distance).
+ */
+static void racer_sound_measure_background(Object **racerObjs, s32 numRacers, Camera *cameras, u8 numCameras,
+                                           s32 tickDelta) {
+    f32 deltaX;
+    f32 deltaY;
+    f32 deltaZ;
+    Object_Racer *racer;
+    s32 j;
+    s32 i;
+    f32 volumeMult;
+    u8 backgroundVolume;
 
     for (i = 0; i < numCameras; i++) {
         racer = racerObjs[i]->racer;
@@ -1005,10 +1050,14 @@ void racer_sound_update_all(Object **racerObjs, s32 numRacers, Camera *cameras, 
             }
         }
     }
+}
 
-    // Select up to 2 background engine sounds to play.
+/**
+ * Stops and frees any background sound slot whose vehicle has become too quiet.
+ */
+static void racer_sound_stop_quiet_background(void) {
+    s32 k;
 
-    // First, stop any playing background sounds if they are too quiet.
     for (k = 0; k < ARRAY_COUNT(gBackgroundRacerSounds); k++) {
         if (gBackgroundRacerSounds[k] != NULL) {
             if (gBackgroundRacerSounds[k]->soundHandle[0] != NULL && gBackgroundRacerSounds[k]->backgroundVolume < 8) {
@@ -1019,15 +1068,21 @@ void racer_sound_update_all(Object **racerObjs, s32 numRacers, Camera *cameras, 
             }
         }
     }
+}
 
-    // Advance the background sound swap timer.
-    if (tickDelta < gBackgroundSoundSwapTimer) {
-        gBackgroundSoundSwapTimer -= tickDelta;
-    } else {
-        gBackgroundSoundSwapTimer = 0;
-    }
+/**
+ * Gives each stopped background vehicle a free slot, or the slot of a quieter one
+ * when the swap timer allows, starting the swap timer when a playing sound is replaced.
+ */
+static void racer_sound_assign_background_slots(Object **racerObjs, s32 numRacers) {
+    Object_Racer *racer;
+    s32 j;
+    s32 curDiff;
+    s32 k;
+    s32 maxDiff;
+    VehicleSoundData *soundData;
+    s32 bestSlot;
 
-    // Replace background sounds based on volume priority.
     //!@bug: loop starts from 1 instead of numCameras — possibly unintended.
     for (j = 1; j < numRacers; j++) {
         racer = racerObjs[j]->racer;
@@ -1071,7 +1126,7 @@ void racer_sound_update_all(Object **racerObjs, s32 numRacers, Camera *cameras, 
                                     gRacerSound->backgroundState = VEHICLE_BACKGROUND_PENDING;
                                 }
                                 // Prevent further changes to the background slots for the next 60 frames.
-                                gBackgroundSoundSwapTimer = 60;
+                                gBackgroundSoundSwapTimer = BACKGROUND_SOUND_SWAP_DELAY;
                                 gBackgroundRacerSounds[bestSlot]->backgroundState = VEHICLE_BACKGROUND_STOPPED;
                             }
                             gBackgroundRacerSounds[bestSlot] = gRacerSound;
@@ -1081,8 +1136,16 @@ void racer_sound_update_all(Object **racerObjs, s32 numRacers, Camera *cameras, 
             }
         }
     }
+}
 
-    // Finally, set parameters for all active background sounds (AI vehicles).
+/**
+ * Starts or updates the sounds in the background slots once the race countdown is over.
+ * A sound that has just replaced another waits one frame before it plays.
+ */
+static void racer_sound_play_background(u8 numCameras) {
+    s32 k;
+    VehicleSoundData *soundData;
+
     if (get_race_countdown() <= 0) {
         for (k = 0; k < ARRAY_COUNT(gBackgroundRacerSounds); k++) {
             soundData = gBackgroundRacerSounds[k];
@@ -1105,16 +1168,77 @@ void racer_sound_update_all(Object **racerObjs, s32 numRacers, Camera *cameras, 
                             sndp_set_param(soundData->soundHandle[0], AL_SNDP_PITCH_EVT,
                                            *((u32 *) &soundData->backgroundPitch));
                             if (numCameras != 1) {
-                                soundData->pan = 64;
+                                soundData->pan = PAN_CENTRE;
                             }
                             sndp_set_param(soundData->soundHandle[0], AL_SNDP_PAN_EVT, soundData->pan);
-                            sndp_set_priority(soundData->soundHandle[0], 70);
+                            sndp_set_priority(soundData->soundHandle[0], BACKGROUND_ENGINE_SOUND_PRIORITY);
                         }
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * Updates sound parameters for player-controlled vehicles,
+ * as well as AI-controlled vehicles that drive in the background.
+ */
+void racer_sound_update_all(Object **racerObjs, s32 numRacers, Camera *cameras, u8 numCameras, s32 tickDelta) {
+    Object_Racer *racer;
+    s32 i;
+    f32 volumeMult;
+
+    // First, calculate engine and idle sound parameters for each player.
+    for (i = 0; i < numCameras; i++) {
+        racer = racerObjs[i]->racer;
+        if (racer != NULL) {
+            gRacerSound = racer->vehicleSound;
+        } else {
+            gRacerSound = NULL;
+        }
+
+        if (gRacerSound != NULL && gRacerSound->soundId[0] != 0) {
+            volumeMult = racer_sound_player_volume_mult(racerObjs, racer, i, cameras, tickDelta);
+            racer_sound_player_idle(racerObjs[i], numCameras, volumeMult);
+            racer_sound_player_engine(racerObjs[i], numCameras, volumeMult);
+        }
+    }
+
+    // Next: manage engine sounds for AI-controlled vehicles.
+    // These background engine sounds are only active in 1-2 player mode,
+    // and only the two loudest sounds are allowed to play simultaneously.
+
+    // Skip background sounds entirely if more than 2 players.
+    if (numCameras > 2) {
+        return;
+    }
+
+    // First, reset background volume for each AI vehicle.
+    racer_sound_reset_background_volumes(racerObjs, numRacers, numCameras);
+
+    // Then, calculate the background volume for each AI vehicle,
+    // determining which camera hears it the loudest (volume decreases with distance).
+    // Doppler effect is the only pitch modifier applied here.
+    racer_sound_measure_background(racerObjs, numRacers, cameras, numCameras, tickDelta);
+
+    // Select up to 2 background engine sounds to play.
+
+    // First, stop any playing background sounds if they are too quiet.
+    racer_sound_stop_quiet_background();
+
+    // Advance the background sound swap timer.
+    if (tickDelta < gBackgroundSoundSwapTimer) {
+        gBackgroundSoundSwapTimer -= tickDelta;
+    } else {
+        gBackgroundSoundSwapTimer = 0;
+    }
+
+    // Replace background sounds based on volume priority.
+    racer_sound_assign_background_slots(racerObjs, numRacers);
+
+    // Finally, set parameters for all active background sounds (AI vehicles).
+    racer_sound_play_background(numCameras);
 }
 
 /**
