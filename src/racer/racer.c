@@ -487,36 +487,10 @@ void obj_init_racer(Object *obj, LevelObjectEntry *levelEntry, UNUSED s32 param)
 }
 
 /**
- * Main function for handling everything related to the player controlled racer object.
- * Branches off into a different function if the player becomes computer controlled. (Finishing a race)
+ * Caps the racer's velocities to +/-50 and its checkpoint distance to [-1, 2].
+ * Rareware didn't appear to use a clamp macro here, which would've saved a lot of real estate.
  */
-void update_player_racer(Object *obj, s32 updateRate) {
-    s32 tempVar;
-    s32 checkpointCount;
-    s32 context;
-    Object *tempObj;
-    f32 updateRateF;
-    f32 waterHeight;
-    Object_Racer *tempRacer;
-    f32 xTemp;
-    f32 yTemp;
-    f32 zTemp;
-    f32 lastCheckpointDist;
-    f32 playerIDF;
-    LevelHeader *header;
-    CheckpointNode *checkpointNode;
-    s32 playerID;
-    f32 stretch;
-    s32 i;
-    struct LevelObjectEntryCommon newObject;
-
-    gNumViewports = cam_get_viewport_layout() + 1;
-    gCurrentSurfaceType = SURFACE_DEFAULT;
-    gRaceStartTimer = get_race_countdown();
-    updateRateF = updateRate;
-    tempRacer = obj->racer;
-    // Cap all of the velocities on the different axes.
-    // Unfortunately, Rareware didn't appear to use a clamp macro here, which would've saved a lot of real estate.
+static void racer_clamp_velocities(Object *obj, Object_Racer *tempRacer) {
     if (obj->x_velocity > 50.0) {
         obj->x_velocity = 50.0f;
     }
@@ -553,13 +527,12 @@ void update_player_racer(Object *obj, s32 updateRate) {
     if (tempRacer->checkpoint_distance > 2.0) {
         tempRacer->checkpoint_distance = 2.0f;
     }
-    if (tempRacer->effectBoxType == 1) {
-        tempRacer->launchedState = 0;
-    }
-    // PAL moves 20% faster.
-    if (osTvType == OS_TV_TYPE_PAL) {
-        updateRateF *= 1.2;
-    }
+}
+
+/**
+ * Counts down the crash sound cooldown and the AI physics timer, and clears the particle emitters.
+ */
+static void racer_tick_common_timers(Object *obj, Object_Racer *tempRacer, s32 updateRate) {
     tempRacer->crashSoundCooldown -= updateRate;
     if (tempRacer->crashSoundCooldown < 0) {
         tempRacer->crashSoundCooldown = 0;
@@ -570,67 +543,669 @@ void update_player_racer(Object *obj, s32 updateRate) {
     } else {
         tempRacer->aiPhysicsTimer = 0;
     }
+}
+
+/**
+ * Prints player 1's coordinates to the screen if the debug cheat is enabled,
+ * then sets the debug text background colour.
+ */
+static void racer_print_debug_coords(Object *obj, Object_Racer *tempRacer) {
+    if (gRaceStartTimer == 0 && tempRacer->playerIndex == PLAYER_ONE) {
+        if (get_filtered_cheats() & CHEAT_PRINT_COORDS) {
+            render_printf("%.1f,%.1f,%.1f\n", obj->trans.x_position, obj->trans.y_position, obj->trans.z_position);
+        }
+    }
+    set_render_printf_background_colour(0, 0, 0, 128);
+}
+
+/**
+ * Counts down the AI start delay once the race is underway (rerolling the AI behaviour timer before then),
+ * and counts down the hit recovery timer.
+ */
+static void racer_tick_start_timers(Object_Racer *tempRacer, s32 updateRate, f32 updateRateF) {
+    if (gRaceStartTimer == 0) {
+        if (gAiStartDelay > 0.0) {
+            gAiStartDelay -= updateRateF;
+        } else {
+            gAiStartDelay = 0.0f;
+        }
+    } else {
+        tempRacer->aiBehaviourTimer = rand_range(-60, 60) + 120;
+    }
+    if (tempRacer->hitRecoveryTimer > 0) {
+        tempRacer->hitRecoveryTimer -= updateRate;
+    } else {
+        tempRacer->hitRecoveryTimer = 0;
+    }
+}
+
+/**
+ * Loads the character's weight, handling and unused stat from the misc assets.
+ */
+static void racer_load_stats(Object_Racer *tempRacer) {
+    gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(ASSET_MISC_RACER_WEIGHT);
+    gCurrentRacerWeightStat = gCurrentRacerMiscAssetPtr[tempRacer->characterId] * 0.45;
+    if (tempRacer->bubbleTrapTimer > 0) {
+        gCurrentRacerWeightStat = -0.02f;
+    }
+    gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(ASSET_MISC_RACER_HANDLING);
+    gCurrentRacerHandlingStat = gCurrentRacerMiscAssetPtr[tempRacer->characterId];
+    gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(ASSET_MISC_RACER_UNUSED_11);
+    gCurrentRacerUnusedMiscAsset11 = gCurrentRacerMiscAssetPtr[tempRacer->characterId];
+}
+
+/**
+ * Applies the effect box the racer is in: scales or inverts the weight stat,
+ * and pushes the racer along (or decays the push velocity outside of a push box).
+ */
+static void racer_apply_effect_box(Object_Racer *tempRacer, f32 updateRateF) {
+    if (tempRacer->effectBoxType == 3) {
+        gCurrentRacerWeightStat *= (f32) tempRacer->effectBoxStrength / 256;
+    }
+    if (tempRacer->effectBoxType == 1) {
+        gCurrentRacerWeightStat -= (gCurrentRacerWeightStat * tempRacer->effectBoxStrength) / 128;
+        if (tempRacer->bubbleTrapTimer > 0) {
+            gCurrentRacerWeightStat = -gCurrentRacerWeightStat;
+        }
+    }
+    if (tempRacer->effectBoxType == 2) {
+        tempRacer->pushVelX +=
+            ((sins_f((tempRacer->effectBoxStrength << 8)) * 4.0f) - tempRacer->pushVelX) * 0.0625 * updateRateF;
+        tempRacer->pushVelZ +=
+            ((coss_f((tempRacer->effectBoxStrength << 8)) * 4.0f) - tempRacer->pushVelZ) * 0.0625 * updateRateF;
+    } else {
+        tempRacer->pushVelX -= tempRacer->pushVelX * 0.0625 * updateRateF;
+        tempRacer->pushVelZ -= tempRacer->pushVelZ * 0.0625 * updateRateF;
+    }
+}
+
+/**
+ * Loads the vehicle's misc asset and wheel tables.
+ */
+static void racer_load_vehicle_tables(Object *obj) {
+    pc_swap_racer_tables(obj->header);
+    gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(obj->header->miscAssetIds[0]);
+    gRacerWheelTable = (f32 *) get_misc_asset(obj->header->miscAssetIds[1]);
+}
+
+/**
+ * Counts down the timer since the racer's race position last changed.
+ */
+static void racer_tick_position_change_timer(Object_Racer *tempRacer, s32 updateRate) {
+    if (tempRacer->positionChangeTimer > 0) {
+        tempRacer->positionChangeTimer -= updateRate;
+        if (tempRacer->positionChangeTimer < 0) {
+            tempRacer->positionChangeTimer = 0;
+        }
+    }
+}
+
+/**
+ * Makes the racer's camera active, bumps its animation counter and records it as the current player.
+ */
+static void racer_select_camera(Object_Racer *tempRacer) {
+    set_active_camera(tempRacer->playerIndex);
+    gCameraObject = cam_get_active_camera_no_cutscenes();
+    tempRacer->miscAnimCounter++; //!@Delta
+    gCurrentPlayerIndex = tempRacer->playerIndex;
+}
+
+/**
+ * Hands control to the AI once the racer has finished the race, or when in the menu.
+ */
+static void racer_hand_over_to_ai(Object_Racer *tempRacer, s32 context) {
+    if (tempRacer->raceFinished == TRUE || context == GAMEMODE_MENU) {
+        tempRacer->aiLane = 1;
+        tempRacer->playerIndex = PLAYER_COMPUTER;
+        tempRacer->aiBehaviour = 0;
+        if (tempRacer->shieldTimer > 5) {
+            tempRacer->shieldTimer = 5;
+        }
+    }
+}
+
+/**
+ * Reads this frame's stick and button input from the controller, the trace autopilot, the door exit or the AI,
+ * and notes whether the throttle was released.
+ */
+static void racer_read_input(Object *obj, Object_Racer *tempRacer, s32 updateRate) {
+    s32 tempVar;
+
+    tempVar = tempRacer->playerIndex;
+    if (tempRacer->playerIndex != PLAYER_COMPUTER && pc_trace_autopilot()) {
+        // A scripted trace holding AUTO: the human racer drives itself (linux/input.c).
+        racer_AI_pathing_inputs(obj, tempRacer, updateRate);
+    } else if (tempRacer->playerIndex != PLAYER_COMPUTER) {
+        if (tempRacer->exitObj == 0) {
+            if (is_race_started_by_player_two()) {
+                tempVar = 1 - tempVar;
+            }
+            // Cap the joystick tilt and write the button inputs to the current buffer.
+            gCurrentStickX = input_clamp_stick_x(tempVar);
+            // Flip the steering for adventure 2.
+            if (get_filtered_cheats() & CHEAT_MIRRORED_TRACKS) {
+                gCurrentStickX = -gCurrentStickX;
+            }
+            gCurrentStickY = input_clamp_stick_y(tempVar);
+            gCurrentRacerInput = input_held(tempVar);
+            gCurrentButtonsPressed = input_pressed(tempVar);
+            gCurrentButtonsReleased = input_released(tempVar);
+        } else {
+            racer_enter_door(tempRacer, updateRate);
+        }
+    } else {
+        racer_AI_pathing_inputs(obj, tempRacer, updateRate);
+    }
+    // Set the value that decides whether to get an empowered boost.
+    if (!(gCurrentRacerInput & A_BUTTON)) {
+        tempRacer->throttleReleased = TRUE;
+    }
+}
+
+/**
+ * Clears all input during cutscenes, launches, approaches, bubble traps and when input is blocked.
+ */
+static void racer_block_input(Object_Racer *tempRacer) {
+    if (check_if_showing_cutscene_camera() || gRaceStartTimer == 100 || tempRacer->launchedState ||
+        gRacerInputBlocked || tempRacer->approachTarget || tempRacer->bubbleTrapTimer > 0) {
+        gCurrentStickX = 0;
+        gCurrentStickY = 0;
+        gCurrentRacerInput = 0;
+        gCurrentButtonsPressed = 0;
+        gCurrentButtonsReleased = 0;
+        tempRacer->steerAngle = 0;
+    }
+}
+
+/**
+ * Applies the bubble trap slowdown, the stun steering wobble and the magnet pull.
+ */
+static void racer_apply_status_effects(Object *obj, Object_Racer *tempRacer, s32 updateRate) {
+    s32 tempVar;
+
+    if (tempRacer->bubbleTrapTimer > 0) {
+        tempRacer->bubbleTrapTimer -= updateRate;
+        tempRacer->velocity *= 0.9f; //!@Delta
+        obj->x_velocity *= 0.87f;    //!@Delta
+        if (obj->y_velocity > 2.0f) {
+            obj->y_velocity = 2.0f;
+        }
+        obj->z_velocity *= 0.87f; //!@Delta
+    }
+    if (tempRacer->stunTimer > 0) {
+        tempRacer->steerWobbleTimer = tempRacer->stunTimer;
+        tempRacer->stunTimer -= updateRate;
+    }
+    if (tempRacer->steerWobbleTimer > 0) {
+        tempVar = tempRacer->steerWobbleTimer & 0xF;
+        tempRacer->steerWobbleTimer -= updateRate;
+        if (tempVar < (tempRacer->steerWobbleTimer & 0xF)) {
+            tempRacer->steerJitter = rand_range(-80, 80);
+        }
+        gCurrentStickX += tempRacer->steerJitter;
+    } else {
+        tempRacer->steerWobbleTimer = 0;
+    }
+    if (tempRacer->magnetTimer) {
+        racer_activate_magnet(obj, tempRacer, updateRate);
+    }
+}
+
+/**
+ * Zeroes out input before the race has begun, then advances the current lap time (kept under 10 minutes).
+ */
+static void racer_update_lap_timer(Object_Racer *tempRacer, LevelHeader *header, s32 updateRate) {
+    // Zero out input before the race has begun.
+    if (gRaceStartTimer && (header->race_type == RACETYPE_DEFAULT || header->race_type == RACETYPE_HORSESHOE_GULCH ||
+                            header->race_type == RACETYPE_BOSS)) {
+        gCurrentStickX = 0;
+        gCurrentStickY = 0;
+        gCurrentRacerInput = 0;
+    }
+    // Handle the race timer if it's currently active.
+    if (gRaceStartTimer == 0 && header->laps > (tempRacer->countLap)) {
+        // Keep it under 10 minutes.
+        if (tempRacer->lap_times[tempRacer->countLap] < normalise_time(36000) - updateRate) {
+            tempRacer->lap_times[tempRacer->countLap] += updateRate;
+        } else {
+            tempRacer->lap_times[tempRacer->countLap] = normalise_time(36000);
+        }
+    }
+}
+
+/**
+ * Finds the waves under the racer, lowers the course height to any low water,
+ * and updates the racer's buoyancy and underwater flag.
+ */
+static void racer_update_water(Object *obj, Object_Racer *tempRacer) {
+    f32 waterHeight;
+    s32 i;
+
+    gRacerWaveCount =
+        get_level_segment_waves(obj->segmentID, obj->trans.x_position, obj->trans.z_position, &gRacerCurrentWave);
+    if (gRacerWaveCount) {
+        for (i = 0; i < gRacerWaveCount; i++) {
+            if (gRacerCurrentWave[i]->type == SURFACE_WATER_UNK_F) {
+                if (gRacerCurrentWave[i]->waveHeight < gCurrentCourseHeight) {
+                    gCurrentCourseHeight = gRacerCurrentWave[i]->waveHeight;
+                }
+            }
+        }
+    }
+    if (tempRacer->vehicleID != VEHICLE_HOVERCRAFT) {
+        waterHeight = -10000.0f;
+        gRacerWaveType = get_wave_properties(obj->trans.y_position, &waterHeight, &gCurrentRacerWaterPos);
+        if (gRacerWaveType != SURFACE_DEFAULT) {
+            if (obj->trans.y_position - 5.0f < waterHeight) {
+                tempRacer->waterTimer = 5;
+                tempRacer->buoyancy = waterHeight - (obj->trans.y_position - 5.0f);
+            } else {
+                tempRacer->buoyancy = 0.0f;
+            }
+        } else {
+            if (tempRacer->waterTimer > 0) {
+                tempRacer->waterTimer--;
+            } else {
+                tempRacer->buoyancy = 0.0f;
+            }
+        }
+        if (tempRacer->waterTimer > 0 && obj->trans.y_position < waterHeight + 5.0f) {
+            obj->interactObj->flags |= INTERACT_FLAGS_UNK_0010;
+        } else {
+            obj->interactObj->flags &= ~INTERACT_FLAGS_UNK_0010;
+        }
+    }
+}
+
+/**
+ * Runs the physics update for the racer's vehicle type.
+ */
+static void racer_update_vehicle(Object *obj, Object_Racer *tempRacer, s32 updateRate, f32 updateRateF) {
+    set_collision_mode(COLLISION_MODE_DEFAULT);
+    switch (tempRacer->vehicleID) {
+        case VEHICLE_CAR:
+            update_car(updateRate, updateRateF, obj, tempRacer);
+            break;
+        case VEHICLE_LOOPDELOOP:
+            update_loop_de_loop(updateRate, updateRateF, obj, tempRacer);
+            break;
+        case VEHICLE_HOVERCRAFT:
+            update_hovercraft(updateRate, updateRateF, obj, tempRacer);
+            break;
+        case VEHICLE_PLANE:
+            update_plane(updateRate, updateRateF, obj, tempRacer);
+            break;
+        case VEHICLE_FLYING_CAR: /* fall through */
+        case VEHICLE_CARPET:
+            update_carpet(updateRate, updateRateF, obj, tempRacer);
+            break;
+        case VEHICLE_TRICKY:
+            update_tricky(updateRate, updateRateF, obj, tempRacer, &gCurrentRacerInput, &gCurrentButtonsPressed,
+                          &gRaceStartTimer);
+            break;
+        case VEHICLE_BLUEY:
+            update_bluey(updateRate, updateRateF, obj, tempRacer, &gCurrentRacerInput, &gCurrentButtonsPressed,
+                         &gRaceStartTimer);
+            break;
+        case VEHICLE_SMOKEY: /* fall through */
+        case VEHICLE_PTERODACTYL:
+            update_smokey(updateRate, updateRateF, obj, tempRacer, &gCurrentRacerInput, &gCurrentStickX,
+                          &gRaceStartTimer);
+            break;
+        case VEHICLE_BUBBLER:
+            update_bubbler(updateRate, updateRateF, obj, tempRacer, &gCurrentRacerInput, &gCurrentButtonsPressed,
+                           &gRaceStartTimer);
+            break;
+        case VEHICLE_WIZPIG:
+            update_wizpig(updateRate, updateRateF, obj, tempRacer, &gCurrentRacerInput, &gCurrentButtonsPressed,
+                          &gRaceStartTimer);
+            break;
+        case VEHICLE_ROCKET:
+            update_rocket(updateRate, updateRateF, obj, tempRacer, &gCurrentRacerInput, &gCurrentButtonsPressed,
+                          &gRaceStartTimer);
+            break;
+    }
+}
+
+/**
+ * Stops the magnet sound once the magnet has run out,
+ * then caps the racer's speed to the level header's limit, if it has one.
+ */
+static void racer_stop_magnet_and_cap_speed(Object_Racer *tempRacer, LevelHeader *header) {
+    f32 playerIDF;
+    s32 playerID;
+
+    if (tempRacer->magnetTimer == 0) {
+        if (tempRacer->magnetSoundMask) {
+            sndp_stop(tempRacer->magnetSoundMask);
+            tempRacer->magnetSoundMask = NULL;
+        }
+    }
+    playerID = header->playerIndex;
+    if (playerID) {
+        playerIDF = -(f32) playerID;
+        CLAMP(tempRacer->velocity, playerIDF, playerID);
+    }
+}
+
+/**
+ * Spawns Taj's challenge arrow if needed and moves it onto the next checkpoint (human racers only).
+ */
+static void racer_place_challenge_marker(Object_Racer *tempRacer) {
+    CheckpointNode *checkpointNode;
+    struct LevelObjectEntryCommon newObject;
+
+    if (gCurrentPlayerIndex != PLAYER_COMPUTER) {
+        checkpointNode = find_next_checkpoint_node(tempRacer->nextCheckpoint, tempRacer->isOnAlternateRoute);
+        if (!tempRacer->challengeMarker) {
+            newObject.x = 0;
+            newObject.y = 0;
+            newObject.z = 0;
+            newObject.objectID = ASSET_OBJECT_ID_CHECKARROW;
+            newObject.size = sizeof(LevelObjectEntryCommon);
+            tempRacer->challengeMarker = spawn_object(&newObject, OBJECT_SPAWN_UNK01);
+            if (tempRacer->challengeMarker) {
+                tempRacer->challengeMarker->level_entry = NULL;
+                tempRacer->challengeMarker->opacity = 128;
+            }
+        }
+        if (tempRacer->challengeMarker) {
+            tempRacer->challengeMarker->trans.x_position = checkpointNode->obj->trans.x_position;
+            tempRacer->challengeMarker->trans.y_position = checkpointNode->obj->trans.y_position;
+            if (tempRacer->vehicleID == VEHICLE_CAR) {
+                tempRacer->challengeMarker->trans.y_position -= 30.0;
+            }
+            tempRacer->challengeMarker->trans.z_position = checkpointNode->obj->trans.z_position;
+            tempRacer->challengeMarker->trans.rotation.y_rotation = checkpointNode->obj->trans.rotation.y_rotation;
+            tempRacer->challengeMarker->trans.rotation.x_rotation = checkpointNode->obj->trans.rotation.x_rotation;
+            tempRacer->challengeMarker->segmentID = checkpointNode->obj->segmentID;
+        }
+    }
+}
+
+/**
+ * Checks whether the racer passed its next checkpoint since its last position, and if so advances
+ * the checkpoint, the lap and the course progress; otherwise records its distance rank.
+ */
+static void racer_update_checkpoints(Object *obj, Object_Racer *tempRacer, LevelHeader *header, f32 xTemp, f32 yTemp,
+                                     f32 zTemp) {
+    s32 tempVar;
+    s32 checkpointCount;
+    f32 lastCheckpointDist;
+    CheckpointNode *checkpointNode;
+
+    lastCheckpointDist = tempRacer->checkpoint_distance;
+    tempVar = checkpoint_is_passed(tempRacer->nextCheckpoint, obj, xTemp, yTemp, zTemp, &tempRacer->checkpoint_distance,
+                                   &tempRacer->isOnAlternateRoute);
+    if (tempVar == -100) {
+        racer_update_progress(tempRacer);
+    }
+    checkpointNode = find_next_checkpoint_node(tempRacer->nextCheckpoint, tempRacer->isOnAlternateRoute);
+    if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->laneAction[tempRacer->aiLane] == 5 &&
+        tempRacer->waterTimer) {
+        tempRacer->isOnAlternateRoute = TRUE;
+    }
+    if (checkpointNode->laneAction[tempRacer->aiLane] == 6) {
+        tempRacer->lap = header->laps + 1;
+    }
+    if (tempVar == 0) {
+        if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->laneAction[tempRacer->aiLane] == 2) {
+            tempRacer->isOnAlternateRoute = TRUE;
+        }
+        checkpointCount = get_checkpoint_count();
+        tempRacer->nextCheckpoint++;
+        if (tempRacer->nextCheckpoint >= checkpointCount) {
+            tempRacer->nextCheckpoint = 0;
+            if (tempRacer->courseCheckpoint > 0) {
+                if (tempRacer->lap < 120) {
+                    tempRacer->lap++;
+                }
+            }
+            if (tempRacer->playerIndex != PLAYER_COMPUTER && tempRacer->lap + 1 == header->laps &&
+                !gFinalLapAnnounced && level_type() == RACETYPE_DEFAULT) {
+                music_tempo_set_relative(1.12f);
+                gFinalLapAnnounced = 1;
+            }
+        }
+        if (is_taj_challenge()) {
+            racer_place_challenge_marker(tempRacer);
+        }
+        if (tempRacer->courseCheckpoint < (header->laps + 3) * checkpointCount) {
+            tempRacer->courseCheckpoint++;
+        }
+        tempRacer->checkpointRank = 10000;
+    } else {
+        if (tempRacer->playerIndex == PLAYER_COMPUTER && lastCheckpointDist < tempRacer->checkpoint_distance) {
+            tempRacer->checkpoint_distance = lastCheckpointDist;
+        }
+        tempRacer->checkpointRank = tempVar;
+    }
+}
+
+/**
+ * In Taj's challenges, animates the challenge arrow and ends the race if the racer strays too far off the track.
+ */
+static void racer_update_taj_challenge(Object_Racer *tempRacer, s32 updateRate) {
+    if (is_taj_challenge()) {
+        if (tempRacer->challengeMarker) {
+            tempRacer->challengeMarker->animFrame += 8 * updateRate;
+        }
+        if (tempRacer->trackOffsetX > 400 || tempRacer->trackOffsetX < -400) {
+            mode_end_taj_race(CHALLENGE_END_OOB);
+        }
+    }
+}
+
+/**
+ * Counts up the time since finishing the race, and drops any bananas the racer is due to lose.
+ */
+static void racer_update_finish_and_bananas(Object *obj, Object_Racer *tempRacer, s32 updateRate) {
+    if (tempRacer->raceFinished == TRUE) {
+        if (tempRacer->finishedTimer < 60) {
+            tempRacer->finishedTimer += updateRate;
+        }
+    }
+    if (tempRacer->pendingBananaDrop > 0) {
+        drop_bananas(obj, tempRacer, tempRacer->pendingBananaDrop);
+    }
+}
+
+/**
+ * Stops the racer dead after an approach target was reached.
+ */
+static void racer_clear_approach_target(Object_Racer *tempRacer) {
+    if (tempRacer->approachTarget) {
+        tempRacer->approachTarget = NULL;
+        tempRacer->velocity = 0.0f;
+        tempRacer->lateral_velocity = 0.0f;
+    }
+}
+
+/**
+ * Eases the racer's squash and stretch height toward its cap, resetting the cap once it is reached.
+ */
+static void racer_update_stretch(Object_Racer *tempRacer, f32 updateRateF) {
+    f32 stretch;
+
+    if (tempRacer->stretch_height <= tempRacer->stretch_height_cap) {
+        stretch = 0.02f;
+    } else {
+        stretch = -0.02f;
+    }
+    tempRacer->stretch_height +=
+        (((tempRacer->stretch_height_cap - tempRacer->stretch_height) * 0.125) + stretch) * updateRateF;
+    if ((stretch < 0.0f && tempRacer->stretch_height <= tempRacer->stretch_height_cap) ||
+        (stretch > 0.0f && tempRacer->stretch_height >= tempRacer->stretch_height_cap)) {
+        tempRacer->stretch_height = tempRacer->stretch_height_cap;
+        tempRacer->stretch_height_cap = 1.0f;
+    }
+}
+
+/**
+ * Turns the character's head toward its target angle, then tracks double taps of the R button.
+ */
+static void racer_update_head_and_r_tap(Object_Racer *tempRacer, s32 updateRate) {
+    s32 tempVar;
+
+    tempVar = ((tempRacer->headAngleTarget - tempRacer->headAngle) * updateRate) >> 3;
+    CLAMP(tempVar, -0x800, 0x800);
+    tempRacer->headAngle += tempVar;
+    if ((gCurrentButtonsPressed & R_TRIG) && tempRacer->tapTimerR) {
+        tempRacer->tappedR = TRUE;
+        tempRacer->tapTimerR = 0;
+    } else if (gCurrentButtonsPressed & R_TRIG) {
+        tempRacer->tapTimerR = 22;
+    }
+    if (tempRacer->tapTimerR > 0) {
+        tempRacer->tapTimerR -= updateRate;
+    } else {
+        tempRacer->tapTimerR = 0;
+    }
+}
+
+/**
+ * Plays or stops the shield sound and counts down the shield, removing it when it runs out.
+ */
+static void racer_update_shield(Object *obj, Object_Racer *tempRacer, s32 updateRate) {
+    if (tempRacer->shieldTimer > 0) {
+        if (tempRacer->shieldTimer > 60) {
+            if (tempRacer->shieldSoundMask) {
+                audspat_point_set_position(tempRacer->shieldSoundMask, obj->trans.x_position, obj->trans.y_position,
+                                           obj->trans.z_position);
+            } else if (tempRacer->vehicleSound) {
+                audspat_play_sound_at_position(SOUND_SHIELD, obj->trans.x_position, obj->trans.y_position,
+                                               obj->trans.z_position, AUDIO_POINT_FLAG_1, &tempRacer->shieldSoundMask);
+            }
+        } else if (tempRacer->shieldSoundMask) {
+            audspat_point_stop(tempRacer->shieldSoundMask);
+            tempRacer->shieldSoundMask = NULL;
+        }
+        tempRacer->shieldTimer -= updateRate;
+        if (tempRacer->shieldTimer <= 0) {
+            tempRacer->shieldType = SHIELD_NONE;
+        }
+    }
+}
+
+/**
+ * Moves the banana and racer sounds to the racer, and records the time trial ghost.
+ */
+static void racer_update_sounds_and_ghost(Object *obj, Object_Racer *tempRacer, s32 updateRate) {
+    if (tempRacer->bananaSoundMask) {
+        audspat_point_set_position(tempRacer->bananaSoundMask, obj->trans.x_position, obj->trans.y_position,
+                                   obj->trans.z_position);
+    }
+    if (is_in_time_trial() && tempRacer->playerIndex == PLAYER_ONE && gRaceStartTimer == 0) {
+        timetrial_ghost_write(obj, updateRate);
+    }
+    if (tempRacer->soundMask) {
+        audspat_point_set_position(tempRacer->soundMask, obj->trans.x_position, obj->trans.y_position,
+                                   obj->trans.z_position);
+    }
+}
+
+/**
+ * Places the race position arrow above the racer, hiding it when close to the camera, then lets it go.
+ */
+static void racer_place_position_arrow(Object *obj, Object_Racer *tempRacer) {
+    Object *tempObj;
+
+    if (tempRacer->posArrowObj && gRaceStartTimer == 0) {
+        s8 *yAsset;
+        tempRacer->posArrowObj->trans.x_position = obj->trans.x_position;
+        yAsset = (s8 *) get_misc_asset(ASSET_MISC_0);
+
+        tempRacer->posArrowObj->trans.y_position = obj->trans.y_position + yAsset[tempRacer->characterId];
+        tempRacer->posArrowObj->trans.z_position = obj->trans.z_position;
+        tempRacer->posArrowObj->trans.scale = obj->distanceToCamera / 265.0f;
+        if (obj->distanceToCamera < 1500.0 || get_filtered_cheats() & CHEAT_MIRRORED_TRACKS) {
+            tempObj = tempRacer->posArrowObj;
+            tempObj->trans.flags |= OBJ_FLAGS_INVISIBLE;
+        }
+        if (tempRacer->posArrowObj->trans.scale < 1.0) {
+            tempRacer->posArrowObj->trans.scale = 1.0f;
+        }
+        tempRacer->posArrowObj = NULL;
+    }
+}
+
+/**
+ * Counts down the delayed sound and plays it at the racer when the delay runs out.
+ */
+static void racer_play_delayed_sound(Object *obj, Object_Racer *tempRacer, s32 updateRate) {
+    if (tempRacer->delaySoundID) {
+        if (tempRacer->delaySoundTimer > updateRate) {
+            tempRacer->delaySoundTimer -= updateRate;
+        } else {
+            tempRacer->delaySoundTimer = 0;
+            if (tempRacer->playerIndex == PLAYER_COMPUTER) {
+                audspat_play_sound_at_position(tempRacer->delaySoundID, obj->trans.x_position, obj->trans.y_position,
+                                               obj->trans.z_position, AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
+            } else {
+                sound_play_spatial(tempRacer->delaySoundID, obj->trans.x_position, obj->trans.y_position,
+                                   obj->trans.z_position, NULL);
+            }
+            tempRacer->delaySoundID = SOUND_NONE;
+        }
+    }
+}
+
+/**
+ * Sets the racer's elevation for challenge maps, and brings the counted lap up to the current lap.
+ */
+static void racer_update_elevation_and_lap_count(Object *obj, Object_Racer *tempRacer, LevelHeader *header) {
+    if (header->race_type & RACETYPE_CHALLENGE && header->race_type != RACETYPE_CHALLENGE_EGGS) {
+        tempRacer->elevation = obj_elevation(obj->trans.y_position);
+    } else {
+        tempRacer->elevation = ELEVATION_LOW;
+    }
+    if (tempRacer->countLap < tempRacer->lap) {
+        tempRacer->countLap = tempRacer->lap;
+    }
+}
+
+/**
+ * Main function for handling everything related to the player controlled racer object.
+ * Branches off into a different function if the player becomes computer controlled. (Finishing a race)
+ */
+void update_player_racer(Object *obj, s32 updateRate) {
+    s32 context;
+    f32 updateRateF;
+    Object_Racer *tempRacer;
+    f32 xTemp;
+    f32 yTemp;
+    f32 zTemp;
+    LevelHeader *header;
+
+    gNumViewports = cam_get_viewport_layout() + 1;
+    gCurrentSurfaceType = SURFACE_DEFAULT;
+    gRaceStartTimer = get_race_countdown();
+    updateRateF = updateRate;
+    tempRacer = obj->racer;
+    racer_clamp_velocities(obj, tempRacer);
+    if (tempRacer->effectBoxType == 1) {
+        tempRacer->launchedState = 0;
+    }
+    // PAL moves 20% faster.
+    if (osTvType == OS_TV_TYPE_PAL) {
+        updateRateF *= 1.2;
+    }
+    racer_tick_common_timers(obj, tempRacer, updateRate);
     header = level_header();
     gCurrentCourseHeight = header->course_height;
     tempRacer->throttleReleased = FALSE;
     if (tempRacer->playerIndex == PLAYER_COMPUTER) {
         update_AI_racer(obj, tempRacer, updateRate, updateRateF);
     } else {
-        // Print player 1's coordinates to the screen if the debug cheat is enabled.
-        if (gRaceStartTimer == 0 && tempRacer->playerIndex == PLAYER_ONE) {
-            if (get_filtered_cheats() & CHEAT_PRINT_COORDS) {
-                render_printf("%.1f,%.1f,%.1f\n", obj->trans.x_position, obj->trans.y_position, obj->trans.z_position);
-            }
-        }
-        set_render_printf_background_colour(0, 0, 0, 128);
+        racer_print_debug_coords(obj, tempRacer);
         if (is_taj_challenge()) {
             gDialogueCameraAngle = 0;
         }
         context = get_game_mode();
-        if (gRaceStartTimer == 0) {
-            if (gAiStartDelay > 0.0) {
-                gAiStartDelay -= updateRateF;
-            } else {
-                gAiStartDelay = 0.0f;
-            }
-        } else {
-            tempRacer->aiBehaviourTimer = rand_range(-60, 60) + 120;
-        }
-        if (tempRacer->hitRecoveryTimer > 0) {
-            tempRacer->hitRecoveryTimer -= updateRate;
-        } else {
-            tempRacer->hitRecoveryTimer = 0;
-        }
-        gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(ASSET_MISC_RACER_WEIGHT);
-        gCurrentRacerWeightStat = gCurrentRacerMiscAssetPtr[tempRacer->characterId] * 0.45;
-        if (tempRacer->bubbleTrapTimer > 0) {
-            gCurrentRacerWeightStat = -0.02f;
-        }
-        gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(ASSET_MISC_RACER_HANDLING);
-        gCurrentRacerHandlingStat = gCurrentRacerMiscAssetPtr[tempRacer->characterId];
-        gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(ASSET_MISC_RACER_UNUSED_11);
-        gCurrentRacerUnusedMiscAsset11 = gCurrentRacerMiscAssetPtr[tempRacer->characterId];
-        if (tempRacer->effectBoxType == 3) {
-            gCurrentRacerWeightStat *= (f32) tempRacer->effectBoxStrength / 256;
-        }
-        if (tempRacer->effectBoxType == 1) {
-            gCurrentRacerWeightStat -= (gCurrentRacerWeightStat * tempRacer->effectBoxStrength) / 128;
-            if (tempRacer->bubbleTrapTimer > 0) {
-                gCurrentRacerWeightStat = -gCurrentRacerWeightStat;
-            }
-        }
-        if (tempRacer->effectBoxType == 2) {
-            tempRacer->pushVelX +=
-                ((sins_f((tempRacer->effectBoxStrength << 8)) * 4.0f) - tempRacer->pushVelX) * 0.0625 * updateRateF;
-            tempRacer->pushVelZ +=
-                ((coss_f((tempRacer->effectBoxStrength << 8)) * 4.0f) - tempRacer->pushVelZ) * 0.0625 * updateRateF;
-        } else {
-            tempRacer->pushVelX -= tempRacer->pushVelX * 0.0625 * updateRateF;
-            tempRacer->pushVelZ -= tempRacer->pushVelZ * 0.0625 * updateRateF;
-        }
-        pc_swap_racer_tables(obj->header);
-        gCurrentRacerMiscAssetPtr = (f32 *) get_misc_asset(obj->header->miscAssetIds[0]);
-        gRacerWheelTable = (f32 *) get_misc_asset(obj->header->miscAssetIds[1]);
+        racer_tick_start_timers(tempRacer, updateRate, updateRateF);
+        racer_load_stats(tempRacer);
+        racer_apply_effect_box(tempRacer, updateRateF);
+        racer_load_vehicle_tables(obj);
 
         if (obj->y_velocity < 4.0 && (tempRacer->groundedWheels > 2 || tempRacer->buoyancy != 0.0)) {
             tempRacer->launchedState = 0;
@@ -638,401 +1213,42 @@ void update_player_racer(Object *obj, s32 updateRate) {
         xTemp = obj->trans.x_position;
         yTemp = obj->trans.y_position;
         zTemp = obj->trans.z_position;
-        if (tempRacer->positionChangeTimer > 0) {
-            tempRacer->positionChangeTimer -= updateRate;
-            if (tempRacer->positionChangeTimer < 0) {
-                tempRacer->positionChangeTimer = 0;
-            }
-        }
-        set_active_camera(tempRacer->playerIndex);
-        gCameraObject = cam_get_active_camera_no_cutscenes();
-        tempRacer->miscAnimCounter++; //!@Delta
-        gCurrentPlayerIndex = tempRacer->playerIndex;
-        if (tempRacer->raceFinished == TRUE || context == GAMEMODE_MENU) {
-            tempRacer->aiLane = 1;
-            tempRacer->playerIndex = PLAYER_COMPUTER;
-            tempRacer->aiBehaviour = 0;
-            if (tempRacer->shieldTimer > 5) {
-                tempRacer->shieldTimer = 5;
-            }
-        }
-        tempVar = tempRacer->playerIndex;
-        if (tempRacer->playerIndex != PLAYER_COMPUTER && pc_trace_autopilot()) {
-            // A scripted trace holding AUTO: the human racer drives itself (linux/input.c).
-            racer_AI_pathing_inputs(obj, tempRacer, updateRate);
-        } else if (tempRacer->playerIndex != PLAYER_COMPUTER) {
-            if (tempRacer->exitObj == 0) {
-                if (is_race_started_by_player_two()) {
-                    tempVar = 1 - tempVar;
-                }
-                // Cap the joystick tilt and write the button inputs to the current buffer.
-                gCurrentStickX = input_clamp_stick_x(tempVar);
-                // Flip the steering for adventure 2.
-                if (get_filtered_cheats() & CHEAT_MIRRORED_TRACKS) {
-                    gCurrentStickX = -gCurrentStickX;
-                }
-                gCurrentStickY = input_clamp_stick_y(tempVar);
-                gCurrentRacerInput = input_held(tempVar);
-                gCurrentButtonsPressed = input_pressed(tempVar);
-                gCurrentButtonsReleased = input_released(tempVar);
-            } else {
-                racer_enter_door(tempRacer, updateRate);
-            }
-        } else {
-            racer_AI_pathing_inputs(obj, tempRacer, updateRate);
-        }
-        // Set the value that decides whether to get an empowered boost.
-        if (!(gCurrentRacerInput & A_BUTTON)) {
-            tempRacer->throttleReleased = TRUE;
-        }
-        if (check_if_showing_cutscene_camera() || gRaceStartTimer == 100 || tempRacer->launchedState ||
-            gRacerInputBlocked || tempRacer->approachTarget || tempRacer->bubbleTrapTimer > 0) {
-            gCurrentStickX = 0;
-            gCurrentStickY = 0;
-            gCurrentRacerInput = 0;
-            gCurrentButtonsPressed = 0;
-            gCurrentButtonsReleased = 0;
-            tempRacer->steerAngle = 0;
-        }
-        if (tempRacer->bubbleTrapTimer > 0) {
-            tempRacer->bubbleTrapTimer -= updateRate;
-            tempRacer->velocity *= 0.9f; //!@Delta
-            obj->x_velocity *= 0.87f;    //!@Delta
-            if (obj->y_velocity > 2.0f) {
-                obj->y_velocity = 2.0f;
-            }
-            obj->z_velocity *= 0.87f; //!@Delta
-        }
-        if (tempRacer->stunTimer > 0) {
-            tempRacer->steerWobbleTimer = tempRacer->stunTimer;
-            tempRacer->stunTimer -= updateRate;
-        }
-        if (tempRacer->steerWobbleTimer > 0) {
-            tempVar = tempRacer->steerWobbleTimer & 0xF;
-            tempRacer->steerWobbleTimer -= updateRate;
-            if (tempVar < (tempRacer->steerWobbleTimer & 0xF)) {
-                tempRacer->steerJitter = rand_range(-80, 80);
-            }
-            gCurrentStickX += tempRacer->steerJitter;
-        } else {
-            tempRacer->steerWobbleTimer = 0;
-        }
-        if (tempRacer->magnetTimer) {
-            racer_activate_magnet(obj, tempRacer, updateRate);
-        }
-        // Zero out input before the race has begun.
-        if (gRaceStartTimer && (header->race_type == RACETYPE_DEFAULT ||
-                                header->race_type == RACETYPE_HORSESHOE_GULCH || header->race_type == RACETYPE_BOSS)) {
-            gCurrentStickX = 0;
-            gCurrentStickY = 0;
-            gCurrentRacerInput = 0;
-        }
-        // Handle the race timer if it's currently active.
-        if (gRaceStartTimer == 0 && header->laps > (tempRacer->countLap)) {
-            // Keep it under 10 minutes.
-            if (tempRacer->lap_times[tempRacer->countLap] < normalise_time(36000) - updateRate) {
-                tempRacer->lap_times[tempRacer->countLap] += updateRate;
-            } else {
-                tempRacer->lap_times[tempRacer->countLap] = normalise_time(36000);
-            }
-        }
+        racer_tick_position_change_timer(tempRacer, updateRate);
+        racer_select_camera(tempRacer);
+        racer_hand_over_to_ai(tempRacer, context);
+        racer_read_input(obj, tempRacer, updateRate);
+        racer_block_input(tempRacer);
+        racer_apply_status_effects(obj, tempRacer, updateRate);
+        racer_update_lap_timer(tempRacer, header, updateRate);
         // Assign a camera to human players.
         if (gCurrentPlayerIndex != PLAYER_COMPUTER) {
             gCameraObject = cam_get_active_camera_no_cutscenes();
         }
-        gRacerWaveCount =
-            get_level_segment_waves(obj->segmentID, obj->trans.x_position, obj->trans.z_position, &gRacerCurrentWave);
-        if (gRacerWaveCount) {
-            for (i = 0; i < gRacerWaveCount; i++) {
-                if (gRacerCurrentWave[i]->type == SURFACE_WATER_UNK_F) {
-                    if (gRacerCurrentWave[i]->waveHeight < gCurrentCourseHeight) {
-                        gCurrentCourseHeight = gRacerCurrentWave[i]->waveHeight;
-                    }
-                }
-            }
-        }
-        if (tempRacer->vehicleID != VEHICLE_HOVERCRAFT) {
-            waterHeight = -10000.0f;
-            gRacerWaveType = get_wave_properties(obj->trans.y_position, &waterHeight, &gCurrentRacerWaterPos);
-            if (gRacerWaveType != SURFACE_DEFAULT) {
-                if (obj->trans.y_position - 5.0f < waterHeight) {
-                    tempRacer->waterTimer = 5;
-                    tempRacer->buoyancy = waterHeight - (obj->trans.y_position - 5.0f);
-                } else {
-                    tempRacer->buoyancy = 0.0f;
-                }
-            } else {
-                if (tempRacer->waterTimer > 0) {
-                    tempRacer->waterTimer--;
-                } else {
-                    tempRacer->buoyancy = 0.0f;
-                }
-            }
-            if (tempRacer->waterTimer > 0 && obj->trans.y_position < waterHeight + 5.0f) {
-                obj->interactObj->flags |= INTERACT_FLAGS_UNK_0010;
-            } else {
-                obj->interactObj->flags &= ~INTERACT_FLAGS_UNK_0010;
-            }
-        }
-        set_collision_mode(COLLISION_MODE_DEFAULT);
-        switch (tempRacer->vehicleID) {
-            case VEHICLE_CAR:
-                update_car(updateRate, updateRateF, obj, tempRacer);
-                break;
-            case VEHICLE_LOOPDELOOP:
-                update_loop_de_loop(updateRate, updateRateF, obj, tempRacer);
-                break;
-            case VEHICLE_HOVERCRAFT:
-                update_hovercraft(updateRate, updateRateF, obj, tempRacer);
-                break;
-            case VEHICLE_PLANE:
-                update_plane(updateRate, updateRateF, obj, tempRacer);
-                break;
-            case VEHICLE_FLYING_CAR: /* fall through */
-            case VEHICLE_CARPET:
-                update_carpet(updateRate, updateRateF, obj, tempRacer);
-                break;
-            case VEHICLE_TRICKY:
-                update_tricky(updateRate, updateRateF, obj, tempRacer, &gCurrentRacerInput, &gCurrentButtonsPressed,
-                              &gRaceStartTimer);
-                break;
-            case VEHICLE_BLUEY:
-                update_bluey(updateRate, updateRateF, obj, tempRacer, &gCurrentRacerInput, &gCurrentButtonsPressed,
-                             &gRaceStartTimer);
-                break;
-            case VEHICLE_SMOKEY: /* fall through */
-            case VEHICLE_PTERODACTYL:
-                update_smokey(updateRate, updateRateF, obj, tempRacer, &gCurrentRacerInput, &gCurrentStickX,
-                              &gRaceStartTimer);
-                break;
-            case VEHICLE_BUBBLER:
-                update_bubbler(updateRate, updateRateF, obj, tempRacer, &gCurrentRacerInput, &gCurrentButtonsPressed,
-                               &gRaceStartTimer);
-                break;
-            case VEHICLE_WIZPIG:
-                update_wizpig(updateRate, updateRateF, obj, tempRacer, &gCurrentRacerInput, &gCurrentButtonsPressed,
-                              &gRaceStartTimer);
-                break;
-            case VEHICLE_ROCKET:
-                update_rocket(updateRate, updateRateF, obj, tempRacer, &gCurrentRacerInput, &gCurrentButtonsPressed,
-                              &gRaceStartTimer);
-                break;
-        }
-        if (tempRacer->magnetTimer == 0) {
-            if (tempRacer->magnetSoundMask) {
-                sndp_stop(tempRacer->magnetSoundMask);
-                tempRacer->magnetSoundMask = NULL;
-            }
-        }
-        playerID = header->playerIndex;
-        if (playerID) {
-            playerIDF = -(f32) playerID;
-            CLAMP(tempRacer->velocity, playerIDF, playerID);
-        }
+        racer_update_water(obj, tempRacer);
+        racer_update_vehicle(obj, tempRacer, updateRate, updateRateF);
+        racer_stop_magnet_and_cap_speed(tempRacer, header);
         if (context != GAMEMODE_MENU || racetype_demo()) {
             racer_sound_update(obj, gCurrentButtonsPressed, gCurrentRacerInput, updateRate);
         }
-        lastCheckpointDist = tempRacer->checkpoint_distance;
-        tempVar = checkpoint_is_passed(tempRacer->nextCheckpoint, obj, xTemp, yTemp, zTemp,
-                                       &tempRacer->checkpoint_distance, &tempRacer->isOnAlternateRoute);
-        if (tempVar == -100) {
-            racer_update_progress(tempRacer);
-        }
-        checkpointNode = find_next_checkpoint_node(tempRacer->nextCheckpoint, tempRacer->isOnAlternateRoute);
-        if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->laneAction[tempRacer->aiLane] == 5 &&
-            tempRacer->waterTimer) {
-            tempRacer->isOnAlternateRoute = TRUE;
-        }
-        if (checkpointNode->laneAction[tempRacer->aiLane] == 6) {
-            tempRacer->lap = header->laps + 1;
-        }
-        if (tempVar == 0) {
-            if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->laneAction[tempRacer->aiLane] == 2) {
-                tempRacer->isOnAlternateRoute = TRUE;
-            }
-            checkpointCount = get_checkpoint_count();
-            tempRacer->nextCheckpoint++;
-            if (tempRacer->nextCheckpoint >= checkpointCount) {
-                tempRacer->nextCheckpoint = 0;
-                if (tempRacer->courseCheckpoint > 0) {
-                    if (tempRacer->lap < 120) {
-                        tempRacer->lap++;
-                    }
-                }
-                if (tempRacer->playerIndex != PLAYER_COMPUTER && tempRacer->lap + 1 == header->laps &&
-                    !gFinalLapAnnounced && level_type() == RACETYPE_DEFAULT) {
-                    music_tempo_set_relative(1.12f);
-                    gFinalLapAnnounced = 1;
-                }
-            }
-            if (is_taj_challenge()) {
-                if (gCurrentPlayerIndex != PLAYER_COMPUTER) {
-                    checkpointNode =
-                        find_next_checkpoint_node(tempRacer->nextCheckpoint, tempRacer->isOnAlternateRoute);
-                    if (!tempRacer->challengeMarker) {
-                        newObject.x = 0;
-                        newObject.y = 0;
-                        newObject.z = 0;
-                        newObject.objectID = ASSET_OBJECT_ID_CHECKARROW;
-                        newObject.size = sizeof(LevelObjectEntryCommon);
-                        tempRacer->challengeMarker = spawn_object(&newObject, OBJECT_SPAWN_UNK01);
-                        if (tempRacer->challengeMarker) {
-                            tempRacer->challengeMarker->level_entry = NULL;
-                            tempRacer->challengeMarker->opacity = 128;
-                        }
-                    }
-                    if (tempRacer->challengeMarker) {
-                        tempRacer->challengeMarker->trans.x_position = checkpointNode->obj->trans.x_position;
-                        tempRacer->challengeMarker->trans.y_position = checkpointNode->obj->trans.y_position;
-                        if (tempRacer->vehicleID == VEHICLE_CAR) {
-                            tempRacer->challengeMarker->trans.y_position -= 30.0;
-                        }
-                        tempRacer->challengeMarker->trans.z_position = checkpointNode->obj->trans.z_position;
-                        tempRacer->challengeMarker->trans.rotation.y_rotation =
-                            checkpointNode->obj->trans.rotation.y_rotation;
-                        tempRacer->challengeMarker->trans.rotation.x_rotation =
-                            checkpointNode->obj->trans.rotation.x_rotation;
-                        tempRacer->challengeMarker->segmentID = checkpointNode->obj->segmentID;
-                    }
-                }
-            }
-            if (tempRacer->courseCheckpoint < (header->laps + 3) * checkpointCount) {
-                tempRacer->courseCheckpoint++;
-            }
-            tempRacer->checkpointRank = 10000;
-        } else {
-            if (tempRacer->playerIndex == PLAYER_COMPUTER && lastCheckpointDist < tempRacer->checkpoint_distance) {
-                tempRacer->checkpoint_distance = lastCheckpointDist;
-            }
-            tempRacer->checkpointRank = tempVar;
-        }
-        if (is_taj_challenge()) {
-            if (tempRacer->challengeMarker) {
-                tempRacer->challengeMarker->animFrame += 8 * updateRate;
-            }
-            if (tempRacer->trackOffsetX > 400 || tempRacer->trackOffsetX < -400) {
-                mode_end_taj_race(CHALLENGE_END_OOB);
-            }
-        }
+        racer_update_checkpoints(obj, tempRacer, header, xTemp, yTemp, zTemp);
+        racer_update_taj_challenge(tempRacer, updateRate);
         update_midi_fade_points(obj, xTemp, yTemp, zTemp, updateRate);
         racer_update_checkpoint_progress(obj, tempRacer, updateRate);
-        if (tempRacer->raceFinished == TRUE) {
-            if (tempRacer->finishedTimer < 60) {
-                tempRacer->finishedTimer += updateRate;
-            }
-        }
-        if (tempRacer->pendingBananaDrop > 0) {
-            drop_bananas(obj, tempRacer, tempRacer->pendingBananaDrop);
-        }
+        racer_update_finish_and_bananas(obj, tempRacer, updateRate);
         tempRacer->playerIndex = gCurrentPlayerIndex;
         update_player_camera(obj, tempRacer, updateRateF);
         gRacerDialogueCamera = FALSE;
-        if (tempRacer->approachTarget) {
-            tempRacer->approachTarget = NULL;
-            tempRacer->velocity = 0.0f;
-            tempRacer->lateral_velocity = 0.0f;
-        }
-        if (tempRacer->stretch_height <= tempRacer->stretch_height_cap) {
-            stretch = 0.02f;
-        } else {
-            stretch = -0.02f;
-        }
-        tempRacer->stretch_height +=
-            (((tempRacer->stretch_height_cap - tempRacer->stretch_height) * 0.125) + stretch) * updateRateF;
-        if ((stretch < 0.0f && tempRacer->stretch_height <= tempRacer->stretch_height_cap) ||
-            (stretch > 0.0f && tempRacer->stretch_height >= tempRacer->stretch_height_cap)) {
-            tempRacer->stretch_height = tempRacer->stretch_height_cap;
-            tempRacer->stretch_height_cap = 1.0f;
-        }
-
-        tempVar = ((tempRacer->headAngleTarget - tempRacer->headAngle) * updateRate) >> 3;
-        CLAMP(tempVar, -0x800, 0x800);
-        tempRacer->headAngle += tempVar;
-        if ((gCurrentButtonsPressed & R_TRIG) && tempRacer->tapTimerR) {
-            tempRacer->tappedR = TRUE;
-            tempRacer->tapTimerR = 0;
-        } else if (gCurrentButtonsPressed & R_TRIG) {
-            tempRacer->tapTimerR = 22;
-        }
-        if (tempRacer->tapTimerR > 0) {
-            tempRacer->tapTimerR -= updateRate;
-        } else {
-            tempRacer->tapTimerR = 0;
-        }
-        if (tempRacer->shieldTimer > 0) {
-            if (tempRacer->shieldTimer > 60) {
-                if (tempRacer->shieldSoundMask) {
-                    audspat_point_set_position(tempRacer->shieldSoundMask, obj->trans.x_position, obj->trans.y_position,
-                                               obj->trans.z_position);
-                } else if (tempRacer->vehicleSound) {
-                    audspat_play_sound_at_position(SOUND_SHIELD, obj->trans.x_position, obj->trans.y_position,
-                                                   obj->trans.z_position, AUDIO_POINT_FLAG_1,
-                                                   &tempRacer->shieldSoundMask);
-                }
-            } else if (tempRacer->shieldSoundMask) {
-                audspat_point_stop(tempRacer->shieldSoundMask);
-                tempRacer->shieldSoundMask = NULL;
-            }
-            tempRacer->shieldTimer -= updateRate;
-            if (tempRacer->shieldTimer <= 0) {
-                tempRacer->shieldType = SHIELD_NONE;
-            }
-        }
-        if (tempRacer->bananaSoundMask) {
-            audspat_point_set_position(tempRacer->bananaSoundMask, obj->trans.x_position, obj->trans.y_position,
-                                       obj->trans.z_position);
-        }
-        if (is_in_time_trial() && tempRacer->playerIndex == PLAYER_ONE && gRaceStartTimer == 0) {
-            timetrial_ghost_write(obj, updateRate);
-        }
-        if (tempRacer->soundMask) {
-            audspat_point_set_position(tempRacer->soundMask, obj->trans.x_position, obj->trans.y_position,
-                                       obj->trans.z_position);
-        }
+        racer_clear_approach_target(tempRacer);
+        racer_update_stretch(tempRacer, updateRateF);
+        racer_update_head_and_r_tap(tempRacer, updateRate);
+        racer_update_shield(obj, tempRacer, updateRate);
+        racer_update_sounds_and_ghost(obj, tempRacer, updateRate);
         gRacerInputBlocked = 0;
-        if (tempRacer->posArrowObj && gRaceStartTimer == 0) {
-            s8 *yAsset;
-            tempRacer->posArrowObj->trans.x_position = obj->trans.x_position;
-            yAsset = (s8 *) get_misc_asset(ASSET_MISC_0);
-
-            tempRacer->posArrowObj->trans.y_position = obj->trans.y_position + yAsset[tempRacer->characterId];
-            tempRacer->posArrowObj->trans.z_position = obj->trans.z_position;
-            tempRacer->posArrowObj->trans.scale = obj->distanceToCamera / 265.0f;
-            if (obj->distanceToCamera < 1500.0 || get_filtered_cheats() & CHEAT_MIRRORED_TRACKS) {
-                tempObj = tempRacer->posArrowObj;
-                tempObj->trans.flags |= OBJ_FLAGS_INVISIBLE;
-            }
-            if (tempRacer->posArrowObj->trans.scale < 1.0) {
-                tempRacer->posArrowObj->trans.scale = 1.0f;
-            }
-            tempRacer->posArrowObj = NULL;
-        }
+        racer_place_position_arrow(obj, tempRacer);
         tempRacer->effectBoxType = -1;
         set_racer_tail_lights(tempRacer);
-        if (tempRacer->delaySoundID) {
-            if (tempRacer->delaySoundTimer > updateRate) {
-                tempRacer->delaySoundTimer -= updateRate;
-            } else {
-                tempRacer->delaySoundTimer = 0;
-                if (tempRacer->playerIndex == PLAYER_COMPUTER) {
-                    audspat_play_sound_at_position(tempRacer->delaySoundID, obj->trans.x_position,
-                                                   obj->trans.y_position, obj->trans.z_position,
-                                                   AUDIO_POINT_FLAG_ONE_TIME_TRIGGER, NULL);
-                } else {
-                    sound_play_spatial(tempRacer->delaySoundID, obj->trans.x_position, obj->trans.y_position,
-                                       obj->trans.z_position, NULL);
-                }
-                tempRacer->delaySoundID = SOUND_NONE;
-            }
-        }
-        if (header->race_type & RACETYPE_CHALLENGE && header->race_type != RACETYPE_CHALLENGE_EGGS) {
-            tempRacer->elevation = obj_elevation(obj->trans.y_position);
-        } else {
-            tempRacer->elevation = ELEVATION_LOW;
-        }
-        if (tempRacer->countLap < tempRacer->lap) {
-            tempRacer->countLap = tempRacer->lap;
-        }
+        racer_play_delayed_sound(obj, tempRacer, updateRate);
+        racer_update_elevation_and_lap_count(obj, tempRacer, header);
     }
 }
 
