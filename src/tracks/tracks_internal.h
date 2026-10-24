@@ -52,6 +52,12 @@
 
 // gShadowBucketVertices holds one bucket of this many clip vertices per edge of the shadow rectangle.
 #define SHADOW_BUCKET_SIZE 32
+// The shadow rectangle has four edges, each with its own bucket.
+#define SHADOW_BUCKET_COUNT 4
+// get_level_segment_waves stops after this many water polygons under a point; the segment's own
+// water surface may then add one more hit.
+#define WATER_POLYGON_HITS_MAX 20
+#define WATER_SURFACE_HITS_MAX (WATER_POLYGON_HITS_MAX + 1)
 // Set on a triangle's edge plane index when the plane faces the other way for it (shared edges).
 #define EDGE_PLANE_FLIPPED 0x8000
 #define EDGE_PLANE_INDEX_MASK 0x7FFF
@@ -86,8 +92,8 @@ extern s32 gAntiAliasing;
 extern s32 gTrackTexAnimOffset;
 extern s32 gShadowVertexCount;
 extern ShadowVertex gShadowVertices[32];
-extern s32 gShadowBucketCounts[4];
-extern ShadowClipVertex gShadowBucketVertices[120];
+extern s32 gShadowBucketCounts[SHADOW_BUCKET_COUNT];
+extern ShadowClipVertex gShadowBucketVertices[SHADOW_BUCKET_COUNT * SHADOW_BUCKET_SIZE];
 extern s32 gShadowTriCount;
 extern ShadowPolygon gShadowTris[32];
 extern ShadowWaveTri gShadowWaveCells[64];
@@ -110,8 +116,8 @@ extern s32 gShadowCentreShared;
 extern f32 gShadowFadeStart;
 extern f32 gShadowFadeRange;
 extern Vec4f gFrustumPlanes[3];
-extern WaterProperties gWaterSurfaceHits[20];
-extern WaterProperties *gTrackWaves[20];
+extern WaterProperties gWaterSurfaceHits[WATER_SURFACE_HITS_MAX];
+extern WaterProperties *gTrackWaves[WATER_SURFACE_HITS_MAX];
 extern s8 gWaterSurfaceHitCount;
 extern LevelModel *gTrackModelHeap;
 extern s32 *gLevelModelTable;

@@ -53,8 +53,10 @@ s32 gTrackTexAnimOffset;
 u32 gTrackTexAnimFlags;
 s32 gShadowVertexCount;
 ShadowVertex gShadowVertices[32]; // Struct sizeof(0x10) / sizeof(16)
-s32 gShadowBucketCounts[4];
-ShadowClipVertex gShadowBucketVertices[120]; // Struct sizeof(0x20) / sizeof(32)
+s32 gShadowBucketCounts[SHADOW_BUCKET_COUNT];
+// The original had 120 entries, so the last bucket's top eight slots (clip_polygon_to_rect can fill
+// up to 31 per bucket) ran past the end; the port gives every bucket its full size.
+ShadowClipVertex gShadowBucketVertices[SHADOW_BUCKET_COUNT * SHADOW_BUCKET_SIZE];
 s32 gShadowTriCount;
 ShadowPolygon gShadowTris[32]; // Struct sizeof(0xC) / sizeof(12)
 ShadowWaveTri gShadowWaveCells[64];
@@ -77,8 +79,10 @@ s32 gShadowCentreShared;
 f32 gShadowFadeStart;
 f32 gShadowFadeRange;
 Vec4f gFrustumPlanes[3];
-WaterProperties gWaterSurfaceHits[20];
-WaterProperties *gTrackWaves[20];
+// The original had 20 of each, so a point over 20 water polygons wrote the segment's own water
+// surface one past the end; the port adds the slot for it.
+WaterProperties gWaterSurfaceHits[WATER_SURFACE_HITS_MAX];
+WaterProperties *gTrackWaves[WATER_SURFACE_HITS_MAX];
 s8 gWaterSurfaceHitCount;
 LevelModel *gTrackModelHeap;
 s32 *gLevelModelTable;
