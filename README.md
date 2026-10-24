@@ -434,7 +434,10 @@ additive, so a real gamepad still works too.
   interaction and collision, checkpoints, race flow, AI nodes, shading,
   cutscenes) and the racers in `src/racer/` (shared physics in `racer.c`, then
   one file each for the AI, car, hovercraft, plane, the special vehicles,
-  items, cameras and ghosts); `objects.h` and `racer.h` stay their interfaces.
+  items, cameras and ghosts); the level geometry in `src/tracks/` (rendering,
+  collision, loading, the void check, sky, shadows, fog), the HUD in `src/hud/`
+  and the water in `src/waves/`. `objects.h`, `racer.h`, `tracks.h`, `game_ui.h`
+  and `waves.h` stay their interfaces.
   `libultra/`
   keeps only the parts of the N64 SDK the game still runs as code: the audio
   synthesizer and sequence player, and the matrix helpers. `include/PR/` is
