@@ -665,6 +665,22 @@ static void racer_hand_over_to_ai(Object_Racer *tempRacer, s32 context) {
 }
 
 /**
+ * Port addition for the trace autopilot. The AI only presses the accelerator from its race
+ * tactics, which give up when there are no computer racers to race against. In a time trial
+ * the autopilot holds the throttle itself, except while it reverses out of a stall.
+ */
+static void racer_autopilot_solo_throttle(Object_Racer *racer) {
+    if (!is_in_time_trial() || racer->aiReverseTimer != 0) {
+        return;
+    }
+    // Leave the start-grid line for the racing lanes, as the tactics would once the race is on.
+    if (gRaceStartTimer == 0 && racer->aiBehaviour == 6) {
+        racer->aiBehaviour = 0;
+    }
+    gCurrentRacerInput |= A_BUTTON;
+}
+
+/**
  * Reads this frame's stick and button input from the controller, the trace autopilot, the door exit or the AI,
  * and notes whether the throttle was released.
  */
@@ -675,6 +691,7 @@ static void racer_read_input(Object *obj, Object_Racer *tempRacer, s32 updateRat
     if (tempRacer->playerIndex != PLAYER_COMPUTER && pc_trace_autopilot()) {
         // A scripted trace holding AUTO: the human racer drives itself (linux/input.c).
         racer_AI_pathing_inputs(obj, tempRacer, updateRate);
+        racer_autopilot_solo_throttle(tempRacer);
     } else if (tempRacer->playerIndex != PLAYER_COMPUTER) {
         if (tempRacer->exitObj == 0) {
             if (is_race_started_by_player_two()) {

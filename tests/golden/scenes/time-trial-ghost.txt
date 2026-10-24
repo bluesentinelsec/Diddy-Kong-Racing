@@ -1,0 +1,56 @@
+# frames 10200
+# Tracks mode time trial on Ancient Lake with the T.T. ghost on, driven by the autopilot (AUTO):
+# three laps to the finish (about frame 3950), the replay, lap times, initials entry for the new
+# record (OK at 5760), record times, Save Ghost (no Controller Pak message), then Try Again and a
+# second autopilot run against the player ghost just recorded, through its finish.
+# Format: <frame> <buttons> <stickX> <stickY>, held until the next line (DKR_INPUT_SCRIPT).
+900 A 0 0
+903 - 0 0
+960 A 0 0
+963 - 0 0
+1020 A 0 0
+1023 - 0 0
+1080 A 0 0
+1083 - 0 0
+1140 A 0 0
+1143 - 0 0
+1220 - 0 -70
+1226 - 0 0
+1260 A 0 0
+1263 - 0 0
+1380 A 0 0
+1383 - 0 0
+1500 A 0 0
+1503 - 0 0
+1590 - 0 -70
+1596 - 0 0
+1620 A 0 0
+1623 - 0 0
+1740 A 0 0
+1743 - 0 0
+1990 AUTO 0 0
+4400 A 0 0
+4403 - 0 0
+5700 - -70 0
+5706 - 0 0
+5760 A 0 0
+5763 - 0 0
+6620 - 0 -70
+6626 - 0 0
+6650 - 0 -70
+6656 - 0 0
+6680 - 0 -70
+6686 - 0 0
+6720 A 0 0
+6723 - 0 0
+7420 A 0 0
+7423 - 0 0
+7620 - 0 70
+7626 - 0 0
+7650 - 0 70
+7656 - 0 0
+7680 - 0 70
+7686 - 0 0
+7720 A 0 0
+7723 - 0 0
+7800 AUTO 0 0

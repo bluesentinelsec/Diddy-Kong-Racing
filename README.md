@@ -201,7 +201,8 @@ the port honest:
   Then the **scene traces** in `tests/golden/scenes/`, one scripted path into
   each part of the game so that a change to its logic has a trace that
   exercises it: a car race, a hovercraft race and a plane race on Ancient Lake
-  with the AI, a time trial against the ghost, a race paused and resumed from
+  with the AI, a time trial against the ghost, a full autopilot time trial
+  (record, initials, Save Ghost, then a rerun against the new player ghost), a race paused and resumed from
   the pause menu, a race driven to the finish and through the results menu, a
   two-player split-screen race joined through the menus, a race against each
   boss (Tricky, Bluey, Bubbler, Smokey and both Wizpig races), the three battle
@@ -215,7 +216,9 @@ the port honest:
   reach by script), `# adventure` to start that level in adventure mode
   rather than Tracks mode, and `# players N`. A script line may end in `p2`..`p4` to
   drive another controller, which plugs it in, and the `AUTO` token hands a
-  human racer to the AI's driving so a scene can finish a race.
+  human racer to the AI's driving so a scene can finish a race (in a time
+  trial, where the AI's race tactics never run, the autopilot holds the throttle
+  itself).
   `tests/golden/scenes.sh` runs them all; adding a scene is adding a script
   and recording it.
   `make golden-update` regenerates everything; `tests/golden.sh` takes any
@@ -228,7 +231,9 @@ the port honest:
   The traces are the safety net for rewriting the game code into readable C:
   a rewrite is correct when every trace is identical. They already caught one
   real bug while being written (a pointer table allocated at the console's
-  4 bytes per entry, which on a 64-bit host overran into the level names).
+  4 bytes per entry, which on a 64-bit host overran into the level names),
+  and the full time trial found a second: player-ghost playback wrote four
+  spline points into three-entry arrays.
 - `make coverage` shows what that net covers. It builds with clang's
   source-based coverage into `build/coverage`, runs every trace (each must
   still match) and writes `build/coverage/report/summary.txt` (line and
