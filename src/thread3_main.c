@@ -463,10 +463,10 @@ static void mode_game_textbox(s32 updateRate) {
     process_onscreen_textbox(updateRate);
     i = textbox_visible();
     if (i != 0) {
-        if (i == 2) {
+        if (i == TEXTBOX_SHOWN_PAUSED) {
             gIsPaused = TRUE;
         }
-        if (textbox_visible() != 2) {
+        if (textbox_visible() != TEXTBOX_SHOWN_PAUSED) {
             gIsPaused = FALSE;
             menu_close_dialogue();
         }
@@ -642,8 +642,8 @@ static void mode_game_pop_stored_level(s32 exitPopped, s32 buttonPressedInputs, 
                     set_frame_blackout_timer();
                     level_properties_pop(&gPlayableMapId, &gGameCurrentEntrance, &i, &gGameCurrentCutscene);
                     if (gPlayableMapId < 0) {
-                        if (gPlayableMapId == -1 || gPlayableMapId == -10) {
-                            if (gPlayableMapId == -10 && is_in_two_player_adventure()) {
+                        if (gPlayableMapId == SPECIAL_MAP_ID_NO_LEVEL || gPlayableMapId == SPECIAL_MAP_ID_UNK_NEG10) {
+                            if (gPlayableMapId == SPECIAL_MAP_ID_UNK_NEG10 && is_in_two_player_adventure()) {
                                 swap_lead_player();
                             }
                             req->leaveLevel = TRUE;
@@ -1250,11 +1250,11 @@ void clear_lap_records(Settings *settings, s32 flags) {
     for (i = 0; i < NUMBER_OF_SAVE_FILES; i++) {
         for (j = 0; j < numLevels; j++) {
             index = (j * 12) + (i * 4);
-            if (flags & 1) {
+            if (flags & SAVE_DATA_FLAG_READ_FLAP_TIMES) {
                 settings->flapInitialsPtr[i][j] = defaultRecords[index + 3];
                 settings->flapTimesPtr[i][j] = defaultRecords[index + 2];
             }
-            if (flags & 2) {
+            if (flags & SAVE_DATA_FLAG_READ_COURSE_TIMES) {
                 settings->courseInitialsPtr[i][j] = defaultRecords[index + 1];
                 settings->courseTimesPtr[i][j] = defaultRecords[index];
             }

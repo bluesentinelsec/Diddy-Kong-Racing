@@ -1412,7 +1412,7 @@ PointParticle *create_point_particle(Object *obj, ParticleEmitter *emitter) {
     }
 
     particle->base.segmentID = obj->segmentID;
-    particle->base.trans.flags = OBJ_FLAGS_PARTICLE;
+    particle->base.trans.flags = OBJ_FLAGS_PARTICLE; // 0x8000 into the s16: the same bits as on the N64
     particle->base.movementType = descriptor->movementType;
     particle->base.descFlags = descriptor->flags;
     particle->base.parentObj = obj;
@@ -1501,7 +1501,7 @@ Particle *create_line_particle(Object *obj, ParticleEmitter *emitter) {
         return NULL;
     }
     particle->segmentID = obj->segmentID;
-    particle->trans.flags = OBJ_FLAGS_PARTICLE;
+    particle->trans.flags = OBJ_FLAGS_PARTICLE; // 0x8000 into the s16: the same bits as on the N64
     particle->movementType = descriptor->movementType;
     particle->descFlags = descriptor->flags;
     particle->parentObj = obj;
@@ -1811,7 +1811,7 @@ Particle *create_general_particle(Object *obj, ParticleEmitter *emitter) {
         return particle;
     }
     particle->segmentID = obj->segmentID;
-    particle->trans.flags = OBJ_FLAGS_PARTICLE;
+    particle->trans.flags = OBJ_FLAGS_PARTICLE; // 0x8000 into the s16: the same bits as on the N64
     particle->movementType = descriptor->movementType;
     particle->descFlags = descriptor->flags;
     particle->parentObj = obj;

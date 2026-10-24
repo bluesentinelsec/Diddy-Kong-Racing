@@ -8,6 +8,9 @@
 #include "objects.h"
 #include "types.h"
 
+// A light's yaw or pitch spin timer at this value spins it for as long as the light exists.
+#define LIGHT_SPIN_FOREVER 0xFFFF
+
 /************ .data ************/
 
 ObjectLight **gActiveLights = NULL;
@@ -135,10 +138,10 @@ ObjectLight *light_add_from_level_object_entry(Object *obj, LevelObjectEntry_Rgb
         light->radiusMag = 1 / light->radius;
         light->dirYaw = lightEntry->dirYaw;
         light->yawSpeed = lightEntry->yawSpinSpeed;
-        light->yawSpinTimer = (lightEntry->yawSpinSpeed) ? 0xFFFF : 0;
+        light->yawSpinTimer = (lightEntry->yawSpinSpeed) ? LIGHT_SPIN_FOREVER : 0;
         light->dirPitch = lightEntry->dirPitch;
         light->pitchSpeed = lightEntry->pitchSpinSpeed;
-        light->pitchSpinTimer = (lightEntry->pitchSpinSpeed) ? 0xFFFF : 0;
+        light->pitchSpinTimer = (lightEntry->pitchSpinSpeed) ? LIGHT_SPIN_FOREVER : 0;
         light->pitchSpinTimer = 0;
         light->boundsDirty = 1;
         light_update(light, 0);
@@ -366,7 +369,7 @@ void light_update(ObjectLight *light, s32 updateRate) {
     }
     if (light->yawSpinTimer != 0) {
         remaining = light->yawSpinTimer;
-        if (light->yawSpinTimer == 0xFFFF) {
+        if (light->yawSpinTimer == LIGHT_SPIN_FOREVER) {
             light->dirYaw += light->yawSpeed * updateRate;
         } else if (updateRate < remaining) {
             light->dirYaw += light->yawSpeed * updateRate;
@@ -379,7 +382,7 @@ void light_update(ObjectLight *light, s32 updateRate) {
     }
     if (light->pitchSpinTimer != 0) {
         remaining = light->pitchSpinTimer;
-        if (light->pitchSpinTimer == 0xFFFF) {
+        if (light->pitchSpinTimer == LIGHT_SPIN_FOREVER) {
             light->dirPitch += light->pitchSpeed * updateRate;
         } else if (updateRate < remaining) {
             light->dirPitch += light->pitchSpeed * updateRate;

@@ -428,7 +428,7 @@ static void level_redirect_boss_intro(Settings *settings, s32 *levelId, s32 *ent
     if (gCurrentLevelHeader->world == WORLD_CENTRAL_AREA || gCurrentLevelHeader->world == WORLD_FUTURE_FUN_LAND) {
         wizpig = TRUE;
     }
-    if (!(courseFlags & 1) || wizpig) {
+    if (!(courseFlags & RACE_VISITED) || wizpig) {
         level_properties_push(*levelId, *entranceId, vehicleId, *cutsceneId);
         if (settings->bosses & (1 << settings->worldId)) {
             *cutsceneId = CUTSCENE_ID_UNK_7;
@@ -437,7 +437,7 @@ static void level_redirect_boss_intro(Settings *settings, s32 *levelId, s32 *ent
         }
         if (wizpig) {
             *cutsceneId = 0;
-            if (courseFlags & 1) {
+            if (courseFlags & RACE_VISITED) {
                 gPostWizpigState = 2;
             }
         }
@@ -538,7 +538,7 @@ static s32 level_balloon_door_cutscenes(Settings *settings, s32 cutsceneId) {
     if (gCurrentLevelHeader->race_type == RACETYPE_HUBWORLD) {
         if (settings->worldId - 1 >= 0) {
             doorFlag = 8 << ((settings->worldId + 31) & 31); // MIPS shift-mask semantics; see level_redirect_world_key
-            if (settings->worldId == 5) {
+            if (settings->worldId == WORLD_FUTURE_FUN_LAND) {
                 if (settings->balloonsPtr[0] >= 47) {
                     if (settings->ttAmulet >= 4) {
                         if ((settings->cutsceneFlags & doorFlag) == 0) {
@@ -850,10 +850,10 @@ void aitable_init(s8 *aiLevelTable) {
     if (is_in_tracks_mode() == FALSE) {
         settings = get_settings();
         courseFlags = settings->courseFlagsPtr[settings->courseId];
-        if (courseFlags & 2) {
+        if (courseFlags & RACE_CLEARED) {
             aiLevel = 1;
         }
-        if (courseFlags & 4) {
+        if (courseFlags & RACE_CLEARED_SILVER_COINS) {
             aiLevel = 2;
         }
     } else {

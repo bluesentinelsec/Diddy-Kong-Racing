@@ -11,6 +11,13 @@
 #include "racer.h"
 #include "thread3_main.h"
 
+// Codes in a message's text. Bytes from TEXT_CODE_CONTROL_FIRST up to TEXT_CODE_CONTROL_END are control codes
+// read by game_text_parse_controls, each followed by its arguments.
+#define TEXT_CODE_PAGE_BREAK 1
+#define TEXT_CODE_END 2
+#define TEXT_CODE_CONTROL_FIRST 3
+#define TEXT_CODE_CONTROL_END 13
+
 /************ .data ************/
 
 s8 gTextTableExists = FALSE;
@@ -348,7 +355,7 @@ void set_current_text(s32 textID) {
         gTextCloseTimerSeconds = 0;
         gCloseTextMessage = FALSE;
         gTextboxAcceptsInput = 1;
-        gGameTextBuffer[size] = 2;
+        gGameTextBuffer[size] = TEXT_CODE_END;
         if (gShowOnscreenMessage == FALSE) {
             gTextboxPage = 0;
             gTextboxJustOpened = 1;
@@ -364,12 +371,12 @@ void set_current_text(s32 textID) {
  * The number depends on what kind it is.
  */
 s32 textbox_visible(void) {
-    s32 result = 0;
+    s32 result = TEXTBOX_HIDDEN;
     if (gTextTableExists) {
         if (gShowOnscreenMessage) {
-            result = 1;
+            result = TEXTBOX_SHOWN;
             if (gTextboxPausesGame) {
-                result = 2;
+                result = TEXTBOX_SHOWN_PAUSED;
             }
         }
     }
@@ -432,15 +439,16 @@ s32 dialogue_challenge_loop(void) {
     set_current_text_colour(1, textBox.textColRed, textBox.textColGreen, textBox.textColBlue, textBox.textColAlpha,
                             255);
 
-    for (index = 0, numberOfOnes = 0; gTextboxPage != numberOfOnes && gGameTextBuffer[index] != 2; index++) {
-        if (gGameTextBuffer[index] >= 3 && gGameTextBuffer[index] < 13) {
+    for (index = 0, numberOfOnes = 0; gTextboxPage != numberOfOnes && gGameTextBuffer[index] != TEXT_CODE_END;
+         index++) {
+        if (gGameTextBuffer[index] >= TEXT_CODE_CONTROL_FIRST && gGameTextBuffer[index] < TEXT_CODE_CONTROL_END) {
             index = game_text_parse_controls(index, &textBox);
         }
-        if (gGameTextBuffer[index] == 1) {
+        if (gGameTextBuffer[index] == TEXT_CODE_PAGE_BREAK) {
             numberOfOnes++;
         }
     }
-    if (gGameTextBuffer[index] >= 3 && gGameTextBuffer[index] < 13) {
+    if (gGameTextBuffer[index] >= TEXT_CODE_CONTROL_FIRST && gGameTextBuffer[index] < TEXT_CODE_CONTROL_END) {
         index = game_text_parse_controls(index, &textBox);
     }
 
@@ -459,10 +467,10 @@ s32 dialogue_challenge_loop(void) {
         while (gGameTextBuffer[index] == 0) {
             index += 1;
         }
-        if (gGameTextBuffer[index] < 3) {
+        if (gGameTextBuffer[index] < TEXT_CODE_CONTROL_FIRST) {
             keepLooping = FALSE;
         }
-        if (gGameTextBuffer[index] >= 3 && gGameTextBuffer[index] < 13) {
+        if (gGameTextBuffer[index] >= TEXT_CODE_CONTROL_FIRST && gGameTextBuffer[index] < TEXT_CODE_CONTROL_END) {
             index = game_text_parse_controls(index, &textBox);
         }
     } while (keepLooping);
@@ -472,7 +480,7 @@ s32 dialogue_challenge_loop(void) {
     }
     if (gTextboxJustOpened == 0) {
         if (playerButtons & A_BUTTON || gCloseTextMessage) {
-            if (gGameTextBuffer[index] == 1) {
+            if (gGameTextBuffer[index] == TEXT_CODE_PAGE_BREAK) {
                 gTextboxPage += 1;
             } else {
                 gShowOnscreenMessage = FALSE;
@@ -491,8 +499,8 @@ s32 game_text_parse_controls(s32 index, TextBox *textbox) {
     char *code;
 
     code = &gGameTextBuffer[index];
-    while (code[0] >= 3 && code[0] < 13) {
-        switch (code[0] - 3) {
+    while (code[0] >= TEXT_CODE_CONTROL_FIRST && code[0] < TEXT_CODE_CONTROL_END) {
+        switch (code[0] - TEXT_CODE_CONTROL_FIRST) {
             case 0:
                 textbox->font = code[1];
                 index += 2;

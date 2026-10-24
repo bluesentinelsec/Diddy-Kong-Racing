@@ -479,7 +479,7 @@ void save_unpack_records(Settings *settings, u8 *saveData, u8 recordFlags) {
     clear_lap_records(settings, recordFlags);
     level_count(&levelCount, &worldCount);
 
-    if (recordFlags & 1) {
+    if (recordFlags & SAVE_DATA_FLAG_READ_FLAP_TIMES) {
         sSaveStreamPtr = saveData;
         sSaveStreamByte = 0;
         sSaveStreamBit = 0;
@@ -510,7 +510,7 @@ void save_unpack_records(Settings *settings, u8 *saveData, u8 recordFlags) {
             }
         }
     }
-    if (recordFlags & 2) {
+    if (recordFlags & SAVE_DATA_FLAG_READ_COURSE_TIMES) {
         sSaveStreamPtr = saveData + 192;
         sSaveStreamByte = 0;
         sSaveStreamBit = 0;
@@ -741,7 +741,7 @@ s32 write_game_data_to_controller_pak(s32 controllerIndex, Settings *settings) {
     gameData = mempool_alloc_safe(fileSize, COLOUR_TAG_WHITE);
     *((s32 *) gameData) = GAMD;
     save_pack_progress(settings, gameData + 4);
-    ret = get_file_extension(controllerIndex, 3, (char *) &fileExt);
+    ret = get_file_extension(controllerIndex, SAVE_FILE_TYPE_CPAK_SAVE, (char *) &fileExt);
     if (ret == CONTROLLER_PAK_GOOD) {
         ret = write_controller_pak_file(controllerIndex, -1, "DKRACING-ADV", (char *) &fileExt, gameData, fileSize);
     }
@@ -807,7 +807,7 @@ s32 write_time_data_to_controller_pak(s32 controllerIndex, Settings *settings) {
     timeData = mempool_alloc_safe(fileSize, COLOUR_TAG_WHITE);
     *((s32 *) timeData) = TIMD;
     save_pack_records(settings, timeData + 4);
-    ret = get_file_extension(controllerIndex, 4, (char *) &fileExt);
+    ret = get_file_extension(controllerIndex, SAVE_FILE_TYPE_CPAK_TIMES, (char *) &fileExt);
     if (ret == CONTROLLER_PAK_GOOD) {
         ret = write_controller_pak_file(controllerIndex, -1, "DKRACING-TIMES", (char *) &fileExt, timeData, fileSize);
     }

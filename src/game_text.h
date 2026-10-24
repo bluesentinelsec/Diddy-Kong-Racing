@@ -14,6 +14,13 @@
     textBox.textY = y;                                    \
     textBox.lineHeight = height
 
+// What textbox_visible returns.
+enum TextboxVisibility {
+    TEXTBOX_HIDDEN,
+    TEXTBOX_SHOWN,
+    TEXTBOX_SHOWN_PAUSED // The message pauses the game while it shows.
+};
+
 enum TextProperties {
     TEXT_NONE,
     TEXT_COL_R,

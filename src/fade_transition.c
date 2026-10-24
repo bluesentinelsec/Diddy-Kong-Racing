@@ -423,7 +423,7 @@ void transition_update_fullscreen(s32 updateRate) {
                 sTransitionOpacity = 255.0f;
             }
             gCurFadeAlpha = sTransitionOpacity;
-        } else if (gTransitionEndTimer != 0xFFFF) {
+        } else if (gTransitionEndTimer != FADE_STAY) {
             if (updateRate < gTransitionEndTimer) {
                 gTransitionEndTimer -= updateRate;
             } else {
@@ -558,7 +558,7 @@ void transition_update_shape(s32 updateRate) {
             sTransitionVtx[sTransitionTaskNum][i].y = gTransitionNextVtx[i * 3 + 1];
             sTransitionVtx[sTransitionTaskNum][i].a = (s32) gTransitionNextVtx[i * 3 + 2];
         }
-    } else if (gTransitionEndTimer != 0xFFFF) {
+    } else if (gTransitionEndTimer != FADE_STAY) {
         if (updateRate < gTransitionEndTimer) {
             gTransitionEndTimer -= updateRate;
         } else {
@@ -736,7 +736,7 @@ void transition_update_circle(s32 updateRate) {
             sTransitionVtx[sTransitionTaskNum][(i << 1) + 55].x = -scaledX;
             sTransitionVtx[sTransitionTaskNum][(i << 1) + 55].y = pointY;
         }
-    } else if (gTransitionEndTimer != 0xFFFF) {
+    } else if (gTransitionEndTimer != FADE_STAY) {
         if (updateRate < gTransitionEndTimer) {
             gTransitionEndTimer -= updateRate;
         } else {
@@ -860,7 +860,7 @@ void transition_update_blank(s32 updateRate) {
                 sTransitionFadeTimer -= updateRate;
             }
         } else {
-            if (gTransitionEndTimer != 0xFFFF) {
+            if (gTransitionEndTimer != FADE_STAY) {
                 gTransitionEndTimer -= updateRate;
                 if (gTransitionEndTimer <= 0) {
                     gTransitionEndTimer = 0;
