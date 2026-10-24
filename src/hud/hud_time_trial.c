@@ -35,30 +35,13 @@ static char gHudTimeTrialJp_Defective[] = { 0x80, 0xD5, 0x80, 0xE1, 0x80, 0xB7, 
 
 static UNUSED f32 sRecordVel = 0.0f; // Set to whatever the highest velocity recorded is, but never actually used.
 
-void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
-    s32 i;
-    s32 spB8;
-    s32 spB4;
-    s32 spB0;
-    s32 spAC;
-    s32 stopwatchTimer;
-    s32 temp_lo;
-    Object_Racer *curRacer;
-    Object *ttSWBodyObject;
-    ModelInstance *modInst;
+/**
+ * Spawns the time trial stopwatch body and hands objects the first time they're needed.
+ */
+static void hud_tt_spawn_stopwatch(void) {
     LevelObjectEntryCommon ttSWBody;
     LevelObjectEntryCommon ttSWArms;
-    UNUSED s32 pad;
-    UNUSED s32 pad2;
-    s32 temp_t6;
-    f32 animcationFraction;
-    f32 posX;
-    f32 posY;
-    f32 posZ;
-    u16 soundID;
 
-    curRacer = playerRacerObj->racer;
-    stopwatchTimer = 0;
     if (gAssetHudElements->entry[HUD_BALLOON_COUNT_X] == NULL) {
         ttSWBody.objectID = gAssetHudElementIds[HUD_BALLOON_COUNT_X] & 0xFFFF;
         ttSWBody.size = sizeof(LevelObjectEntryCommon);
@@ -81,11 +64,17 @@ void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
         gAssetHudElements->entry[HUD_STOPWATCH] = spawn_object(&ttSWArms, OBJECT_SPAWN_NONE);
         gCurrentHud->entry[HUD_STOPWATCH].rotation.y_rotation = -0x8000;
     }
+}
 
-    ttSWBodyObject = gAssetHudElements->entry[HUD_BALLOON_COUNT_X];
-    if (ttSWBodyObject == NULL) {
-        return;
-    }
+/**
+ * Advances the stopwatch body's animation: synced to the music for animation 4, otherwise
+ * ping-ponged or looped by updateRate. Returns the body's model instance.
+ */
+static ModelInstance *hud_tt_animate_stopwatch(Object *ttSWBodyObject, Object_Racer *curRacer, s32 updateRate) {
+    ModelInstance *modInst;
+    s32 temp_lo;
+    s32 temp_t6;
+    f32 animcationFraction;
 
     ttSWBodyObject->animationID = gStopwatchAnimID;
     modInst = ttSWBodyObject->modelInstances[0];
@@ -132,7 +121,18 @@ void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
         }
         obj_animate(ttSWBodyObject);
     }
+    return modInst;
+}
 
+/**
+ * Draws the stopwatch body, then its minute and second hands set from the summed lap times.
+ * The hands are hidden while a Controller Pak error is shown.
+ */
+static void hud_tt_stopwatch_hands(Object_Racer *curRacer) {
+    s32 i;
+    s32 stopwatchTimer;
+
+    stopwatchTimer = 0;
     hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, &gCurrentHud->entry[HUD_STOPWATCH_HANDS]);
 
     for (i = 0; curRacer->lap >= i && i < 5; i++) {
@@ -158,54 +158,75 @@ void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
     if (get_contpak_error() <= 0) {
         hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, &gCurrentHud->entry[HUD_STOPWATCH]);
     }
+}
 
-    modInst->animUpdateTimer = 0;
-    cam_set_sprite_anim_mode(SPRITE_ANIM_FRAME_INDEX);
-    hud_course_arrows(curRacer, updateRate);
-    if (curRacer->raceFinished == FALSE) {
-        spB8 = gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.y;
-        for (i = 0; i < curRacer->countLap && i < gHudLevelHeader->laps; i++) {
-            get_timestamp_from_frames(curRacer->lap_times[i], &spB4, &spB0, &spAC);
-            gHudColour = gHudLapColours[i];
-            hud_timer_render(gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.x, spB8, spB4, spB0, spAC, 1);
-            gHudColour = COLOUR_RGBA32(255, 255, 255, 254);
-            spB8 += 12;
-            gDPSetPrimColor(gHudDL++, 0, 0, 255, 255, 255, 255);
-            gCurrentHud->entry[HUD_TIME_TRIAL_LAP_NUMBER].spriteOffset = i + 1;
-            hud_element_render(&gHudDL, &gHudMtx, &gHudVtx,
-                               (HudElement *) &gCurrentHud->entry[HUD_TIME_TRIAL_LAP_NUMBER]);
-            hud_element_render(&gHudDL, &gHudMtx, &gHudVtx,
-                               (HudElement *) &gCurrentHud->entry[HUD_TIME_TRIAL_LAP_TEXT]);
-            gCurrentHud->entry[HUD_TIME_TRIAL_LAP_NUMBER].pos.y += 12.0f;
-            gCurrentHud->entry[HUD_TIME_TRIAL_LAP_TEXT].pos.y += 12.0f;
-        }
+/**
+ * Draws each completed lap's split time, colour coded, with its "LAP n" label.
+ */
+static void hud_tt_lap_splits(Object_Racer *curRacer) {
+    s32 i;
+    s32 spB8;
+    s32 spB4;
+    s32 spB0;
+    s32 spAC;
 
-        gCurrentHud->entry[HUD_TIME_TRIAL_LAP_NUMBER].pos.y -= i * 0xC;
-        gCurrentHud->entry[HUD_TIME_TRIAL_LAP_TEXT].pos.y -= i * 0xC;
-        if ((curRacer->boost_sound & BOOST_SOUND_UNK4) && (sHudBoostVoiceTimer <= 0)) {
-            hud_stopwatch_face(7, 3, 0, 4, 0);
-            sHudBoostVoiceTimer = 60;
-            curRacer->boost_sound &= ~BOOST_SOUND_UNK4;
-        }
-        if (sHudBoostVoiceTimer > 0) {
-            sHudBoostVoiceTimer -= updateRate;
-            if (sHudBoostVoiceTimer < 0) {
-                sHudBoostVoiceTimer = 0;
-            }
-        }
-        if ((sHudBoostVoiceTimer == 0) && (!curRacer->raceFinished)) {
-            sHudBoostVoiceTimer = -100;
-            if (gHUDVoiceSoundMask == 0) {
-                soundID = rand_range(0, sHudTTVoiceCount + 2) + SOUND_VOICE_TT_OH_NO;
-                while (soundID == gHudTTSoundID) {
-                    soundID = rand_range(0, sHudTTVoiceCount + 2) + SOUND_VOICE_TT_OH_NO;
-                }
-                gHudTTSoundID = soundID;
-                sound_play(soundID, &gHUDVoiceSoundMask);
-                sHudTTVoiceCount = 1;
-            }
+    spB8 = gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.y;
+    for (i = 0; i < curRacer->countLap && i < gHudLevelHeader->laps; i++) {
+        get_timestamp_from_frames(curRacer->lap_times[i], &spB4, &spB0, &spAC);
+        gHudColour = gHudLapColours[i];
+        hud_timer_render(gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.x, spB8, spB4, spB0, spAC, 1);
+        gHudColour = COLOUR_RGBA32(255, 255, 255, 254);
+        spB8 += 12;
+        gDPSetPrimColor(gHudDL++, 0, 0, 255, 255, 255, 255);
+        gCurrentHud->entry[HUD_TIME_TRIAL_LAP_NUMBER].spriteOffset = i + 1;
+        hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, (HudElement *) &gCurrentHud->entry[HUD_TIME_TRIAL_LAP_NUMBER]);
+        hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, (HudElement *) &gCurrentHud->entry[HUD_TIME_TRIAL_LAP_TEXT]);
+        gCurrentHud->entry[HUD_TIME_TRIAL_LAP_NUMBER].pos.y += 12.0f;
+        gCurrentHud->entry[HUD_TIME_TRIAL_LAP_TEXT].pos.y += 12.0f;
+    }
+
+    gCurrentHud->entry[HUD_TIME_TRIAL_LAP_NUMBER].pos.y -= i * 0xC;
+    gCurrentHud->entry[HUD_TIME_TRIAL_LAP_TEXT].pos.y -= i * 0xC;
+}
+
+/**
+ * Plays the stopwatch's boost reaction, then once its timer runs out a random time trial voice line.
+ */
+static void hud_tt_boost_voice(Object_Racer *curRacer, s32 updateRate) {
+    u16 soundID;
+
+    if ((curRacer->boost_sound & BOOST_SOUND_UNK4) && (sHudBoostVoiceTimer <= 0)) {
+        hud_stopwatch_face(7, 3, 0, 4, 0);
+        sHudBoostVoiceTimer = 60;
+        curRacer->boost_sound &= ~BOOST_SOUND_UNK4;
+    }
+    if (sHudBoostVoiceTimer > 0) {
+        sHudBoostVoiceTimer -= updateRate;
+        if (sHudBoostVoiceTimer < 0) {
+            sHudBoostVoiceTimer = 0;
         }
     }
+    if ((sHudBoostVoiceTimer == 0) && (!curRacer->raceFinished)) {
+        sHudBoostVoiceTimer = -100;
+        if (gHUDVoiceSoundMask == 0) {
+            soundID = rand_range(0, sHudTTVoiceCount + 2) + SOUND_VOICE_TT_OH_NO;
+            while (soundID == gHudTTSoundID) {
+                soundID = rand_range(0, sHudTTVoiceCount + 2) + SOUND_VOICE_TT_OH_NO;
+            }
+            gHudTTSoundID = soundID;
+            sound_play(soundID, &gHUDVoiceSoundMask);
+            sHudTTVoiceCount = 1;
+        }
+    }
+}
+
+/**
+ * Just after crossing the line, plays the "lap record" voice if the last lap beat the saved
+ * flap time and every earlier lap this race.
+ */
+static void hud_tt_lap_record_voice(Object_Racer *curRacer) {
+    s32 i;
+    s32 stopwatchTimer;
 
     if ((curRacer->lap > 0) && (curRacer->lap < gHudLevelHeader->laps) && (curRacer->lap_times[curRacer->lap] < 20) &&
         (gHUDVoiceSoundMask == 0) && (curRacer->vehicleID <= VEHICLE_PLANE)) {
@@ -222,6 +243,17 @@ void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
             }
         }
     }
+}
+
+/**
+ * While racing near the player's ghost, now and then plays a "go for it" style voice line.
+ */
+static void hud_tt_ghost_voice(Object *playerRacerObj, Object_Racer *curRacer, s32 updateRate) {
+    Object *ttSWBodyObject;
+    f32 posX;
+    f32 posY;
+    f32 posZ;
+    u16 soundID;
 
     if (timetrial_valid_player_ghost()) {
         ttSWBodyObject = timetrial_player_ghost();
@@ -247,6 +279,120 @@ void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
             }
         }
     }
+}
+
+/**
+ * Draws the three-line Controller Pak error message (shadow, then pulsing text) on the stopwatch.
+ */
+static void hud_tt_contpak_error(s32 updateRate) {
+    // has to be defined here to match
+    char *SWMessage[3];
+
+#if REGION == REGION_JP
+    switch (get_contpak_error()) {
+        // Print "ゴースト セーブ ふかのう" - "Ghost Save Impossible"
+        case CONTPAK_ERROR_UNKNOWN:
+            SWMessage[2] = gHudTimeTrialJp_Ghost;
+            SWMessage[1] = gHudTimeTrialJp_Save;
+            SWMessage[0] = gHudTimeTrialJp_Impossible;
+            break;
+        // Print "{blank} パック フル " - "{blank} Pak Full"
+        case CONTPAK_ERROR_FULL:
+            SWMessage[2] = *(s32 *) gHudTimeTrialJp_FullBlank;
+            SWMessage[1] = gHudTimeTrialJp_FullPak;
+            SWMessage[0] = gHudTimeTrialJp_Full;
+            break;
+        // Print "{blank} パック ふりょう" - "{blank} Pak Defective"
+        case CONTPAK_ERROR_DAMAGED:
+            SWMessage[2] = *(s32 *) gHudTimeTrialJp_DamagedBlank;
+            SWMessage[1] = gHudTimeTrialJp_DamagedPak;
+            SWMessage[0] = gHudTimeTrialJp_Defective;
+            break;
+        default:
+            SWMessage[2] = NULL;
+            SWMessage[1] = NULL;
+            SWMessage[0] = NULL;
+            break;
+    }
+#else
+    switch (get_contpak_error()) {
+        // Print "CAN'T SAVE GOST"
+        case CONTPAK_ERROR_UNKNOWN:
+            SWMessage[2] = "CAN'T";
+            SWMessage[1] = "SAVE";
+            SWMessage[0] = "GHOST";
+            break;
+        // Print "CONTROLLER PAK FULL"
+        case CONTPAK_ERROR_FULL:
+            SWMessage[2] = " CONTROLLER";
+            SWMessage[1] = "PAK";
+            SWMessage[0] = "FULL";
+            break;
+        // Print "CONTROLLER PAK DAMAGED"
+        case CONTPAK_ERROR_DAMAGED:
+            SWMessage[2] = " CONTROLLER";
+            SWMessage[1] = "PAK";
+            SWMessage[0] = "DAMAGED";
+            break;
+#if VERSION >= VERSION_79
+        default:
+            SWMessage[2] = NULL;
+            SWMessage[1] = NULL;
+            SWMessage[0] = NULL;
+            break;
+#endif
+    }
+#endif
+
+    set_kerning(TRUE);
+    set_text_font(ASSET_FONTS_FUNFONT);
+    // Draw text shadow.
+    set_text_colour(0, 0, 0, 255, 255);
+    draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX + 1, gStopwatchErrorY + 1, SWMessage[2],
+              ALIGN_MIDDLE_CENTER);
+    draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX + 1, gStopwatchErrorY + 15, SWMessage[1],
+              ALIGN_MIDDLE_CENTER);
+    draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX + 1, gStopwatchErrorY + 29, SWMessage[0],
+              ALIGN_MIDDLE_CENTER);
+    // Draw actual text.
+    set_text_colour(gHudPulseLight->rgba.r, gHudPulseLight->rgba.g, gHudPulseLight->rgba.b, 128,
+                    gHudPulseLight->rgba.a);
+    draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX, gStopwatchErrorY, SWMessage[2],
+              ALIGN_MIDDLE_CENTER);
+    draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX, gStopwatchErrorY + 14, SWMessage[1],
+              ALIGN_MIDDLE_CENTER);
+    draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX, gStopwatchErrorY + 28, SWMessage[0],
+              ALIGN_MIDDLE_CENTER);
+    update_colour_cycle(gHudPulseLight, updateRate);
+    set_kerning(FALSE);
+}
+
+void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
+    Object_Racer *curRacer;
+    Object *ttSWBodyObject;
+    ModelInstance *modInst;
+
+    curRacer = playerRacerObj->racer;
+    hud_tt_spawn_stopwatch();
+
+    ttSWBodyObject = gAssetHudElements->entry[HUD_BALLOON_COUNT_X];
+    if (ttSWBodyObject == NULL) {
+        return;
+    }
+
+    modInst = hud_tt_animate_stopwatch(ttSWBodyObject, curRacer, updateRate);
+    hud_tt_stopwatch_hands(curRacer);
+
+    modInst->animUpdateTimer = 0;
+    cam_set_sprite_anim_mode(SPRITE_ANIM_FRAME_INDEX);
+    hud_course_arrows(curRacer, updateRate);
+    if (curRacer->raceFinished == FALSE) {
+        hud_tt_lap_splits(curRacer);
+        hud_tt_boost_voice(curRacer, updateRate);
+    }
+
+    hud_tt_lap_record_voice(curRacer);
+    hud_tt_ghost_voice(playerRacerObj, curRacer, updateRate);
 
     if (curRacer->lap_times[curRacer->lap] < 30 && curRacer->lap != 0) {
         hud_stopwatch_face(5, 1, 2, 2, 0);
@@ -263,86 +409,7 @@ void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
     hud_race_start(arg0, updateRate);
     hud_speedometre(playerRacerObj, updateRate);
     if (get_contpak_error() > 0) {
-        // has to be defined here to match
-        char *SWMessage[3];
-
-#if REGION == REGION_JP
-        switch (get_contpak_error()) {
-            // Print "ゴースト セーブ ふかのう" - "Ghost Save Impossible"
-            case CONTPAK_ERROR_UNKNOWN:
-                SWMessage[2] = gHudTimeTrialJp_Ghost;
-                SWMessage[1] = gHudTimeTrialJp_Save;
-                SWMessage[0] = gHudTimeTrialJp_Impossible;
-                break;
-            // Print "{blank} パック フル " - "{blank} Pak Full"
-            case CONTPAK_ERROR_FULL:
-                SWMessage[2] = *(s32 *) gHudTimeTrialJp_FullBlank;
-                SWMessage[1] = gHudTimeTrialJp_FullPak;
-                SWMessage[0] = gHudTimeTrialJp_Full;
-                break;
-            // Print "{blank} パック ふりょう" - "{blank} Pak Defective"
-            case CONTPAK_ERROR_DAMAGED:
-                SWMessage[2] = *(s32 *) gHudTimeTrialJp_DamagedBlank;
-                SWMessage[1] = gHudTimeTrialJp_DamagedPak;
-                SWMessage[0] = gHudTimeTrialJp_Defective;
-                break;
-            default:
-                SWMessage[2] = NULL;
-                SWMessage[1] = NULL;
-                SWMessage[0] = NULL;
-                break;
-        }
-#else
-        switch (get_contpak_error()) {
-            // Print "CAN'T SAVE GOST"
-            case CONTPAK_ERROR_UNKNOWN:
-                SWMessage[2] = "CAN'T";
-                SWMessage[1] = "SAVE";
-                SWMessage[0] = "GHOST";
-                break;
-            // Print "CONTROLLER PAK FULL"
-            case CONTPAK_ERROR_FULL:
-                SWMessage[2] = " CONTROLLER";
-                SWMessage[1] = "PAK";
-                SWMessage[0] = "FULL";
-                break;
-            // Print "CONTROLLER PAK DAMAGED"
-            case CONTPAK_ERROR_DAMAGED:
-                SWMessage[2] = " CONTROLLER";
-                SWMessage[1] = "PAK";
-                SWMessage[0] = "DAMAGED";
-                break;
-#if VERSION >= VERSION_79
-            default:
-                SWMessage[2] = NULL;
-                SWMessage[1] = NULL;
-                SWMessage[0] = NULL;
-                break;
-#endif
-        }
-#endif
-
-        set_kerning(TRUE);
-        set_text_font(ASSET_FONTS_FUNFONT);
-        // Draw text shadow.
-        set_text_colour(0, 0, 0, 255, 255);
-        draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX + 1, gStopwatchErrorY + 1, SWMessage[2],
-                  ALIGN_MIDDLE_CENTER);
-        draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX + 1, gStopwatchErrorY + 15, SWMessage[1],
-                  ALIGN_MIDDLE_CENTER);
-        draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX + 1, gStopwatchErrorY + 29, SWMessage[0],
-                  ALIGN_MIDDLE_CENTER);
-        // Draw actual text.
-        set_text_colour(gHudPulseLight->rgba.r, gHudPulseLight->rgba.g, gHudPulseLight->rgba.b, 128,
-                        gHudPulseLight->rgba.a);
-        draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX, gStopwatchErrorY, SWMessage[2],
-                  ALIGN_MIDDLE_CENTER);
-        draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX, gStopwatchErrorY + 14, SWMessage[1],
-                  ALIGN_MIDDLE_CENTER);
-        draw_text(&gHudDL, gStopwatchErrorX + gHudOffsetX + gHudBounceX, gStopwatchErrorY + 28, SWMessage[0],
-                  ALIGN_MIDDLE_CENTER);
-        update_colour_cycle(gHudPulseLight, updateRate);
-        set_kerning(FALSE);
+        hud_tt_contpak_error(updateRate);
     }
 
     cam_set_sprite_anim_mode(SPRITE_ANIM_NORMALIZED);

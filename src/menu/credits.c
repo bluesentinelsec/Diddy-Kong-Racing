@@ -360,225 +360,223 @@ void credits_fade(s32 x1, s32 y1, s32 x2, s32 y2, s32 a) {
 
     rendermode_reset(&gMenuFrame.displayList);
 }
+/**
+ * Spin the racer portraits in a circle while the credits fade between levels.
+ */
+static void credits_render_portrait_ring(s32 updateRate) {
+    s32 nextIndex;
+    s32 textPos;
+    s32 var_s5;
+    s32 var_s4;
+    s32 halvedFbSize;
+
+    gMenuFlow.curIndex += updateRate << 8;
+    if (gMenuFlow.opacityDecayTimer >= 40) {
+        var_s4 = 0;
+    } else {
+        var_s4 = 40 - gMenuFlow.opacityDecayTimer;
+    }
+    var_s4 = (var_s4 * 5) + 72;
+
+    var_s5 = gMenuFlow.curIndex;
+    halvedFbSize = fb_size();
+    halvedFbSize >>= 17;
+    halvedFbSize &= 0x7FFF;
+    textPos = halvedFbSize;
+    for (nextIndex = 0; nextIndex < ARRAY_COUNT(gRacerPortraits); nextIndex++) {
+        texrect_draw(&gMenuFrame.displayList, gRacerPortraits[nextIndex], ((sins_s16(var_s5) * var_s4) >> 16) + 140,
+                     (((coss_s16(var_s5) * var_s4) >> 16) + textPos) - 20, 255, 255, 255, 255);
+        var_s5 += 0x1999;
+    }
+    rendermode_reset(&gMenuFrame.displayList);
+}
 
 /**
- * Handles the credits for the game
+ * Lay out a new credits page from the control data: a title with its names, or the best
+ * race times (track name over time), then start it scrolling in.
  */
-s32 menu_credits_loop(s32 updateRate) {
-    UNUSED s32 pad_sp7C[3];
+static void credits_show_new_page(s8 *mainTrackIds, s8 isShowingBestRaceTimes) {
     s32 nextIndex;
-    UNUSED s32 pad_sp70[2];
-    s32 breakLoop;
-    s32 isCreditsEnd;
-    UNUSED s32 pad_sp64;
-    CreditsBackgroundLevelData *creditsBackgroundLevelData;
-    s8 *mainTrackIds;
-    s8 isShowingBestRaceTimes;
-    CreditsBackgroundLevelData *tempBackgroundLevelData;
-    s32 i;
     s32 textPos;
-    s32 buttonsPressedAllPlayers;
     s32 controlDataLength;
     s32 creditsMenuElementIndex;
     s32 var_s5;
     s32 var_s4;
     s32 textLineHeight;
-    s32 halvedFbSize;
 
-    isCreditsEnd = FALSE;
-    mainTrackIds = (s8 *) get_misc_asset(ASSET_MISC_MAIN_TRACKS_IDS);
-    creditsBackgroundLevelData = (CreditsBackgroundLevelData *) get_misc_asset(ASSET_MISC_69);
-    bgload_tick();
-    if (gMenuInput.delay == 0) {
-        disable_new_screen_transitions();
-        transition_begin(NULL);
-        enable_new_screen_transitions();
+    // Keep everything but the current credits control flag
+    sCreditsTextOffset = gCreditsControlData[gCreditsControlDataIndex] & 0xFFFFFFFF & ~CREDITS_CONTROL_DATA_BITMASK;
+    // advance credits control data index by 1
+    nextIndex = ++gCreditsControlDataIndex;
+    // find next control command (basically skip any values < 0x1000)
+    while ((gCreditsControlData[gCreditsControlDataIndex] & CREDITS_CONTROL_DATA_BITMASK) == CREDITS_NO_FLAG) {
+        gCreditsControlDataIndex++;
     }
 
-    if (osTvType == OS_TV_TYPE_PAL) {
-        credits_fade(0, 38, SCREEN_WIDTH, 186, gMenuFlow.opacityDecayTimer * 8);
+    // if tv type is pal we want to offset the position slightly
+    textPos = osTvType == OS_TV_TYPE_PAL ? SCREEN_HEIGHT_HALF + 14 : SCREEN_HEIGHT_HALF;
+
+    var_s5 = FONT_COLOURFUL;
+    textLineHeight = 20;
+    controlDataLength = gCreditsControlDataIndex - nextIndex;
+    // only one thing to show for example "CREDITS"
+    if (controlDataLength == 1) {
+        textPos -= 14;
+        var_s5 = FONT_LARGE;
+    } else if (isShowingBestRaceTimes) {
+        textPos -= (controlDataLength * 16) - 3;
+        textLineHeight = 32;
     } else {
-        credits_fade(0, 40, SCREEN_WIDTH, 156, gMenuFlow.opacityDecayTimer * 8);
+        // we're showing multiple things
+        textPos -= (controlDataLength * 16) - 8;
     }
 
-    if (gMenuFlow.opacityDecayTimer > 0) {
-        gMenuFlow.curIndex += updateRate << 8;
-        if (gMenuFlow.opacityDecayTimer >= 40) {
-            var_s4 = 0;
+    gCreditsMenuElements[0].left = 480;
+    if ((gCreditsControlData[gCreditsControlDataIndex] & CREDITS_CONTROL_DATA_BITMASK) == CREDITS_CONTINUE_TITLE_FLAG) {
+        gCreditsMenuElements[0].right = SCREEN_WIDTH_HALF;
+    } else {
+        gCreditsMenuElements[0].right = -SCREEN_WIDTH_HALF;
+    }
+
+    for (creditsMenuElementIndex = 0, var_s4 = nextIndex; var_s4 < gCreditsControlDataIndex; var_s4++) {
+        gCreditsMenuElements[creditsMenuElementIndex].top = textPos;
+        gCreditsMenuElements[creditsMenuElementIndex].middle = textPos;
+        gCreditsMenuElements[creditsMenuElementIndex].bottom = textPos;
+        if (isShowingBestRaceTimes) {
+            // Best time for a level. Lists level in the first row and then the time in the next row
+            gCreditsMenuElements[creditsMenuElementIndex].textFont = FONT_COLOURFUL;
+            gCreditsMenuElements[creditsMenuElementIndex].filterGreen = 0;
+            gCreditsMenuElements[creditsMenuElementIndex].filterBlendFactor = 48;
+            gCreditsMenuElements[creditsMenuElementIndex].t.asciiText =
+                level_name(mainTrackIds[gCreditsControlData[var_s4]]);
+
+            creditsMenuElementIndex++;
+            gCreditsMenuElements[creditsMenuElementIndex].top = textPos + 14;
+            gCreditsMenuElements[creditsMenuElementIndex].middle = textPos + 14;
+            gCreditsMenuElements[creditsMenuElementIndex].bottom = textPos + 14;
+            gCreditsMenuElements[creditsMenuElementIndex].textFont = FONT_COLOURFUL;
+            gCreditsMenuElements[creditsMenuElementIndex].t.asciiText =
+                gCreditsBestTimesArray[gCreditsControlData[var_s4]];
+            creditsMenuElementIndex++;
         } else {
-            var_s4 = 40 - gMenuFlow.opacityDecayTimer;
-        }
-        var_s4 = (var_s4 * 5) + 72;
-
-        var_s5 = gMenuFlow.curIndex;
-        halvedFbSize = fb_size();
-        halvedFbSize >>= 17;
-        halvedFbSize &= 0x7FFF;
-        textPos = halvedFbSize;
-        for (nextIndex = 0; nextIndex < ARRAY_COUNT(gRacerPortraits); nextIndex++) {
-            texrect_draw(&gMenuFrame.displayList, gRacerPortraits[nextIndex], ((sins_s16(var_s5) * var_s4) >> 16) + 140,
-                         (((coss_s16(var_s5) * var_s4) >> 16) + textPos) - 20, 255, 255, 255, 255);
-            var_s5 += 0x1999;
-        }
-        rendermode_reset(&gMenuFrame.displayList);
-    }
-
-    if (sCreditsFinished != FALSE) {
-        sCreditsFinished = postrace_render(updateRate) == MENU_RESULT_CONTINUE;
-    }
-
-    if (sCreditsSkipped == FALSE && sCreditsFinished == FALSE) {
-        breakLoop = FALSE;
-        do {
-            isShowingBestRaceTimes = (gCreditsControlData[gCreditsControlDataIndex] & CREDITS_CONTROL_DATA_BITMASK) ==
-                                     CREDITS_BEST_RACE_TIMES_FLAG;
-
-            // check what to display
-            switch (gCreditsControlData[gCreditsControlDataIndex] & CREDITS_CONTROL_DATA_BITMASK) {
-                case CREDITS_END_FLAG:
-                    gCreditsControlDataIndex = 0;
-                    isCreditsEnd = TRUE;
-                    gMenuInput.ignoreInputTime = 0;
-                    break;
-
-                case CREDITS_BEST_RACE_TIMES_FLAG: /* fallthrough */
-                case CREDITS_NEW_TITLE_FLAG:
-                    // Keep everything but the current credits control flag
-                    sCreditsTextOffset =
-                        gCreditsControlData[gCreditsControlDataIndex] & 0xFFFFFFFF & ~CREDITS_CONTROL_DATA_BITMASK;
-                    // advance credits control data index by 1
-                    nextIndex = ++gCreditsControlDataIndex;
-                    // find next control command (basically skip any values < 0x1000)
-                    while ((gCreditsControlData[gCreditsControlDataIndex] & CREDITS_CONTROL_DATA_BITMASK) ==
-                           CREDITS_NO_FLAG) {
-                        gCreditsControlDataIndex++;
-                    }
-
-                    // if tv type is pal we want to offset the position slightly
-                    textPos = osTvType == OS_TV_TYPE_PAL ? SCREEN_HEIGHT_HALF + 14 : SCREEN_HEIGHT_HALF;
-
-                    var_s5 = FONT_COLOURFUL;
-                    textLineHeight = 20;
-                    controlDataLength = gCreditsControlDataIndex - nextIndex;
-                    // only one thing to show for example "CREDITS"
-                    if (controlDataLength == 1) {
-                        textPos -= 14;
-                        var_s5 = FONT_LARGE;
-                    } else if (isShowingBestRaceTimes) {
-                        textPos -= (controlDataLength * 16) - 3;
-                        textLineHeight = 32;
-                    } else {
-                        // we're showing multiple things
-                        textPos -= (controlDataLength * 16) - 8;
-                    }
-
-                    gCreditsMenuElements[0].left = 480;
-                    if ((gCreditsControlData[gCreditsControlDataIndex] & CREDITS_CONTROL_DATA_BITMASK) ==
-                        CREDITS_CONTINUE_TITLE_FLAG) {
-                        gCreditsMenuElements[0].right = SCREEN_WIDTH_HALF;
-                    } else {
-                        gCreditsMenuElements[0].right = -SCREEN_WIDTH_HALF;
-                    }
-
-                    for (creditsMenuElementIndex = 0, var_s4 = nextIndex; var_s4 < gCreditsControlDataIndex; var_s4++) {
-                        gCreditsMenuElements[creditsMenuElementIndex].top = textPos;
-                        gCreditsMenuElements[creditsMenuElementIndex].middle = textPos;
-                        gCreditsMenuElements[creditsMenuElementIndex].bottom = textPos;
-                        if (isShowingBestRaceTimes) {
-                            // Best time for a level. Lists level in the first row and then the time in the next row
-                            gCreditsMenuElements[creditsMenuElementIndex].textFont = FONT_COLOURFUL;
-                            gCreditsMenuElements[creditsMenuElementIndex].filterGreen = 0;
-                            gCreditsMenuElements[creditsMenuElementIndex].filterBlendFactor = 48;
-                            gCreditsMenuElements[creditsMenuElementIndex].t.asciiText =
-                                level_name(mainTrackIds[gCreditsControlData[var_s4]]);
-
-                            creditsMenuElementIndex++;
-                            gCreditsMenuElements[creditsMenuElementIndex].top = textPos + 14;
-                            gCreditsMenuElements[creditsMenuElementIndex].middle = textPos + 14;
-                            gCreditsMenuElements[creditsMenuElementIndex].bottom = textPos + 14;
-                            gCreditsMenuElements[creditsMenuElementIndex].textFont = FONT_COLOURFUL;
-                            gCreditsMenuElements[creditsMenuElementIndex].t.asciiText =
-                                gCreditsBestTimesArray[gCreditsControlData[var_s4]];
-                            creditsMenuElementIndex++;
-                        } else {
-                            // every other element should have a little more green and a little less red/orange
-                            if (creditsMenuElementIndex & 1) {
-                                gCreditsMenuElements[creditsMenuElementIndex].filterGreen = 255;
-                                gCreditsMenuElements[creditsMenuElementIndex].filterBlendFactor = 0;
-                            }
-                            gCreditsMenuElements[creditsMenuElementIndex].textFont = var_s5;
-                            gCreditsMenuElements[creditsMenuElementIndex].t.asciiText =
-                                gCreditsArray[gCreditsControlData[var_s4]];
-                            creditsMenuElementIndex++;
-                        }
-                        // after the first iteration, whatever was the font previously, set it to large now
-                        // this way to title like "Software Director" is colourful while the parts after it are "just"
-                        // large
-                        var_s5 = FONT_LARGE;
-                        // move text position up (which puts the next entry a further down on the actual screen)
-                        textPos += textLineHeight;
-                        // Since every element now uses large font increase the text line height
-                        textLineHeight = 32;
-                    }
-
-                    gCreditsMenuElements[creditsMenuElementIndex].t.element = NULL;
-                    postrace_offsets(gCreditsMenuElements, 0.5f, (f32) sCreditsTextOffset / 60.0f, 0.5f, 0, 0);
-                    sCreditsFinished = postrace_render(0) == MENU_RESULT_CONTINUE;
-                    breakLoop = TRUE;
-                    break;
-
-                // Continuation of the previous "title" e.g. "Character voices"
-                case CREDITS_CONTINUE_TITLE_FLAG:
-                    // Keep everything but the current credits control flag
-                    sCreditsTextOffset =
-                        gCreditsControlData[gCreditsControlDataIndex] & 0xFFFFFFFF & ~CREDITS_CONTROL_DATA_BITMASK;
-                    // advance credits control data index by 1
-                    nextIndex = ++gCreditsControlDataIndex;
-                    // find next control command (basically skip any values < 0x1000)
-                    while ((gCreditsControlData[gCreditsControlDataIndex] & CREDITS_CONTROL_DATA_BITMASK) ==
-                           CREDITS_NO_FLAG) {
-                        gCreditsControlDataIndex++;
-                    }
-                    gCreditsMenuElements[0].left = SCREEN_WIDTH_HALF;
-                    if ((gCreditsControlData[gCreditsControlDataIndex] & CREDITS_CONTROL_DATA_BITMASK) ==
-                        CREDITS_CONTINUE_TITLE_FLAG) {
-                        gCreditsMenuElements[0].right = SCREEN_WIDTH_HALF;
-                    } else {
-                        gCreditsMenuElements[0].right = -SCREEN_WIDTH_HALF;
-                    }
-
-                    for (var_s4 = nextIndex; var_s4 < gCreditsControlDataIndex; var_s4++) {
-                        // always add 1 to keep first line (title)
-                        // this doesn't require setting fonts or anything else as it was already setup before, only the
-                        // text has to change
-                        gCreditsMenuElements[1 + var_s4 - nextIndex].t.asciiText =
-                            gCreditsArray[gCreditsControlData[var_s4]];
-                    }
-
-                    // clear text of last element
-                    // this *technically* has the bug that it would not properly clear the text of the last n elements
-                    // if n is > 1 for example if the first screen has 1 title and 3 names and the next screen has only
-                    // 1 name (+ 1 title) it would not properly clear the second name of the previous page
-                    gCreditsMenuElements[var_s4 - nextIndex + 1].t.asciiText = NULL;
-                    postrace_offsets(gCreditsMenuElements, 0.5f, (f32) sCreditsTextOffset / 60.0f, 0.5f, 0, 0);
-                    sCreditsFinished = postrace_render(0) == MENU_RESULT_CONTINUE;
-                    breakLoop = TRUE;
-                    break;
-
-                // continue to the next level in the credits
-                case CREDITS_NEXT_LEVEL_FLAG:
-                    gCreditsControlDataIndex++;
-                    // show the characters in a circle?
-                    sCreditsSkipped = TRUE;
-                    breakLoop = TRUE;
-                    break;
-                // ??? advance command index, this is 0x5000 so it might be 0x4000 (next level) + 0x1000 (end)
-                case CREDITS_UNK_FLAG:
-                    gCreditsControlDataIndex++;
-                    break;
+            // every other element should have a little more green and a little less red/orange
+            if (creditsMenuElementIndex & 1) {
+                gCreditsMenuElements[creditsMenuElementIndex].filterGreen = 255;
+                gCreditsMenuElements[creditsMenuElementIndex].filterBlendFactor = 0;
             }
-        } while (breakLoop == FALSE);
+            gCreditsMenuElements[creditsMenuElementIndex].textFont = var_s5;
+            gCreditsMenuElements[creditsMenuElementIndex].t.asciiText = gCreditsArray[gCreditsControlData[var_s4]];
+            creditsMenuElementIndex++;
+        }
+        // after the first iteration, whatever was the font previously, set it to large now
+        // this way to title like "Software Director" is colourful while the parts after it are "just"
+        // large
+        var_s5 = FONT_LARGE;
+        // move text position up (which puts the next entry a further down on the actual screen)
+        textPos += textLineHeight;
+        // Since every element now uses large font increase the text line height
+        textLineHeight = 32;
     }
+
+    gCreditsMenuElements[creditsMenuElementIndex].t.element = NULL;
+    postrace_offsets(gCreditsMenuElements, 0.5f, (f32) sCreditsTextOffset / 60.0f, 0.5f, 0, 0);
+    sCreditsFinished = postrace_render(0) == MENU_RESULT_CONTINUE;
+}
+
+/**
+ * Continue the previous title on a new page: keep the title line and swap in the next names,
+ * then start it scrolling in.
+ */
+static void credits_continue_page(void) {
+    s32 nextIndex;
+    s32 var_s4;
+
+    // Keep everything but the current credits control flag
+    sCreditsTextOffset = gCreditsControlData[gCreditsControlDataIndex] & 0xFFFFFFFF & ~CREDITS_CONTROL_DATA_BITMASK;
+    // advance credits control data index by 1
+    nextIndex = ++gCreditsControlDataIndex;
+    // find next control command (basically skip any values < 0x1000)
+    while ((gCreditsControlData[gCreditsControlDataIndex] & CREDITS_CONTROL_DATA_BITMASK) == CREDITS_NO_FLAG) {
+        gCreditsControlDataIndex++;
+    }
+    gCreditsMenuElements[0].left = SCREEN_WIDTH_HALF;
+    if ((gCreditsControlData[gCreditsControlDataIndex] & CREDITS_CONTROL_DATA_BITMASK) == CREDITS_CONTINUE_TITLE_FLAG) {
+        gCreditsMenuElements[0].right = SCREEN_WIDTH_HALF;
+    } else {
+        gCreditsMenuElements[0].right = -SCREEN_WIDTH_HALF;
+    }
+
+    for (var_s4 = nextIndex; var_s4 < gCreditsControlDataIndex; var_s4++) {
+        // always add 1 to keep first line (title)
+        // this doesn't require setting fonts or anything else as it was already setup before, only the
+        // text has to change
+        gCreditsMenuElements[1 + var_s4 - nextIndex].t.asciiText = gCreditsArray[gCreditsControlData[var_s4]];
+    }
+
+    // clear text of last element
+    // this *technically* has the bug that it would not properly clear the text of the last n elements
+    // if n is > 1 for example if the first screen has 1 title and 3 names and the next screen has only
+    // 1 name (+ 1 title) it would not properly clear the second name of the previous page
+    gCreditsMenuElements[var_s4 - nextIndex + 1].t.asciiText = NULL;
+    postrace_offsets(gCreditsMenuElements, 0.5f, (f32) sCreditsTextOffset / 60.0f, 0.5f, 0, 0);
+    sCreditsFinished = postrace_render(0) == MENU_RESULT_CONTINUE;
+}
+
+/**
+ * Read credits control commands until one shows a page or moves to the next level.
+ * Sets *isCreditsEnd when the end marker is reached (the index then wraps to the start).
+ */
+static void credits_run_control_data(s8 *mainTrackIds, s32 *isCreditsEnd) {
+    s32 breakLoop;
+    s8 isShowingBestRaceTimes;
+
+    breakLoop = FALSE;
+    do {
+        isShowingBestRaceTimes = (gCreditsControlData[gCreditsControlDataIndex] & CREDITS_CONTROL_DATA_BITMASK) ==
+                                 CREDITS_BEST_RACE_TIMES_FLAG;
+
+        // check what to display
+        switch (gCreditsControlData[gCreditsControlDataIndex] & CREDITS_CONTROL_DATA_BITMASK) {
+            case CREDITS_END_FLAG:
+                gCreditsControlDataIndex = 0;
+                *isCreditsEnd = TRUE;
+                gMenuInput.ignoreInputTime = 0;
+                break;
+
+            case CREDITS_BEST_RACE_TIMES_FLAG: /* fallthrough */
+            case CREDITS_NEW_TITLE_FLAG:
+                credits_show_new_page(mainTrackIds, isShowingBestRaceTimes);
+                breakLoop = TRUE;
+                break;
+
+            // Continuation of the previous "title" e.g. "Character voices"
+            case CREDITS_CONTINUE_TITLE_FLAG:
+                credits_continue_page();
+                breakLoop = TRUE;
+                break;
+
+            // continue to the next level in the credits
+            case CREDITS_NEXT_LEVEL_FLAG:
+                gCreditsControlDataIndex++;
+                // show the characters in a circle?
+                sCreditsSkipped = TRUE;
+                breakLoop = TRUE;
+                break;
+            // ??? advance command index, this is 0x5000 so it might be 0x4000 (next level) + 0x1000 (end)
+            case CREDITS_UNK_FLAG:
+                gCreditsControlDataIndex++;
+                break;
+        }
+    } while (breakLoop == FALSE);
+}
+
+/**
+ * Return the buttons pressed this frame by any controller, or none while input is ignored
+ * or a transition is running.
+ */
+static s32 credits_buttons_pressed(void) {
+    s32 nextIndex;
+    s32 buttonsPressedAllPlayers;
 
     // collect all pressed buttons of all players
     buttonsPressedAllPlayers = 0;
@@ -587,6 +585,15 @@ s32 menu_credits_loop(s32 updateRate) {
             buttonsPressedAllPlayers |= input_pressed(nextIndex);
         }
     }
+    return buttonsPressedAllPlayers;
+}
+
+/**
+ * Step the background level cycle: load the next level, fade it in, hold it, fade it out,
+ * then advance to the next page (wrapping at the end).
+ */
+static void credits_update_background(CreditsBackgroundLevelData *creditsBackgroundLevelData, s32 updateRate) {
+    CreditsBackgroundLevelData *tempBackgroundLevelData;
 
     // handles the animations (if any) between levels in the credits
     switch (gMenuFlow.stage) {
@@ -636,7 +643,13 @@ s32 menu_credits_loop(s32 updateRate) {
             }
             break;
     }
+}
 
+/**
+ * Start fading out on a button press or at the end of the credits; once faded and the
+ * background is idle, free the credits and return to the logos menu.
+ */
+static void credits_update_exit(s32 buttonsPressedAllPlayers, s32 isCreditsEnd, s32 updateRate) {
     // check if the credits should end
     if ((buttonsPressedAllPlayers & (A_BUTTON | START_BUTTON)) || (buttonsPressedAllPlayers & B_BUTTON) ||
         isCreditsEnd) {
@@ -655,6 +668,48 @@ s32 menu_credits_loop(s32 updateRate) {
             menu_init(MENU_LOGOS);
         }
     }
+}
+
+/**
+ * Handles the credits for the game
+ */
+s32 menu_credits_loop(s32 updateRate) {
+    s32 isCreditsEnd;
+    CreditsBackgroundLevelData *creditsBackgroundLevelData;
+    s8 *mainTrackIds;
+    s32 buttonsPressedAllPlayers;
+
+    isCreditsEnd = FALSE;
+    mainTrackIds = (s8 *) get_misc_asset(ASSET_MISC_MAIN_TRACKS_IDS);
+    creditsBackgroundLevelData = (CreditsBackgroundLevelData *) get_misc_asset(ASSET_MISC_69);
+    bgload_tick();
+    if (gMenuInput.delay == 0) {
+        disable_new_screen_transitions();
+        transition_begin(NULL);
+        enable_new_screen_transitions();
+    }
+
+    if (osTvType == OS_TV_TYPE_PAL) {
+        credits_fade(0, 38, SCREEN_WIDTH, 186, gMenuFlow.opacityDecayTimer * 8);
+    } else {
+        credits_fade(0, 40, SCREEN_WIDTH, 156, gMenuFlow.opacityDecayTimer * 8);
+    }
+
+    if (gMenuFlow.opacityDecayTimer > 0) {
+        credits_render_portrait_ring(updateRate);
+    }
+
+    if (sCreditsFinished != FALSE) {
+        sCreditsFinished = postrace_render(updateRate) == MENU_RESULT_CONTINUE;
+    }
+
+    if (sCreditsSkipped == FALSE && sCreditsFinished == FALSE) {
+        credits_run_control_data(mainTrackIds, &isCreditsEnd);
+    }
+
+    buttonsPressedAllPlayers = credits_buttons_pressed();
+    credits_update_background(creditsBackgroundLevelData, updateRate);
+    credits_update_exit(buttonsPressedAllPlayers, isCreditsEnd, updateRate);
     return 0;
 }
 

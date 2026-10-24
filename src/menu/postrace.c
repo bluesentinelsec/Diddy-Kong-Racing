@@ -556,43 +556,36 @@ void postrace_message(SIDeviceStatus status) {
 }
 
 /**
- * Handle the shrunken viewport when the race ends.
- * This includes the options and results of the race, depending on mode.
+ * Get the text and time offsets for the results screen: shifted down on PAL, zero otherwise.
  */
-s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate) {
-    s32 sp54;
-    s32 sp50;
-    s32 sp4C;
-    s32 i;
-    s32 ret;
-    s32 buttonsPressed;
-    s32 prevMenuOption;
-    s32 textOffsetY;
-    s32 timeOffsetY;
-    s32 numPlayers;
-    Settings *settings;
-    Racer *racer;
-    char *chosenOption;
-
-    sp54 = 0;
-    sp50 = 0;
-    sp4C = 0;
-    ret = POSTRACE_NONE;
-    gMenuFrame.displayList = *dList;
-    gMenuFrame.hudMat = *matrices;
-    gMenuFrame.hudVerts = *vertices;
-    settings = get_settings();
+static void postrace_region_offsets(s32 *textOffsetY, s32 *timeOffsetY) {
     if (osTvType == OS_TV_TYPE_PAL) {
-        textOffsetY = 26;
-        timeOffsetY = 12;
+        *textOffsetY = 26;
+        *timeOffsetY = 12;
     } else {
-        textOffsetY = 0;
-        timeOffsetY = 0;
+        *textOffsetY = 0;
+        *timeOffsetY = 0;
     }
+}
+
+/**
+ * Return how many players may steer the menu; a two player adventure counts as two.
+ */
+static s32 postrace_player_count(void) {
+    s32 numPlayers;
+
     numPlayers = gRaceSetup.numberOfActivePlayers;
     if (is_in_two_player_adventure()) {
         numPlayers = 2;
     }
+    return numPlayers;
+}
+
+/**
+ * On the first frame of a one player postrace, insert a "SAVE GHOST" option before "QUIT"
+ * when there is a ghost to save.
+ */
+static void postrace_add_save_ghost_option(void) {
     if (gPostRace1Player) {
         if (has_ghost_to_save()) {
             gResults.optionText[gResults.optionCount - 1] = gMenuLoaded.text[ASSET_MENU_TEXT_SAVEGHOST];
@@ -601,6 +594,370 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
         }
         gPostRace1Player = FALSE;
     }
+}
+
+/**
+ * Return the buttons pressed this frame by any of the players, or none while input is
+ * ignored or assets are still loading.
+ */
+static s32 postrace_buttons_pressed(s32 numPlayers) {
+    s32 i;
+    s32 buttonsPressed;
+
+    buttonsPressed = 0;
+    if (gMenuInput.ignoreInputTime == FALSE && gResults.load.assetLoadStep < 0) {
+        for (i = 0; i < numPlayers; i++) {
+            buttonsPressed |= input_pressed(i);
+        }
+    }
+    return buttonsPressed;
+}
+
+/**
+ * Shrink the race viewport after a delay or a button press, then choose the first results
+ * page: options for challenges, race order, or race times.
+ */
+static void postrace_shrink_viewport(Settings *settings, s32 buttonsPressed, s32 textOffsetY, s32 timeOffsetY) {
+    Racer *racer;
+
+    if (gPostRaceTimer > 60 || buttonsPressed & (A_BUTTON | START_BUTTON)) {
+        viewport_menu_set(0, 80, gTrackSelect.viewportHalfY - ((gTrackSelect.viewportHalfY * 4) / 5), SCREEN_HEIGHT,
+                          (gTrackSelect.viewportHalfY / 5) + gTrackSelect.viewportHalfY);
+        gMenuLoaded.images[4].trans.x_position = 0.0f;
+        gMenuLoaded.images[4].trans.y_position = 36.0f;
+        gMenuLoaded.images[4].trans.scale = sMenuImageProperties[4].trans.scale;
+        if (leveltable_type(settings->courseId) & RACETYPE_CHALLENGE) {
+            gMenuFlow.stage = POSTRACE_STAGE_OPTIONS;
+        } else if (!settings->display_times) {
+            postrace_offsets(gRaceOrderMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
+            gMenuFlow.stage = POSTRACE_STAGE_RACE_ORDER;
+        } else {
+            racer = &settings->racers[settings->timeTrialRacer];
+            gRaceResultsMenuElements[3].t.numberU16 = &racer->lap_times[0];
+            gRaceResultsMenuElements[4].t.numberU16 = &racer->lap_times[1];
+            gRaceResultsMenuElements[5].t.numberU16 = &racer->lap_times[2];
+            gRaceResultsMenuElements[6].t.numberU16 = &racer->course_time;
+            postrace_offsets(gRaceResultsMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
+            gMenuFlow.stage = POSTRACE_STAGE_RACE_TIMES;
+        }
+    }
+}
+
+/**
+ * Show the race times; once done, end a trophy race, or move on to initials entry,
+ * the record times, or the race order.
+ */
+static void postrace_show_race_times(Settings *settings, s32 updateRate, s32 textOffsetY, s32 timeOffsetY) {
+    if (postrace_render(updateRate) != 0) {
+        if (gRaceSetup.trophyRaceWorldId != 0) {
+            music_fade(-128);
+            transition_begin(&sMenuTransitionFadeIn);
+            gMenuFlow.stage = POSTRACE_STAGE_END;
+        } else if (settings->display_times) {
+            gRecordTimesMenuElements[3].t.numberU16 =
+                &settings->courseTimesPtr[*gRaceSetup.playerVehicles][settings->courseId];
+            gRecordTimesMenuElements[6].t.numberU16 =
+                &settings->flapTimesPtr[*gRaceSetup.playerVehicles][settings->courseId];
+            filename_decompress(settings->courseInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId],
+                                gResults.courseInitials, MAX_INITIALS_LENGTH);
+            filename_decompress(settings->flapInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId],
+                                gResults.flapInitials, MAX_INITIALS_LENGTH);
+            if (settings->racers[0].best_times != 0) {
+                gMenuFlow.stage = POSTRACE_STAGE_ENTER_INITIALS;
+                if (gRaceSetup.isInTracksMode == FALSE && gResults.filenameEntryPending != FALSE) {
+                    filename_decompress(settings->filename, gCheckAdvEnterInitials, MAX_INITIALS_LENGTH);
+                    gResults.filenameEntryPending = FALSE;
+                }
+                filename_init(textOffsetY + 196, 160, textOffsetY + 120, 2, &sFilenameEntryArg, gCheckAdvEnterInitials,
+                              MAX_INITIALS_LENGTH);
+            } else {
+                postrace_offsets(gRecordTimesMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
+                gMenuFlow.stage = POSTRACE_STAGE_RACE_RECORDS;
+            }
+        } else {
+            gMenuFlow.stage = POSTRACE_STAGE_RACE_ORDER;
+            postrace_offsets(gRaceOrderMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
+        }
+    }
+}
+
+/**
+ * Let the player enter initials for a new record, store them against the beaten lap and
+ * course times, then show the record times.
+ */
+static void postrace_enter_initials(Settings *settings, s32 updateRate, s32 textOffsetY, s32 timeOffsetY) {
+    if (filename_enter(updateRate)) {
+        if (settings->racers[0].best_times & 0x7F) {
+            settings->flapInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId] =
+                filename_compress(gCheckAdvEnterInitials, MAX_INITIALS_LENGTH);
+            filename_decompress(settings->flapInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId],
+                                gResults.flapInitials, MAX_INITIALS_LENGTH);
+        }
+        if (settings->racers[0].best_times & 0x80) {
+            settings->courseInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId] =
+                filename_compress(gCheckAdvEnterInitials, MAX_INITIALS_LENGTH);
+            filename_decompress(settings->courseInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId],
+                                gResults.courseInitials, MAX_INITIALS_LENGTH);
+        }
+        postrace_offsets(gRecordTimesMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
+        gMenuFlow.stage = POSTRACE_STAGE_RACE_RECORDS;
+    }
+}
+
+/**
+ * Count down to saving the player's ghost, then save it (retrying once) and show the
+ * controller pak message on failure or drop the "SAVE GHOST" option on success.
+ */
+static void postrace_save_ghost_tick(s32 *sp54) {
+    gTracksSaveGhost++;
+    if (gTracksSaveGhost >= 5) {
+        sound_volume_change(3);
+        *sp54 = timetrial_save_player_ghost(0);
+        if ((*sp54 & 0xFF) == 5) {
+            *sp54 = timetrial_save_player_ghost(0);
+        }
+        sound_volume_change(2);
+        if (*sp54) {
+            postrace_message(*sp54);
+            *sp54 = 1;
+        } else {
+            if (gPostRaceMessage == sInsertControllerPakMenuText) {
+                postrace_message(CONTROLLER_PAK_SWITCH_TO_RUMBLE);
+            } else {
+                gPostRaceMessage = NULL;
+            }
+            gResults.optionText[gMenuFlow.option] = gMenuLoaded.text[28];
+            gMenuFlow.option = 0;
+            gResults.optionCount -= 1;
+        }
+        gTracksSaveGhost = FALSE;
+    }
+}
+
+/**
+ * Handle input on the controller pak message: A or Start accepts (retrying the ghost save
+ * when asked to insert a pak), B dismisses it.
+ */
+static void postrace_message_input(s32 buttonsPressed, s32 *sp54, s32 *sp50) {
+    if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
+        *sp50 = 1;
+        if (gPostRaceMessage == sInsertControllerPakMenuText) {
+            gTracksSaveGhost = TRUE;
+        } else {
+            gPostRaceMessage = NULL;
+        }
+    } else if (buttonsPressed & B_BUTTON) {
+        gPostRaceMessage = NULL;
+        *sp54 = 1;
+    }
+}
+
+/**
+ * Handle input on the quit confirmation: confirm quits, cancel or B goes back, up and down
+ * move between the two answers.
+ */
+static void postrace_quit_confirm_input(s32 buttonsPressed, s32 numPlayers, s32 *sp54, s32 *sp50, s32 *sp4C) {
+    s32 i;
+    s32 prevMenuOption;
+
+    if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
+        if (gMenuFlow.subOption == 1) {
+            *sp50 = 1;
+            music_fade(-128);
+            transition_begin(&sMenuTransitionFadeIn);
+            gMenuFlow.stage = POSTRACE_STAGE_END;
+        } else {
+            *sp54 = 1;
+            gMenuFlow.subOption = 0;
+        }
+    } else {
+        prevMenuOption = gMenuFlow.subOption;
+        if (buttonsPressed & B_BUTTON) {
+            *sp54 = 1;
+            gMenuFlow.subOption = 0;
+        } else {
+            for (i = 0; i < numPlayers; i++) {
+                if ((gMenuInput.yAxisDirection[i] > 0) && (gMenuFlow.subOption == 2)) {
+                    gMenuFlow.subOption = 1;
+                }
+                if ((gMenuInput.yAxisDirection[i] < 0) && (gMenuFlow.subOption == 1)) {
+                    gMenuFlow.subOption = 2;
+                }
+            }
+            if (prevMenuOption != gMenuFlow.subOption) {
+                *sp4C = 1;
+            }
+        }
+    }
+}
+
+/**
+ * Handle input on the options list: select saves the ghost, asks to confirm quitting or
+ * leaves the results; up and down move the cursor.
+ */
+static void postrace_option_list_input(s32 buttonsPressed, s32 numPlayers, s32 *sp50, s32 *sp4C) {
+    s32 i;
+    s32 prevMenuOption;
+    char *chosenOption;
+
+    if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
+        *sp50 = 1;
+        chosenOption = gResults.optionText[gMenuFlow.option];
+        if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_SAVEGHOST]) {
+            gTracksSaveGhost = TRUE;
+        } else if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_QUIT]) {
+            gMenuFlow.subOption = 2;
+        } else {
+            music_fade(-128);
+            transition_begin(&sMenuTransitionFadeIn);
+            gMenuFlow.stage = POSTRACE_STAGE_END;
+        }
+    } else {
+        prevMenuOption = gMenuFlow.option;
+        for (i = 0; i < numPlayers; i++) {
+            if (gMenuInput.yAxisDirection[i] < 0) {
+                if (gMenuFlow.option < (gResults.optionCount - 1)) {
+                    gMenuFlow.option++;
+                }
+            }
+            if (gMenuInput.yAxisDirection[i] > 0) {
+                if (gMenuFlow.option > 0) {
+                    gMenuFlow.option--;
+                }
+            }
+        }
+        if (prevMenuOption != gMenuFlow.option) {
+            *sp4C = 1;
+        }
+    }
+}
+
+/**
+ * Run the postrace options stage (ghost saving, pak message, quit confirmation or the options
+ * list), then play the back, select or move sound.
+ */
+static void postrace_update_options(s32 buttonsPressed, s32 numPlayers) {
+    s32 sp54;
+    s32 sp50;
+    s32 sp4C;
+
+    sp54 = 0;
+    sp50 = 0;
+    sp4C = 0;
+    if (gTracksSaveGhost) {
+        postrace_save_ghost_tick(&sp54);
+    } else if (gPostRaceMessage != NULL) {
+        postrace_message_input(buttonsPressed, &sp54, &sp50);
+    } else {
+        if (gMenuFlow.subOption != 0) {
+            postrace_quit_confirm_input(buttonsPressed, numPlayers, &sp54, &sp50, &sp4C);
+        } else {
+            postrace_option_list_input(buttonsPressed, numPlayers, &sp50, &sp4C);
+        }
+    }
+    if (sp54 != 0) {
+        sound_play(SOUND_MENU_BACK3, NULL);
+    } else if (sp50 != 0) {
+        sound_play(SOUND_SELECT2, NULL);
+    } else if (sp4C != 0) {
+        sound_play(SOUND_MENU_PICK2, NULL);
+    }
+}
+
+/**
+ * Pick the postrace result from the chosen option, queueing the T.T. track voice line
+ * when trying again.
+ */
+static void postrace_chosen_option_result(s32 *ret) {
+    char *chosenOption;
+
+    chosenOption = gResults.optionText[gMenuFlow.option];
+    if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_TRYAGAIN]) {
+        if (!gRaceSetup.isInTracksMode && gTTVoiceLines[get_ingame_map_id()] != -1) {
+            sound_play_delayed(gTTVoiceLines[get_ingame_map_id()], NULL, 1.0f);
+        }
+        *ret = POSTRACE_OPT_2;
+    } else if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_SELECTTRACK]) {
+        *ret = POSTRACE_OPT_5;
+    } else if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_SELECTCHARACTER]) {
+        *ret = POSTRACE_OPT_12;
+    } else if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_RETURNTOLOBBY]) {
+        *ret = POSTRACE_OPT_1;
+    } else {
+        *ret = POSTRACE_OPT_4;
+    }
+}
+
+/**
+ * After the fade out, mark new records for saving, free the postrace screen and pick the
+ * result: a cinematic, trophy race, multiplayer, or the chosen option.
+ */
+static void postrace_finish(Settings *settings, s32 updateRate, s32 *ret) {
+    gMenuInput.delay += updateRate;
+    if (gMenuInput.delay > 30) {
+        if (settings->display_times) {
+            if (settings->racers[0].best_times & 0x7F) {
+                mark_to_write_flap_times();
+            }
+            if (settings->racers[0].best_times & 0x80) {
+                mark_to_write_course_times();
+            }
+        }
+        camDisableUserView(0, FALSE);
+        postrace_free();
+        dialogue_close(7);
+        dialogue_clear(7);
+        if (gPostraceFinishState >= 2) {
+            if (gPostraceFinishState == 9) {
+                cinematic_start((s8 *) get_misc_asset(ASSET_MISC_CINEMATIC_RACE), gPostraceFinishState,
+                                MENU_RESULT_SWITCH(MENU_RESULT_GO_TO_HUB), 0, 0, NULL);
+            } else {
+                cinematic_start((s8 *) get_misc_asset(ASSET_MISC_CINEMATIC_RACE), gPostraceFinishState,
+                                MENU_RESULT_SWITCH(MENU_RESULT_RETURN_TO_GAME), 0, 0, NULL);
+            }
+            *ret = POSTRACE_OPT_13;
+        } else if (gRaceSetup.trophyRaceWorldId != 0) {
+            *ret = POSTRACE_OPT_10;
+        } else if (gRaceSetup.numberOfActivePlayers >= 2) {
+            *ret = POSTRACE_OPT_8;
+        } else {
+            postrace_chosen_option_result(ret);
+        }
+    }
+}
+
+/**
+ * Count down the time during which menu input is ignored, stopping at zero.
+ */
+static void postrace_tick_input_cooldown(s32 updateRate) {
+    if (gMenuInput.ignoreInputTime > 0) {
+        gMenuInput.ignoreInputTime -= updateRate;
+        if (gMenuInput.ignoreInputTime < 0) {
+            gMenuInput.ignoreInputTime = 0;
+        }
+    }
+}
+
+/**
+ * Handle the shrunken viewport when the race ends.
+ * This includes the options and results of the race, depending on mode.
+ */
+s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate) {
+    s32 ret;
+    s32 buttonsPressed;
+    s32 textOffsetY;
+    s32 timeOffsetY;
+    s32 numPlayers;
+    Settings *settings;
+
+    ret = POSTRACE_NONE;
+    gMenuFrame.displayList = *dList;
+    gMenuFrame.hudMat = *matrices;
+    gMenuFrame.hudVerts = *vertices;
+    settings = get_settings();
+    postrace_region_offsets(&textOffsetY, &timeOffsetY);
+    numPlayers = postrace_player_count();
+    postrace_add_save_ghost_option();
     postrace_load();
     postrace_music_fade(updateRate);
     if (gMenuInput.delay < 20 && gPostraceFinishState == 0) {
@@ -611,12 +968,7 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
         bgdraw_texture_init(NULL, NULL, 0);
     }
     update_controller_sticks();
-    buttonsPressed = 0;
-    if (gMenuInput.ignoreInputTime == FALSE && gResults.load.assetLoadStep < 0) {
-        for (i = 0; i < numPlayers; i++) {
-            buttonsPressed |= input_pressed(i);
-        }
-    }
+    buttonsPressed = postrace_buttons_pressed(numPlayers);
     switch (gMenuFlow.stage) {
         case POSTRACE_STAGE_BEGIN:
             if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
@@ -625,60 +977,10 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
             }
             break;
         case POSTRACE_STAGE_SHRINK_VIEWPORT:
-            if (gPostRaceTimer > 60 || buttonsPressed & (A_BUTTON | START_BUTTON)) {
-                viewport_menu_set(0, 80, gTrackSelect.viewportHalfY - ((gTrackSelect.viewportHalfY * 4) / 5),
-                                  SCREEN_HEIGHT, (gTrackSelect.viewportHalfY / 5) + gTrackSelect.viewportHalfY);
-                gMenuLoaded.images[4].trans.x_position = 0.0f;
-                gMenuLoaded.images[4].trans.y_position = 36.0f;
-                gMenuLoaded.images[4].trans.scale = sMenuImageProperties[4].trans.scale;
-                if (leveltable_type(settings->courseId) & RACETYPE_CHALLENGE) {
-                    gMenuFlow.stage = POSTRACE_STAGE_OPTIONS;
-                } else if (!settings->display_times) {
-                    postrace_offsets(gRaceOrderMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
-                    gMenuFlow.stage = POSTRACE_STAGE_RACE_ORDER;
-                } else {
-                    racer = &settings->racers[settings->timeTrialRacer];
-                    gRaceResultsMenuElements[3].t.numberU16 = &racer->lap_times[0];
-                    gRaceResultsMenuElements[4].t.numberU16 = &racer->lap_times[1];
-                    gRaceResultsMenuElements[5].t.numberU16 = &racer->lap_times[2];
-                    gRaceResultsMenuElements[6].t.numberU16 = &racer->course_time;
-                    postrace_offsets(gRaceResultsMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
-                    gMenuFlow.stage = POSTRACE_STAGE_RACE_TIMES;
-                }
-            }
+            postrace_shrink_viewport(settings, buttonsPressed, textOffsetY, timeOffsetY);
             break;
         case POSTRACE_STAGE_RACE_TIMES:
-            if (postrace_render(updateRate) != 0) {
-                if (gRaceSetup.trophyRaceWorldId != 0) {
-                    music_fade(-128);
-                    transition_begin(&sMenuTransitionFadeIn);
-                    gMenuFlow.stage = POSTRACE_STAGE_END;
-                } else if (settings->display_times) {
-                    gRecordTimesMenuElements[3].t.numberU16 =
-                        &settings->courseTimesPtr[*gRaceSetup.playerVehicles][settings->courseId];
-                    gRecordTimesMenuElements[6].t.numberU16 =
-                        &settings->flapTimesPtr[*gRaceSetup.playerVehicles][settings->courseId];
-                    filename_decompress(settings->courseInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId],
-                                        gResults.courseInitials, MAX_INITIALS_LENGTH);
-                    filename_decompress(settings->flapInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId],
-                                        gResults.flapInitials, MAX_INITIALS_LENGTH);
-                    if (settings->racers[0].best_times != 0) {
-                        gMenuFlow.stage = POSTRACE_STAGE_ENTER_INITIALS;
-                        if (gRaceSetup.isInTracksMode == FALSE && gResults.filenameEntryPending != FALSE) {
-                            filename_decompress(settings->filename, gCheckAdvEnterInitials, MAX_INITIALS_LENGTH);
-                            gResults.filenameEntryPending = FALSE;
-                        }
-                        filename_init(textOffsetY + 196, 160, textOffsetY + 120, 2, &sFilenameEntryArg, gCheckAdvEnterInitials,
-                                      MAX_INITIALS_LENGTH);
-                    } else {
-                        postrace_offsets(gRecordTimesMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
-                        gMenuFlow.stage = POSTRACE_STAGE_RACE_RECORDS;
-                    }
-                } else {
-                    gMenuFlow.stage = POSTRACE_STAGE_RACE_ORDER;
-                    postrace_offsets(gRaceOrderMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
-                }
-            }
+            postrace_show_race_times(settings, updateRate, textOffsetY, timeOffsetY);
             break;
         case POSTRACE_STAGE_RACE_ORDER:
             if (postrace_render(updateRate)) {
@@ -686,22 +988,7 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
             }
             break;
         case POSTRACE_STAGE_ENTER_INITIALS:
-            if (filename_enter(updateRate)) {
-                if (settings->racers[0].best_times & 0x7F) {
-                    settings->flapInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId] =
-                        filename_compress(gCheckAdvEnterInitials, MAX_INITIALS_LENGTH);
-                    filename_decompress(settings->flapInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId],
-                                        gResults.flapInitials, MAX_INITIALS_LENGTH);
-                }
-                if (settings->racers[0].best_times & 0x80) {
-                    settings->courseInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId] =
-                        filename_compress(gCheckAdvEnterInitials, MAX_INITIALS_LENGTH);
-                    filename_decompress(settings->courseInitialsPtr[*gRaceSetup.playerVehicles][settings->courseId],
-                                        gResults.courseInitials, MAX_INITIALS_LENGTH);
-                }
-                postrace_offsets(gRecordTimesMenuElements, 0.5f, 15.0f, 0.5f, textOffsetY, timeOffsetY);
-                gMenuFlow.stage = POSTRACE_STAGE_RACE_RECORDS;
-            }
+            postrace_enter_initials(settings, updateRate, textOffsetY, timeOffsetY);
             break;
         case POSTRACE_STAGE_RACE_RECORDS:
             if (postrace_render(updateRate)) {
@@ -709,111 +996,7 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
             }
             break;
         case POSTRACE_STAGE_OPTIONS:
-            if (gTracksSaveGhost) {
-                gTracksSaveGhost++;
-                if (gTracksSaveGhost >= 5) {
-                    sound_volume_change(3);
-                    sp54 = timetrial_save_player_ghost(0);
-                    if ((sp54 & 0xFF) == 5) {
-                        sp54 = timetrial_save_player_ghost(0);
-                    }
-                    sound_volume_change(2);
-                    if (sp54) {
-                        postrace_message(sp54);
-                        sp54 = 1;
-                    } else {
-                        if (gPostRaceMessage == sInsertControllerPakMenuText) {
-                            postrace_message(CONTROLLER_PAK_SWITCH_TO_RUMBLE);
-                        } else {
-                            gPostRaceMessage = NULL;
-                        }
-                        gResults.optionText[gMenuFlow.option] = gMenuLoaded.text[28];
-                        gMenuFlow.option = 0;
-                        gResults.optionCount -= 1;
-                    }
-                    gTracksSaveGhost = FALSE;
-                }
-            } else if (gPostRaceMessage != NULL) {
-                if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
-                    sp50 = 1;
-                    if (gPostRaceMessage == sInsertControllerPakMenuText) {
-                        gTracksSaveGhost = TRUE;
-                    } else {
-                        gPostRaceMessage = NULL;
-                    }
-                } else if (buttonsPressed & B_BUTTON) {
-                    gPostRaceMessage = NULL;
-                    sp54 = 1;
-                }
-            } else {
-                if (gMenuFlow.subOption != 0) {
-                    if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
-                        if (gMenuFlow.subOption == 1) {
-                            sp50 = 1;
-                            music_fade(-128);
-                            transition_begin(&sMenuTransitionFadeIn);
-                            gMenuFlow.stage = POSTRACE_STAGE_END;
-                        } else {
-                            sp54 = 1;
-                            gMenuFlow.subOption = 0;
-                        }
-                    } else {
-                        prevMenuOption = gMenuFlow.subOption;
-                        if (buttonsPressed & B_BUTTON) {
-                            sp54 = 1;
-                            gMenuFlow.subOption = 0;
-                        } else {
-                            for (i = 0; i < numPlayers; i++) {
-                                if ((gMenuInput.yAxisDirection[i] > 0) && (gMenuFlow.subOption == 2)) {
-                                    gMenuFlow.subOption = 1;
-                                }
-                                if ((gMenuInput.yAxisDirection[i] < 0) && (gMenuFlow.subOption == 1)) {
-                                    gMenuFlow.subOption = 2;
-                                }
-                            }
-                            if (prevMenuOption != gMenuFlow.subOption) {
-                                sp4C = 1;
-                            }
-                        }
-                    }
-                } else if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
-                    sp50 = 1;
-                    chosenOption = gResults.optionText[gMenuFlow.option];
-                    if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_SAVEGHOST]) {
-                        gTracksSaveGhost = TRUE;
-                    } else if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_QUIT]) {
-                        gMenuFlow.subOption = 2;
-                    } else {
-                        music_fade(-128);
-                        transition_begin(&sMenuTransitionFadeIn);
-                        gMenuFlow.stage = POSTRACE_STAGE_END;
-                    }
-                } else {
-                    prevMenuOption = gMenuFlow.option;
-                    for (i = 0; i < numPlayers; i++) {
-                        if (gMenuInput.yAxisDirection[i] < 0) {
-                            if (gMenuFlow.option < (gResults.optionCount - 1)) {
-                                gMenuFlow.option++;
-                            }
-                        }
-                        if (gMenuInput.yAxisDirection[i] > 0) {
-                            if (gMenuFlow.option > 0) {
-                                gMenuFlow.option--;
-                            }
-                        }
-                    }
-                    if (prevMenuOption != gMenuFlow.option) {
-                        sp4C = 1;
-                    }
-                }
-            }
-            if (sp54 != 0) {
-                sound_play(SOUND_MENU_BACK3, NULL);
-            } else if (sp50 != 0) {
-                sound_play(SOUND_SELECT2, NULL);
-            } else if (sp4C != 0) {
-                sound_play(SOUND_MENU_PICK2, NULL);
-            }
+            postrace_update_options(buttonsPressed, numPlayers);
             break;
         case POSTRACE_STAGE_FADE_OUT:
             if (buttonsPressed & (A_BUTTON | START_BUTTON)) {
@@ -823,59 +1006,10 @@ s32 menu_postrace(Gfx **dList, Mtx **matrices, Vertex **vertices, s32 updateRate
             }
             break;
         case POSTRACE_STAGE_END:
-            gMenuInput.delay += updateRate;
-            if (gMenuInput.delay > 30) {
-                if (settings->display_times) {
-                    if (settings->racers[0].best_times & 0x7F) {
-                        mark_to_write_flap_times();
-                    }
-                    if (settings->racers[0].best_times & 0x80) {
-                        mark_to_write_course_times();
-                    }
-                }
-                camDisableUserView(0, FALSE);
-                postrace_free();
-                dialogue_close(7);
-                dialogue_clear(7);
-                if (gPostraceFinishState >= 2) {
-                    if (gPostraceFinishState == 9) {
-                        cinematic_start((s8 *) get_misc_asset(ASSET_MISC_CINEMATIC_RACE), gPostraceFinishState,
-                                        MENU_RESULT_SWITCH(MENU_RESULT_GO_TO_HUB), 0, 0, NULL);
-                    } else {
-                        cinematic_start((s8 *) get_misc_asset(ASSET_MISC_CINEMATIC_RACE), gPostraceFinishState,
-                                        MENU_RESULT_SWITCH(MENU_RESULT_RETURN_TO_GAME), 0, 0, NULL);
-                    }
-                    ret = POSTRACE_OPT_13;
-                } else if (gRaceSetup.trophyRaceWorldId != 0) {
-                    ret = POSTRACE_OPT_10;
-                } else if (gRaceSetup.numberOfActivePlayers >= 2) {
-                    ret = POSTRACE_OPT_8;
-                } else {
-                    chosenOption = gResults.optionText[gMenuFlow.option];
-                    if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_TRYAGAIN]) {
-                        if (!gRaceSetup.isInTracksMode && gTTVoiceLines[get_ingame_map_id()] != -1) {
-                            sound_play_delayed(gTTVoiceLines[get_ingame_map_id()], NULL, 1.0f);
-                        }
-                        ret = POSTRACE_OPT_2;
-                    } else if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_SELECTTRACK]) {
-                        ret = POSTRACE_OPT_5;
-                    } else if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_SELECTCHARACTER]) {
-                        ret = POSTRACE_OPT_12;
-                    } else if (chosenOption == gMenuLoaded.text[ASSET_MENU_TEXT_RETURNTOLOBBY]) {
-                        ret = POSTRACE_OPT_1;
-                    } else {
-                        ret = POSTRACE_OPT_4;
-                    }
-                }
-            }
+            postrace_finish(settings, updateRate, &ret);
             break;
     }
-    if (gMenuInput.ignoreInputTime > 0) {
-        gMenuInput.ignoreInputTime -= updateRate;
-        if (gMenuInput.ignoreInputTime < 0) {
-            gMenuInput.ignoreInputTime = 0;
-        }
-    }
+    postrace_tick_input_cooldown(updateRate);
     *dList = gMenuFrame.displayList;
     *matrices = gMenuFrame.hudMat;
     *vertices = gMenuFrame.hudVerts;
