@@ -258,107 +258,51 @@ f32 wave_height_at(s32 blockID, f32 x, f32 z, Vec3f *outNormal) {
     return surfaceY;
 }
 
-/**
- * Builds the wave triangles (and their planes) of a segment that cover a rectangle, for shadows cast on water.
- * Returns how many were written.
- */
-s32 wave_cells_in_rect(s32 blockID, ShadowWaveTri *tris, ShadowPlane *planes, f32 shadowXNegPosition,
-                       f32 shadowZNegPosition, f32 shadowXPosition, f32 shadowZPosition) {
-    s32 colCount;
-    s32 startCol;
+/** The block of wave cells that wave_cells_in_rect covers, and how to sample it. */
+typedef struct WaveRect {
+    s32 blockID;
+    s32 startCol; // First and last cell column and row of the block within the segment.
     s32 startRow;
-    s32 currentRow;
-    s32 currentCol;
     s32 endCol;
     s32 endRow;
-    s32 colOffset;
+    s32 colCount;  // Cells per row of the segment; later, vertices per row of the block.
+    s32 colOffset; // The block's first column and row in the repeating wave tile grid.
     s32 rowOffset;
-    s32 counter;
-    f32 normalX;
-    f32 normalZ;
-    f32 normalY;
-    f32 height;
-    f32 heightScale;
-    s16 rowZ;
-    s16 heights[300];
-    s16 nextRowZ;
-    s16 nextColX;
-    s16 colX;
-    f32 stepX;
+    s32 detailBase; // Index of the segment's first entry in gWaveDetailLevels.
+    f32 stepX;      // Width and depth of one wave cell.
     f32 stepZ;
-    f32 detailScaleStep;
-    f32 normalLength;
+    f32 detailScaleStep; // How much each depth step below WAVE_FULL_SWELL_DEPTH adds to the swell.
+    f32 heightScale;
+} WaveRect;
+
+/** Samples the height of every wave vertex of the block, row by row, into heights. */
+static void wave_rect_sample_heights(WaveRect *r, s16 *heights) {
+    s32 currentRow;
+    s32 currentCol;
+    s32 counter;
     s32 tileCol;
     s32 heightIndex;
     s32 detailIndex;
-    s32 detailBase;
+    f32 height;
 
-    detailBase = blockID * gWaveTileTotal;
-    stepX = gWaveVtxStepX;
-    stepZ = gWaveVtxStepZ;
-    detailScaleStep = (1.0f - gWaveController.minDetailScale) / 127.0f;
-    if (gWaveController.doubleDensity != 0) {
-        heightScale = 0.5f;
-        stepX *= 0.5;
-        stepZ *= 0.5;
-        colCount = gWaveController.subdivisions * 2;
-    } else {
-        heightScale = 1.0f;
-        colCount = gWaveController.subdivisions;
-    }
+    for (currentRow = r->startRow, counter = 0; currentRow <= r->endRow; currentRow++) {
+        tileCol = r->colOffset;
 
-    shadowXNegPosition -= gWaveModel[blockID].originX;
-    shadowZNegPosition -= gWaveModel[blockID].originZ;
-    shadowXPosition -= gWaveModel[blockID].originX;
-    shadowZPosition -= gWaveModel[blockID].originZ;
-    if (shadowXNegPosition < 0.0f) {
-        startCol = 0;
-    } else {
-        startCol = (s32) (shadowXNegPosition / stepX);
-    }
-    if (shadowZNegPosition < 0.0f) {
-        startRow = 0;
-    } else {
-        startRow = (s32) (shadowZNegPosition / stepZ);
-    }
-    if (gWaveBoundingBoxW <= shadowXPosition) {
-        endCol = colCount;
-    } else {
-        endCol = (s32) (shadowXPosition / stepX) + 1;
-    }
-    if (gWaveBoundingBoxH <= shadowZPosition) {
-        endRow = colCount;
-    } else {
-        endRow = (s32) (shadowZPosition / stepX) + 1;
-    }
-    colOffset = gWaveModel[blockID].waveTileOffsetX + startCol;
-    while (colOffset >= gWaveController.tileCount) {
-        colOffset -= gWaveController.tileCount;
-    }
-    rowOffset = gWaveModel[blockID].waveTileOffsetZ + startRow;
-    while (rowOffset >= gWaveController.tileCount) {
-        rowOffset -= gWaveController.tileCount;
-    }
-
-    // First the height of every vertex in the rectangle.
-    for (currentRow = startRow, counter = 0; currentRow <= endRow; currentRow++) {
-        tileCol = colOffset;
-
-        heightIndex = (rowOffset * gWaveController.tileCount) + tileCol;
-        detailIndex = detailBase + startCol + (currentRow * colCount);
-        for (currentCol = startCol; currentCol <= endCol; currentCol++) {
+        heightIndex = (r->rowOffset * gWaveController.tileCount) + tileCol;
+        detailIndex = r->detailBase + r->startCol + (currentRow * r->colCount);
+        for (currentCol = r->startCol; currentCol <= r->endCol; currentCol++) {
 
             height = (gWaveHeightTable[gWaveHeightIndices[heightIndex].x] +
                       gWaveHeightTable[gWaveHeightIndices[heightIndex].y]) *
                      gWaveController.magnitude;
             if (gWaveGenCount > 0) {
-                height += waves_get_y(blockID, currentCol, currentRow);
+                height += waves_get_y(r->blockID, currentCol, currentRow);
             }
 
             if (gWaveDetailLevels[detailIndex] < WAVE_FULL_SWELL_DEPTH) {
-                height *= gWaveController.minDetailScale + ((s32) gWaveDetailLevels[detailIndex] * detailScaleStep);
+                height *= gWaveController.minDetailScale + ((s32) gWaveDetailLevels[detailIndex] * r->detailScaleStep);
             }
-            heights[counter] = gWaveModel[blockID].originY + (s16) (height * heightScale);
+            heights[counter] = gWaveModel[r->blockID].originY + (s16) (height * r->heightScale);
             counter++;
             tileCol++;
             detailIndex++;
@@ -368,37 +312,54 @@ s32 wave_cells_in_rect(s32 blockID, ShadowWaveTri *tris, ShadowPlane *planes, f3
                 heightIndex -= gWaveController.tileCount;
             }
         }
-        rowOffset++;
-        if (rowOffset >= gWaveController.tileCount) {
-            rowOffset -= gWaveController.tileCount;
+        r->rowOffset++;
+        if (r->rowOffset >= gWaveController.tileCount) {
+            r->rowOffset -= gWaveController.tileCount;
         }
     }
+}
+
+/**
+ * Writes two triangles per cell of the block, with their planes, skipping any whose normal comes out zero.
+ * Returns how many were written.
+ */
+static s32 wave_rect_build_tris(WaveRect *r, s16 *heights, ShadowWaveTri *tris, ShadowPlane *planes) {
+    s32 currentRow;
+    s32 currentCol;
+    s32 counter;
+    f32 normalX;
+    f32 normalZ;
+    f32 normalY;
+    f32 normalLength;
+    s16 rowZ;
+    s16 nextRowZ;
+    s16 nextColX;
+    s16 colX;
 
     // FAKE
-    normalY = (stepX * stepZ) * (stepX * stepZ);
-    colCount = (endCol - startCol) + 1;
-    rowZ = gWaveModel[blockID].originZ + (s16) (startRow * stepZ);
+    normalY = (r->stepX * r->stepZ) * (r->stepX * r->stepZ);
+    r->colCount = (r->endCol - r->startCol) + 1;
+    rowZ = gWaveModel[r->blockID].originZ + (s16) (r->startRow * r->stepZ);
 
-    // Then two triangles per cell, skipping any whose normal comes out zero.
-    for (currentRow = startRow, counter = 0; currentRow < endRow; currentRow++) {
-        nextRowZ = gWaveModel[blockID].originZ + (s16) ((currentRow + 1) * stepZ);
-        colX = gWaveModel[blockID].originX + (s16) (startCol * stepX);
+    for (currentRow = r->startRow, counter = 0; currentRow < r->endRow; currentRow++) {
+        nextRowZ = gWaveModel[r->blockID].originZ + (s16) ((currentRow + 1) * r->stepZ);
+        colX = gWaveModel[r->blockID].originX + (s16) (r->startCol * r->stepX);
 
-        for (currentCol = startCol; currentCol < endCol; currentCol++) {
-            nextColX = gWaveModel[blockID].originX + (s16) ((currentCol + 1) * stepX);
+        for (currentCol = r->startCol; currentCol < r->endCol; currentCol++) {
+            nextColX = gWaveModel[r->blockID].originX + (s16) ((currentCol + 1) * r->stepX);
 
             tris[counter].x1 = colX;
             tris[counter].x2 = colX;
             tris[counter].x3 = nextColX;
-            tris[counter].y1 = heights[(currentCol - startCol) + ((currentRow - startRow) * colCount)];
-            tris[counter].y2 = heights[(currentCol - startCol) + (((currentRow - startRow) + 1) * colCount)];
-            tris[counter].y3 = heights[((currentCol - startCol) + 1) + ((currentRow - startRow) * colCount)];
+            tris[counter].y1 = heights[(currentCol - r->startCol) + ((currentRow - r->startRow) * r->colCount)];
+            tris[counter].y2 = heights[(currentCol - r->startCol) + (((currentRow - r->startRow) + 1) * r->colCount)];
+            tris[counter].y3 = heights[((currentCol - r->startCol) + 1) + ((currentRow - r->startRow) * r->colCount)];
             tris[counter].z1 = rowZ;
             tris[counter].z2 = nextRowZ;
             tris[counter].z3 = rowZ;
-            normalX = (tris[counter].y1 - tris[counter].y3) * stepZ;
-            normalY = stepX * stepZ;
-            normalZ = (tris[counter].y1 - tris[counter].y2) * stepX;
+            normalX = (tris[counter].y1 - tris[counter].y3) * r->stepZ;
+            normalY = r->stepX * r->stepZ;
+            normalZ = (tris[counter].y1 - tris[counter].y2) * r->stepX;
             normalLength = sqrtf((normalX * normalX) + (normalY * normalY) + (normalZ * normalZ));
             if (normalLength > 0.0f) {
                 normalLength = 1 / normalLength;
@@ -414,15 +375,16 @@ s32 wave_cells_in_rect(s32 blockID, ShadowWaveTri *tris, ShadowPlane *planes, f3
             tris[counter].x1 = nextColX;
             tris[counter].x2 = colX;
             tris[counter].x3 = nextColX;
-            tris[counter].y1 = heights[((currentCol - startCol) + 1) + ((currentRow - startRow) * colCount)];
-            tris[counter].y2 = heights[(currentCol - startCol) + (((currentRow - startRow) + 1) * colCount)];
-            tris[counter].y3 = heights[((currentCol - startCol) + 1) + (((currentRow - startRow) + 1) * colCount)];
+            tris[counter].y1 = heights[((currentCol - r->startCol) + 1) + ((currentRow - r->startRow) * r->colCount)];
+            tris[counter].y2 = heights[(currentCol - r->startCol) + (((currentRow - r->startRow) + 1) * r->colCount)];
+            tris[counter].y3 =
+                heights[((currentCol - r->startCol) + 1) + (((currentRow - r->startRow) + 1) * r->colCount)];
             tris[counter].z1 = rowZ;
             tris[counter].z2 = nextRowZ;
             tris[counter].z3 = nextRowZ;
-            normalX = (tris[counter].y2 - tris[counter].y3) * stepZ;
-            normalY = stepX * stepZ;
-            normalZ = (tris[counter].y1 - tris[counter].y3) * stepX;
+            normalX = (tris[counter].y2 - tris[counter].y3) * r->stepZ;
+            normalY = r->stepX * r->stepZ;
+            normalZ = (tris[counter].y1 - tris[counter].y3) * r->stepX;
             normalLength = sqrtf((normalX * normalX) + (normalY * normalY) + (normalZ * normalZ));
             if (normalLength > 0.0f) {
                 normalLength = 1 / normalLength;
@@ -441,6 +403,67 @@ s32 wave_cells_in_rect(s32 blockID, ShadowWaveTri *tris, ShadowPlane *planes, f3
         rowZ = nextRowZ;
     }
     return counter;
+}
+
+/**
+ * Builds the wave triangles (and their planes) of a segment that cover a rectangle, for shadows cast on water.
+ * Returns how many were written.
+ */
+s32 wave_cells_in_rect(s32 blockID, ShadowWaveTri *tris, ShadowPlane *planes, f32 shadowXNegPosition,
+                       f32 shadowZNegPosition, f32 shadowXPosition, f32 shadowZPosition) {
+    WaveRect r;
+    s16 heights[300];
+
+    r.blockID = blockID;
+    r.detailBase = blockID * gWaveTileTotal;
+    r.stepX = gWaveVtxStepX;
+    r.stepZ = gWaveVtxStepZ;
+    r.detailScaleStep = (1.0f - gWaveController.minDetailScale) / 127.0f;
+    if (gWaveController.doubleDensity != 0) {
+        r.heightScale = 0.5f;
+        r.stepX *= 0.5;
+        r.stepZ *= 0.5;
+        r.colCount = gWaveController.subdivisions * 2;
+    } else {
+        r.heightScale = 1.0f;
+        r.colCount = gWaveController.subdivisions;
+    }
+
+    shadowXNegPosition -= gWaveModel[blockID].originX;
+    shadowZNegPosition -= gWaveModel[blockID].originZ;
+    shadowXPosition -= gWaveModel[blockID].originX;
+    shadowZPosition -= gWaveModel[blockID].originZ;
+    if (shadowXNegPosition < 0.0f) {
+        r.startCol = 0;
+    } else {
+        r.startCol = (s32) (shadowXNegPosition / r.stepX);
+    }
+    if (shadowZNegPosition < 0.0f) {
+        r.startRow = 0;
+    } else {
+        r.startRow = (s32) (shadowZNegPosition / r.stepZ);
+    }
+    if (gWaveBoundingBoxW <= shadowXPosition) {
+        r.endCol = r.colCount;
+    } else {
+        r.endCol = (s32) (shadowXPosition / r.stepX) + 1;
+    }
+    if (gWaveBoundingBoxH <= shadowZPosition) {
+        r.endRow = r.colCount;
+    } else {
+        r.endRow = (s32) (shadowZPosition / r.stepX) + 1;
+    }
+    r.colOffset = gWaveModel[blockID].waveTileOffsetX + r.startCol;
+    while (r.colOffset >= gWaveController.tileCount) {
+        r.colOffset -= gWaveController.tileCount;
+    }
+    r.rowOffset = gWaveModel[blockID].waveTileOffsetZ + r.startRow;
+    while (r.rowOffset >= gWaveController.tileCount) {
+        r.rowOffset -= gWaveController.tileCount;
+    }
+
+    wave_rect_sample_heights(&r, heights);
+    return wave_rect_build_tris(&r, heights, tris, planes);
 }
 
 /** Working state shared by the steps of obj_wave_init. */
