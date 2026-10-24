@@ -4,5 +4,6 @@
 # Adventure boss race against Tricky (Tricky's Tops, car) started straight from
 # the title menu (# level, DKR_TRACE_LEVEL) on the 100% save: the boss
 # introduction cutscene, then the race driven by the autopilot (AUTO).
+# The racer finishes second, and the autopilot then drives Taj's course in the central hub.
 # Format: <frame> <buttons> <stickX> <stickY> [p<N>], held until the next line (DKR_INPUT_SCRIPT).
 150 AUTO 0 0

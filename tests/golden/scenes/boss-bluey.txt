@@ -4,5 +4,6 @@
 # Boss race against Bluey the walrus (Snowflake Mountain, car), started straight from the title
 # menu (# level, DKR_TRACE_LEVEL) on the 100% save and driven by the autopilot (AUTO).
 # Added from the coverage report (make coverage): no other scene reaches this level's code.
+# The racer finishes first, and the autopilot then drives Taj's course in the central hub.
 # Format: <frame> <buttons> <stickX> <stickY> [p<N>], held until the next line (DKR_INPUT_SCRIPT).
 150 AUTO 0 0
