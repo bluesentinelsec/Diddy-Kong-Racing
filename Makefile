@@ -13,6 +13,7 @@
 #   make assets     extract and pack the game assets from baseroms/ (needs the ROM)
 #   make golden     run the game deterministically and compare per-frame hashes with tests/golden/
 #   make coverage   run every golden trace on a coverage build; report what they never execute
+#   make golden-asan run every golden trace under AddressSanitizer (out-of-bounds, use after free)
 #   make web        browser build (Emscripten, in Docker) -> build/web/dkracing.html
 #   make run-web    build it and serve it on http://localhost:8000
 #   make ios        iOS app (Xcode, macOS only) -> build/ios/Release-iphoneos/Diddy Kong Racing.app
@@ -30,12 +31,13 @@ RUN_ARGS   ?= --windowed
 DEBUG_DIR   := build/debug
 RELEASE_DIR := build/release
 COVERAGE_DIR := build/coverage
+ASAN_DIR := build/asan
 
 # Everything the port adds on top of the decompilation; the decomp's own sources
 # keep their upstream formatting so merges stay easy.
 FORMAT_SOURCES := $(wildcard linux/*.c linux/*.h ios/*.c include/pc_asset.h include/pc_gfx.h tests/*.c tests/*.h)
 
-.PHONY: golden golden-update coverage all debug release run run-debugger test fmt doc assets assets-unpack clean web web-image run-web ios run-ios package windows-package linux-package macos-package web-package android-package ios-package
+.PHONY: golden golden-update coverage golden-asan all debug release run run-debugger test fmt doc assets assets-unpack clean web web-image run-web ios run-ios package windows-package linux-package macos-package web-package android-package ios-package
 
 all: debug
 
@@ -50,6 +52,17 @@ $(DEBUG_DIR)/CMakeCache.txt:
 
 $(RELEASE_DIR)/CMakeCache.txt:
 	$(CMAKE) -S . -B $(RELEASE_DIR) -DCMAKE_BUILD_TYPE=Release $(CMAKE_ARGS)
+
+$(ASAN_DIR)/CMakeCache.txt:
+	$(CMAKE) -S . -B $(ASAN_DIR) -DCMAKE_BUILD_TYPE=Debug -DDKR_SANITIZE=ON $(CMAKE_ARGS)
+
+# Every golden trace on an AddressSanitizer build: each must still match, and any
+# out-of-bounds access or use after free stops the run with a report.
+golden-asan: $(ASAN_DIR)/CMakeCache.txt
+	$(CMAKE) --build $(ASAN_DIR) -j $(JOBS)
+	ASAN_OPTIONS=halt_on_error=1:detect_leaks=0 tests/golden.sh $(ASAN_DIR)/dkracing $(GOLDEN) $(GOLDEN_FRAMES)
+	ASAN_OPTIONS=halt_on_error=1:detect_leaks=0 tests/golden.sh $(ASAN_DIR)/dkracing $(GOLDEN_DRIVE) $(GOLDEN_DRIVE_FRAMES) $(GOLDEN_DRIVE_INPUT)
+	ASAN_OPTIONS=halt_on_error=1:detect_leaks=0 tests/golden/scenes.sh $(ASAN_DIR)/dkracing
 
 $(COVERAGE_DIR)/CMakeCache.txt:
 	$(CMAKE) -S . -B $(COVERAGE_DIR) -DCMAKE_BUILD_TYPE=Debug -DDKR_COVERAGE=ON $(CMAKE_ARGS)
