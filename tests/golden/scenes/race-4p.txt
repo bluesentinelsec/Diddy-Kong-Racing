@@ -1,0 +1,116 @@
+# frames 7000
+# Four human players through the menus: controllers 2-4 join at Player Select, then
+# Tracks mode, Ancient Lake, car for everyone, and a four-way split-screen race driven
+# by the autopilot (AUTO holds the throttle in a race of human racers only). Three finish
+# and the fourth does not; A taps step through the multiplayer rankings, Select Track,
+# the track and vehicle menus, and a second race starts. AUTO overrides the racers' input,
+# so the A taps reach only the menus.
+# Format: <frame> <buttons> <stickX> <stickY> [p<N>], held until the next line (DKR_INPUT_SCRIPT).
+900 A 0 0
+903 - 0 0
+960 A 0 0
+963 - 0 0
+990 A 0 0 p2
+990 A 0 0 p3
+990 A 0 0 p4
+993 - 0 0 p2
+993 - 0 0 p3
+993 - 0 0 p4
+1020 A 0 0 p2
+1020 A 0 0 p3
+1020 A 0 0 p4
+1023 - 0 0 p2
+1023 - 0 0 p3
+1023 - 0 0 p4
+1060 A 0 0
+1063 - 0 0
+1120 A 0 0
+1123 - 0 0
+1180 A 0 0
+1183 - 0 0
+1260 - 0 -70
+1266 - 0 0
+1300 A 0 0
+1303 - 0 0
+1420 A 0 0
+1423 - 0 0
+1540 A 0 0
+1543 - 0 0
+1600 A 0 0 p2
+1600 A 0 0 p3
+1600 A 0 0 p4
+1603 - 0 0 p2
+1603 - 0 0 p3
+1603 - 0 0 p4
+1660 A 0 0
+1663 - 0 0
+1780 A 0 0
+1783 - 0 0
+2000 AUTO 0 0
+2000 AUTO 0 0 p2
+2000 AUTO 0 0 p3
+2000 AUTO 0 0 p4
+5400 A,AUTO 0 0
+5400 A,AUTO 0 0 p2
+5400 A,AUTO 0 0 p3
+5400 A,AUTO 0 0 p4
+5403 AUTO 0 0
+5403 AUTO 0 0 p2
+5403 AUTO 0 0 p3
+5403 AUTO 0 0 p4
+5550 A,AUTO 0 0
+5550 A,AUTO 0 0 p2
+5550 A,AUTO 0 0 p3
+5550 A,AUTO 0 0 p4
+5553 AUTO 0 0
+5553 AUTO 0 0 p2
+5553 AUTO 0 0 p3
+5553 AUTO 0 0 p4
+5700 A,AUTO 0 0
+5700 A,AUTO 0 0 p2
+5700 A,AUTO 0 0 p3
+5700 A,AUTO 0 0 p4
+5703 AUTO 0 0
+5703 AUTO 0 0 p2
+5703 AUTO 0 0 p3
+5703 AUTO 0 0 p4
+5850 A,AUTO 0 0
+5850 A,AUTO 0 0 p2
+5850 A,AUTO 0 0 p3
+5850 A,AUTO 0 0 p4
+5853 AUTO 0 0
+5853 AUTO 0 0 p2
+5853 AUTO 0 0 p3
+5853 AUTO 0 0 p4
+6000 A,AUTO 0 0
+6000 A,AUTO 0 0 p2
+6000 A,AUTO 0 0 p3
+6000 A,AUTO 0 0 p4
+6003 AUTO 0 0
+6003 AUTO 0 0 p2
+6003 AUTO 0 0 p3
+6003 AUTO 0 0 p4
+6150 A,AUTO 0 0
+6150 A,AUTO 0 0 p2
+6150 A,AUTO 0 0 p3
+6150 A,AUTO 0 0 p4
+6153 AUTO 0 0
+6153 AUTO 0 0 p2
+6153 AUTO 0 0 p3
+6153 AUTO 0 0 p4
+6300 A,AUTO 0 0
+6300 A,AUTO 0 0 p2
+6300 A,AUTO 0 0 p3
+6300 A,AUTO 0 0 p4
+6303 AUTO 0 0
+6303 AUTO 0 0 p2
+6303 AUTO 0 0 p3
+6303 AUTO 0 0 p4
+6450 A,AUTO 0 0
+6450 A,AUTO 0 0 p2
+6450 A,AUTO 0 0 p3
+6450 A,AUTO 0 0 p4
+6453 AUTO 0 0
+6453 AUTO 0 0 p2
+6453 AUTO 0 0 p3
+6453 AUTO 0 0 p4
