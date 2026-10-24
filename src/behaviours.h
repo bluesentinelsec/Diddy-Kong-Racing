@@ -295,9 +295,6 @@ void obj_init_levelname(Object *obj, LevelObjectEntry *levelEntry, s32 param);
 void obj_loop_levelname(Object *obj, s32 updateRate);
 void obj_loop_wizghosts(Object *obj, s32 updateRate);
 
-void func_80037D60(s32 arg0, s32 arg1);
-void func_80038330(s32 arg0, s32 arg1);
-void func_800387C0(s32 arg0, s32 arg1);
 void anim_object_spawn_target(Object *obj, LevelObjectEntry_Animation *animEntry);
 void anim_objects_spawn_targets(void);
 void calc_env_mapping_for_object(ObjectModel *, s16, s16, s16);

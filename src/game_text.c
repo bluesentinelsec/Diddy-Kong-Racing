@@ -27,11 +27,11 @@ GameTextTableStruct *gGameTextTable[1];
 s8 gCloseTextMessage;
 s8 gTextCloseTimerFrames;
 s8 gTextCloseTimerSeconds;
-s8 D_8012A787;
-s8 D_8012A788;
+s8 gTextboxAcceptsInput; // When clear, the A button doesn't advance the message (text control code 11).
+s8 gTextboxPausesGame;   // The message pauses the game while shown (text control code 12).
 u8 gShowOnscreenMessage;
-u8 D_8012A78A;
-s16 D_8012A78E;
+u8 gTextboxJustOpened; // Set for the first frame of a message, so the press that opened it doesn't advance it.
+s16 gTextboxPage;      // Which page of the message is showing: pages are separated by a 1 in the text.
 s16 gTextTableEntries;
 char *gGameTextTableEntries[2]; // 960 x2 bytes
 char *gGameTextBuffer;
@@ -344,14 +344,14 @@ void set_current_text(s32 textID) {
                    ((s32) words[textID & 1]) ^ subtitleBits, size);
         gGameTextBuffer = gGameTextTableEntries[gGameTextTableIndex];
         gGameTextTableIndex = (gGameTextTableIndex + 1) & 1;
-        D_8012A788 = 0;
+        gTextboxPausesGame = 0;
         gTextCloseTimerSeconds = 0;
         gCloseTextMessage = FALSE;
-        D_8012A787 = 1;
+        gTextboxAcceptsInput = 1;
         gGameTextBuffer[size] = 2;
         if (gShowOnscreenMessage == FALSE) {
-            D_8012A78E = 0;
-            D_8012A78A = 1;
+            gTextboxPage = 0;
+            gTextboxJustOpened = 1;
             gShowOnscreenMessage = TRUE;
         }
         return;
@@ -368,7 +368,7 @@ s32 textbox_visible(void) {
     if (gTextTableExists) {
         if (gShowOnscreenMessage) {
             result = 1;
-            if (D_8012A788) {
+            if (gTextboxPausesGame) {
                 result = 2;
             }
         }
@@ -432,7 +432,7 @@ s32 dialogue_challenge_loop(void) {
     set_current_text_colour(1, textBox.textColRed, textBox.textColGreen, textBox.textColBlue, textBox.textColAlpha,
                             255);
 
-    for (index = 0, numberOfOnes = 0; D_8012A78E != numberOfOnes && gGameTextBuffer[index] != 2; index++) {
+    for (index = 0, numberOfOnes = 0; gTextboxPage != numberOfOnes && gGameTextBuffer[index] != 2; index++) {
         if (gGameTextBuffer[index] >= 3 && gGameTextBuffer[index] < 13) {
             index = game_text_parse_controls(index, &textBox);
         }
@@ -467,13 +467,13 @@ s32 dialogue_challenge_loop(void) {
         }
     } while (keepLooping);
     playerButtons = input_pressed(PLAYER_ONE);
-    if (D_8012A787 == 0) {
+    if (gTextboxAcceptsInput == 0) {
         playerButtons = 0;
     }
-    if (D_8012A78A == 0) {
+    if (gTextboxJustOpened == 0) {
         if (playerButtons & A_BUTTON || gCloseTextMessage) {
             if (gGameTextBuffer[index] == 1) {
-                D_8012A78E += 1;
+                gTextboxPage += 1;
             } else {
                 gShowOnscreenMessage = FALSE;
                 dialogue_npc_finish(3);
@@ -482,7 +482,7 @@ s32 dialogue_challenge_loop(void) {
             gTextCloseTimerSeconds = 0;
         }
     }
-    D_8012A78A = 0;
+    gTextboxJustOpened = 0;
     return 1;
 }
 
@@ -560,12 +560,12 @@ s32 game_text_parse_controls(s32 index, TextBox *textbox) {
                 break;
             case 8:
                 index += 2;
-                D_8012A787 = code[1];
+                gTextboxAcceptsInput = code[1];
                 code += 2;
                 break;
             case 9:
                 index += 2;
-                D_8012A788 = code[1];
+                gTextboxPausesGame = code[1];
                 code += 2;
                 break;
         }
