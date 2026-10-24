@@ -213,8 +213,8 @@ s32 fb_update(s32 mesg) {
 }
 
 /** Caps how many logic steps one frame may cover when the game runs slowly (3 by default). */
-void vi_set_max_update_rate(u8 arg0) {
-    gVideoMaxUpdateRate = arg0;
+void vi_set_max_update_rate(u8 maxUpdateRate) {
+    gVideoMaxUpdateRate = maxUpdateRate;
 }
 
 /**

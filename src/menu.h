@@ -99,11 +99,11 @@ enum CheatMenuStages {
 };
 
 enum TrackmenuStages {
-    TRACKMENU_MIRROR = -1,
-    TRACKMENU_OPT_1,
-    TRACKMENU_CHOOSE,
-    TRACKMENU_OPT_2,
-    TRACKMENU_OPT_3,
+    TRACKMENU_ADVENTURE_CHOICE = -1,
+    TRACKMENU_VEHICLE_CHOICE,
+    TRACKMENU_TIME_TRIAL_CHOICE,
+    TRACKMENU_OPT_2, // One player: the "OK?" prompt. Two players: the racer count.
+    TRACKMENU_OPT_3, // Two players: the "OK?" prompt after the racer count.
     TRACKMENU_OPT_4
 };
 

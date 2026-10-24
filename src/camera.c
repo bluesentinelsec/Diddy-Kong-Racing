@@ -28,9 +28,7 @@ s8 gAntiPiracyViewport = FALSE;
 
 #define SCISSOR_INTERLACE G_SC_NON_INTERLACE
 
-ScreenViewport gScreenViewports[
-    5
-] = {
+ScreenViewport gScreenViewports[5] = {
     { DEFAULT_VIEWPORT },
     { DEFAULT_VIEWPORT },
     { DEFAULT_VIEWPORT },
@@ -260,7 +258,7 @@ void camera_init_tracks_menu(Gfx **dList, Mtx **mtxS) {
     s16 angleY;
     s16 angleX;
     s16 angleZ;
-    s16 sp24;
+    s16 pitch;
     f32 posX;
     f32 posY;
     f32 posZ;
@@ -274,7 +272,7 @@ void camera_init_tracks_menu(Gfx **dList, Mtx **mtxS) {
     posX = cam->trans.x_position;
     posY = cam->trans.y_position;
     posZ = cam->trans.z_position;
-    sp24 = cam->pitch;
+    pitch = cam->pitch;
     cam->trans.rotation.z_rotation = 0;
     cam->trans.rotation.x_rotation = 0;
     cam->trans.rotation.y_rotation = -0x8000;
@@ -284,7 +282,7 @@ void camera_init_tracks_menu(Gfx **dList, Mtx **mtxS) {
     cam->trans.z_position = 0.0f;
     update_envmap_position(0.0f, 0.0f, -1.0f);
     viewport_main(dList, mtxS);
-    cam->pitch = sp24;
+    cam->pitch = pitch;
     cam->trans.rotation.y_rotation = angleY;
     cam->trans.rotation.x_rotation = angleX;
     cam->trans.rotation.z_rotation = angleZ;
@@ -337,15 +335,15 @@ void camera_reset(s32 xPos, s32 yPos, s32 zPos, s32 angleZ, s32 angleX, s32 angl
  * The first 4 are reserved for the 4 player viewports, so the misc views, used in the title screen
  * and course previews instead use the next 4.
  */
-void write_to_object_render_stack(s32 stackPos, f32 xPos, f32 yPos, f32 zPos, s16 arg4, s16 arg5, s16 arg6) {
+void write_to_object_render_stack(s32 stackPos, f32 xPos, f32 yPos, f32 zPos, s16 angleY, s16 angleX, s16 angleZ) {
     stackPos += 4;
     gCameras[stackPos].pitch = 0;
     gCameras[stackPos].trans.x_position = xPos;
     gCameras[stackPos].trans.y_position = yPos;
     gCameras[stackPos].trans.z_position = zPos;
-    gCameras[stackPos].trans.rotation.y_rotation = arg4;
-    gCameras[stackPos].trans.rotation.x_rotation = arg5;
-    gCameras[stackPos].trans.rotation.z_rotation = arg6;
+    gCameras[stackPos].trans.rotation.y_rotation = angleY;
+    gCameras[stackPos].trans.rotation.x_rotation = angleX;
+    gCameras[stackPos].trans.rotation.z_rotation = angleZ;
     gCameras[stackPos].cameraSegmentID = get_level_segment_index_from_position(xPos, yPos, zPos);
     gCutsceneCameraActive = TRUE;
 }
@@ -473,8 +471,8 @@ void copy_viewports_to_stack(void) {
     }
 }
 
-void camEnableUserView(s32 viewPortIndex, s32 arg1) {
-    if (arg1) {
+void camEnableUserView(s32 viewPortIndex, s32 extraBackground) {
+    if (extraBackground) {
         gScreenViewports[viewPortIndex].flags |= VIEWPORT_EXTRA_BG;
     } else {
         gScreenViewports[viewPortIndex].flags |= VIEWPORT_UNK_02;
@@ -482,8 +480,8 @@ void camEnableUserView(s32 viewPortIndex, s32 arg1) {
     gScreenViewports[viewPortIndex].flags &= ~VIEWPORT_UNK_04;
 }
 
-void camDisableUserView(s32 viewPortIndex, s32 arg1) {
-    if (arg1) {
+void camDisableUserView(s32 viewPortIndex, s32 extraBackground) {
+    if (extraBackground) {
         gScreenViewports[viewPortIndex].flags &= ~VIEWPORT_EXTRA_BG;
     } else {
         gScreenViewports[viewPortIndex].flags |= VIEWPORT_UNK_04;
@@ -505,21 +503,21 @@ s32 check_viewport_background_flag(s32 viewPortIndex) {
  */
 void viewport_menu_set(s32 viewPortIndex, s32 x1, s32 y1, s32 x2, s32 y2) {
     s32 widthAndHeight, width, height;
-    s32 temp;
+    s32 swap;
 
     widthAndHeight = fb_size();
     height = GET_VIDEO_HEIGHT(widthAndHeight) & 0xFFFF;
     width = GET_VIDEO_WIDTH(widthAndHeight);
 
     if (x2 < x1) {
-        temp = x1;
+        swap = x1;
         x1 = x2;
-        x2 = temp;
+        x2 = swap;
     }
     if (y2 < y1) {
-        temp = y1;
+        swap = y1;
         y1 = y2;
-        y2 = temp;
+        y2 = swap;
     }
 
     if (x1 >= width || x2 < 0 || y1 >= height || y2 < 0) {
@@ -628,12 +626,34 @@ UNUSED void copy_framebuffer_size_to_coords(s32 *x1, s32 *y1, s32 *x2, s32 *y2) 
     *y2 = GET_VIDEO_HEIGHT(widthAndHeight);
 }
 
+/**
+ * Viewport setup for a viewport with an extended background: scissors to the saved camera's viewport box,
+ * clears the RSP viewport and sets the projection matrix for the active camera.
+ */
+static void viewport_main_extra_background(Gfx **dlist, Mtx **mats, s32 savedCameraID) {
+    s32 tempCameraID;
+
+    tempCameraID = gActiveCameraID;
+    gActiveCameraID = savedCameraID;
+    gDPSetScissor((*dlist)++, SCISSOR_INTERLACE, gScreenViewports[gActiveCameraID].scissorX1,
+                  gScreenViewports[gActiveCameraID].scissorY1, gScreenViewports[gActiveCameraID].scissorX2,
+                  gScreenViewports[gActiveCameraID].scissorY2);
+    viewport_rsp_set(dlist, 0, 0, 0, 0);
+    gActiveCameraID = tempCameraID;
+    if (mats != NULL) {
+        cam_set_projection_matrix(dlist, mats);
+    }
+}
+
+/**
+ * Sets the scissor box, RSP viewport and projection matrix for the active camera's part of the screen.
+ */
 void viewport_main(Gfx **dlist, Mtx **mats) {
     u32 y;
     u32 x;
     u32 tempX;
-    u32 sp58_height;
-    u32 sp54_width;
+    u32 halfHeight;
+    u32 halfWidth;
     u32 posY;
     u32 posX;
     u32 tempY;
@@ -643,7 +663,6 @@ void viewport_main(Gfx **dlist, Mtx **mats) {
     s32 viewports;
     s32 originalCameraID;
     s32 savedCameraID;
-    s32 tempCameraID;
 
     originalCameraID = gActiveCameraID;
     savedCameraID = gActiveCameraID;
@@ -656,16 +675,7 @@ void viewport_main(Gfx **dlist, Mtx **mats) {
     videoHeight = GET_VIDEO_HEIGHT(widthAndHeight);
     videoWidth = GET_VIDEO_WIDTH(widthAndHeight);
     if (gScreenViewports[savedCameraID].flags & VIEWPORT_EXTRA_BG) {
-        tempCameraID = gActiveCameraID;
-        gActiveCameraID = savedCameraID;
-        gDPSetScissor((*dlist)++, SCISSOR_INTERLACE, gScreenViewports[gActiveCameraID].scissorX1,
-                      gScreenViewports[gActiveCameraID].scissorY1, gScreenViewports[gActiveCameraID].scissorX2,
-                      gScreenViewports[gActiveCameraID].scissorY2);
-        viewport_rsp_set(dlist, 0, 0, 0, 0);
-        gActiveCameraID = tempCameraID;
-        if (mats != NULL) {
-            cam_set_projection_matrix(dlist, mats);
-        }
+        viewport_main_extra_background(dlist, mats, savedCameraID);
         gActiveCameraID = originalCameraID;
         return;
     }
@@ -675,18 +685,18 @@ void viewport_main(Gfx **dlist, Mtx **mats) {
         viewports = VIEWPORT_LAYOUT_4_PLAYERS;
     }
     x = videoWidth >> 1;
-    sp54_width = x;
+    halfWidth = x;
     y = videoHeight >> 1;
-    sp58_height = y;
+    halfHeight = y;
 
     if (osTvType == 0) {
-        sp58_height = 145;
+        halfHeight = 145;
     }
 
     switch (viewports) {
         case VIEWPORT_LAYOUT_1_PLAYER:
-            posX = sp54_width;
-            posY = sp58_height;
+            posX = halfWidth;
+            posY = halfHeight;
             if (osTvType == OS_TV_TYPE_PAL) {
                 posY -= 18;
             }
@@ -695,7 +705,7 @@ void viewport_main(Gfx **dlist, Mtx **mats) {
         case VIEWPORT_LAYOUT_2_PLAYERS:
             // 2 players = split screen horizontally
             // first player has top half
-            posX = sp54_width;
+            posX = halfWidth;
             posY = gActiveCameraID;
             if (posY == 0) {
                 posY = videoHeight >> 2;
@@ -716,7 +726,7 @@ void viewport_main(Gfx **dlist, Mtx **mats) {
         // this is probably never reached because of an if above that sets the viewport to 4 players if its currently 3
         // players
         case VIEWPORT_LAYOUT_3_PLAYERS:
-            posY = sp58_height;
+            posY = halfHeight;
             // 3 player splits screen in 4 parts, first player = top left, second = top right, third = bottom left and
             // bottom right has map of race track
             if (gActiveCameraID == 0) {
@@ -731,8 +741,8 @@ void viewport_main(Gfx **dlist, Mtx **mats) {
             }
             break;
         case VIEWPORT_LAYOUT_4_PLAYERS:
-            sp58_height >>= 1;
-            sp54_width >>= 1;
+            halfHeight >>= 1;
+            halfWidth >>= 1;
             tempY = 0;
             tempX = 0;
             switch (gActiveCameraID) {
@@ -766,8 +776,8 @@ void viewport_main(Gfx **dlist, Mtx **mats) {
                                   (x + x) - (videoWidth >> 8), (y + y) - (videoHeight >> 7));
                     break;
             }
-            posY = tempX + sp58_height;
-            posX = tempY + sp54_width;
+            posY = tempX + halfHeight;
+            posX = tempY + halfWidth;
             if (osTvType == OS_TV_TYPE_PAL) {
                 if (gActiveCameraID <= 1) {
                     posY -= 20;
@@ -781,7 +791,7 @@ void viewport_main(Gfx **dlist, Mtx **mats) {
     if (osTvType == OS_TV_TYPE_PAL) {
         posX -= 4;
     }
-    viewport_rsp_set(dlist, sp54_width, sp58_height, posX, posY);
+    viewport_rsp_set(dlist, halfWidth, halfHeight, posX, posY);
     if (mats != NULL) {
         cam_set_projection_matrix(dlist, mats);
     }
@@ -799,10 +809,10 @@ void viewport_scissor(Gfx **dList) {
     s32 ulx;
     s32 uly;
     s32 numViewports;
-    s32 temp;
-    s32 temp2;
-    s32 temp3;
-    s32 temp4;
+    s32 halfGapY;
+    s32 halfGapX;
+    s32 centreY;
+    s32 centreX;
     s32 width;
     s32 height;
 
@@ -821,30 +831,30 @@ void viewport_scissor(Gfx **dList) {
         lrx += width;\
         lry += height;
         // clang-format on
-        temp = lry >> 7;
-        temp2 = lrx >> 8;
-        temp4 = lrx >> 1;
-        temp3 = lry >> 1;
+        halfGapY = lry >> 7;
+        halfGapX = lrx >> 8;
+        centreX = lrx >> 1;
+        centreY = lry >> 1;
         switch (numViewports) {
             case 1:
                 switch (gActiveCameraID) {
                     case 0:
-                        lry = temp3 - temp;
+                        lry = centreY - halfGapY;
                         break;
                     default:
-                        uly = temp3 + temp;
-                        lry -= temp;
+                        uly = centreY + halfGapY;
+                        lry -= halfGapY;
                         break;
                 }
                 break;
             case 2:
                 switch (gActiveCameraID) {
                     case 0:
-                        lrx = temp4 - temp2;
+                        lrx = centreX - halfGapX;
                         break;
                     default:
-                        ulx = temp4 + temp2;
-                        lrx -= temp2;
+                        ulx = centreX + halfGapX;
+                        lrx -= halfGapX;
                         break;
                 }
                 break;
@@ -852,24 +862,24 @@ void viewport_scissor(Gfx **dList) {
                 // clang-format off
                 switch (gActiveCameraID) {
                     case 0:
-                        lrx = temp4 - temp2;\
-                        lry = temp3 - temp;
+                        lrx = centreX - halfGapX;\
+                        lry = centreY - halfGapY;
                         break;
                     case 1:
-                        ulx = temp4 + temp2;
-                        lrx -= temp2;
-                        lry = temp3 - temp;
+                        ulx = centreX + halfGapX;
+                        lrx -= halfGapX;
+                        lry = centreY - halfGapY;
                         break;
                     case 2:
-                        uly = temp3 + temp;
-                        lrx = temp4 - temp2;\
-                        lry -= temp;
+                        uly = centreY + halfGapY;
+                        lrx = centreX - halfGapX;\
+                        lry -= halfGapY;
                         break;
                     case 3:
-                        ulx = temp4 + temp2;\
-                        uly = temp3 + temp;
-                        lrx -= temp2;\
-                        lry -= temp;
+                        ulx = centreX + halfGapX;\
+                        uly = centreY + halfGapY;
+                        lrx -= halfGapX;\
+                        lry -= halfGapY;
                         break;
                 }
                 // clang-format on
@@ -1025,7 +1035,6 @@ void viewport_reset(Gfx **dList) {
     gActiveCameraID = 0;
 }
 
-
 /**
  * Sets the matrix position to the world origin (0, 0, 0)
  * Used when the next thing rendered relies on there not being any matrix offset.
@@ -1050,139 +1059,146 @@ void cam_set_sprite_anim_mode(s32 setting) {
 }
 
 /**
- * Renders a sprite in 3D space as a billboard.
- *
- * If the sprite represents a vehicle part (e.g., wheel, propeller, fan),
- * the function calculates the appropriate animation frame based on the object's
- * orientation relative to the camera, ensuring the sprite correctly matches
- * the viewing angle. It also orients the sprite properly in 3D space with tilt.
- *
- * For regular sprites, it sets up a standard billboard that always faces the camera.
+ * Billboard matrix for a vehicle part (wheel, propeller, fan): picks the sprite frame for the angle the camera
+ * sees the part from, and pushes a matrix that faces the camera with the part's tilt.
+ * Returns FALSE when the part is seen from behind (the frame is mirrored), otherwise TRUE.
  */
-s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, Sprite *sprite, s32 flags) {
+static s32 billboard_vehicle_part_matrix(Gfx **dList, Mtx **mtx, Object *obj, s32 *frameIDOut) {
     f32 diffX;
     f32 diffY;
-    Vertex *v;
+    f32 diffZ;
     f32 lateralDist;
     f32 sineY;
     f32 cosY;
-    f32 temp;
-    f32 diffZ;
+    f32 rotatedX;
     s32 tanX;
     s32 tanY;
     s32 tiltAngle;
-    s32 result;
+    s32 frameID;
+    s32 isFrontFacing;
+
+    isFrontFacing = TRUE;
+    // Vehicle parts like wheels, propellers, and fans are implemented as sprites,
+    // each with 16 frames representing different orientations.
+    // This requires calculating the correct frame based on the relative orientation
+    // between the object and the camera, as well as properly orienting the sprite in 3D space.
+
+    // Calculate camera position relative to the object's position
+    diffX = gCameraRelPosStackX[gCameraMatrixPos] - obj->trans.x_position;
+    diffY = gCameraRelPosStackY[gCameraMatrixPos] - obj->trans.y_position;
+    diffZ = gCameraRelPosStackZ[gCameraMatrixPos] - obj->trans.z_position;
+
+    // Rotate camera coordinates by the object's yaw rotation
+    // to get the camera orientation relative to the vehicle,
+    // e.g., to determine if we view the wheel from the side.
+    sineY = sins_f(obj->trans.rotation.y_rotation);
+    cosY = coss_f(obj->trans.rotation.y_rotation);
+
+    rotatedX = (diffX * cosY) + (diffZ * sineY);
+    diffZ = (diffZ * cosY) - (diffX * sineY);
+    diffX = rotatedX;
+
+    // Calculate the angle between the camera direction and the vertical plane of the vehicle
+    tanY = arctan2_f(diffX, sqrtf((diffY * diffY) + (diffZ * diffZ)));
+
+    tanX = -sins_s16(arctan2_f(diffX, diffZ)) >> 8;
+    if (diffZ < 0.0f) {
+        diffZ = -diffZ;
+        tanX = 1 - tanX;
+        tanY = -tanY;
+    }
+
+    tiltAngle = arctan2_f(diffY, diffZ);
+    if (tiltAngle > 0x8000) {
+        tiltAngle -= 0x10000;
+    }
+    tiltAngle = (tiltAngle * tanX) >> 8;
+    frameID = (tanY >> 7) & 0xFF;
+    if (frameID > 127) {
+        // Fires for every back-facing billboard, every frame — pure noise
+        // now that stubbed_printf is real. The mirror below handles it.
+        // stubbed_printf("CamDo2DSprite FrameNo Overflow !!!\n");
+        frameID = 255 - frameID;
+        tiltAngle += 0x8000;
+        isFrontFacing = FALSE;
+    }
+    frameID *= 2;
+
+    // Construct the model matrix for the sprite,
+    // orienting it perpendicular to the camera and applying the calculated tilt angle.
+    diffX = gCameraRelPosStackX[gCameraMatrixPos] - obj->trans.x_position;
+    diffY = gCameraRelPosStackY[gCameraMatrixPos] - obj->trans.y_position;
+    diffZ = gCameraRelPosStackZ[gCameraMatrixPos] - obj->trans.z_position;
+    lateralDist = sqrtf((diffX * diffX) + (diffZ * diffZ));
+    gCameraTransform.rotation.y_rotation = arctan2_f(diffX, diffZ);
+    gCameraTransform.rotation.x_rotation = -arctan2_f(diffY, lateralDist);
+    gCameraTransform.rotation.z_rotation = tiltAngle;
+    gCameraTransform.scale = obj->trans.scale;
+    gCameraTransform.x_position = obj->trans.x_position;
+    gCameraTransform.y_position = obj->trans.y_position;
+    gCameraTransform.z_position = obj->trans.z_position;
+    mtxf_from_transform(&gCurrentModelMatrixF, &gCameraTransform);
+    gModelMatrixStackPos++;
+    mtxf_mul(&gCurrentModelMatrixF, gModelMatrixF[gModelMatrixStackPos - 1], gModelMatrixF[gModelMatrixStackPos]);
+    mtxf_mul(gModelMatrixF[gModelMatrixStackPos], &gViewProjMatrixF, &gCurrentModelMatrixF);
+    mtxf_to_mtx(&gCurrentModelMatrixF, *mtx);
+    gModelMatrix[gModelMatrixStackPos] = *mtx;
+    gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_2);
+    pc_gfx_mtx_tag((*mtx) - 1, obj, PC_MTX_SITE_BILLBOARD);
+    // Push an empty vertex because sprite vertices are hardcoded to start from index 1,
+    // and billboard mode is not enabled for vehicle parts.
+    gSPVertexDKR((*dList)++, OS_K0_TO_PHYSICAL(&gVehiclePartVertex), 1, 0);
+    *frameIDOut = frameID;
+    return isFrontFacing;
+}
+
+/**
+ * Billboard matrix for a regular sprite: pushes an anchor vertex at the object's position and a billboard
+ * matrix that keeps the camera's tilt, then enables billboard mode. Returns the object's animation frame.
+ */
+static s32 billboard_anchor_matrix(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj) {
+    Vertex *v;
+    s32 tiltAngle;
     s32 frameID;
 
-    if (obj == NULL) {
-        stubbed_printf("\nCam do 2D sprite called with NULL pointer!");
-    }
+    // For non-vehicle parts, set up a standard billboard.
 
-    result = TRUE;
-    if (flags & RENDER_VEHICLE_PART) {
-        // Vehicle parts like wheels, propellers, and fans are implemented as sprites,
-        // each with 16 frames representing different orientations.
-        // This requires calculating the correct frame based on the relative orientation
-        // between the object and the camera, as well as properly orienting the sprite in 3D space.
+    // Push the anchor vertex at the object's position
+    v = *vtx;
+    v->x = obj->trans.x_position;
+    v->y = obj->trans.y_position;
+    v->z = obj->trans.z_position;
+    v->r = 255; // These don't actually do anything since vertex colours are disabled anyway.
+    v->g = 255;
+    v->b = 255;
+    v->a = 255;
+    gSPVertexDKR((*dList)++, OS_K0_TO_PHYSICAL(*vtx), 1, 0);
+    (*vtx)++;
 
-        // Calculate camera position relative to the object's position
-        diffX = gCameraRelPosStackX[gCameraMatrixPos] - obj->trans.x_position;
-        diffY = gCameraRelPosStackY[gCameraMatrixPos] - obj->trans.y_position;
-        diffZ = gCameraRelPosStackZ[gCameraMatrixPos] - obj->trans.z_position;
-
-        // Rotate camera coordinates by the object's yaw rotation
-        // to get the camera orientation relative to the vehicle,
-        // e.g., to determine if we view the wheel from the side.
-        sineY = sins_f(obj->trans.rotation.y_rotation);
-        cosY = coss_f(obj->trans.rotation.y_rotation);
-
-        temp = (diffX * cosY) + (diffZ * sineY);
-        diffZ = (diffZ * cosY) - (diffX * sineY);
-        diffX = temp;
-
-        // Calculate the angle between the camera direction and the vertical plane of the vehicle
-        tanY = arctan2_f(diffX, sqrtf((diffY * diffY) + (diffZ * diffZ)));
-
-        tanX = -sins_s16(arctan2_f(diffX, diffZ)) >> 8;
-        if (diffZ < 0.0f) {
-            diffZ = -diffZ;
-            tanX = 1 - tanX;
-            tanY = -tanY;
-        }
-
-        tiltAngle = arctan2_f(diffY, diffZ);
-        if (tiltAngle > 0x8000) {
-            tiltAngle -= 0x10000;
-        }
-        tiltAngle = (tiltAngle * tanX) >> 8;
-        frameID = (tanY >> 7) & 0xFF;
-        if (frameID > 127) {
-            // Fires for every back-facing billboard, every frame — pure noise
-            // now that stubbed_printf is real. The mirror below handles it.
-            // stubbed_printf("CamDo2DSprite FrameNo Overflow !!!\n");
-            frameID = 255 - frameID;
-            tiltAngle += 0x8000;
-            result = FALSE;
-        }
-        frameID *= 2;
-
-        // Construct the model matrix for the sprite,
-        // orienting it perpendicular to the camera and applying the calculated tilt angle.
-        diffX = gCameraRelPosStackX[gCameraMatrixPos] - obj->trans.x_position;
-        diffY = gCameraRelPosStackY[gCameraMatrixPos] - obj->trans.y_position;
-        diffZ = gCameraRelPosStackZ[gCameraMatrixPos] - obj->trans.z_position;
-        lateralDist = sqrtf((diffX * diffX) + (diffZ * diffZ));
-        gCameraTransform.rotation.y_rotation = arctan2_f(diffX, diffZ);
-        gCameraTransform.rotation.x_rotation = -arctan2_f(diffY, lateralDist);
-        gCameraTransform.rotation.z_rotation = tiltAngle;
-        gCameraTransform.scale = obj->trans.scale;
-        gCameraTransform.x_position = obj->trans.x_position;
-        gCameraTransform.y_position = obj->trans.y_position;
-        gCameraTransform.z_position = obj->trans.z_position;
-        mtxf_from_transform(&gCurrentModelMatrixF, &gCameraTransform);
-        gModelMatrixStackPos++;
-        mtxf_mul(&gCurrentModelMatrixF, gModelMatrixF[gModelMatrixStackPos - 1], gModelMatrixF[gModelMatrixStackPos]);
-        mtxf_mul(gModelMatrixF[gModelMatrixStackPos], &gViewProjMatrixF, &gCurrentModelMatrixF);
-        mtxf_to_mtx(&gCurrentModelMatrixF, *mtx);
-        gModelMatrix[gModelMatrixStackPos] = *mtx;
-        gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_2);
-        pc_gfx_mtx_tag((*mtx) - 1, obj, PC_MTX_SITE_BILLBOARD);
-        // Push an empty vertex because sprite vertices are hardcoded to start from index 1,
-        // and billboard mode is not enabled for vehicle parts.
-        gSPVertexDKR((*dList)++, OS_K0_TO_PHYSICAL(&gVehiclePartVertex), 1, 0);
+    // Create a billboard matrix that compensates for camera tilt,
+    // so the sprite tilts consistently with other objects relative to the camera.
+    // Aspect ratio compensation is applied to maintain proper sprite proportions on screen.
+    if (!gCutsceneCameraActive) {
+        tiltAngle = gCameras[gActiveCameraID].trans.rotation.z_rotation + obj->trans.rotation.z_rotation;
     } else {
-        // For non-vehicle parts, set up a standard billboard.
-
-        // Push the anchor vertex at the object's position
-        v = *vtx;
-        v->x = obj->trans.x_position;
-        v->y = obj->trans.y_position;
-        v->z = obj->trans.z_position;
-        v->r = 255; // These don't actually do anything since vertex colours are disabled anyway.
-        v->g = 255;
-        v->b = 255;
-        v->a = 255;
-        gSPVertexDKR((*dList)++, OS_K0_TO_PHYSICAL(*vtx), 1, 0);
-        (*vtx)++;
-
-        // Create a billboard matrix that compensates for camera tilt,
-        // so the sprite tilts consistently with other objects relative to the camera.
-        // Aspect ratio compensation is applied to maintain proper sprite proportions on screen.
-        if (!gCutsceneCameraActive) {
-            tiltAngle = gCameras[gActiveCameraID].trans.rotation.z_rotation + obj->trans.rotation.z_rotation;
-        } else {
-            tiltAngle = gCameras[gActiveCameraID + 4].trans.rotation.z_rotation + obj->trans.rotation.z_rotation;
-        }
-        frameID = obj->animFrame;
-        gModelMatrixStackPos++;
-        mtxf_billboard(gModelMatrixF[gModelMatrixStackPos], tiltAngle, obj->trans.scale, gVideoAspectRatio);
-        mtxf_to_mtx(gModelMatrixF[gModelMatrixStackPos], *mtx);
-        gModelMatrix[gModelMatrixStackPos] = *mtx;
-        gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_2);
-        pc_gfx_mtx_tag((*mtx) - 1, obj, PC_MTX_SITE_BILLBOARD);
-        // Enable billboard mode; subsequent vertices will be rendered relative to the anchor point
-        gDkrEnableBillboard((*dList)++);
+        tiltAngle = gCameras[gActiveCameraID + 4].trans.rotation.z_rotation + obj->trans.rotation.z_rotation;
     }
+    frameID = obj->animFrame;
+    gModelMatrixStackPos++;
+    mtxf_billboard(gModelMatrixF[gModelMatrixStackPos], tiltAngle, obj->trans.scale, gVideoAspectRatio);
+    mtxf_to_mtx(gModelMatrixF[gModelMatrixStackPos], *mtx);
+    gModelMatrix[gModelMatrixStackPos] = *mtx;
+    gSPMatrixDKR((*dList)++, OS_K0_TO_PHYSICAL((*mtx)++), G_MTX_DKR_INDEX_2);
+    pc_gfx_mtx_tag((*mtx) - 1, obj, PC_MTX_SITE_BILLBOARD);
+    // Enable billboard mode; subsequent vertices will be rendered relative to the anchor point
+    gDkrEnableBillboard((*dList)++);
+    return frameID;
+}
+
+/**
+ * Draws the sprite frame with its material, pops the model matrix and disables billboard mode.
+ */
+static void billboard_draw_frame(Gfx **dList, Sprite *sprite, s32 flags, s32 frameID) {
     // Calculate the correct animation frame based on the current animation mode.
     if (gSpriteAnimMode == SPRITE_ANIM_NORMALIZED) {
         frameID = ((frameID & 0xFF) * sprite->numberOfFrames) >> 8;
@@ -1216,6 +1232,33 @@ s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, S
 
     // Disable billboard mode
     gDkrDisableBillboard((*dList)++);
+}
+
+/**
+ * Renders a sprite in 3D space as a billboard.
+ *
+ * If the sprite represents a vehicle part (e.g., wheel, propeller, fan),
+ * the function calculates the appropriate animation frame based on the object's
+ * orientation relative to the camera, ensuring the sprite correctly matches
+ * the viewing angle. It also orients the sprite properly in 3D space with tilt.
+ *
+ * For regular sprites, it sets up a standard billboard that always faces the camera.
+ */
+s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, Sprite *sprite, s32 flags) {
+    s32 result;
+    s32 frameID;
+
+    if (obj == NULL) {
+        stubbed_printf("\nCam do 2D sprite called with NULL pointer!");
+    }
+
+    result = TRUE;
+    if (flags & RENDER_VEHICLE_PART) {
+        result = billboard_vehicle_part_matrix(dList, mtx, obj, &frameID);
+    } else {
+        frameID = billboard_anchor_matrix(dList, mtx, vtx, obj);
+    }
+    billboard_draw_frame(dList, sprite, flags, frameID);
 
     return result;
 }
@@ -1226,7 +1269,6 @@ s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, S
  */
 void render_ortho_triangle_image(Gfx **dList, Mtx **mtx, Vertex **vtx, ObjectSegment *segment, Sprite *sprite,
                                  s32 flags) {
-    UNUSED s32 pad;
     f32 scale;
     s32 index;
     Vertex *vertex;
@@ -1296,7 +1338,6 @@ void render_ortho_triangle_image(Gfx **dList, Mtx **mtx, Vertex **vtx, ObjectSeg
  * Used for wavy type effects like the shield.
  */
 void mtx_shear_push(Gfx **dList, Mtx **mtx, Object *obj, Object *objBase, f32 shear) {
-    UNUSED s32 pad;
     f32 cossf_x_arg2;
     f32 cossf_y_arg2;
     f32 sinsf_x_arg2;
@@ -1548,7 +1589,7 @@ UNUSED void get_modelmatrix_vector(f32 *x, f32 *y, f32 *z) {
  * If the stack pos is less than zero, set the RSP stack pos to 0.
  */
 void mtx_pop(Gfx **dList) {
-    s32 temp;
+    s32 underflow;
 
     gCameraMatrixPos--;
     gModelMatrixStackPos--;
@@ -1557,7 +1598,7 @@ void mtx_pop(Gfx **dList) {
         stubbed_printf("camPopModelMtx: model stack negative overflow!!\n");
     }
 
-    if ((temp = gCameraMatrixPos < 0)) { // temp required to match
+    if ((underflow = gCameraMatrixPos < 0)) { // underflow required to match
         stubbed_printf("camPopModelMtx: bsp stack negative overflow!!\n");
     }
 

@@ -85,8 +85,8 @@ void load_level_game(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle v
 void unload_level_game(void);
 void set_drumstick_unlock_transition(void);
 void race_postrace_type(s32 finishState);
-void level_settings_apply(s32 arg0);
-void level_settings_store_from_exit(s8 *arg0);
+void level_settings_apply(s32 unused);
+void level_settings_store_from_exit(s8 *exitEntry);
 GameMode get_game_mode(void);
 void load_menu_with_level_background(s32 menuId, s32 levelId, s32 cutsceneId);
 void set_level_default_vehicle(Vehicle vehicleID);
@@ -121,7 +121,6 @@ void mark_read_eeprom_settings(void);
 void mark_write_eeprom_settings(void);
 s32 drm_validate_dmem(void);
 void level_transition_begin(s32 type);
-void func_8006F20C(void);
 void begin_trophy_race_teleport(void);
 void begin_lighthouse_rocket_cutscene(void);
 void begin_level_teleport(s32 levelID);

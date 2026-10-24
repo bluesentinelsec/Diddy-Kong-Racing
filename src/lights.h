@@ -102,7 +102,7 @@ s32 light_count(void);
 f32 light_distance_calc(ObjectLight *light);
 f32 light_direction_calc(ObjectLight *light);
 ObjectLight *light_add_from_level_object_entry(Object *obj, LevelObjectEntry_RgbaLight *lightEntry);
-ObjectLight *light_add_from_object_header(Object *obj, ObjectHeader24 *arg1);
+ObjectLight *light_add_from_object_header(Object *obj, ObjectHeader24 *lightHeader);
 void light_update(ObjectLight *light, s32 updateRate);
 
 //Non Matching

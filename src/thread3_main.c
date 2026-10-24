@@ -85,7 +85,8 @@ FadeTransition gDrumstickSceneTransition =
     FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_WHITE, 30, FADE_STAY);
 FadeTransition gLevelFadeOutTransition =
     FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 30, FADE_STAY);
-FadeTransition sLevelChangeTransition = FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 260, FADE_STAY);
+FadeTransition sLevelChangeTransition =
+    FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 260, FADE_STAY);
 
 /*******************************/
 
@@ -196,7 +197,8 @@ void main_game_loop(void) {
         rsp_segment(&gCurrDisplayList, SEGMENT_MAIN, 0x00000000);
         rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (ptrint_t) gVideoCurrFramebuffer);
         rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (ptrint_t) gVideoLastDepthBuffer);
-        rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (ptrint_t) gVideoCurrFramebuffer - VI_OFFSET); // Unused
+        rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET,
+                    (ptrint_t) gVideoCurrFramebuffer - VI_OFFSET); // Unused
     }
     if (gDrawFrameTimer == 0) {
         gfxtask_run_xbus(gDisplayLists[gSPTaskNum], gCurrDisplayList, 0);
@@ -304,7 +306,7 @@ void load_next_ingame_level(s32 numPlayers, s32 trackID, Vehicle vehicle) {
     if (trackID == -1) {
         gPlayableMapId = get_track_id_to_load();
     } else {
-        gPlayableMapId = trackID; // Unused, because arg1 is always -1.
+        gPlayableMapId = trackID; // Unused, because trackID is always -1.
     }
     load_level_game(gPlayableMapId, gGameNumPlayers, gGameCurrentEntrance, vehicle);
 }
@@ -352,23 +354,26 @@ void unload_level_game(void) {
 }
 
 /**
- * One frame of play: tick the objects, draw the scene and the HUD, run the pause and post-race
- * menus, then decide whether the level ends this frame. A level ends when a menu option, a
- * finished cutscene, a load timer or an Exit object says so; the decision is three flags
- * (leaveLevel, toTitle, restartLevel) plus sLevelExitRoute, and the last block acts on them:
- * a menu with the level as backdrop, the title, the same level again, or the map the stored
- * exit settings name.
+ * How mode_game's level ends this frame, decided step by step: leave it, go back to the title, or start it
+ * over without rereading the exit settings (the original encoded these as L, R and Z), and which menu to load
+ * when leaving.
  */
-void mode_game(s32 updateRate) {
-    s32 buttonPressedInputs, i, loadContext, exitPopped, wizpigDone;
-    // How the level ends this frame, decided below: leave it, go back to the title, or start it
-    // over without rereading the exit settings. (The original encoded these as L, R and Z.)
-    s32 leaveLevel, toTitle, restartLevel;
+typedef struct LevelEndRequest {
+    s32 leaveLevel;
+    s32 toTitle;
+    s32 restartLevel;
+    s32 loadContext;
+} LevelEndRequest;
 
-    loadContext = LEVEL_CONTEXT_NONE;
-    leaveLevel = FALSE;
-    toTitle = FALSE;
-    restartLevel = FALSE;
+/**
+ * Reads every active player's presses, updates the objects (or keeps anti-aliasing on while paused), opens
+ * the pause menu on Start when pausing is allowed and counts down the pause lock.
+ * Returns the buttons pressed this frame (cleared when the press opened the pause menu).
+ */
+static s32 mode_game_update_objects(s32 updateRate) {
+    s32 buttonPressedInputs;
+    s32 i;
+
     buttonPressedInputs = 0;
 
     // Get input data for all 4 players.
@@ -397,15 +402,21 @@ void mode_game(s32 updateRate) {
     if (gPostRaceViewPort) {
         gIsPaused = FALSE;
     }
-    gParticlePtrList_flush();
-    ainode_update();
-    render_scene(&gCurrDisplayList, &gGameCurrMatrix, &gGameCurrVertexList, &gGameCurrTriList, updateRate);
+    return buttonPressedInputs;
+}
+
+/**
+ * Runs the post-race menu while it is up and turns the option picked into how the level ends.
+ */
+static void mode_game_postrace_menu(s32 updateRate, LevelEndRequest *req) {
+    s32 i;
+
     if (gPostRaceViewPort) {
         i = menu_postrace(&gCurrDisplayList, &gGameCurrMatrix, &gGameCurrVertexList, updateRate);
         switch (i) {
             case POSTRACE_OPT_2:
-                leaveLevel = TRUE;
-                restartLevel = TRUE;
+                req->leaveLevel = TRUE;
+                req->restartLevel = TRUE;
                 break;
             case POSTRACE_OPT_1:
                 gPostRaceViewPort = FALSE;
@@ -414,43 +425,60 @@ void mode_game(s32 updateRate) {
             case POSTRACE_OPT_4:
                 level_properties_reset();
                 gDrumstickSceneLoadTimer = 0;
-                leaveLevel = TRUE;
-                toTitle = TRUE;
+                req->leaveLevel = TRUE;
+                req->toTitle = TRUE;
                 break;
             case POSTRACE_OPT_5:
-                leaveLevel = TRUE, loadContext = LEVEL_CONTEXT_TRACK_SELECT;
+                req->leaveLevel = TRUE, req->loadContext = LEVEL_CONTEXT_TRACK_SELECT;
                 break;
             case POSTRACE_OPT_8:
-                leaveLevel = TRUE, loadContext = LEVEL_CONTEXT_RESULTS;
+                req->leaveLevel = TRUE, req->loadContext = LEVEL_CONTEXT_RESULTS;
                 break;
             case POSTRACE_OPT_9:
-                leaveLevel = TRUE, loadContext = LEVEL_CONTEXT_TROPHY_ROUND;
+                req->leaveLevel = TRUE, req->loadContext = LEVEL_CONTEXT_TROPHY_ROUND;
                 break;
             case POSTRACE_OPT_10:
-                leaveLevel = TRUE, loadContext = LEVEL_CONTEXT_TROPHY_RESULTS;
+                req->leaveLevel = TRUE, req->loadContext = LEVEL_CONTEXT_TROPHY_RESULTS;
                 break;
             case POSTRACE_OPT_11:
-                leaveLevel = TRUE, loadContext = LEVEL_CONTEXT_UNUSED;
+                req->leaveLevel = TRUE, req->loadContext = LEVEL_CONTEXT_UNUSED;
                 break;
             case POSTRACE_OPT_12:
-                leaveLevel = TRUE, loadContext = LEVEL_CONTEXT_CHARACTER_SELECT;
+                req->leaveLevel = TRUE, req->loadContext = LEVEL_CONTEXT_CHARACTER_SELECT;
                 break;
             case POSTRACE_OPT_13:
-                leaveLevel = TRUE, loadContext = LEVEL_CONTEXT_UNK7;
+                req->leaveLevel = TRUE, req->loadContext = LEVEL_CONTEXT_UNK7;
                 break;
         }
     }
+}
+
+/**
+ * Updates the onscreen textbox. While a message shows, one that pauses the game pauses it, and any other
+ * unpauses it and closes the pause dialogue.
+ */
+static void mode_game_textbox(s32 updateRate) {
+    s32 i;
+
     process_onscreen_textbox(updateRate);
     i = textbox_visible();
     if (i != 0) {
-        if (i == 2) {
+        if (i == TEXTBOX_SHOWN_PAUSED) {
             gIsPaused = TRUE;
         }
-        if (textbox_visible() != 2) {
+        if (textbox_visible() != TEXTBOX_SHOWN_PAUSED) {
             gIsPaused = FALSE;
             menu_close_dialogue();
         }
     }
+}
+
+/**
+ * Runs the pause menu while paused and turns the option picked into how the level ends.
+ */
+static void mode_game_pause_menu(s32 updateRate, LevelEndRequest *req) {
+    s32 i;
+
     if (gIsPaused) {
         i = menu_pause_loop(&gCurrDisplayList, updateRate);
         switch (i) {
@@ -463,8 +491,8 @@ void mode_game(s32 updateRate) {
                 if (boss_race_number() != 0 && is_in_two_player_adventure()) {
                     swap_lead_player();
                 }
-                leaveLevel = TRUE;
-                restartLevel = TRUE;
+                req->leaveLevel = TRUE;
+                req->restartLevel = TRUE;
                 break;
             case PAUSE_QUIT_LOBBY:
                 sound_clear_delayed();
@@ -472,17 +500,17 @@ void mode_game(s32 updateRate) {
                 if (boss_race_number() != 0 && is_in_two_player_adventure()) {
                     swap_lead_player();
                 }
-                leaveLevel = TRUE;
+                req->leaveLevel = TRUE;
                 break;
             case PAUSE_QUIT_TRACKS:
-                loadContext = LEVEL_CONTEXT_TRACK_SELECT;
+                req->loadContext = LEVEL_CONTEXT_TRACK_SELECT;
                 reset_delayed_text();
-                leaveLevel = TRUE;
+                req->leaveLevel = TRUE;
                 break;
             case PAUSE_QUIT_CHARSELECT:
-                loadContext = LEVEL_CONTEXT_CHARACTER_SELECT;
+                req->loadContext = LEVEL_CONTEXT_CHARACTER_SELECT;
                 reset_delayed_text();
-                leaveLevel = TRUE;
+                req->leaveLevel = TRUE;
                 break;
             case PAUSE_OPT_6:
                 gIsPaused = FALSE;
@@ -496,15 +524,17 @@ void mode_game(s32 updateRate) {
                 sound_clear_delayed();
                 reset_delayed_text();
                 level_properties_reset();
-                leaveLevel = TRUE;
-                toTitle = TRUE;
+                req->leaveLevel = TRUE;
+                req->toTitle = TRUE;
                 break;
         }
     }
-    rdp_init(&gCurrDisplayList);
-    divider_draw(&gCurrDisplayList);
-    hud_render_general(&gCurrDisplayList, &gGameCurrMatrix, &gGameCurrVertexList, updateRate);
-    divider_clear_coverage(&gCurrDisplayList);
+}
+
+/**
+ * After the lighthouse rocket cutscene, loads the Future Fun Land hub once the cutscene's animation is done.
+ */
+static void mode_game_future_fun_land_arrival(void) {
     if (gFutureFunLandLevelTarget) {
         if (anim_prev_frame_state() != 0) {
             gPlayableMapId = ASSET_LEVEL_FUTUREFUNLANDHUB;
@@ -513,6 +543,15 @@ void mode_game(s32 updateRate) {
             gFutureFunLandLevelTarget = FALSE;
         }
     }
+}
+
+/**
+ * Counts down the Drumstick scene timer and the level load timer. When either runs out, the level ends the way
+ * the pending load asks for. Returns TRUE when a stored level should now be popped.
+ */
+static s32 mode_game_level_timers(s32 updateRate, LevelEndRequest *req) {
+    s32 exitPopped;
+
     exitPopped = FALSE;
     if (gDrumstickSceneLoadTimer) {
         gDrumstickSceneLoadTimer -= updateRate;
@@ -526,16 +565,16 @@ void mode_game(s32 updateRate) {
     if (gLevelLoadTimer > 0) {
         gLevelLoadTimer -= updateRate;
         if (gLevelLoadTimer <= 0) {
-            leaveLevel = TRUE;
-            toTitle = FALSE;
-            restartLevel = FALSE;
+            req->leaveLevel = TRUE;
+            req->toTitle = FALSE;
+            req->restartLevel = FALSE;
             exitPopped = TRUE;
             switch (gLevelLoadType) {
                 case LEVEL_LOAD_UNK1:
-                    restartLevel = TRUE;
+                    req->restartLevel = TRUE;
                     break;
                 case LEVEL_LOAD_TROPHY_RACE:
-                    loadContext = LEVEL_CONTEXT_TROPHY_ROUND;
+                    req->loadContext = LEVEL_CONTEXT_TROPHY_ROUND;
                     trophyround_adventure();
                     sLevelExitRoute = EXIT_ROUTE_PREVIOUS_MAP;
                     break;
@@ -547,13 +586,24 @@ void mode_game(s32 updateRate) {
                     gPlayableMapId = gNextMap;
                     gGameCurrentEntrance = 0;
                     gGameCurrentCutscene = 0;
-                    leaveLevel = FALSE;
+                    req->leaveLevel = FALSE;
                     break;
             }
             gLevelLoadType = LEVEL_LOAD_NORMAL;
             gLevelLoadTimer = 0;
         }
     }
+    return exitPopped;
+}
+
+/**
+ * Pops the level stored before a cutscene or boss intro: when a timer asked for it, or once the cutscene's
+ * animation ends (or A is pressed after the Wizpig race). A negative map leaves the level or rolls the credits.
+ */
+static void mode_game_pop_stored_level(s32 exitPopped, s32 buttonPressedInputs, LevelEndRequest *req) {
+    s32 i;
+    s32 wizpigDone;
+
     if (exitPopped) {
         if (level_properties_get() != 0) {
             level_properties_pop(&gPlayableMapId, &gGameCurrentEntrance, &i, &gGameCurrentCutscene);
@@ -563,21 +613,21 @@ void mode_game(s32 updateRate) {
                     if (gPlayableMapId == SPECIAL_MAP_ID_UNK_NEG10 && is_in_two_player_adventure()) {
                         swap_lead_player();
                     }
-                    leaveLevel = TRUE;
+                    req->leaveLevel = TRUE;
                     sLevelExitRoute = EXIT_ROUTE_PREVIOUS_MAP;
                 } else {
-                    leaveLevel = FALSE;
-                    toTitle = FALSE;
-                    restartLevel = FALSE;
+                    req->leaveLevel = FALSE;
+                    req->toTitle = FALSE;
+                    req->restartLevel = FALSE;
                     sLevelExitRoute = EXIT_ROUTE_MENU;
-                    loadContext = LEVEL_CONTEXT_CREDITS;
+                    req->loadContext = LEVEL_CONTEXT_CREDITS;
                 }
             } else {
                 sLevelExitRoute = EXIT_ROUTE_NONE;
                 gLevelSettingsPending = TRUE;
-                leaveLevel = FALSE;
-                toTitle = FALSE;
-                restartLevel = FALSE;
+                req->leaveLevel = FALSE;
+                req->toTitle = FALSE;
+                req->restartLevel = FALSE;
             }
         }
     } else {
@@ -592,18 +642,18 @@ void mode_game(s32 updateRate) {
                     set_frame_blackout_timer();
                     level_properties_pop(&gPlayableMapId, &gGameCurrentEntrance, &i, &gGameCurrentCutscene);
                     if (gPlayableMapId < 0) {
-                        if (gPlayableMapId == -1 || gPlayableMapId == -10) {
-                            if (gPlayableMapId == -10 && is_in_two_player_adventure()) {
+                        if (gPlayableMapId == SPECIAL_MAP_ID_NO_LEVEL || gPlayableMapId == SPECIAL_MAP_ID_UNK_NEG10) {
+                            if (gPlayableMapId == SPECIAL_MAP_ID_UNK_NEG10 && is_in_two_player_adventure()) {
                                 swap_lead_player();
                             }
-                            leaveLevel = TRUE;
+                            req->leaveLevel = TRUE;
                             sLevelExitRoute = EXIT_ROUTE_PREVIOUS_MAP;
                         } else {
-                            leaveLevel = FALSE;
-                            toTitle = FALSE;
-                            restartLevel = FALSE;
+                            req->leaveLevel = FALSE;
+                            req->toTitle = FALSE;
+                            req->restartLevel = FALSE;
                             sLevelExitRoute = EXIT_ROUTE_MENU;
-                            loadContext = LEVEL_CONTEXT_CREDITS;
+                            req->loadContext = LEVEL_CONTEXT_CREDITS;
                         }
                     } else {
                         gLevelSettingsPending = TRUE;
@@ -612,15 +662,24 @@ void mode_game(s32 updateRate) {
             }
         }
     }
-    if ((leaveLevel && gGameMode == GAMEMODE_INGAME) || sLevelExitRoute != EXIT_ROUTE_NONE) {
+}
+
+/**
+ * When the level ends this frame, unloads it, saves, and loads what comes next: the menu the request names,
+ * the menu the exit route names, the same or the previous level, or the title screen.
+ */
+static void mode_game_leave_level(LevelEndRequest *req) {
+    s32 i;
+
+    if ((req->leaveLevel && gGameMode == GAMEMODE_INGAME) || sLevelExitRoute != EXIT_ROUTE_NONE) {
         gIsPaused = FALSE;
         gLevelLoadTimer = 0;
         gPostRaceViewPort = FALSE;
         unload_level_game();
         safe_mark_write_save_file(get_save_file_index());
-        if (loadContext) {
+        if (req->loadContext) {
             gIsLoading = FALSE;
-            switch (loadContext) {
+            switch (req->loadContext) {
                 case LEVEL_CONTEXT_TRACK_SELECT:
                     // Go to track select menu from "Select Track" option in tracks menu.
                     load_menu_with_level_background(MENU_TRACK_SELECT, SPECIAL_MAP_ID_NO_LEVEL, 1);
@@ -666,8 +725,8 @@ void mode_game(s32 updateRate) {
                 gIsLoading = TRUE;
                 load_menu_with_level_background(MENU_TRACK_SELECT_ADVENTURE, SPECIAL_MAP_ID_NO_LEVEL, -1);
             }
-        } else if (!toTitle) {
-            if (!restartLevel) {
+        } else if (!req->toTitle) {
+            if (!req->restartLevel) {
                 gPlayableMapId = gLevelExit.fromMapId;
                 gGameCurrentEntrance = gLevelExit.returnEntrance;
                 gGameCurrentCutscene = gLevelExit.destCutscene[gLevelExit.chosenExit];
@@ -683,6 +742,12 @@ void mode_game(s32 updateRate) {
         }
         sLevelExitRoute = EXIT_ROUTE_NONE;
     }
+}
+
+/**
+ * Reloads the level when new level settings are pending.
+ */
+static void mode_game_reload_pending_level(void) {
     if (gLevelSettingsPending) {
         gPostRaceViewPort = FALSE;
         unload_level_game();
@@ -690,6 +755,40 @@ void mode_game(s32 updateRate) {
         safe_mark_write_save_file(get_save_file_index());
         gLevelSettingsPending = FALSE;
     }
+}
+
+/**
+ * One frame of play: tick the objects, draw the scene and the HUD, run the pause and post-race
+ * menus, then decide whether the level ends this frame. A level ends when a menu option, a
+ * finished cutscene, a load timer or an Exit object says so; the decision is three flags
+ * (leaveLevel, toTitle, restartLevel) plus sLevelExitRoute, and the last block acts on them:
+ * a menu with the level as backdrop, the title, the same level again, or the map the stored
+ * exit settings name.
+ */
+void mode_game(s32 updateRate) {
+    LevelEndRequest req;
+    s32 buttonPressedInputs, exitPopped;
+
+    req.loadContext = LEVEL_CONTEXT_NONE;
+    req.leaveLevel = FALSE;
+    req.toTitle = FALSE;
+    req.restartLevel = FALSE;
+    buttonPressedInputs = mode_game_update_objects(updateRate);
+    gParticlePtrList_flush();
+    ainode_update();
+    render_scene(&gCurrDisplayList, &gGameCurrMatrix, &gGameCurrVertexList, &gGameCurrTriList, updateRate);
+    mode_game_postrace_menu(updateRate, &req);
+    mode_game_textbox(updateRate);
+    mode_game_pause_menu(updateRate, &req);
+    rdp_init(&gCurrDisplayList);
+    divider_draw(&gCurrDisplayList);
+    hud_render_general(&gCurrDisplayList, &gGameCurrMatrix, &gGameCurrVertexList, updateRate);
+    divider_clear_coverage(&gCurrDisplayList);
+    mode_game_future_fun_land_arrival();
+    exitPopped = mode_game_level_timers(updateRate, &req);
+    mode_game_pop_stored_level(exitPopped, buttonPressedInputs, &req);
+    mode_game_leave_level(&req);
+    mode_game_reload_pending_level();
 }
 
 /**
@@ -710,38 +809,38 @@ void race_postrace_type(s32 finishState) {
     gPostRaceViewPort = finishState + 1;
 }
 
-void level_settings_apply(UNUSED s32 arg0) {
-    s32 temp;
+void level_settings_apply(UNUSED s32 unused) {
+    s32 exitIndex;
     if (gGameMode != GAMEMODE_UNUSED_4) {
         gPlayableMapId = gLevelExit.fromMapId;
         gGameCurrentEntrance = 0;
         gGameCurrentCutscene = CUTSCENE_ID_UNK_64;
-        temp = gLevelExit.chosenExit;
+        exitIndex = gLevelExit.chosenExit;
         if (gLevelExit.returnEntrance >= 0) {
             gGameCurrentEntrance = gLevelExit.returnEntrance;
         }
-        if (gLevelExit.destCutscene[temp] >= 0) {
-            gGameCurrentCutscene = gLevelExit.destCutscene[temp];
+        if (gLevelExit.destCutscene[exitIndex] >= 0) {
+            gGameCurrentCutscene = gLevelExit.destCutscene[exitIndex];
         }
         gLevelSettingsPending = TRUE;
     }
 }
 
-void level_settings_store_from_exit(s8 *arg0) {
-    // Is arg0 LevelObjectEntry_Exit?
+void level_settings_store_from_exit(s8 *exitEntry) {
+    // Is exitEntry LevelObjectEntry_Exit?
     s32 i;
     if (gGameMode != GAMEMODE_UNUSED_4) {
         gLevelExit.fromMapId = gPlayableMapId;
         for (i = 0; i < 2; i++) {
-            gLevelExit.destMapId[i] = arg0[i + 8];         // 0x8-0x9 - destinationMapId
-            gLevelExit.destEntrance[i] = arg0[i + 10];     // 0xA-0xB - overworldSpawnIndex
-            gLevelExit.unusedC[i] = arg0[i + 12];          // 0xC-0xD - ?
-            gLevelExit.destCutscene[i] = arg0[i + 14];     // 0xE-0xF - ?
-            gLevelExit.unused12[i] = arg0[i + 18];         // 0x12-0x13 - ?
-            gLevelExit.destMenuCutscene[i] = arg0[i + 20]; // 0x14-0x15 - ?
+            gLevelExit.destMapId[i] = exitEntry[i + 8];         // 0x8-0x9 - destinationMapId
+            gLevelExit.destEntrance[i] = exitEntry[i + 10];     // 0xA-0xB - overworldSpawnIndex
+            gLevelExit.unusedC[i] = exitEntry[i + 12];          // 0xC-0xD - ?
+            gLevelExit.destCutscene[i] = exitEntry[i + 14];     // 0xE-0xF - ?
+            gLevelExit.unused12[i] = exitEntry[i + 18];         // 0x12-0x13 - ?
+            gLevelExit.destMenuCutscene[i] = exitEntry[i + 20]; // 0x14-0x15 - ?
         }
-        gLevelExit.unused16 = arg0[22];       // 0x16 - ?
-        gLevelExit.returnEntrance = arg0[23]; // 0x17 returnSpawnIndex
+        gLevelExit.unused16 = exitEntry[22];       // 0x16 - ?
+        gLevelExit.returnEntrance = exitEntry[23]; // 0x17 returnSpawnIndex
         sLevelExitRoute = EXIT_ROUTE_MENU;
     }
 }
@@ -884,9 +983,9 @@ void update_menu_scene(s32 updateRate) {
  */
 void mode_menu(s32 updateRate) {
     s32 menuLoopResult;
-    s32 temp;
+    s32 cutscene;
     s32 playerVehicle;
-    s32 temp5;
+    s32 exitIndex;
     static s32 sFirstMenuFrame = TRUE;
 
     if (sFirstMenuFrame) {
@@ -965,13 +1064,13 @@ void mode_menu(s32 updateRate) {
                 gPlayableMapId = gLevelExit.fromMapId;
                 gGameCurrentCutscene = CUTSCENE_ID_UNK_64;
                 gGameMode = GAMEMODE_INGAME;
-                temp5 = gLevelExit.chosenExit;
+                exitIndex = gLevelExit.chosenExit;
                 if (gLevelExit.returnEntrance >= 0) {
                     gGameCurrentEntrance = gLevelExit.returnEntrance;
                 }
-                temp = gLevelExit.destCutscene[temp5];
-                if (temp >= 0) {
-                    gGameCurrentCutscene = temp;
+                cutscene = gLevelExit.destCutscene[exitIndex];
+                if (cutscene >= 0) {
+                    gGameCurrentCutscene = cutscene;
                 }
                 load_level_game(gPlayableMapId, gGameNumPlayers, gGameCurrentEntrance, gLevelDefaultVehicleID);
                 safe_mark_write_save_file(get_save_file_index());
@@ -1144,20 +1243,20 @@ void clear_lap_records(Settings *settings, s32 flags) {
     s32 i, j;
     s32 numWorlds, numLevels;
     s32 index;
-    u16 *temp_v0;
+    u16 *defaultRecords;
 
     level_count(&numLevels, &numWorlds);
-    temp_v0 = (u16 *) get_misc_asset(ASSET_MISC_23);
+    defaultRecords = (u16 *) get_misc_asset(ASSET_MISC_23);
     for (i = 0; i < NUMBER_OF_SAVE_FILES; i++) {
         for (j = 0; j < numLevels; j++) {
             index = (j * 12) + (i * 4);
-            if (flags & 1) {
-                settings->flapInitialsPtr[i][j] = temp_v0[index + 3];
-                settings->flapTimesPtr[i][j] = temp_v0[index + 2];
+            if (flags & SAVE_DATA_FLAG_READ_FLAP_TIMES) {
+                settings->flapInitialsPtr[i][j] = defaultRecords[index + 3];
+                settings->flapTimesPtr[i][j] = defaultRecords[index + 2];
             }
-            if (flags & 2) {
-                settings->courseInitialsPtr[i][j] = temp_v0[index + 1];
-                settings->courseTimesPtr[i][j] = temp_v0[index];
+            if (flags & SAVE_DATA_FLAG_READ_COURSE_TIMES) {
+                settings->courseInitialsPtr[i][j] = defaultRecords[index + 1];
+                settings->courseTimesPtr[i][j] = defaultRecords[index];
             }
         }
     }
@@ -1449,7 +1548,6 @@ void level_transition_begin(s32 type) {
     }
 }
 
-
 /**
  * Begins a fade transition, then signals to the level loading that it wants to be a trophy race.
  */
@@ -1503,7 +1601,7 @@ void set_pause_lockout_timer(u8 time) {
  */
 void swap_lead_player(void) {
     s32 i;
-    u8 temp;
+    u8 byte;
     u8 *first_racer_data;
     u8 *second_racer_data;
 
@@ -1514,9 +1612,9 @@ void swap_lead_player(void) {
     second_racer_data = (u8 *) (gSettingsPtr->racers + 1);
 
     for (i = 0; i < (s32) sizeof(Racer); i++) {
-        temp = first_racer_data[i];
+        byte = first_racer_data[i];
         first_racer_data[i] = second_racer_data[i];
-        second_racer_data[i] = temp;
+        second_racer_data[i] = byte;
     }
 }
 

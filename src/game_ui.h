@@ -49,9 +49,9 @@ typedef enum WrongWayStages {
 
 typedef enum LapTextStages {
     LAPTEXT_IDLE,
-    LAPTEXT_UNK1,
-    LAPTEXT_UNK2,
-    LAPTEXT_UNK3
+    LAPTEXT_UNUSED,   // Never set.
+    LAPTEXT_LAP_TWO,  // The "Lap 2" banner is flying.
+    LAPTEXT_FINAL_LAP // The "Final Lap" banner is flying.
 } LapTextStages;
 
 typedef enum LapTextDirection {
@@ -413,7 +413,6 @@ void minimap_init(LevelModel *model);
 s8 hud_setting(void);
 void minimap_fade(s32 setting);
 void minimap_opacity_set(s32 setting);
-void func_800AB1C8(void);
 void hud_visibility(u8 setting);
 void hud_race_time(Object_Racer *racer, s32 updateRate);
 void hud_wrong_way(Object_Racer *obj, s32 updateRate);

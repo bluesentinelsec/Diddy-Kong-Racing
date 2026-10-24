@@ -846,8 +846,10 @@ typedef struct ObjectInteraction {
     /* 0x08 */ f32 y_position;
     /* 0x0C */ f32 z_position;
     /* 0x10 */ s8 hitboxRadius;
-    /* 0x11 */ u8
-        hitboxKind; // 0 sphere, 1 vertical range (yRangeMin..yRangeMax, x10 units), 2 inactive, 4 soft from below
+    // HITBOX_KIND_* in src/objects/objects_internal.h: 0 sphere, 1 vertical range (yRangeMin..yRangeMax, x10 units),
+    // 2 collides through its model's surfaces (bridges, doors), 3 through its model's collision spheres,
+    // 4 a sphere that reaches further up.
+    /* 0x11 */ u8 hitboxKind;
     /* 0x12 */ u8 pushForce;
     /* 0x13 */ u8 distance;
     /* 0x14 */ s16 flags;

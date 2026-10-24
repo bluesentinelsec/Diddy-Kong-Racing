@@ -11,6 +11,13 @@
 #include "racer.h"
 #include "thread3_main.h"
 
+// Codes in a message's text. Bytes from TEXT_CODE_CONTROL_FIRST up to TEXT_CODE_CONTROL_END are control codes
+// read by game_text_parse_controls, each followed by its arguments.
+#define TEXT_CODE_PAGE_BREAK 1
+#define TEXT_CODE_END 2
+#define TEXT_CODE_CONTROL_FIRST 3
+#define TEXT_CODE_CONTROL_END 13
+
 /************ .data ************/
 
 s8 gTextTableExists = FALSE;
@@ -27,11 +34,11 @@ GameTextTableStruct *gGameTextTable[1];
 s8 gCloseTextMessage;
 s8 gTextCloseTimerFrames;
 s8 gTextCloseTimerSeconds;
-s8 D_8012A787;
-s8 D_8012A788;
+s8 gTextboxAcceptsInput; // When clear, the A button doesn't advance the message (text control code 11).
+s8 gTextboxPausesGame;   // The message pauses the game while shown (text control code 12).
 u8 gShowOnscreenMessage;
-u8 D_8012A78A;
-s16 D_8012A78E;
+u8 gTextboxJustOpened; // Set for the first frame of a message, so the press that opened it doesn't advance it.
+s16 gTextboxPage;      // Which page of the message is showing: pages are separated by a 1 in the text.
 s16 gTextTableEntries;
 char *gGameTextTableEntries[2]; // 960 x2 bytes
 char *gGameTextBuffer;
@@ -161,9 +168,8 @@ void render_subtitles(void) {
  * Close the subtitles if none can be found.
  */
 void find_next_subtitle(void) {
-    u32 new_var3;
-    u8 new_var;
-    s32 new_var2;
+    u8 textByte;
+    s32 nextByte;
     s32 done;
 
     gSubtitleLineCount = 0;
@@ -175,8 +181,8 @@ void find_next_subtitle(void) {
         gSubtitleTimer = normalise_time(gCurrentTextProperties[7] * 6);
         gCurrentTextProperties += 8;
         do {
-            new_var = gCurrentTextProperties[0];
-            if (new_var & 0x80) {
+            textByte = gCurrentTextProperties[0];
+            if (textByte & 0x80) {
                 gCurrentTextProperties += 2;
             } else {
                 gCurrentTextProperties++;
@@ -187,10 +193,10 @@ void find_next_subtitle(void) {
             done = TRUE;
         }
         gCurrentTextProperties++;
-        new_var2 = gCurrentTextProperties[0];
+        nextByte = gCurrentTextProperties[0];
         if (gCurrentTextProperties[0] == 10) {
             gCurrentTextProperties++;
-        } else if (new_var2 == 12) {
+        } else if (nextByte == 12) {
             gCurrentTextProperties++;
             done = TRUE;
         }
@@ -300,10 +306,9 @@ void set_delayed_text(s32 textID, f32 delay) {
  */
 void set_current_text(s32 textID) {
     u32 *words;
-    UNUSED s32 pad;
     s32 size;
     s32 language;
-    s32 temp;
+    s32 subtitleBits;
 
     if (gTextTableExists && textID >= 0 && textID < gTextTableEntries) {
         language = get_language();
@@ -330,29 +335,29 @@ void set_current_text(s32 textID) {
         // The table holds 32-bit words, not pointers: read them as such, or on a 64-bit host each
         // entry spans two words and the size comes out negative (Wizpig's first race crashed here).
         words = (u32 *) (*gGameTextTable)->entries;
-        temp = ((s32) words[textID & 1]) & 0xFF000000;
+        subtitleBits = ((s32) words[textID & 1]) & 0xFF000000;
         size = (((s32) words[(textID & 1) + 1]) & 0xFFFFFF) - (((s32) words[textID & 1]) & 0xFFFFFF);
 
-        if (temp) {
+        if (subtitleBits) {
             asset_load(ASSET_GAME_TEXT, (uintptr_t) gCurrentMessageText[gGameTextMessageIndex],
-                       ((s32) words[textID & 1]) ^ temp, size);
+                       ((s32) words[textID & 1]) ^ subtitleBits, size);
             gCurrentTextProperties = gCurrentMessageText[gGameTextMessageIndex];
             find_next_subtitle();
             gGameTextMessageIndex = (gGameTextMessageIndex + 1) & 1;
             return;
         }
         asset_load(ASSET_GAME_TEXT, (uintptr_t) gGameTextTableEntries[gGameTextTableIndex],
-                   ((s32) words[textID & 1]) ^ temp, size);
+                   ((s32) words[textID & 1]) ^ subtitleBits, size);
         gGameTextBuffer = gGameTextTableEntries[gGameTextTableIndex];
         gGameTextTableIndex = (gGameTextTableIndex + 1) & 1;
-        D_8012A788 = 0;
+        gTextboxPausesGame = 0;
         gTextCloseTimerSeconds = 0;
         gCloseTextMessage = FALSE;
-        D_8012A787 = 1;
-        gGameTextBuffer[size] = 2;
+        gTextboxAcceptsInput = 1;
+        gGameTextBuffer[size] = TEXT_CODE_END;
         if (gShowOnscreenMessage == FALSE) {
-            D_8012A78E = 0;
-            D_8012A78A = 1;
+            gTextboxPage = 0;
+            gTextboxJustOpened = 1;
             gShowOnscreenMessage = TRUE;
         }
         return;
@@ -365,12 +370,12 @@ void set_current_text(s32 textID) {
  * The number depends on what kind it is.
  */
 s32 textbox_visible(void) {
-    s32 result = 0;
+    s32 result = TEXTBOX_HIDDEN;
     if (gTextTableExists) {
         if (gShowOnscreenMessage) {
-            result = 1;
-            if (D_8012A788) {
-                result = 2;
+            result = TEXTBOX_SHOWN;
+            if (gTextboxPausesGame) {
+                result = TEXTBOX_SHOWN_PAUSED;
             }
         }
     }
@@ -433,15 +438,16 @@ s32 dialogue_challenge_loop(void) {
     set_current_text_colour(1, textBox.textColRed, textBox.textColGreen, textBox.textColBlue, textBox.textColAlpha,
                             255);
 
-    for (index = 0, numberOfOnes = 0; D_8012A78E != numberOfOnes && gGameTextBuffer[index] != 2; index++) {
-        if (gGameTextBuffer[index] >= 3 && gGameTextBuffer[index] < 13) {
+    for (index = 0, numberOfOnes = 0; gTextboxPage != numberOfOnes && gGameTextBuffer[index] != TEXT_CODE_END;
+         index++) {
+        if (gGameTextBuffer[index] >= TEXT_CODE_CONTROL_FIRST && gGameTextBuffer[index] < TEXT_CODE_CONTROL_END) {
             index = game_text_parse_controls(index, &textBox);
         }
-        if (gGameTextBuffer[index] == 1) {
+        if (gGameTextBuffer[index] == TEXT_CODE_PAGE_BREAK) {
             numberOfOnes++;
         }
     }
-    if (gGameTextBuffer[index] >= 3 && gGameTextBuffer[index] < 13) {
+    if (gGameTextBuffer[index] >= TEXT_CODE_CONTROL_FIRST && gGameTextBuffer[index] < TEXT_CODE_CONTROL_END) {
         index = game_text_parse_controls(index, &textBox);
     }
 
@@ -460,21 +466,21 @@ s32 dialogue_challenge_loop(void) {
         while (gGameTextBuffer[index] == 0) {
             index += 1;
         }
-        if (gGameTextBuffer[index] < 3) {
+        if (gGameTextBuffer[index] < TEXT_CODE_CONTROL_FIRST) {
             keepLooping = FALSE;
         }
-        if (gGameTextBuffer[index] >= 3 && gGameTextBuffer[index] < 13) {
+        if (gGameTextBuffer[index] >= TEXT_CODE_CONTROL_FIRST && gGameTextBuffer[index] < TEXT_CODE_CONTROL_END) {
             index = game_text_parse_controls(index, &textBox);
         }
     } while (keepLooping);
     playerButtons = input_pressed(PLAYER_ONE);
-    if (D_8012A787 == 0) {
+    if (gTextboxAcceptsInput == 0) {
         playerButtons = 0;
     }
-    if (D_8012A78A == 0) {
+    if (gTextboxJustOpened == 0) {
         if (playerButtons & A_BUTTON || gCloseTextMessage) {
-            if (gGameTextBuffer[index] == 1) {
-                D_8012A78E += 1;
+            if (gGameTextBuffer[index] == TEXT_CODE_PAGE_BREAK) {
+                gTextboxPage += 1;
             } else {
                 gShowOnscreenMessage = FALSE;
                 dialogue_npc_finish(3);
@@ -483,93 +489,93 @@ s32 dialogue_challenge_loop(void) {
             gTextCloseTimerSeconds = 0;
         }
     }
-    D_8012A78A = 0;
+    gTextboxJustOpened = 0;
     return 1;
 }
 
-s32 game_text_parse_controls(s32 arg0, TextBox *textbox) {
-    s32 temp;
-    char *var_s0;
+s32 game_text_parse_controls(s32 index, TextBox *textbox) {
+    s32 palShift;
+    char *code;
 
-    var_s0 = &gGameTextBuffer[arg0];
-    while (var_s0[0] >= 3 && var_s0[0] < 13) {
-        switch (var_s0[0] - 3) {
+    code = &gGameTextBuffer[index];
+    while (code[0] >= TEXT_CODE_CONTROL_FIRST && code[0] < TEXT_CODE_CONTROL_END) {
+        switch (code[0] - TEXT_CODE_CONTROL_FIRST) {
             case 0:
-                textbox->font = var_s0[1];
-                arg0 += 2;
+                textbox->font = code[1];
+                index += 2;
                 set_dialogue_font(1, textbox->font);
-                var_s0 = &gGameTextBuffer[arg0];
+                code = &gGameTextBuffer[index];
                 break;
             case 1:
-                textbox->left = var_s0[1] & 0xFF;
-                textbox->top = gGameTextBuffer[arg0 + 2] & 0xFF;
+                textbox->left = code[1] & 0xFF;
+                textbox->top = gGameTextBuffer[index + 2] & 0xFF;
                 if (osTvType == OS_TV_TYPE_PAL) {
-                    temp = textbox->top;
+                    palShift = textbox->top;
                     textbox->top = (textbox->top * 264) / 240;
-                    temp = textbox->top - temp;
+                    palShift = textbox->top - palShift;
                 } else {
-                    temp = 0;
+                    palShift = 0;
                 }
-                textbox->right = (gGameTextBuffer[arg0 + 3] & 0xFF) + 65;
-                textbox->bottom = (gGameTextBuffer[arg0 + 4] & 0xFF) + temp;
-                arg0 += 5;
+                textbox->right = (gGameTextBuffer[index + 3] & 0xFF) + 65;
+                textbox->bottom = (gGameTextBuffer[index + 4] & 0xFF) + palShift;
+                index += 5;
                 set_current_dialogue_box_coords(1, textbox->left, textbox->top, textbox->right, textbox->bottom);
-                var_s0 = &gGameTextBuffer[arg0];
+                code = &gGameTextBuffer[index];
                 break;
             case 2:
-                textbox->textColRed = var_s0[1];
-                textbox->textColGreen = gGameTextBuffer[arg0 + 2];
-                textbox->textColBlue = gGameTextBuffer[arg0 + 3];
-                textbox->textColAlpha = gGameTextBuffer[arg0 + 4];
-                arg0 += 5;
+                textbox->textColRed = code[1];
+                textbox->textColGreen = gGameTextBuffer[index + 2];
+                textbox->textColBlue = gGameTextBuffer[index + 3];
+                textbox->textColAlpha = gGameTextBuffer[index + 4];
+                index += 5;
                 set_current_text_colour(1, textbox->textColRed, textbox->textColGreen, textbox->textColBlue,
                                         textbox->textColAlpha, 255);
-                var_s0 = &gGameTextBuffer[arg0];
+                code = &gGameTextBuffer[index];
                 break;
             case 3:
-                if (var_s0[1] == 0) {
+                if (code[1] == 0) {
                     textbox->textFlags = 4;
                 } else {
                     textbox->textFlags = 0;
                 }
-                arg0 += 2;
-                var_s0 = &gGameTextBuffer[arg0];
+                index += 2;
+                code = &gGameTextBuffer[index];
                 break;
             case 4:
-                arg0 += 2;
-                textbox->textX = var_s0[1];
-                var_s0 = &gGameTextBuffer[arg0];
+                index += 2;
+                textbox->textX = code[1];
+                code = &gGameTextBuffer[index];
                 break;
             case 5:
-                arg0 += 2;
-                textbox->textY += var_s0[1];
-                var_s0 = &gGameTextBuffer[arg0];
+                index += 2;
+                textbox->textY += code[1];
+                code = &gGameTextBuffer[index];
                 break;
             case 6:
-                arg0 += 2;
-                textbox->lineHeight = var_s0[1];
-                var_s0 = &gGameTextBuffer[arg0];
+                index += 2;
+                textbox->lineHeight = code[1];
+                code = &gGameTextBuffer[index];
                 break;
             case 7:
                 if (gTextCloseTimerSeconds == 0) {
-                    gTextCloseTimerSeconds = var_s0[1] & 0xFF;
+                    gTextCloseTimerSeconds = code[1] & 0xFF;
                     gTextCloseTimerFrames = normalise_time(60);
-                    var_s0 = &gGameTextBuffer[arg0];
+                    code = &gGameTextBuffer[index];
                 }
-                arg0 += 2;
-                var_s0 += 2;
+                index += 2;
+                code += 2;
                 break;
             case 8:
-                arg0 += 2;
-                D_8012A787 = var_s0[1];
-                var_s0 += 2;
+                index += 2;
+                gTextboxAcceptsInput = code[1];
+                code += 2;
                 break;
             case 9:
-                arg0 += 2;
-                D_8012A788 = var_s0[1];
-                var_s0 += 2;
+                index += 2;
+                gTextboxPausesGame = code[1];
+                code += 2;
                 break;
         }
     }
-    return arg0;
+    return index;
 }

@@ -14,6 +14,13 @@
     textBox.textY = y;                                    \
     textBox.lineHeight = height
 
+// What textbox_visible returns.
+enum TextboxVisibility {
+    TEXTBOX_HIDDEN,
+    TEXTBOX_SHOWN,
+    TEXTBOX_SHOWN_PAUSED // The message pauses the game while it shows.
+};
+
 enum TextProperties {
     TEXT_NONE,
     TEXT_COL_R,
@@ -57,7 +64,7 @@ void set_delayed_text(s32 textID, f32 delay);
 s32 textbox_visible(void);
 void process_onscreen_textbox(s32 updateRate);
 void find_next_subtitle(void);
-s32 game_text_parse_controls(s32 arg0, TextBox *textbox);
+s32 game_text_parse_controls(s32 index, TextBox *textbox);
 void render_subtitles(void);
 void set_current_text(s32 textID);
 s32 dialogue_challenge_loop(void);

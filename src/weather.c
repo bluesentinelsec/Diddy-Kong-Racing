@@ -649,7 +649,6 @@ void lensflare_init(Object *obj) {
 void lensflare_render(Gfx **dList, Mtx **mats, Vertex **verts, Camera *camera) {
     u16 height;
     f32 mag2;
-    UNUSED s32 pad;
     Vec3f pos[2];
     f32 magnitude;
     f32 magSquared;
@@ -934,14 +933,14 @@ void rain_update(s32 updateRate) {
  * Every existing splash particle gets rendered as a billboard.
  */
 void rain_render_splashes(s32 updateRate) {
-    s32 temp_t0;
+    s32 splashStrength;
     s32 i;
-    f32 var_f2;
+    f32 nextWaveDist;
     s32 firstIndexWithoutFlags;
     s32 randYRot;
     s32 setEnvColor;
     s32 waveIndex;
-    f32 var_f0;
+    f32 waveDist;
     f32 randFloat;
     f32 xPos;
     f32 zPos;
@@ -953,8 +952,8 @@ void rain_render_splashes(s32 updateRate) {
         return;
     }
 
-    temp_t0 = ((gRainOpacity >> 2) * gLightningFrequency) >> 14;
-    if (temp_t0 > 0x4000) {
+    splashStrength = ((gRainOpacity >> 2) * gLightningFrequency) >> 14;
+    if (splashStrength > 0x4000) {
         racer = get_racer_object_by_port(0);
         gRainSplashDelay -= updateRate;
         if (gRainSplashDelay <= 0) {
@@ -975,32 +974,31 @@ void rain_render_splashes(s32 updateRate) {
                         get_level_segment_index_from_position(xPos, racer->trans.y_position, zPos), xPos, zPos,
                         &waterProps);
                     if (i != 0) {
-                        var_f2 = 1000.0f;
+                        nextWaveDist = 1000.0f;
                         waveIndex = 0;
                         if (i >= 2) {
-                            while (waveIndex < (i - 1) &&
-                                    racer->trans.y_position < waterProps[waveIndex]->waveHeight) {
+                            while (waveIndex < (i - 1) && racer->trans.y_position < waterProps[waveIndex]->waveHeight) {
                                 waveIndex++;
                             }
                             if (waveIndex > 0) {
-                                var_f2 = racer->trans.y_position - waterProps[waveIndex]->waveHeight;
-                                if (var_f2 < 0.0f) {
-                                    var_f2 = -var_f2;
+                                nextWaveDist = racer->trans.y_position - waterProps[waveIndex]->waveHeight;
+                                if (nextWaveDist < 0.0f) {
+                                    nextWaveDist = -nextWaveDist;
                                 }
                                 waveIndex--;
                             }
                         }
-                        var_f0 = racer->trans.y_position - waterProps[waveIndex]->waveHeight;
-                        if (var_f0 < 0.0f) {
-                            var_f0 = -var_f0;
+                        waveDist = racer->trans.y_position - waterProps[waveIndex]->waveHeight;
+                        if (waveDist < 0.0f) {
+                            waveDist = -waveDist;
                         }
-                        if (var_f0 < var_f2) {
-                            if (var_f0 > 200.0f) {
+                        if (waveDist < nextWaveDist) {
+                            if (waveDist > 200.0f) {
                                 firstIndexWithoutFlags = -1;
                             }
                         } else {
                             waveIndex++;
-                            if (var_f2 > 200.0f) {
+                            if (nextWaveDist > 200.0f) {
                                 firstIndexWithoutFlags = -1;
                             }
                         }
@@ -1012,8 +1010,8 @@ void rain_render_splashes(s32 updateRate) {
                             gRainSplashSegments[firstIndexWithoutFlags].animFrame = 0;
                             gRainSplashSegments[firstIndexWithoutFlags].trans.flags = OBJ_FLAGS_UNK_0001;
                             gRainSplashSegments[firstIndexWithoutFlags].opacity =
-                                rand_range(128, (temp_t0 >> 10) + 191);
-                            gRainSplashDelay = (gRainSplashDelay - (temp_t0 >> 10)) + 64;
+                                rand_range(128, (splashStrength >> 10) + 191);
+                            gRainSplashDelay = (gRainSplashDelay - (splashStrength >> 10)) + 64;
                             if (gRainSplashDelay < 0) {
                                 gRainSplashDelay = 0;
                             }
@@ -1110,7 +1108,6 @@ void rain_render(RainGfxData *rainGfx, s32 time) {
     s32 i;
     f32 zSin;
     f32 zCos;
-    UNUSED s32 pad[2];
     TextureHeader *tex;
     Gfx *curDL;
     Triangle *tri;

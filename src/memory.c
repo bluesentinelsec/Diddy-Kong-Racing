@@ -58,7 +58,6 @@ void mempool_init_main(void) {
 MemoryPoolSlot *mempool_new_sub(s32 poolDataSize, s32 numSlots) {
     s32 size;
     MemoryPoolSlot *slots;
-    UNUSED s32 unused_2;
     u32 intFlags = interrupts_disable();
     MemoryPoolSlot *newPool;
 
@@ -136,7 +135,6 @@ MemoryPoolSlot *mempool_alloc(s32 size, u32 colourTag) {
 MemoryPoolSlot *mempool_slot_find(MemoryPools poolIndex, s32 size, u32 colourTag) {
     s32 slotSize;
     MemoryPoolSlot *curSlot;
-    UNUSED s32 pad;
     MemoryPool *pool;
     MemoryPoolSlot *slots;
     u32 intFlags;
@@ -235,7 +233,8 @@ void *mempool_alloc_fixed(s32 size, u8 *address, u32 colorTag) {
                         interrupts_enable(intFlags);
                         return curSlot->data;
                     } else {
-                        i = mempool_slot_assign(POOL_MAIN, i, (s32) ((uintptr_t) address - (uintptr_t) curSlot->data), 0, 1, colorTag);
+                        i = mempool_slot_assign(POOL_MAIN, i, (s32) ((uintptr_t) address - (uintptr_t) curSlot->data),
+                                                0, 1, colorTag);
                         mempool_slot_assign(POOL_MAIN, i, size, 1, 0, colorTag);
                         interrupts_enable(intFlags);
                         return (slots + i)->data;
@@ -361,7 +360,6 @@ void mempool_free_addr(u8 *address) {
 UNUSED void mempool_clear(void) {
     MemoryPoolSlot *slotPos;
     MemoryPool *pool;
-    UNUSED s32 pad;
     u32 intFlags;
     s32 poolIndex;
     s32 slotIndex;

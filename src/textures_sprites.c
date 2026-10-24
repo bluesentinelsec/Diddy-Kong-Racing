@@ -4,9 +4,9 @@
 #include "gzip.h"
 #include "math_util.h"
 #include "memory.h"
+#include "pc_swap.h"
 #include "tracks.h"
 #include <ultra64.h>
-#include "pc_swap.h"
 
 #define MAX_NUM_TEXTURES 700
 #define MAX_NUM_SPRITES 100
@@ -1031,7 +1031,7 @@ void material_load_simple(Gfx **dList, s32 flags) {
  * If the sprite is already cached, returns it from the cache.
  * Official name: texLoadSprite
  */
-Sprite *tex_load_sprite(s32 spriteID, s32 arg1) {
+Sprite *tex_load_sprite(s32 spriteID, UNUSED s32 unusedArg) {
     Sprite *refSprite;
     Sprite *sprite;
     s32 cacheNum;
@@ -1177,14 +1177,13 @@ UNUSED s32 sprite_cache_index(s32 cacheID) {
 
 s32 tex_asset_size(s32 id) {
     s32 textureRomOffset;
-    TempTexHeader *new_var2;
-    UNUSED s32 pad;
+    TempTexHeader *tempHeader;
     u32 textureTable;
     s32 size;
-    s32 new_var3;
+    s32 offset;
     s32 textureTableType;
     u16 numOfTextures;
-    TempTexHeader *new_var4;
+    TempTexHeader *reloadedHeader;
 
     textureTable = ASSET_TEXTURES_2D;
     textureTableType = TEX_TABLE_2D;
@@ -1197,19 +1196,18 @@ s32 tex_asset_size(s32 id) {
         return 0;
     }
     textureRomOffset = gTextureAssetTable[textureTableType][id];
-    new_var3 = textureRomOffset;
-    size = gTextureAssetTable[textureTableType][id + 1] - new_var3;
-    new_var2 = gTempTextureHeader;
-    if (new_var2->header.isCompressed) {
+    offset = textureRomOffset;
+    size = gTextureAssetTable[textureTableType][id + 1] - offset;
+    tempHeader = gTempTextureHeader;
+    if (tempHeader->header.isCompressed) {
         pc_load_temp_tex_header(textureTable, textureRomOffset);
-        new_var4 = gTempTextureHeader;
-        size = byteswap32((u8 *) (&new_var4->uncompressedSize));
+        reloadedHeader = gTempTextureHeader;
+        size = byteswap32((u8 *) (&reloadedHeader->uncompressedSize));
     }
-    new_var2 = gTempTextureHeader;
-    numOfTextures = new_var2->header.numOfTextures;
+    tempHeader = gTempTextureHeader;
+    numOfTextures = tempHeader->header.numOfTextures;
     return (((numOfTextures >> 8) & 0xFFFF) * (TEXTURE_GFX_SIZE + TEXTURE_HEADER_PC_DELTA)) + size;
 }
-
 
 /**
  * Returns the texture cache asset ID from the cache table entry given by the argument.
@@ -1241,7 +1239,7 @@ s32 load_sprite_info(s32 spriteIndex, s32 *anchorXOut, s32 *anchorYOut, s32 *num
     s32 j;
     s32 start;
     s32 size;
-    s32 new_var;
+    s32 loadSize;
 
     if ((spriteIndex < 0) || (spriteIndex >= gSpriteTableSize)) {
     textureCouldNotBeLoaded:
@@ -1253,8 +1251,8 @@ s32 load_sprite_info(s32 spriteIndex, s32 *anchorXOut, s32 *anchorYOut, s32 *num
     start = gSpriteOffsetTable[spriteIndex];
     size = gSpriteOffsetTable[spriteIndex + 1] - start;
     spriteAsset = gCurrentSpriteAsset;
-    new_var = size;
-    asset_load(ASSET_SPRITES, (uintptr_t) spriteAsset, start, new_var);
+    loadSize = size;
+    asset_load(ASSET_SPRITES, (uintptr_t) spriteAsset, start, loadSize);
     pc_swap_sprite_asset(spriteAsset);
     tex = load_texture(spriteAsset->frameTexOffsets[0] + spriteAsset->baseTextureId);
     if (tex != NULL) {
@@ -1274,80 +1272,82 @@ s32 load_sprite_info(s32 spriteIndex, s32 *anchorXOut, s32 *anchorYOut, s32 *num
     goto textureCouldNotBeLoaded;
 }
 
-void sprite_get_size(s32 arg0, s32 arg1, s32 *arg2, s32 *arg3, s32 *arg4) {
+void sprite_get_size(s32 spriteID, s32 frame, s32 *widthOut, s32 *heightOut, s32 *sizeOut) {
     SpriteAsset *spriteAsset;
     TextureHeader *tex;
-    s32 temp_a0;
-    s32 temp_v1;
-    s32 var_s1;
-    s32 var_s3;
-    s32 var_s4;
-    s32 var_s5;
-    s32 var_s6;
-    s32 temp_a1;
-    s32 temp_a2;
+    s32 texTop;
+    s32 texLeft;
+    s32 texIndex;
+    s32 left;
+    s32 top;
+    s32 right;
+    s32 bottom;
+    s32 texWidth;
+    s32 texHeight;
+    s32 offset;
 
-    if ((arg0 < 0) || (arg0 >= gSpriteTableSize)) {
-        *arg2 = 0;
-        *arg3 = 0;
+    if ((spriteID < 0) || (spriteID >= gSpriteTableSize)) {
+        *widthOut = 0;
+        *heightOut = 0;
         return;
     }
 
-    temp_a2 = gSpriteOffsetTable[arg0];
+    offset = gSpriteOffsetTable[spriteID];
 
     // Must be on the same line. (maybe a macro?)
     // clang-format off
     spriteAsset = gCurrentSpriteAsset; \
-    asset_load(ASSET_SPRITES, (uintptr_t) spriteAsset, temp_a2, gSpriteOffsetTable[arg0 + 1] - temp_a2);
+    asset_load(ASSET_SPRITES, (uintptr_t) spriteAsset, offset, gSpriteOffsetTable[spriteID + 1] - offset);
     // clang-format on
     pc_swap_sprite_asset(spriteAsset);
 
-    if (spriteAsset->numberOfFrames < arg1) {
+    if (spriteAsset->numberOfFrames < frame) {
     failedExit:
-        *arg2 = 0;
-        *arg3 = 0;
-        *arg4 = 0;
+        *widthOut = 0;
+        *heightOut = 0;
+        *sizeOut = 0;
         return;
     }
-    tex = load_texture(spriteAsset->frameTexOffsets[arg1] + spriteAsset->baseTextureId);
+    tex = load_texture(spriteAsset->frameTexOffsets[frame] + spriteAsset->baseTextureId);
     if (tex == NULL) {
         goto failedExit;
     }
-    *arg4 = tex_asset_size(spriteAsset->frameTexOffsets[arg1] + spriteAsset->baseTextureId);
-    var_s3 = tex->posX - spriteAsset->anchor.x;
-    var_s4 = spriteAsset->anchor.y - tex->posY;
-    temp_a1 = tex->width;
-    temp_a2 = tex->height;
-    var_s5 = var_s3 + temp_a1;
-    var_s6 = var_s4 - temp_a2;
+    *sizeOut = tex_asset_size(spriteAsset->frameTexOffsets[frame] + spriteAsset->baseTextureId);
+    left = tex->posX - spriteAsset->anchor.x;
+    top = spriteAsset->anchor.y - tex->posY;
+    texWidth = tex->width;
+    texHeight = tex->height;
+    right = left + texWidth;
+    bottom = top - texHeight;
     tex_free(tex);
 
-    for (var_s1 = spriteAsset->frameTexOffsets[arg1] + 1; var_s1 < spriteAsset->frameTexOffsets[arg1 + 1]; var_s1++) {
-        tex = load_texture(spriteAsset->baseTextureId + var_s1);
+    for (texIndex = spriteAsset->frameTexOffsets[frame] + 1; texIndex < spriteAsset->frameTexOffsets[frame + 1];
+         texIndex++) {
+        tex = load_texture(spriteAsset->baseTextureId + texIndex);
         if (tex == NULL) {
             goto failedExit;
         }
-        *arg4 += tex_asset_size(spriteAsset->baseTextureId + var_s1);
-        temp_v1 = tex->posX - spriteAsset->anchor.x;
-        temp_a0 = spriteAsset->anchor.y - tex->posY;
-        temp_a1 = tex->width;
-        temp_a2 = tex->height;
-        if (temp_v1 < var_s3) {
-            var_s3 = temp_v1;
+        *sizeOut += tex_asset_size(spriteAsset->baseTextureId + texIndex);
+        texLeft = tex->posX - spriteAsset->anchor.x;
+        texTop = spriteAsset->anchor.y - tex->posY;
+        texWidth = tex->width;
+        texHeight = tex->height;
+        if (texLeft < left) {
+            left = texLeft;
         }
-        if (var_s5 < temp_v1 + temp_a1) {
-            var_s5 = temp_v1 + temp_a1;
+        if (right < texLeft + texWidth) {
+            right = texLeft + texWidth;
         }
-        if (temp_a0 - temp_a2 < var_s6) {
-            var_s6 = temp_a0 - temp_a2;
+        if (texTop - texHeight < bottom) {
+            bottom = texTop - texHeight;
         }
-        if (var_s4 < temp_a0) {
-            var_s4 = temp_a0;
+        if (top < texTop) {
+            top = texTop;
         }
         tex_free(tex);
     }
-    *arg2 = var_s5 - var_s3;
-    *arg3 = var_s4 - var_s6;
+    *widthOut = right - left;
+    *heightOut = top - bottom;
 }
 
 /**
@@ -1387,7 +1387,6 @@ void sprite_free(Sprite *sprite) {
  * and the anchor vertex must already be pushed.
  */
 void sprite_init_frame(SpriteAsset *spriteAsset, Sprite *sprite, s32 frameId) {
-    UNUSED s32 pad[2];
     s32 anchorX;
     s32 anchorY;
     s32 tileOffsetX;
@@ -1526,6 +1525,52 @@ void sprite_init_frame(SpriteAsset *spriteAsset, Sprite *sprite, s32 frameId) {
 }
 
 /**
+ * Works out how the texture tiles: an axis whose size is not a power of two (or that the texture flags as clamped)
+ * clamps with no mask, otherwise it wraps with a mask of log2 of its size.
+ */
+static void material_tile_wrap(TextureHeader *tex, s32 width, s32 height, s32 *cmsOut, s32 *cmtOut, s32 *masksOut,
+                               s32 *masktOut) {
+    s32 i;
+    s32 uClamp;
+    s32 vClamp;
+    s32 size;
+
+    size = 1;
+    *masksOut = 1;
+    *masktOut = 1;
+    uClamp = TRUE;
+    vClamp = TRUE;
+
+    for (i = 0; i < 7; i++) {
+        if (size < width) {
+            *masksOut = i + 1;
+        } else if ((size == width) != 0) {
+            uClamp = FALSE;
+        }
+        if (size < height) {
+            *masktOut = i + 1;
+        } else if ((size == height) != 0) {
+            vClamp = FALSE;
+        }
+        size *= 2;
+    }
+
+    if (uClamp || tex->flags & RENDER_CLAMP_X) {
+        *cmsOut = G_TX_CLAMP;
+        *masksOut = G_TX_NOMASK;
+    } else {
+        *cmsOut = G_TX_WRAP;
+    }
+
+    if (vClamp || tex->flags & RENDER_CLAMP_Y) {
+        *cmtOut = G_TX_CLAMP;
+        *masktOut = G_TX_NOMASK;
+    } else {
+        *cmtOut = G_TX_WRAP;
+    }
+}
+
+/**
  * Build the display list for the texture.
  * Takes the texture properties from the header and then constructs the F3D gfx commands.
  * Certain texture types will also have draw mode flag overrides.
@@ -1539,10 +1584,6 @@ void material_init(TextureHeader *tex, Gfx *_dList) {
     s32 cmt;
     s32 masks;
     s32 maskt;
-    s32 i;
-    s32 uClamp;
-    s32 vClamp;
-    s32 size;
     uintptr_t texLut;
     Gfx *dList;
 
@@ -1551,39 +1592,7 @@ void material_init(TextureHeader *tex, Gfx *_dList) {
     texRenderMode = TEX_RENDERMODE(tex->format);
     height = tex->height;
     width = tex->width;
-    size = 1;
-    masks = 1;
-    maskt = 1;
-    uClamp = TRUE;
-    vClamp = TRUE;
-
-    for (i = 0; i < 7; i++) {
-        if (size < width) {
-            masks = i + 1;
-        } else if ((size == width) != 0) {
-            uClamp = FALSE;
-        }
-        if (size < height) {
-            maskt = i + 1;
-        } else if ((size == height) != 0) {
-            vClamp = FALSE;
-        }
-        size *= 2;
-    }
-
-    if (uClamp || tex->flags & RENDER_CLAMP_X) {
-        cms = G_TX_CLAMP;
-        masks = G_TX_NOMASK;
-    } else {
-        cms = G_TX_WRAP;
-    }
-
-    if (vClamp || tex->flags & RENDER_CLAMP_Y) {
-        cmt = G_TX_CLAMP;
-        maskt = G_TX_NOMASK;
-    } else {
-        cmt = G_TX_WRAP;
-    }
+    material_tile_wrap(tex, width, height, &cms, &cmt, &masks, &maskt);
 
     if (!(tex->flags & RENDER_LINE_SWAP)) {
         // If it is not swapped, then use the regular loadTexBlock macros.
@@ -1700,7 +1709,7 @@ uintptr_t tex_palette_id(s16 paletteID) {
 /**
  * Official Name: texAnimateTexture
  */
-void tex_animate_texture(TextureHeader *texture, u32 *triangleBatchInfoFlags, s32 *arg2, s32 updateRate) {
+void tex_animate_texture(TextureHeader *texture, u32 *triangleBatchInfoFlags, s32 *frame, s32 updateRate) {
     s32 bit23Set;
     s32 bit25Set;
     s32 bit26Set;
@@ -1716,75 +1725,75 @@ void tex_animate_texture(TextureHeader *texture, u32 *triangleBatchInfoFlags, s3
                 *triangleBatchInfoFlags |= RENDER_UNK_2000000;
             }
         } else if (!bit26Set) {
-            *arg2 += texture->frameAdvanceDelay * updateRate;
-            if (*arg2 >= texture->numOfTextures) {
-                *arg2 = ((texture->numOfTextures * 2) - *arg2) - 1;
-                if (*arg2 < 0) {
-                    *arg2 = 0;
+            *frame += texture->frameAdvanceDelay * updateRate;
+            if (*frame >= texture->numOfTextures) {
+                *frame = ((texture->numOfTextures * 2) - *frame) - 1;
+                if (*frame < 0) {
+                    *frame = 0;
                     *triangleBatchInfoFlags &= ~(RENDER_UNK_2000000 | RENDER_UNK_4000000);
                 } else {
                     *triangleBatchInfoFlags |= RENDER_UNK_4000000;
                 }
             }
         } else {
-            *arg2 -= texture->frameAdvanceDelay * updateRate;
-            if (*arg2 < 0) {
-                *arg2 = 0;
+            *frame -= texture->frameAdvanceDelay * updateRate;
+            if (*frame < 0) {
+                *frame = 0;
                 *triangleBatchInfoFlags &= ~(RENDER_UNK_2000000 | RENDER_UNK_4000000);
             }
         }
     } else if (bit25Set) {
         if (!bit26Set) {
-            *arg2 += texture->frameAdvanceDelay * updateRate;
+            *frame += texture->frameAdvanceDelay * updateRate;
         } else {
-            *arg2 -= texture->frameAdvanceDelay * updateRate;
+            *frame -= texture->frameAdvanceDelay * updateRate;
         }
         do {
             breakVar = FALSE;
-            if (*arg2 < 0) {
-                *arg2 = -*arg2;
+            if (*frame < 0) {
+                *frame = -*frame;
                 *triangleBatchInfoFlags &= ~RENDER_UNK_4000000;
                 breakVar = TRUE;
             }
-            if (*arg2 >= texture->numOfTextures) {
-                *arg2 = ((texture->numOfTextures * 2) - *arg2) - 1;
+            if (*frame >= texture->numOfTextures) {
+                *frame = ((texture->numOfTextures * 2) - *frame) - 1;
                 *triangleBatchInfoFlags |= RENDER_UNK_4000000;
                 breakVar = TRUE;
             }
         } while (breakVar);
     } else if (!bit26Set) {
-        *arg2 += texture->frameAdvanceDelay * updateRate;
-        while (*arg2 >= texture->numOfTextures) {
-            *arg2 -= texture->numOfTextures;
+        *frame += texture->frameAdvanceDelay * updateRate;
+        while (*frame >= texture->numOfTextures) {
+            *frame -= texture->numOfTextures;
         }
     } else {
-        *arg2 -= texture->frameAdvanceDelay * updateRate;
-        while (*arg2 < 0) {
-            *arg2 += texture->numOfTextures;
+        *frame -= texture->frameAdvanceDelay * updateRate;
+        while (*frame < 0) {
+            *frame += texture->numOfTextures;
         }
     }
 }
 
-void pulse_light_reset(ColourCycle *arg0) {
+void pulse_light_reset(ColourCycle *cycle) {
     s32 i;
 
-    arg0->currentKeyframe = 0;
-    arg0->keyframeTimer = 0;
-    arg0->totalDuration = 0;
-    arg0->rgba.r = arg0->rgba2.r;
-    arg0->rgba.g = arg0->rgba2.g;
-    arg0->rgba.b = arg0->rgba2.b;
-    arg0->rgba.a = arg0->rgba2.a;
-    for (i = 0; i < arg0->numKeyframes; i++) {
-        arg0->totalDuration += arg0->keyframes[i].duration;
+    cycle->currentKeyframe = 0;
+    cycle->keyframeTimer = 0;
+    cycle->totalDuration = 0;
+    cycle->rgba.r = cycle->rgba2.r;
+    cycle->rgba.g = cycle->rgba2.g;
+    cycle->rgba.b = cycle->rgba2.b;
+    cycle->rgba.a = cycle->rgba2.a;
+    for (i = 0; i < cycle->numKeyframes; i++) {
+        cycle->totalDuration += cycle->keyframes[i].duration;
     }
 }
 
 /**
  * Official name: updateColourCycle
  */
-void update_colour_cycle(ColourCycle *arg0, s32 updateRate) {
-    s32 temp;
+void update_colour_cycle(ColourCycle *cycle, s32 updateRate) {
+    s32 blend;
     s32 curIndex;
     s32 nextIndex;
     u32 next_red;
@@ -1798,44 +1807,44 @@ void update_colour_cycle(ColourCycle *arg0, s32 updateRate) {
     ColourCycle *cur;
     ColourCycle *next;
 
-    if (arg0->numKeyframes >= 2) {
-        arg0->keyframeTimer += updateRate;
-        while (arg0->keyframeTimer >= arg0->totalDuration) {
-            if (!temp) {}
-            arg0->keyframeTimer -= arg0->totalDuration;
+    if (cycle->numKeyframes >= 2) {
+        cycle->keyframeTimer += updateRate;
+        while (cycle->keyframeTimer >= cycle->totalDuration) {
+            if (!blend) {}
+            cycle->keyframeTimer -= cycle->totalDuration;
         }
-        while (arg0->keyframeTimer >= arg0->keyframes[arg0->currentKeyframe].duration) {
-            arg0->keyframeTimer -= arg0->keyframes[arg0->currentKeyframe].duration;
-            arg0->currentKeyframe++;
-            if (arg0->currentKeyframe >= arg0->numKeyframes) {
-                arg0->currentKeyframe = 0;
+        while (cycle->keyframeTimer >= cycle->keyframes[cycle->currentKeyframe].duration) {
+            cycle->keyframeTimer -= cycle->keyframes[cycle->currentKeyframe].duration;
+            cycle->currentKeyframe++;
+            if (cycle->currentKeyframe >= cycle->numKeyframes) {
+                cycle->currentKeyframe = 0;
             }
         }
 
-        curIndex = arg0->currentKeyframe;
+        curIndex = cycle->currentKeyframe;
         nextIndex = curIndex + 1;
-        if (nextIndex >= arg0->numKeyframes) {
+        if (nextIndex >= cycle->numKeyframes) {
             nextIndex = 0;
         }
 
-        cur = (ColourCycle *) (&((ColourCycleKeyframe *) arg0)[curIndex]);
-        temp = (arg0->keyframeTimer << 16) / (cur->keyframes->duration);
+        cur = (ColourCycle *) (&((ColourCycleKeyframe *) cycle)[curIndex]);
+        blend = (cycle->keyframeTimer << 16) / (cur->keyframes->duration);
         cur_red = cur->rgba2.r;
         cur_green = cur->rgba2.g;
         cur_blue = cur->rgba2.b;
         cur_alpha = cur->rgba2.a;
 
-        next = (ColourCycle *) (&((ColourCycleKeyframe *) arg0)[nextIndex]);
+        next = (ColourCycle *) (&((ColourCycleKeyframe *) cycle)[nextIndex]);
         next_red = next->rgba2.r;
         next_green = next->rgba2.g;
         next_blue = next->rgba2.b;
         next_alpha = next->rgba2.a;
 
-        next = arg0;
-        arg0->rgba.r = (((next_red - cur_red) * temp) >> 16) + cur_red;
-        arg0->rgba.g = (((next_green - cur_green) * temp) >> 16) + cur_green;
-        arg0->rgba.b = (((next_blue - cur_blue) * temp) >> 16) + cur_blue;
-        arg0->rgba.a = (((next_alpha - cur_alpha) * temp) >> 16) + cur_alpha;
+        next = cycle;
+        cycle->rgba.r = (((next_red - cur_red) * blend) >> 16) + cur_red;
+        cycle->rgba.g = (((next_green - cur_green) * blend) >> 16) + cur_green;
+        cycle->rgba.b = (((next_blue - cur_blue) * blend) >> 16) + cur_blue;
+        cycle->rgba.a = (((next_alpha - cur_alpha) * blend) >> 16) + cur_alpha;
     }
 }
 

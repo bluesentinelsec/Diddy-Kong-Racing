@@ -8,6 +8,9 @@
 #include "objects.h"
 #include "types.h"
 
+// A light's yaw or pitch spin timer at this value spins it for as long as the light exists.
+#define LIGHT_SPIN_FOREVER 0xFFFF
+
 /************ .data ************/
 
 ObjectLight **gActiveLights = NULL;
@@ -52,7 +55,7 @@ void lights_free(void) {
 void lights_init(s32 count) {
     s32 i;
     u8 *buffer;
-    s32 temp;
+    s32 lightCount;
 
     lights_free();
     gMaxLights = count;
@@ -60,12 +63,12 @@ void lights_init(s32 count) {
         gMaxLights * (sizeof(s32 *) + sizeof(ObjectLight) + sizeof(ObjectLightShadeProperties) + sizeof(Vec3f)),
         COLOUR_TAG_MAGENTA);
 
-    temp = gMaxLights;
+    lightCount = gMaxLights;
     gActiveLights = (ObjectLight **) buffer;
-    buffer += temp * sizeof(ObjectLight *);
+    buffer += lightCount * sizeof(ObjectLight *);
     gActiveLightAttrs = (ObjectLight *) buffer;
-    gShadeBuffer = (ObjectLightShadeProperties *) ((uintptr_t) gActiveLightAttrs + temp * sizeof(ObjectLight));
-    gLightDirs = (Vec3f *) ((uintptr_t) gShadeBuffer + temp * sizeof(ObjectLightShadeProperties));
+    gShadeBuffer = (ObjectLightShadeProperties *) ((uintptr_t) gActiveLightAttrs + lightCount * sizeof(ObjectLight));
+    gLightDirs = (Vec3f *) ((uintptr_t) gShadeBuffer + lightCount * sizeof(ObjectLightShadeProperties));
     for (i = 0; i < gMaxLights; i++) {
         gActiveLights[i] = &gActiveLightAttrs[i];
     }
@@ -135,10 +138,10 @@ ObjectLight *light_add_from_level_object_entry(Object *obj, LevelObjectEntry_Rgb
         light->radiusMag = 1 / light->radius;
         light->dirYaw = lightEntry->dirYaw;
         light->yawSpeed = lightEntry->yawSpinSpeed;
-        light->yawSpinTimer = (lightEntry->yawSpinSpeed) ? 0xFFFF : 0;
+        light->yawSpinTimer = (lightEntry->yawSpinSpeed) ? LIGHT_SPIN_FOREVER : 0;
         light->dirPitch = lightEntry->dirPitch;
         light->pitchSpeed = lightEntry->pitchSpinSpeed;
-        light->pitchSpinTimer = (lightEntry->pitchSpinSpeed) ? 0xFFFF : 0;
+        light->pitchSpinTimer = (lightEntry->pitchSpinSpeed) ? LIGHT_SPIN_FOREVER : 0;
         light->pitchSpinTimer = 0;
         light->boundsDirty = 1;
         light_update(light, 0);
@@ -149,40 +152,40 @@ ObjectLight *light_add_from_level_object_entry(Object *obj, LevelObjectEntry_Rgb
 /**
  * Official Name: addObjectLight
  */
-ObjectLight *light_add_from_object_header(Object *obj, ObjectHeader24 *arg1) {
+ObjectLight *light_add_from_object_header(Object *obj, ObjectHeader24 *lightHeader) {
     s32 i;
     ObjectLight *light;
 
     light = NULL;
     if (gNumActiveLights < gMaxLights) {
         light = gActiveLights[gNumActiveLights++];
-        // Big-endian u32 read: top nibble of the union's first byte (unk8A).
-        light->volumeShape = arg1->shapeAndEnabled >> 4;
-        light->directionMode = arg1->directionMode;
-        light->objectTypeMask = arg1->affectedObjectMask;
-        light->type = arg1->falloffType;
-        light->enabled = arg1->shapeAndEnabled & 0xF;
+        // Big-endian u32 read: top nibble of the union's first byte (shapeAndEnabled).
+        light->volumeShape = lightHeader->shapeAndEnabled >> 4;
+        light->directionMode = lightHeader->directionMode;
+        light->objectTypeMask = lightHeader->affectedObjectMask;
+        light->type = lightHeader->falloffType;
+        light->enabled = lightHeader->shapeAndEnabled & 0xF;
         light->owner = obj;
-        light->homeX = arg1->homeX;
-        light->homeY = arg1->homeY;
-        light->homeZ = arg1->homeZ;
+        light->homeX = lightHeader->homeX;
+        light->homeY = lightHeader->homeY;
+        light->homeZ = lightHeader->homeZ;
         light->pos.x = light->homeX;
         light->pos.y = light->homeY;
         light->pos.z = light->homeZ;
-        light->colourR = arg1->colourR << 16;
+        light->colourR = lightHeader->colourR << 16;
         light->targetColourChangeRateR = 0;
         light->targetColourDiffR = 0;
-        light->colourG = arg1->colourG << 16;
+        light->colourG = lightHeader->colourG << 16;
         light->targetColourChangeRateG = 0;
         light->targetColourDiffG = 0;
-        light->colourB = arg1->colourB << 16;
+        light->colourB = lightHeader->colourB << 16;
         light->targetColourChangeRateB = 0;
         light->targetColourDiffB = 0;
-        light->intensity = arg1->intensity << 16;
+        light->intensity = lightHeader->intensity << 16;
         light->targetIntensityChangeRate = 0;
         light->targetIntensityDiff = 0;
-        if (arg1->colourAnimAssetId != 0xFFFF) {
-            light->colourAnim = (MiscAssetObjectHeader24 *) get_misc_asset(arg1->colourAnimAssetId);
+        if (lightHeader->colourAnimAssetId != 0xFFFF) {
+            light->colourAnim = (MiscAssetObjectHeader24 *) get_misc_asset(lightHeader->colourAnimAssetId);
             light->keyframeCount = light->colourAnim->keyframeCount;
             light->keyframeIndex = 0;
             light->keyframeTimer = 0;
@@ -194,15 +197,15 @@ ObjectLight *light_add_from_object_header(Object *obj, ObjectHeader24 *arg1) {
         } else {
             light->keyframes = 0;
         }
-        light->radius = arg1->radius;
-        light->halfHeight = arg1->extentY;
-        light->halfDepth = arg1->extentZ;
+        light->radius = lightHeader->radius;
+        light->halfHeight = lightHeader->extentY;
+        light->halfDepth = lightHeader->extentZ;
         light->radiusSquare = light->radius * light->radius;
         light->radiusMag = 1.0f / light->radius;
-        light->dirYaw = arg1->dirYaw << 8;
+        light->dirYaw = lightHeader->dirYaw << 8;
         light->yawSpeed = 0;
         light->yawSpinTimer = 0;
-        light->dirPitch = arg1->dirPitch << 8;
+        light->dirPitch = lightHeader->dirPitch << 8;
         light->pitchSpeed = 0;
         light->pitchSpinTimer = 0;
         light->boundsDirty = 1;
@@ -283,9 +286,10 @@ void light_update_all(s32 updateRate) {
  */
 void light_update(ObjectLight *light, s32 updateRate) {
     Vec3s rotation;
-    SubMiscAssetObjectHeader24 *var_a3;
-    s32 temp_v0;
-    SubMiscAssetObjectHeader24 *temp_v1;
+    SubMiscAssetObjectHeader24 *nextKey;
+    s32 blendStep;
+    s32 remaining;
+    SubMiscAssetObjectHeader24 *curKey;
 
     if (light->owner != NULL) {
         light->pos.x = light->homeX;
@@ -306,82 +310,86 @@ void light_update(ObjectLight *light, s32 updateRate) {
                 light->keyframeIndex = 0;
             }
         }
-        temp_v1 = &light->keyframes[light->keyframeIndex];
+        curKey = &light->keyframes[light->keyframeIndex];
         if (light->keyframeIndex < (light->keyframeCount - 1)) {
-            var_a3 = &light->keyframes[light->keyframeIndex + 1];
+            nextKey = &light->keyframes[light->keyframeIndex + 1];
         } else {
-            var_a3 = light->keyframes;
+            nextKey = light->keyframes;
         }
-        temp_v0 = (0x10000 / temp_v1->duration);
-        light->colourR = ((var_a3->colourR - temp_v1->colourR) * light->keyframeTimer * temp_v0) + (temp_v1->colourR << 0x10);
-        light->colourG = ((var_a3->colourG - temp_v1->colourG) * light->keyframeTimer * temp_v0) + (temp_v1->colourG << 0x10);
-        light->colourB = ((var_a3->colourB - temp_v1->colourB) * light->keyframeTimer * temp_v0) + (temp_v1->colourB << 0x10);
-        light->intensity = ((var_a3->intensity - temp_v1->intensity) * light->keyframeTimer * temp_v0) + (temp_v1->intensity << 0x10);
+        blendStep = (0x10000 / curKey->duration);
+        light->colourR =
+            ((nextKey->colourR - curKey->colourR) * light->keyframeTimer * blendStep) + (curKey->colourR << 0x10);
+        light->colourG =
+            ((nextKey->colourG - curKey->colourG) * light->keyframeTimer * blendStep) + (curKey->colourG << 0x10);
+        light->colourB =
+            ((nextKey->colourB - curKey->colourB) * light->keyframeTimer * blendStep) + (curKey->colourB << 0x10);
+        light->intensity =
+            ((nextKey->intensity - curKey->intensity) * light->keyframeTimer * blendStep) + (curKey->intensity << 0x10);
     } else {
         if (light->targetColourDiffR != 0) {
-            temp_v0 = light->targetColourDiffR;
+            remaining = light->targetColourDiffR;
             if (updateRate < light->targetColourDiffR) {
                 light->colourR += light->targetColourChangeRateR * updateRate;
                 light->targetColourDiffR -= updateRate;
             } else {
                 light->targetColourDiffR = 0;
-                light->colourR += light->targetColourChangeRateR * temp_v0;
+                light->colourR += light->targetColourChangeRateR * remaining;
             }
         }
         if (light->targetColourDiffG != 0) {
-            temp_v0 = light->targetColourDiffG;
+            remaining = light->targetColourDiffG;
             if (updateRate < light->targetColourDiffG) {
                 light->colourG += light->targetColourChangeRateG * updateRate;
                 light->targetColourDiffG -= updateRate;
             } else {
                 light->targetColourDiffG = 0;
-                light->colourG += light->targetColourChangeRateG * temp_v0;
+                light->colourG += light->targetColourChangeRateG * remaining;
             }
         }
         if (light->targetColourDiffB != 0) {
-            temp_v0 = light->targetColourDiffB;
+            remaining = light->targetColourDiffB;
             if (updateRate < light->targetColourDiffB) {
                 light->colourB += light->targetColourChangeRateB * updateRate;
                 light->targetColourDiffB -= updateRate;
             } else {
                 light->targetColourDiffB = 0;
-                light->colourB += light->targetColourChangeRateB * temp_v0;
+                light->colourB += light->targetColourChangeRateB * remaining;
             }
         }
         if (light->targetIntensityDiff != 0) {
-            temp_v0 = light->targetIntensityDiff;
+            remaining = light->targetIntensityDiff;
             if (updateRate < light->targetIntensityDiff) {
                 light->intensity += light->targetIntensityChangeRate * updateRate;
                 light->targetIntensityDiff -= updateRate;
             } else {
                 light->targetIntensityDiff = 0;
-                light->intensity += light->targetIntensityChangeRate * temp_v0;
+                light->intensity += light->targetIntensityChangeRate * remaining;
             }
         }
     }
     if (light->yawSpinTimer != 0) {
-        temp_v0 = light->yawSpinTimer;
-        if (light->yawSpinTimer == 0xFFFF) {
+        remaining = light->yawSpinTimer;
+        if (light->yawSpinTimer == LIGHT_SPIN_FOREVER) {
             light->dirYaw += light->yawSpeed * updateRate;
-        } else if (updateRate < temp_v0) {
+        } else if (updateRate < remaining) {
             light->dirYaw += light->yawSpeed * updateRate;
-            light->yawSpinTimer = temp_v0 - updateRate;
+            light->yawSpinTimer = remaining - updateRate;
         } else {
             light->yawSpinTimer = 0;
-            light->dirYaw += light->yawSpeed * temp_v0;
+            light->dirYaw += light->yawSpeed * remaining;
         }
         light->boundsDirty = 1;
     }
     if (light->pitchSpinTimer != 0) {
-        temp_v0 = light->pitchSpinTimer;
-        if (light->pitchSpinTimer == 0xFFFF) {
+        remaining = light->pitchSpinTimer;
+        if (light->pitchSpinTimer == LIGHT_SPIN_FOREVER) {
             light->dirPitch += light->pitchSpeed * updateRate;
-        } else if (updateRate < temp_v0) {
+        } else if (updateRate < remaining) {
             light->dirPitch += light->pitchSpeed * updateRate;
-            light->pitchSpinTimer = temp_v0 - updateRate;
+            light->pitchSpinTimer = remaining - updateRate;
         } else {
             light->pitchSpinTimer = 0;
-            light->dirPitch += light->pitchSpeed * temp_v0;
+            light->dirPitch += light->pitchSpeed * remaining;
         }
         light->boundsDirty = 1;
     }
@@ -519,10 +527,10 @@ void light_update_shading(Object *object) {
                             if (intensity > 0.0f) {
                                 if (object->header->directionalPointLighting) {
                                     if (gLightDistance > 0.0f) {
-                                        f32 temp = 1.0f / sqrtf(gLightDistance);
-                                        gLightDiffX *= temp;
-                                        gLightDiffY *= temp;
-                                        gLightDiffZ *= temp;
+                                        f32 invDistance = 1.0f / sqrtf(gLightDistance);
+                                        gLightDiffX *= invDistance;
+                                        gLightDiffY *= invDistance;
+                                        gLightDiffZ *= invDistance;
                                     } else {
                                         gLightDiffX = 0;
                                         gLightDiffY = 0;

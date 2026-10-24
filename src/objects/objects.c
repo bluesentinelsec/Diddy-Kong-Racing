@@ -212,9 +212,9 @@ static const PcField sObjectHeaderFields[] = {
     PCU_FIELD(ObjectHeader, pad20, 0x20, 1, PCU_U32),
     PCU_FIELD(ObjectHeader, lightSources, 0x24, 1, PCU_PTR),
     PCU_FIELD(ObjectHeader, shadeAmbient, 0x28, 2, PCU_U32),
-    PCU_FIELD(ObjectHeader, flags, 0x30, 5, PCU_U16), // flags..unk38
+    PCU_FIELD(ObjectHeader, flags, 0x30, 5, PCU_U16), // flags..waterEffectTextureId
     PCU_FIELD(ObjectHeader, shadeLightR, 0x3A, 4, PCU_BYTES),
-    PCU_FIELD(ObjectHeader, shadeAngleY, 0x3E, 10, PCU_U16),     // shadeAngleY..unk50
+    PCU_FIELD(ObjectHeader, shadeAngleY, 0x3E, 10, PCU_U16),     // shadeAngleY..cullRadius
     PCU_FIELD(ObjectHeader, instanceCount, 0x52, 14, PCU_BYTES), // instanceCount..pad5E
     PCU_FIELD(ObjectHeader, internalName, 0x60, 16, PCU_BYTES),
     PCU_FIELD(ObjectHeader, unused70, 0x70, 8, PCU_BYTES),
@@ -286,7 +286,7 @@ void allocate_object_pools(void) {
 
         // ASSET_MISC_20: the 10 Object_Boost racer-FX entries read by
         // racerfx_alloc — 27 f32s of boost data plus sprite/texture ids per
-        // entry, then runtime state (unk70..tex) including two pointers. The
+        // entry, then runtime state (effectState..tex) including two pointers. The
         // host struct is wider than the 0x80-byte image, so the entries are
         // unpacked into sPcBoostTable and get_misc_asset hands that out.
         {
@@ -327,8 +327,8 @@ void allocate_object_pools(void) {
         // The f32 misc assets. Left big-endian, every one of these reads as a
         // denormal (~0): racers ended up weightless, with no handling and a flat
         // acceleration curve, so the player could not move. The per-vehicle
-        // tables reached through ObjectHeader (unk5C acceleration, unk5D wheel
-        // offsets) are swapped where they are fetched, in racer.c — their index
+        // tables reached through ObjectHeader (miscAssetIds[0] acceleration, miscAssetIds[1]
+        // wheel offsets) are swapped where they are fetched, in racer.c — their index
         // is not a constant. ASSET_MISC_20 is handled above as Object_Boost.
         static const s32 sMiscF32Assets[] = {
             ASSET_MISC_4,
@@ -513,7 +513,7 @@ static void pc_unpack_object_header(ObjectHeader *header) {
     for (i = 0; i < header->numLightSources; i++) {
         ObjectHeader24 *light = &((ObjectHeader24 *) ((u8 *) header + (uintptr_t) header->lightSources))[i];
         PC_SWAP16_AT(light, colourAnimAssetId, 2);
-        PC_SWAP16_AT(light, homeX, 12); // homeX/Y/Z, radius, unk14, unk16
+        PC_SWAP16_AT(light, homeX, 12); // homeX/Y/Z, radius, extentY, extentZ
     }
 }
 
@@ -622,10 +622,10 @@ static void pc_swap_spawn_entry_fields(u8 *entryBytes) {
             PC_SWAP16_AT(entry, texScroll.textureIndex, 2);
             break;
         case BHV_LIGHT_RGBA:
-            PC_SWAP16_AT(entry, rgbaLighting.radius, 14); // radius..unk1A
+            PC_SWAP16_AT(entry, rgbaLighting.radius, 14); // radius..pitchSpinSpeed
             break;
         case BHV_WEATHER:
-            PC_SWAP16_AT(entry, weather.radius, 8); // radius..unkE
+            PC_SWAP16_AT(entry, weather.radius, 8); // radius..velocityZ
             PC_SWAP16_AT(entry, weather.transitionTime, 2);
             break;
         case BHV_LENS_FLARE:
@@ -642,7 +642,7 @@ static void pc_swap_spawn_entry_fields(u8 *entryBytes) {
             PC_SWAP16_AT(entry, animation.pauseFrameCount, 2);
             break;
         case BHV_WAVE_GENERATOR:
-            PC_SWAP16_AT(entry, waveGenerator.waveSize, 6); // waveSize, unkC, unkE
+            PC_SWAP16_AT(entry, waveGenerator.waveSize, 6); // waveSize, amplitude, wavelength
             break;
         case BHV_WAVE_POWER:
             PC_SWAP16_AT(entry, wavePower.radius, 6); // radius, power, divisor

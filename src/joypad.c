@@ -39,7 +39,7 @@ s32 input_init(void) {
 }
 
 /**
- * Reads arg0 for a set of flags on whether to read, write, or erase any save data.
+ * Reads saveDataFlags for a set of flags on whether to read, write, or erase any save data.
  * Also reads the latest inputs from the controllers, and sets their values.
  * Official name: joyRead
  */
@@ -124,15 +124,15 @@ void input_assign_players(void) {
  */
 void charselect_assign_players(s8 *activePlayers) {
     s32 i;
-    s32 temp = 0;
+    s32 slot = 0;
     for (i = 0; i < MAXCONTROLLERS; i++) {
         if (activePlayers[i]) {
-            sPlayerID[temp++] = i;
+            sPlayerID[slot++] = i;
         }
     }
     for (i = 0; i < MAXCONTROLLERS; i++) {
         if (!activePlayers[i]) {
-            sPlayerID[temp++] = i;
+            sPlayerID[slot++] = i;
         }
     }
 }
