@@ -1,8 +1,8 @@
 #ifndef _TRACKS_H_
 #define _TRACKS_H_
 
-#include "structs.h"
 #include "f3ddkr.h"
+#include "structs.h"
 
 #define LOCAL_OFFSET_TO_RAM_ADDRESS(type, ptr) ptr = (type) ((uintptr_t) ptr + (uintptr_t) gCurrentLevelModel)
 
@@ -119,13 +119,13 @@ void set_skydome_visbility(s32 renderSky);
 void skydome_render(void);
 void set_anti_aliasing(s32 setting);
 void add_segment_to_order(s32 segmentIndex, s32 *segmentsOrderIndex, u8 *segmentsOrder);
-s32 get_inside_segment_count_xz(s32 x, s32 z, s32 *arg2);
-s32 get_inside_segment_count_xyz(s32 *arg0, s16 xPos1, s16 yPos1, s16 zPos1, s16 xPos2, s16 yPos2, s16 zPos2);
+s32 get_inside_segment_count_xz(s32 x, s32 z, s32 *segmentsOut);
+s32 get_inside_segment_count_xyz(s32 *segmentsOut, s16 xPos1, s16 yPos1, s16 zPos1, s16 xPos2, s16 yPos2, s16 zPos2);
 LevelModelSegment *block_get(s32 segmentID);
 LevelModelSegmentBoundingBox *block_boundbox(s32 segmentID);
 void set_collision_mode(s32 mode);
 s32 get_collision_normal(f32 *outX, f32 *outY, f32 *outZ);
-s32 get_object_water_height(Object *obj, f32 *arg1, Vec3f *arg2, s32 arg3);
+s32 get_object_water_height(Object *obj, f32 *waterHeight, Vec3f *normal, s32 useWaves);
 void segment_find_water_batches(LevelModelSegment *segment);
 LevelModel *get_current_level_model(void);
 void get_fog_settings(s32 playerID, s16 *near, s16 *far, u8 *r, u8 *g, u8 *b);
@@ -143,7 +143,8 @@ void watereffect_render(Object *obj, WaterEffect *effect);
 void shadow_render(Object *obj, ShadowData *shadow);
 s32 block_visible(LevelModelSegmentBoundingBox *bb);
 s32 check_if_in_draw_range(Object *obj);
-void segment_compute_triangle_grid_masks(LevelModelSegment *segment, LevelModelSegmentBoundingBox *bbox, s32 arg2);
+void segment_compute_triangle_grid_masks(LevelModelSegment *segment, LevelModelSegmentBoundingBox *bbox,
+                                         s32 segmentIndex);
 void trackbg_render_gradient(void);
 void shadow_update(s32 group, s32 waterGroup, s32 updateRate);
 void obj_loop_fogchanger(Object *obj, s32 updateRate);
@@ -153,18 +154,18 @@ void render_level_segment(s32 segmentId, s32 nonOpaque);
 void render_scene(Gfx **dList, Mtx **mtx, Vertex **vtx, Triangle **tris, s32 updateRate);
 void set_fog(s32 fogIdx, s16 near, s16 far, u8 red, u8 green, u8 blue);
 void slowly_change_fog(s32 fogIdx, s32 red, s32 green, s32 blue, s32 near, s32 far, s32 switchTimer);
-s32 polygon_overlaps_rect(f32 x0, f32 z0, f32 x1, f32 x2, s32 count, Vec4f *arg5);
-void void_check_insert_point(s16 arg0, s16 arg1, s32 arg2);
-void void_check_sort_points(s16 arg0, s8 *arg1, f32 arg2, f32 arg3);
-void void_check_add_bbox_edges(LevelModelSegmentBoundingBox *arg0, f32 arg1, f32 arg2, f32 arg3);
-void void_check_add_segment_edges(LevelModelSegment *segment, f32 arg1, f32 arg2, f32 arg3);
+s32 polygon_overlaps_rect(f32 x0, f32 z0, f32 x1, f32 z1, s32 count, Vec4f *points);
+void void_check_insert_point(s16 sideOffset, s16 height, s32 flags);
+void void_check_sort_points(s16 openCount, s8 *openPairs, f32 nextOffset, f32 currOffset);
+void void_check_add_bbox_edges(LevelModelSegmentBoundingBox *bbox, f32 sinY, f32 cosY, f32 planeD);
+void void_check_add_segment_edges(LevelModelSegment *segment, f32 sinY, f32 cosY, f32 planeD);
 
 void free_track(void);
 void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex);
 s32 is_camera_behind_wall(void);
 s32 track_init_collision(LevelModelSegment *);
 s32 get_level_segment_waves(s32, f32 xIn, f32 zIn,
-                  WaterProperties ***); // Definitely not triple pointer, but easiest way to fix warns.
+                            WaterProperties ***); // Definitely not triple pointer, but easiest way to fix warns.
 void ttcam_update(s32);
 void trackbg_render_flashy(void);
 void initialise_player_viewport_vars(s32);
@@ -174,20 +175,20 @@ void waves_update(s32);
 void waves_render(Gfx **, Mtx **, s32);
 void shadow_find_surface_under_object(Object *);
 void shadow_generate(Object *, s32);
-void shadow_add_segment_triangles(LevelModelSegment *, s32, s32 arg2);
-void shadow_add_wave_triangles(s32 arg0);
+void shadow_add_segment_triangles(LevelModelSegment *segment, s32 gridMask, s32 isWater);
+void shadow_add_wave_triangles(s32 segmentIndex);
 void shadow_project_vertices(void);
 void shadow_build_mesh(void);
 f32 shadow_light_level(void);
 s32 collision_get_y(s32 levelSegmentIndex, f32 xIn, f32 zIn, f32 *yOut, s32 maxYOut);
 void init_track(u32 geometry, u32 skybox, s32 numberOfPlayers, Vehicle vehicle, u32 entranceId, u32 collectables,
-                u32 arg6);
+                u32 objectMapId);
 void waves_init(LevelModel *, LevelHeader *, s32);
 void void_init(s32);
 void generate_track(s32 modelId);
-void shadow_check_centre_in_triangle(ShadowPlane arg0[3]);
-s32 void_generate_primitive(f32 *arg0, f32 *arg1, f32 arg2, f32 arg3);
-s32 clip_polygon_to_rect(s32, ShadowPlane *, s32, Vec2f *);
+void shadow_check_centre_in_triangle(ShadowPlane tri[3]);
+s32 void_generate_primitive(f32 *topHeights, f32 *bottomHeights, f32 startOffset, f32 endOffset);
+s32 clip_polygon_to_rect(s32 inCount, ShadowPlane *poly, s32 edgeCount, Vec2f *rect);
 s32 wave_cells_in_rect(s32, ShadowWaveTri *, ShadowPlane *, f32, f32, f32, f32);
 
 #endif

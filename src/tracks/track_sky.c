@@ -14,7 +14,7 @@ void track_tex_anim(s32 updateRate) {
     LevelModelSegment *segment;
     TextureHeader *texture;
     TriangleBatchInfo *batch;
-    s32 temp;
+    s32 texFrame;
 
     segment = gCurrentLevelModel->segments;
     for (segmentNumber = 0; segmentNumber < gCurrentLevelModel->numberOfSegments; segmentNumber++) {
@@ -24,15 +24,15 @@ void track_tex_anim(s32 updateRate) {
                 if (batch[batchNumber].textureIndex != 0xFF) {
                     texture = gCurrentLevelModel->textures[batch[batchNumber].textureIndex].texture;
                     if (texture->numOfTextures != 0x100 && texture->frameAdvanceDelay) {
-                        temp = batch[batchNumber].texOffset << 6;
+                        texFrame = batch[batchNumber].texOffset << 6;
                         if (batch[batchNumber].flags & RENDER_UNK_80000000) {
-                            temp |= batch[batchNumber].miscData;
-                            tex_animate_texture(texture, &batch[batchNumber].flags, &temp, updateRate);
-                            batch[batchNumber].miscData = temp & 0x3F;
+                            texFrame |= batch[batchNumber].miscData;
+                            tex_animate_texture(texture, &batch[batchNumber].flags, &texFrame, updateRate);
+                            batch[batchNumber].miscData = texFrame & 0x3F;
                         } else {
-                            tex_animate_texture(texture, &batch[batchNumber].flags, &temp, updateRate);
+                            tex_animate_texture(texture, &batch[batchNumber].flags, &texFrame, updateRate);
                         }
-                        batch[batchNumber].texOffset = (temp >> 6) & 0xFF;
+                        batch[batchNumber].texOffset = (texFrame >> 6) & 0xFF;
                     }
                 }
             }
@@ -74,55 +74,18 @@ void set_skydome_visbility(s32 renderSky) {
     gSceneRenderSkyDome = renderSky;
 }
 
-// This function creates the flashy sky effect in the wizpig 2 race.
-void trackbg_render_flashy(void) {
-    Triangle *tris;
-    Vertex *verts;
-    s32 vCoordMask;
-    s32 uCoordMask;
+/**
+ * Flashy background: the corner and centre positions of the sky plane's vertices around the camera,
+ * rotated by the camera's pitch. Indices 0-3 are the inner square, 4 its centre and 5-8 the outer ring.
+ */
+static void trackbg_flashy_positions(f32 xSin, f32 xCos, f32 *xPositions, f32 *zPositions) {
     f32 scaledXSin;
     f32 scaledXCos;
-    f32 var_f16;
-    s16 uCoords[9];
-    s16 vCoords[9];
-    f32 xCos;
-    f32 xSin;
-    f32 pad_sp108;
-    Camera *camera;
-    f32 pad_sp100;
-    f32 xPositions[9];
-    f32 zPositions[9];
-    Vec3f pos;
-    s32 i;
-    s32 var_v0;
-    s32 var_v1;
-    s32 var_a1;
-    s32 var_a2;
-    s32 var_a3;
-    u8 *var_v0_3;
-    f32 var_f14;
-    s16 vertY;
-    s16 vTempCoord;
-    s16 uTempCoord;
-    ColourCycle *pad2;
-    ColourCycle *var_t2;
-    ColourCycle *levelHeader;
-    TextureHeader *texHeader;
-    s32 pad[4];
-
-    verts = gTrackVtxPtr;
-    tris = gTrackTriPtr;
-
-    camera = cam_get_active_camera();
-    texHeader = gCurrentLevelHeader2->skyTexture;
-    uCoordMask = (texHeader->width << 5) - 1;
-    vCoordMask = (texHeader->height << 5) - 1;
-    xSin = sins_f(-camera->trans.rotation.x);
-    xCos = coss_f(-camera->trans.rotation.x);
+    UNUSED f32 doubleScaledXSin;
 
     scaledXSin = xSin * 1280.0f;
     scaledXCos = xCos * 1280.0f;
-    pad_sp100 = 2.0f * scaledXSin;
+    doubleScaledXSin = 2.0f * scaledXSin;
     xPositions[0] = -scaledXCos - (xSin * 1280.0f);
     zPositions[0] = -scaledXCos + (xSin * 1280.0f);
     xPositions[1] = scaledXCos - (xSin * 1280.0f);
@@ -142,82 +105,79 @@ void trackbg_render_flashy(void) {
     zPositions[7] = (2.0f * (xCos * 1280.0f)) - scaledXSin;
     xPositions[8] = -(xCos * 1280.0f) + (2.0f * scaledXSin);
     zPositions[8] = (2.0f * (xCos * 1280.0f)) + scaledXSin;
+}
+
+/**
+ * Flashy background: the texture coordinates of the nine sky vertices, scrolled with the camera's
+ * position and the level's sky scroll, and rotated with its pitch to match the positions.
+ */
+static void trackbg_flashy_tex_coords(Camera *camera, TextureHeader *texHeader, s32 uCoordMask, s32 vCoordMask,
+                                      f32 xSin, f32 xCos, s16 *uCoords, s16 *vCoords) {
+    f32 scaledXCos;
+    f32 vSin;
+    f32 vSinCopy;
+    Vec3f uCosVec;
+    s32 uCentre;
+    s32 vCentre;
+    s32 uSpan;
+    s32 vSpan;
+    f32 uCos;
 
     scaledXCos = 1280.0f;
-    var_f14 = scaledXCos * 0.25f;
+    uCos = scaledXCos * 0.25f;
 
-    var_a1 = texHeader->width * 16 * gCurrentLevelHeader2->skyTexScaleU;
-    var_a2 = texHeader->height * 16 * gCurrentLevelHeader2->skyTexScaleV;
+    uSpan = texHeader->width * 16 * gCurrentLevelHeader2->skyTexScaleU;
+    vSpan = texHeader->height * 16 * gCurrentLevelHeader2->skyTexScaleV;
 
-    var_v0 = ((s32) (camera->trans.x_position * ((scaledXCos * 0.25f) / var_a1)) +
-              (gCurrentLevelHeader2->skyTexScrollU >> 4)) &
-             uCoordMask;
-    var_v1 = ((s32) (camera->trans.z_position * ((scaledXCos * 0.25f) / var_a2)) +
-              (gCurrentLevelHeader2->skyTexScrollV >> 4)) &
-             vCoordMask;
+    uCentre = ((s32) (camera->trans.x_position * ((scaledXCos * 0.25f) / uSpan)) +
+               (gCurrentLevelHeader2->skyTexScrollU >> 4)) &
+              uCoordMask;
+    vCentre = ((s32) (camera->trans.z_position * ((scaledXCos * 0.25f) / vSpan)) +
+               (gCurrentLevelHeader2->skyTexScrollV >> 4)) &
+              vCoordMask;
 
-    var_f14 = var_a1 * xCos;
-    pos.z = var_a1 * xCos;
-    pos.x = var_a1 * xCos;
-    var_f16 = var_a2 * xSin;
-    xCos = var_f16;
-    pad_sp108 = var_f16;
+    uCos = uSpan * xCos;
+    uCosVec.z = uSpan * xCos;
+    uCosVec.x = uSpan * xCos;
+    vSin = vSpan * xSin;
+    xCos = vSin;
+    vSinCopy = vSin;
 
     // @fake
-    var_a2 = texHeader->height * 16 * gCurrentLevelHeader2->skyTexScaleV;
+    vSpan = texHeader->height * 16 * gCurrentLevelHeader2->skyTexScaleV;
 
-    uCoords[0] = (s16) (-var_f14 - pad_sp108) + var_v0;
-    vCoords[0] = (s16) (var_f16 - var_f14) + var_v1;
-    uCoords[1] = (s16) (var_f14 - pad_sp108) + var_v0;
-    vCoords[1] = (s16) (-var_f14 - var_f16) + var_v1;
-    uCoords[2] = (s16) (var_f14 + var_f16) + var_v0;
-    vCoords[2] = (s16) (var_f14 - var_f16) + var_v1;
-    uCoords[3] = (s16) (var_f16 - var_f14) + var_v0;
-    vCoords[3] = (s16) (var_f14 + var_f16) + var_v1;
+    uCoords[0] = (s16) (-uCos - vSinCopy) + uCentre;
+    vCoords[0] = (s16) (vSin - uCos) + vCentre;
+    uCoords[1] = (s16) (uCos - vSinCopy) + uCentre;
+    vCoords[1] = (s16) (-uCos - vSin) + vCentre;
+    uCoords[2] = (s16) (uCos + vSin) + uCentre;
+    vCoords[2] = (s16) (uCos - vSin) + vCentre;
+    uCoords[3] = (s16) (vSin - uCos) + uCentre;
+    vCoords[3] = (s16) (uCos + vSin) + vCentre;
 
-    uCoords[4] = var_v0;
-    vCoords[4] = var_v1;
+    uCoords[4] = uCentre;
+    vCoords[4] = vCentre;
 
-    uCoords[5] = (s16) (-var_f14 - (2.0f * xCos)) + var_v0;
-    vCoords[5] = (s16) (var_f16 - (2.0f * var_f14)) + var_v1;
-    uCoords[6] = (s16) (var_f14 - (2.0f * xCos)) + var_v0;
-    vCoords[6] = (s16) ((-(2.0f * var_f14)) - var_f16) + var_v1;
-    uCoords[7] = (s16) (pos.f[2] + (2.0f * xCos)) + var_v0;
-    vCoords[7] = (s16) ((2.0f * pos.x) - var_f16) + var_v1;
-    uCoords[8] = (s16) ((2.0f * xCos) - pos.z) + var_v0;
-    vCoords[8] = (s16) ((2.0f * pos.x) + var_f16) + var_v1;
+    uCoords[5] = (s16) (-uCos - (2.0f * xCos)) + uCentre;
+    vCoords[5] = (s16) (vSin - (2.0f * uCos)) + vCentre;
+    uCoords[6] = (s16) (uCos - (2.0f * xCos)) + uCentre;
+    vCoords[6] = (s16) ((-(2.0f * uCos)) - vSin) + vCentre;
+    uCoords[7] = (s16) (uCosVec.f[2] + (2.0f * xCos)) + uCentre;
+    vCoords[7] = (s16) ((2.0f * uCosVec.x) - vSin) + vCentre;
+    uCoords[8] = (s16) ((2.0f * xCos) - uCosVec.z) + uCentre;
+    vCoords[8] = (s16) ((2.0f * uCosVec.x) + vSin) + vCentre;
+}
 
-    mtx_world_origin(&gTrackDL, &gTrackMtxPtr);
-
-    var_t2 = *gCurrentLevelHeader2->colourCycles;
-    var_a2 = -1;
-
-    if ((u32) ASSET_SLOT(var_t2) != -1U) {
-        levelHeader = gCurrentLevelHeader2->colourCycles[1];
-        if ((u32) ASSET_SLOT(levelHeader) == -1U) {
-            levelHeader = var_t2;
-        }
-    } else {
-        var_t2 = NULL;
-    }
-
-    var_a3 = COLOUR_RGBA32(255, 255, 255, 0);
-    if (var_t2 != NULL) {
-        var_a2 = var_t2->rgba.word;
-        var_a3 = levelHeader->rgba.word & (~0xFF);
-    }
-
-    gfx_init_basic_xlu(&gTrackDL, 1, var_a2, var_a3);
-    texHeader = set_animated_texture_header(texHeader, gTrackTexAnimOffset << 8);
-    gDkrDmaDisplayList(gTrackDL++, OS_K0_TO_PHYSICAL(texHeader->cmd), texHeader->numberOfCommands);
-    gSPVertexDKR(gTrackDL++, OS_K0_TO_PHYSICAL(gTrackVtxPtr), 9, 0);
-    gSPPolygon(gTrackDL++, OS_K0_TO_PHYSICAL(gTrackTriPtr), 8, 1);
-    gDPPipeSync(gTrackDL++);
-    if (var_t2 != NULL) {
-        gDPSetPrimColor(gTrackDL++, 0, 0, 255, 255, 255, 255);
-        gDPSetEnvColor(gTrackDL++, 255, 255, 255, 0);
-    }
-    rendermode_reset(&gTrackDL);
+/**
+ * Flashy background: writes the nine sky vertices at the camera's position (the outer ring fading to
+ * transparent) and the eight triangles from gFlashyBgTriIndices, then advances the track's
+ * vertex and triangle pointers past them.
+ */
+static void trackbg_flashy_emit_geometry(Vertex *verts, Triangle *tris, Camera *camera, f32 *xPositions,
+                                         f32 *zPositions, s16 *uCoords, s16 *vCoords) {
+    s32 i;
+    u8 *triIndex;
+    s16 vertY;
 
     vertY = camera->trans.y_position + 192.0f;
     for (i = 0; i < 9; i++) {
@@ -231,26 +191,93 @@ void trackbg_render_flashy(void) {
         verts++;
     }
 
-    var_v0_3 = gFlashyBgTriIndices;
+    triIndex = gFlashyBgTriIndices;
     for (i = 0; i < 8; i++) {
         tris->flags = BACKFACE_DRAW;
-        tris->vi0 = *var_v0_3;
-        tris->uv0.u = uCoords[*var_v0_3];
-        tris->uv0.v = vCoords[*var_v0_3];
-        var_v0_3 += 1;
-        tris->vi1 = *var_v0_3;
-        tris->uv1.u = uCoords[*var_v0_3];
-        tris->uv1.v = vCoords[*var_v0_3];
-        var_v0_3 += 1;
-        tris->vi2 = *var_v0_3;
-        tris->uv2.u = uCoords[*var_v0_3];
-        tris->uv2.v = vCoords[*var_v0_3];
-        var_v0_3 += 1;
+        tris->vi0 = *triIndex;
+        tris->uv0.u = uCoords[*triIndex];
+        tris->uv0.v = vCoords[*triIndex];
+        triIndex += 1;
+        tris->vi1 = *triIndex;
+        tris->uv1.u = uCoords[*triIndex];
+        tris->uv1.v = vCoords[*triIndex];
+        triIndex += 1;
+        tris->vi2 = *triIndex;
+        tris->uv2.u = uCoords[*triIndex];
+        tris->uv2.v = vCoords[*triIndex];
+        triIndex += 1;
         tris++;
     }
 
     gTrackVtxPtr = verts;
     gTrackTriPtr = tris;
+}
+
+// This function creates the flashy sky effect in the wizpig 2 race.
+void trackbg_render_flashy(void) {
+    Triangle *tris;
+    Vertex *verts;
+    s32 vCoordMask;
+    s32 uCoordMask;
+    s16 uCoords[9];
+    s16 vCoords[9];
+    f32 xCos;
+    f32 xSin;
+    Camera *camera;
+    f32 xPositions[9];
+    f32 zPositions[9];
+    s32 primColour;
+    s32 envColour;
+    ColourCycle *colourCycle0;
+    ColourCycle *colourCycle1;
+    TextureHeader *texHeader;
+
+    verts = gTrackVtxPtr;
+    tris = gTrackTriPtr;
+
+    camera = cam_get_active_camera();
+    texHeader = gCurrentLevelHeader2->skyTexture;
+    uCoordMask = (texHeader->width << 5) - 1;
+    vCoordMask = (texHeader->height << 5) - 1;
+    xSin = sins_f(-camera->trans.rotation.x);
+    xCos = coss_f(-camera->trans.rotation.x);
+
+    trackbg_flashy_positions(xSin, xCos, xPositions, zPositions);
+    trackbg_flashy_tex_coords(camera, texHeader, uCoordMask, vCoordMask, xSin, xCos, uCoords, vCoords);
+
+    mtx_world_origin(&gTrackDL, &gTrackMtxPtr);
+
+    colourCycle0 = *gCurrentLevelHeader2->colourCycles;
+    primColour = -1;
+
+    if ((u32) ASSET_SLOT(colourCycle0) != -1U) {
+        colourCycle1 = gCurrentLevelHeader2->colourCycles[1];
+        if ((u32) ASSET_SLOT(colourCycle1) == -1U) {
+            colourCycle1 = colourCycle0;
+        }
+    } else {
+        colourCycle0 = NULL;
+    }
+
+    envColour = COLOUR_RGBA32(255, 255, 255, 0);
+    if (colourCycle0 != NULL) {
+        primColour = colourCycle0->rgba.word;
+        envColour = colourCycle1->rgba.word & (~0xFF);
+    }
+
+    gfx_init_basic_xlu(&gTrackDL, 1, primColour, envColour);
+    texHeader = set_animated_texture_header(texHeader, gTrackTexAnimOffset << 8);
+    gDkrDmaDisplayList(gTrackDL++, OS_K0_TO_PHYSICAL(texHeader->cmd), texHeader->numberOfCommands);
+    gSPVertexDKR(gTrackDL++, OS_K0_TO_PHYSICAL(gTrackVtxPtr), 9, 0);
+    gSPPolygon(gTrackDL++, OS_K0_TO_PHYSICAL(gTrackTriPtr), 8, 1);
+    gDPPipeSync(gTrackDL++);
+    if (colourCycle0 != NULL) {
+        gDPSetPrimColor(gTrackDL++, 0, 0, 255, 255, 255, 255);
+        gDPSetEnvColor(gTrackDL++, 255, 255, 255, 0);
+    }
+    rendermode_reset(&gTrackDL);
+
+    trackbg_flashy_emit_geometry(verts, tris, camera, xPositions, zPositions, uCoords, vCoords);
 }
 
 /**
@@ -260,7 +287,6 @@ void trackbg_render_flashy(void) {
  */
 void trackbg_render_gradient(void) {
     s16 z;
-    UNUSED s16 pad;
     s16 y0;
     s16 y1;
     u8 headerRed0;

@@ -1,6 +1,11 @@
 #include "tracks_internal.h"
 
-#define FLAGS_8002E904 (RENDER_HIDDEN | RENDER_DECAL | RENDER_WATER | RENDER_NO_SHADOW)
+// Batches that never receive a shadow.
+#define SHADOW_SKIP_BATCH_FLAGS (RENDER_HIDDEN | RENDER_DECAL | RENDER_WATER | RENDER_NO_SHADOW)
+// A batch's light level (0-7) sits in bits 19-21 of its flags and indexes gShadowLightLevels.
+#define BATCH_LIGHT_LEVEL(flags) (((flags) >> 19) & 7)
+// Shadow triangles are flushed in batches of at most this many vertices.
+#define SHADOW_BATCH_VERTS 24
 
 static f32 gShadowLightLevels[10] = { 0.0f, 0.125f, 0.25f, 0.375f, 0.5f, 0.625f, 0.75f, 0.875f };
 
@@ -15,7 +20,6 @@ void shadow_render(Object *obj, ShadowData *shadow) {
     Vertex *vtx;
     Triangle *tri;
     s32 flags;
-    UNUSED s32 tri2;
     s32 vtx2;
     s32 vtxCount;
     s32 triCount;
@@ -43,7 +47,7 @@ void shadow_render(Object *obj, ShadowData *shadow) {
             while (i < shadow->meshEnd) {
                 material_set_no_tex_offset(&gTrackDL, gCurrShadowHeapData[i].texture, flags);
                 // I hope we can clean this part up.
-                tri2 = triCount = gCurrShadowHeapData[i].triCount; // Fakematch
+                triCount = gCurrShadowHeapData[i].triCount; // Fakematch
                 vtx2 = vtxCount = gCurrShadowHeapData[i].vtxCount;
                 numTris = gCurrShadowHeapData[i + 1].triCount - triCount;
                 numVerts = gCurrShadowHeapData[i + 1].vtxCount - vtxCount;
@@ -72,8 +76,6 @@ void watereffect_render(Object *obj, WaterEffect *effect) {
     Vertex *vtx;
     Triangle *tri;
     s32 flags;
-    UNUSED s32 triCount;
-    UNUSED s32 vtxCount;
 
     if (obj->header->waterEffectGroup) {
         if (effect->meshStart != -1 && gDisableShadows == FALSE) {
@@ -92,8 +94,6 @@ void watereffect_render(Object *obj, WaterEffect *effect) {
             gCurrShadowVerts = gShadowHeapVerts[gWaterEffectIndex];
             while (i < effect->meshEnd) {
                 material_set_no_tex_offset(&gTrackDL, gCurrShadowHeapData[i].texture, flags);
-                triCount = gCurrShadowHeapData[i].triCount; // Fakematch
-                vtxCount = gCurrShadowHeapData[i].vtxCount; // Fakematch
                 numTris = gCurrShadowHeapData[i + 1].triCount - gCurrShadowHeapData[i].triCount;
                 numVerts = gCurrShadowHeapData[i + 1].vtxCount - gCurrShadowHeapData[i].vtxCount;
                 tri = &gCurrShadowTris[gCurrShadowHeapData[i].triCount];
@@ -232,10 +232,10 @@ void shadow_update(s32 group, s32 waterGroup, s32 updateRate) {
  * the shadow and water effect can be placed on it.
  */
 void shadow_find_surface_under_object(Object *obj) {
-    s32 sp94;
-    s32 sp90;
+    s32 shadowTopY;
+    s32 shadowBottomY;
     s32 blockId;
-    s32 var_t3;
+    s32 gridMask;
     s32 k;
     u32 batchFlags;
     s32 foundResult;
@@ -247,24 +247,24 @@ void shadow_find_surface_under_object(Object *obj) {
     s32 maxYPos;
     s32 j;
 
-    sp94 = (s32) obj->trans.y_position + obj->header->shadowTop;
-    sp90 = (s32) obj->trans.y_position + obj->header->shadowBottom;
+    shadowTopY = (s32) obj->trans.y_position + obj->header->shadowTop;
+    shadowBottomY = (s32) obj->trans.y_position + obj->header->shadowBottom;
     blockId = obj->segmentID;
     foundResult = FALSE;
     if (blockId != -1) {
-        var_t3 = compute_grid_overlap_mask(&gCurrentLevelModel->segmentsBoundingBoxes[blockId],
-                                           obj->trans.x_position - 16.0f, obj->trans.z_position - 16.0f,
-                                           obj->trans.x_position + 16.0f, obj->trans.z_position + 16.0f);
+        gridMask = compute_grid_overlap_mask(&gCurrentLevelModel->segmentsBoundingBoxes[blockId],
+                                             obj->trans.x_position - 16.0f, obj->trans.z_position - 16.0f,
+                                             obj->trans.x_position + 16.0f, obj->trans.z_position + 16.0f);
         block = &gCurrentLevelModel->segments[blockId];
         for (i = 0; i < block->numberOfBatches && !foundResult; i++) {
-            if (!(block->batches[i].flags & (RENDER_HIDDEN | RENDER_DECAL | RENDER_WATER | RENDER_NO_SHADOW))) {
-                batchFlags = (block->batches[i].flags >> 19) & 7;
+            if (!(block->batches[i].flags & SHADOW_SKIP_BATCH_FLAGS)) {
+                batchFlags = BATCH_LIGHT_LEVEL(block->batches[i].flags);
                 vertices = &block->vertices[block->batches[i].verticesOffset];
                 for (j = block->batches[i].facesOffset; j < block->batches[i + 1].facesOffset && !foundResult; j++) {
-                    blockId = block->triangleGridMasks[j] & var_t3;
+                    blockId = block->triangleGridMasks[j] & gridMask;
                     if (blockId) {}
-                    if (((block->triangleGridMasks[j] & var_t3) & 0xFF) &&
-                        ((block->triangleGridMasks[j] & var_t3) & 0xFF00)) {
+                    if (((block->triangleGridMasks[j] & gridMask) & 0xFF) &&
+                        ((block->triangleGridMasks[j] & gridMask) & 0xFF00)) {
                         triangle = &block->triangles[j];
                         minYPos = vertices[triangle->verticesArray[1]].y;
                         maxYPos = minYPos;
@@ -275,7 +275,7 @@ void shadow_find_surface_under_object(Object *obj) {
                                 maxYPos = vertices[triangle->verticesArray[k + 1]].y;
                             }
                         }
-                        if (maxYPos >= sp90 && sp94 >= minYPos) {
+                        if (maxYPos >= shadowBottomY && shadowTopY >= minYPos) {
                             if (tri2d_xz_contains_point(obj->trans.x_position, obj->trans.z_position,
                                                         (Vec3s *) &vertices[triangle->verticesArray[1]],
                                                         (Vec3s *) &vertices[triangle->verticesArray[2]],
@@ -301,13 +301,12 @@ void shadow_generate(Object *obj, s32 isWater) {
     s32 yPos;
     f32 xPos;
     f32 zPos;
-    UNUSED s32 *pad;
     s32 cheats;
     s32 inSegs[28];
     s32 i;
     s32 segs;
     f32 character_scale;
-    s32 test;
+    s32 gridMask;
 
     yPos = obj->trans.y_position;
     character_scale = 1.0f;
@@ -383,13 +382,13 @@ void shadow_generate(Object *obj, s32 isWater) {
             if (isWater && (gCurrentLevelModel->segments[inSegs[i]].hasWaves != 0) && (gWaveBlockCount != 0)) {
                 shadow_add_wave_triangles(inSegs[i]);
             } else {
-                test = compute_grid_overlap_mask(&gCurrentLevelModel->segmentsBoundingBoxes[inSegs[i]],
-                                                 (obj->trans.x_position - gNewShadowWidth),  // x1
-                                                 (obj->trans.z_position - gNewShadowLength), // z1
-                                                 (obj->trans.x_position + gNewShadowWidth),  // x2
-                                                 (obj->trans.z_position + gNewShadowLength)  // z2
+                gridMask = compute_grid_overlap_mask(&gCurrentLevelModel->segmentsBoundingBoxes[inSegs[i]],
+                                                     (obj->trans.x_position - gNewShadowWidth),  // x1
+                                                     (obj->trans.z_position - gNewShadowLength), // z1
+                                                     (obj->trans.x_position + gNewShadowWidth),  // x2
+                                                     (obj->trans.z_position + gNewShadowLength)  // z2
                 );
-                shadow_add_segment_triangles(&gCurrentLevelModel->segments[inSegs[i]], test, isWater);
+                shadow_add_segment_triangles(&gCurrentLevelModel->segments[inSegs[i]], gridMask, isWater);
             }
         }
     }
@@ -411,10 +410,10 @@ void shadow_generate(Object *obj, s32 isWater) {
  * Adds the triangles of a segment that the shadow rectangle overlaps to the
  * shadow mesh being built, clipped to the rectangle.
  */
-void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
-    ShadowPlane sp100[8];
-    Vec2f spD0[4];
-    s32 spAC;
+void shadow_add_segment_triangles(LevelModelSegment *segment, s32 gridMask, s32 isWater) {
+    ShadowPlane clipPoly[8];
+    Vec2f shadowRect[4];
+    s32 batchIndex;
     Triangle *triangles;
     s32 nextFacesOffset;
     Vertex *vertices;
@@ -422,33 +421,33 @@ void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
     s32 minY;
     s32 foundIndex;
     s32 maxY;
-    s32 temp_t6;
-    s32 sp88;
-    s32 someCount;
-    s32 i2;
+    s32 planeIndex;
+    s32 lightLevel;
+    s32 clipCount;
+    s32 v;
     s32 i;
     s32 curFacesOffset;
 
-    spD0[0].x = gNewShadowObj->trans.x_position + gNewShadowWidth;
-    spD0[0].y = gNewShadowObj->trans.z_position + gNewShadowLength;
-    spD0[1].x = gNewShadowObj->trans.x_position - gNewShadowWidth;
-    spD0[1].y = gNewShadowObj->trans.z_position + gNewShadowLength;
-    spD0[2].x = gNewShadowObj->trans.x_position - gNewShadowWidth;
-    spD0[2].y = gNewShadowObj->trans.z_position - gNewShadowLength;
-    spD0[3].x = gNewShadowObj->trans.x_position + gNewShadowWidth;
-    spD0[3].y = gNewShadowObj->trans.z_position - gNewShadowLength;
+    shadowRect[0].x = gNewShadowObj->trans.x_position + gNewShadowWidth;
+    shadowRect[0].y = gNewShadowObj->trans.z_position + gNewShadowLength;
+    shadowRect[1].x = gNewShadowObj->trans.x_position - gNewShadowWidth;
+    shadowRect[1].y = gNewShadowObj->trans.z_position + gNewShadowLength;
+    shadowRect[2].x = gNewShadowObj->trans.x_position - gNewShadowWidth;
+    shadowRect[2].y = gNewShadowObj->trans.z_position - gNewShadowLength;
+    shadowRect[3].x = gNewShadowObj->trans.x_position + gNewShadowWidth;
+    shadowRect[3].y = gNewShadowObj->trans.z_position - gNewShadowLength;
 
-    for (spAC = 0; spAC < arg0->numberOfBatches; spAC++) {
-        if ((arg2 && (arg0->batches[spAC].flags & RENDER_WATER)) ||
-            (!arg2 && !(arg0->batches[spAC].flags & FLAGS_8002E904))) {
-            curFacesOffset = arg0->batches[spAC].facesOffset;
-            nextFacesOffset = arg0->batches[spAC + 1].facesOffset;
-            vertices = &arg0->vertices[arg0->batches[spAC].verticesOffset];
-            sp88 = (arg0->batches[spAC].flags >> 0x13) & 7;
+    for (batchIndex = 0; batchIndex < segment->numberOfBatches; batchIndex++) {
+        if ((isWater && (segment->batches[batchIndex].flags & RENDER_WATER)) ||
+            (!isWater && !(segment->batches[batchIndex].flags & SHADOW_SKIP_BATCH_FLAGS))) {
+            curFacesOffset = segment->batches[batchIndex].facesOffset;
+            nextFacesOffset = segment->batches[batchIndex + 1].facesOffset;
+            vertices = &segment->vertices[segment->batches[batchIndex].verticesOffset];
+            lightLevel = BATCH_LIGHT_LEVEL(segment->batches[batchIndex].flags);
             for (; curFacesOffset < nextFacesOffset; curFacesOffset++) {
-                if (((arg0->triangleGridMasks[curFacesOffset] & arg1) & 0xFF) &&
-                    ((arg0->triangleGridMasks[curFacesOffset] & arg1) & 0xFF00)) {
-                    triangles = &arg0->triangles[curFacesOffset];
+                if (((segment->triangleGridMasks[curFacesOffset] & gridMask) & 0xFF) &&
+                    ((segment->triangleGridMasks[curFacesOffset] & gridMask) & 0xFF00)) {
+                    triangles = &segment->triangles[curFacesOffset];
                     maxY = minY = vertices[triangles->verticesArray[1]].y;
                     for (i = 1; i < 3; i++) {
                         yPos = vertices[triangles->verticesArray[i + 1]].y;
@@ -461,56 +460,56 @@ void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
                     if (gNewShadowY2 >= minY) {
                         if (maxY >= gNewShadowY1) {
                             for (i = 0; i < 3; i++) {
-                                sp100[i].x = vertices[triangles->verticesArray[i + 1]].x;
-                                sp100[i].z = vertices[triangles->verticesArray[i + 1]].z;
-                                sp100[i].planeD.clip.bucketVertexIndex = -1;
+                                clipPoly[i].x = vertices[triangles->verticesArray[i + 1]].x;
+                                clipPoly[i].z = vertices[triangles->verticesArray[i + 1]].z;
+                                clipPoly[i].planeD.clip.bucketVertexIndex = -1;
                             }
-                            // @note while the cast to Vec4f is incorrect, polygon_overlaps_rect x uses unk0 and z which
-                            // are both floats so this is fine as the size is the same
-                            if (polygon_overlaps_rect(spD0[2].x, spD0[2].y, spD0[0].x, spD0[0].y, 3, (Vec4f *) sp100) !=
-                                0) {
-                                temp_t6 = arg0->collisionFacets[curFacesOffset].basePlaneIndex * 4;
-                                gShadowCurrentPlane = (ShadowPlane *) &(arg0->collisionPlanes)[temp_t6];
-                                if (arg0->collisionPlanes[temp_t6 + 1] != 0) {
+                            // @note while the cast to Vec4f is incorrect, polygon_overlaps_rect only reads x and z,
+                            // which are both floats so this is fine as the size is the same
+                            if (polygon_overlaps_rect(shadowRect[2].x, shadowRect[2].y, shadowRect[0].x,
+                                                      shadowRect[0].y, 3, (Vec4f *) clipPoly) != 0) {
+                                planeIndex = segment->collisionFacets[curFacesOffset].basePlaneIndex * 4;
+                                gShadowCurrentPlane = (ShadowPlane *) &(segment->collisionPlanes)[planeIndex];
+                                if (segment->collisionPlanes[planeIndex + 1] != 0) {
                                     if (gShadowFadeStart > 0.0f) {
-                                        shadow_check_centre_in_triangle(sp100);
+                                        shadow_check_centre_in_triangle(clipPoly);
                                     }
-                                    someCount = clip_polygon_to_rect(3, sp100, 4, spD0);
-                                    if (someCount >= 3) {
+                                    clipCount = clip_polygon_to_rect(3, clipPoly, 4, shadowRect);
+                                    if (clipCount >= 3) {
                                         gShadowTris[gShadowTriCount].bucketVertexMask = 0;
-                                        for (i2 = 0; i2 < someCount; i2++) {
-                                            if (sp100[i2].planeD.clip.bucketVertexIndex < 0) {
+                                        for (v = 0; v < clipCount; v++) {
+                                            if (clipPoly[v].planeD.clip.bucketVertexIndex < 0) {
                                                 foundIndex = -1;
                                                 i = 0;
                                                 while ((i < gShadowVertexCount) && (foundIndex == -1)) {
-                                                    if ((gShadowVertices[i].x == sp100[i2].x) &&
-                                                        (gShadowVertices[i].z == sp100[i2].z)) {
+                                                    if ((gShadowVertices[i].x == clipPoly[v].x) &&
+                                                        (gShadowVertices[i].z == clipPoly[v].z)) {
                                                         foundIndex = i;
                                                     }
                                                     i++;
                                                 }
                                                 if (foundIndex == -1) {
-                                                    gShadowVertices[gShadowVertexCount].x = sp100[i2].x;
+                                                    gShadowVertices[gShadowVertexCount].x = clipPoly[v].x;
                                                     gShadowVertices[gShadowVertexCount].plane = gShadowCurrentPlane;
-                                                    gShadowVertices[gShadowVertexCount].z = sp100[i2].z;
-                                                    gShadowTris[gShadowTriCount].vertexIndices[i2] =
+                                                    gShadowVertices[gShadowVertexCount].z = clipPoly[v].z;
+                                                    gShadowTris[gShadowTriCount].vertexIndices[v] =
                                                         gShadowVertexCount++;
                                                 } else {
-                                                    gShadowTris[gShadowTriCount].vertexIndices[i2] = foundIndex;
+                                                    gShadowTris[gShadowTriCount].vertexIndices[v] = foundIndex;
                                                 }
                                             } else {
-                                                gShadowTris[gShadowTriCount].vertexIndices[i2] =
-                                                    sp100[i2].planeD.clip.bucketVertexIndex;
-                                                gShadowTris[gShadowTriCount].bucketVertexMask |= 1 << i2;
+                                                gShadowTris[gShadowTriCount].vertexIndices[v] =
+                                                    clipPoly[v].planeD.clip.bucketVertexIndex;
+                                                gShadowTris[gShadowTriCount].bucketVertexMask |= 1 << v;
                                             }
                                         }
-                                        gShadowTris[gShadowTriCount].vertexCount = someCount;
-                                        gShadowTris[gShadowTriCount].lightLevel = sp88;
+                                        gShadowTris[gShadowTriCount].vertexCount = clipCount;
+                                        gShadowTris[gShadowTriCount].lightLevel = lightLevel;
                                         gShadowTriCount += 1;
-                                        if ((gShadowCentreTri >= 0) && (sp88 != gShadowCentreTri)) {
+                                        if ((gShadowCentreTri >= 0) && (lightLevel != gShadowCentreTri)) {
                                             gShadowCentreShared = 0;
                                         }
-                                        gShadowCentreTri = sp88;
+                                        gShadowCentreTri = lightLevel;
                                     }
                                 }
                             }
@@ -525,125 +524,125 @@ void shadow_add_segment_triangles(LevelModelSegment *arg0, s32 arg1, s32 arg2) {
 /**
  * Adds the wave surface under the shadow rectangle to the water effect mesh.
  */
-void shadow_add_wave_triangles(s32 arg0) {
-    ShadowPlane spA8[8];
-    Vec2f sp88[4];
-    s32 var_v0;
-    s32 var_a0;
-    s32 var_a1;
-    s32 temp_v0;
-    s32 temp_v0_3;
-    s32 var_s4;
-    s32 var_t1;
-    s32 var_v1;
-    s32 tempIdx;
+void shadow_add_wave_triangles(s32 segmentIndex) {
+    ShadowPlane clipPoly[8];
+    Vec2f shadowRect[4];
+    s32 corner;
+    s32 minY;
+    s32 maxY;
+    s32 foundIndex;
+    s32 cellCount;
+    s32 clipCount;
+    s32 cell;
+    s32 v;
+    s32 i;
+    s32 triIndex;
 
-    sp88[0].x = gNewShadowObj->trans.x_position + gNewShadowWidth;
-    sp88[0].y = gNewShadowObj->trans.z_position + gNewShadowLength;
-    sp88[1].x = gNewShadowObj->trans.x_position - gNewShadowWidth;
-    sp88[1].y = gNewShadowObj->trans.z_position + gNewShadowLength;
-    sp88[2].x = gNewShadowObj->trans.x_position - gNewShadowWidth;
-    sp88[2].y = gNewShadowObj->trans.z_position - gNewShadowLength;
-    sp88[3].x = gNewShadowObj->trans.x_position + gNewShadowWidth;
-    sp88[3].y = gNewShadowObj->trans.z_position - gNewShadowLength;
+    shadowRect[0].x = gNewShadowObj->trans.x_position + gNewShadowWidth;
+    shadowRect[0].y = gNewShadowObj->trans.z_position + gNewShadowLength;
+    shadowRect[1].x = gNewShadowObj->trans.x_position - gNewShadowWidth;
+    shadowRect[1].y = gNewShadowObj->trans.z_position + gNewShadowLength;
+    shadowRect[2].x = gNewShadowObj->trans.x_position - gNewShadowWidth;
+    shadowRect[2].y = gNewShadowObj->trans.z_position - gNewShadowLength;
+    shadowRect[3].x = gNewShadowObj->trans.x_position + gNewShadowWidth;
+    shadowRect[3].y = gNewShadowObj->trans.z_position - gNewShadowLength;
     // clang-format off
-    temp_v0 = wave_cells_in_rect(
-        arg0, gShadowWaveCells, &gShadowWavePlanes[gShadowWavePlaneCount],
-        sp88[2].x, sp88[2].y,
-        sp88[0].x, sp88[0].y
+    cellCount = wave_cells_in_rect(
+        segmentIndex, gShadowWaveCells, &gShadowWavePlanes[gShadowWavePlaneCount],
+        shadowRect[2].x, shadowRect[2].y,
+        shadowRect[0].x, shadowRect[0].y
     );
     // clang-format on
 
-    for (var_s4 = 0; var_s4 < temp_v0; var_s4++) {
-        var_a0 = gShadowWaveCells[var_s4].y1;
-        var_a1 = gShadowWaveCells[var_s4].y1;
-        if (gShadowWaveCells[var_s4].y2 < var_a0) {
-            var_a0 = gShadowWaveCells[var_s4].y2;
-        } else if (var_a1 < gShadowWaveCells[var_s4].y2) {
-            var_a1 = gShadowWaveCells[var_s4].y2;
+    for (cell = 0; cell < cellCount; cell++) {
+        minY = gShadowWaveCells[cell].y1;
+        maxY = gShadowWaveCells[cell].y1;
+        if (gShadowWaveCells[cell].y2 < minY) {
+            minY = gShadowWaveCells[cell].y2;
+        } else if (maxY < gShadowWaveCells[cell].y2) {
+            maxY = gShadowWaveCells[cell].y2;
         }
-        if (gShadowWaveCells[var_s4].y3 < var_a0) {
-            var_a0 = gShadowWaveCells[var_s4].y3;
-        } else if (var_a1 < gShadowWaveCells[var_s4].y3) {
-            var_a1 = gShadowWaveCells[var_s4].y3;
+        if (gShadowWaveCells[cell].y3 < minY) {
+            minY = gShadowWaveCells[cell].y3;
+        } else if (maxY < gShadowWaveCells[cell].y3) {
+            maxY = gShadowWaveCells[cell].y3;
         }
-        if (gNewShadowY2 >= var_a0) {
-            if (var_a1 >= gNewShadowY1) {
-                spA8[0].x = gShadowWaveCells[var_s4].x1;
-                spA8[0].z = gShadowWaveCells[var_s4].z1;
-                spA8[1].x = gShadowWaveCells[var_s4].x2;
-                spA8[1].z = gShadowWaveCells[var_s4].z2;
-                spA8[2].x = gShadowWaveCells[var_s4].x3;
-                spA8[2].z = gShadowWaveCells[var_s4].z3;
+        if (gNewShadowY2 >= minY) {
+            if (maxY >= gNewShadowY1) {
+                clipPoly[0].x = gShadowWaveCells[cell].x1;
+                clipPoly[0].z = gShadowWaveCells[cell].z1;
+                clipPoly[1].x = gShadowWaveCells[cell].x2;
+                clipPoly[1].z = gShadowWaveCells[cell].z2;
+                clipPoly[2].x = gShadowWaveCells[cell].x3;
+                clipPoly[2].z = gShadowWaveCells[cell].z3;
 
-                for (var_v0 = 0; var_v0 != 3; var_v0++) {
-                    spA8[var_v0].planeD.clip.bucketVertexIndex = -1;
+                for (corner = 0; corner != 3; corner++) {
+                    clipPoly[corner].planeD.clip.bucketVertexIndex = -1;
                 }
 
-                gShadowCurrentPlane = &gShadowWavePlanes[gShadowWavePlaneCount + var_s4];
-                temp_v0_3 = clip_polygon_to_rect(3, spA8, 4, sp88);
-                if (temp_v0_3 >= 3) {
-                    tempIdx = gShadowTriCount;
-                    gShadowTris[tempIdx].bucketVertexMask = 0;
-                    for (var_t1 = 0; var_t1 < temp_v0_3; var_t1++) {
-                        if (spA8[var_t1].planeD.clip.bucketVertexIndex < 0) {
-                            var_a1 = -1;
-                            var_v1 = 0;
-                            while (var_v1 < gShadowVertexCount && var_a1 == -1) {
-                                if ((gShadowVertices[var_v1].x == spA8[var_t1].x) &&
-                                    (gShadowVertices[var_v1].z == spA8[var_t1].z)) {
-                                    var_a1 = var_v1;
+                gShadowCurrentPlane = &gShadowWavePlanes[gShadowWavePlaneCount + cell];
+                clipCount = clip_polygon_to_rect(3, clipPoly, 4, shadowRect);
+                if (clipCount >= 3) {
+                    triIndex = gShadowTriCount;
+                    gShadowTris[triIndex].bucketVertexMask = 0;
+                    for (v = 0; v < clipCount; v++) {
+                        if (clipPoly[v].planeD.clip.bucketVertexIndex < 0) {
+                            foundIndex = -1;
+                            i = 0;
+                            while (i < gShadowVertexCount && foundIndex == -1) {
+                                if ((gShadowVertices[i].x == clipPoly[v].x) &&
+                                    (gShadowVertices[i].z == clipPoly[v].z)) {
+                                    foundIndex = i;
                                 }
-                                var_v1++;
+                                i++;
                             }
-                            if (var_a1 == -1) {
-                                gShadowVertices[gShadowVertexCount].x = spA8[var_t1].x;
+                            if (foundIndex == -1) {
+                                gShadowVertices[gShadowVertexCount].x = clipPoly[v].x;
                                 gShadowVertices[gShadowVertexCount].plane = gShadowCurrentPlane;
-                                gShadowVertices[gShadowVertexCount].z = spA8[var_t1].z;
-                                gShadowTris[tempIdx].vertexIndices[var_t1] = gShadowVertexCount++;
+                                gShadowVertices[gShadowVertexCount].z = clipPoly[v].z;
+                                gShadowTris[triIndex].vertexIndices[v] = gShadowVertexCount++;
                             } else {
-                                gShadowTris[tempIdx].vertexIndices[var_t1] = var_a1;
+                                gShadowTris[triIndex].vertexIndices[v] = foundIndex;
                             }
                         } else {
-                            gShadowTris[tempIdx].vertexIndices[var_t1] = spA8[var_t1].planeD.clip.bucketVertexIndex;
-                            gShadowTris[tempIdx].bucketVertexMask |= 1 << var_t1;
+                            gShadowTris[triIndex].vertexIndices[v] = clipPoly[v].planeD.clip.bucketVertexIndex;
+                            gShadowTris[triIndex].bucketVertexMask |= 1 << v;
                         }
                     }
-                    gShadowTriCount = tempIdx + 1;
-                    gShadowTris[tempIdx].vertexCount = temp_v0_3;
+                    gShadowTriCount = triIndex + 1;
+                    gShadowTris[triIndex].vertexCount = clipCount;
                 }
             }
         }
     }
 
-    gShadowWavePlaneCount += temp_v0;
+    gShadowWavePlaneCount += cellCount;
 }
 
 /**
  * Drops every shadow vertex onto the plane of the triangle it came from.
  */
 void shadow_project_vertices(void) {
-    f32 temp_f12;
-    f32 temp_f16;
-    ShadowPlane *var_v0;
+    f32 zTerm;
+    f32 xTerm;
+    ShadowPlane *plane;
     s32 i, j, k;
-    ShadowClipVertex *curr;
 
     for (i = 0; i < gShadowVertexCount; i++) {
-        var_v0 = gShadowVertices[i].plane;
-        temp_f16 = gShadowVertices[i].x * var_v0->x;
-        temp_f12 = gShadowVertices[i].z * var_v0->z;
-        gShadowVertices[i].y = (f32) (-(temp_f16 + temp_f12 + var_v0->planeD.w) / var_v0->y);
+        plane = gShadowVertices[i].plane;
+        xTerm = gShadowVertices[i].x * plane->x;
+        zTerm = gShadowVertices[i].z * plane->z;
+        gShadowVertices[i].y = (f32) (-(xTerm + zTerm + plane->planeD.w) / plane->y);
     }
 
     for (i = 0; i < ARRAY_COUNT(gShadowBucketCounts); i++) {
         // Bucket stride: the N64 source spells the 32-entry stride as sizeof(ShadowClipVertex),
         // which is 0x20 there but larger on a host with 8-byte pointers.
-        for (j = 0, k = i * 0x20; j < gShadowBucketCounts[i]; j++, k++) {
-            var_v0 = gShadowBucketVertices[k].plane;
-            temp_f16 = gShadowBucketVertices[k].x * var_v0->x;
-            temp_f12 = gShadowBucketVertices[k].z * var_v0->z;
-            gShadowBucketVertices[k].y = (f32) (-(temp_f16 + temp_f12 + var_v0->planeD.w) / var_v0->y);
+        for (j = 0, k = i * SHADOW_BUCKET_SIZE; j < gShadowBucketCounts[i]; j++, k++) {
+            plane = gShadowBucketVertices[k].plane;
+            xTerm = gShadowBucketVertices[k].x * plane->x;
+            zTerm = gShadowBucketVertices[k].z * plane->z;
+            gShadowBucketVertices[k].y = (f32) (-(xTerm + zTerm + plane->planeD.w) / plane->y);
         }
     }
 }
@@ -653,98 +652,99 @@ void shadow_project_vertices(void) {
  * the object's shadow texture, rotated with the object.
  */
 void shadow_build_mesh(void) {
-    s32 spAC;
-    s32 var_t0;
+    s32 triIndex;
+    s32 bucketMask;
     Triangle *tri;
     Vertex *vert;
     s32 alpha;
     // These must hold up to 7 vertices: clip_polygon_to_rect clips a triangle against 4
-    // planes, and unk0 (the loop bound writing these) can reach 3+4=7. They were
+    // planes, and vertexCount (the loop bound writing these) can reach 3+4=7. They were
     // sized [6], and the overflow corrupted gcc's stack frame (infinite loop).
-    s16 sp90[8];
-    s32 var_s2;
-    s16 sp80[8];
-    f32 temp_f18;
+    s16 uCoords[8];
+    s32 batchBase;
+    s16 vCoords[8];
+    f32 texCentre;
     f32 yRotCos;
     f32 yRotSin;
     f32 zDiff;
-    f32 someY;
+    f32 heightAboveFloor;
     f32 scale;
     f32 xDiff;
     s32 i;
-    UNUSED s32 pad;
 
     alpha = 255;
     yRotSin = sins_f(gNewShadowObj->trans.rotation.y_rotation);
     yRotCos = coss_f(gNewShadowObj->trans.rotation.y_rotation);
-    temp_f18 = gNewShadowTexture->width * 16;
+    texCentre = gNewShadowTexture->width * 16;
     scale = ((gNewShadowTexture->width * 16) / gNewShadowWidth);
     scale *= 1.4142f;
     if (gShadowFadeStart > 0.0f) {
-        someY = gNewShadowObj->trans.y_position - gShadowMinY;
-        if (gShadowFadeStart < someY) {
+        heightAboveFloor = gNewShadowObj->trans.y_position - gShadowMinY;
+        if (gShadowFadeStart < heightAboveFloor) {
             alpha = 255;
-            alpha -= (s32) ((255 * (someY - gShadowFadeStart)) / gShadowFadeRange);
+            alpha -= (s32) ((255 * (heightAboveFloor - gShadowFadeStart)) / gShadowFadeRange);
             if (alpha < 0) {
                 alpha = 0;
             }
         }
-        if (someY > 0.0f) {
-            scale *= 1.0f + (0.005f * someY);
+        if (heightAboveFloor > 0.0f) {
+            scale *= 1.0f + (0.005f * heightAboveFloor);
         }
     }
     alpha *= gShadowOpacity;
-    var_s2 = 25;
-    for (spAC = 0; spAC < gShadowTriCount; spAC++) {
-        if ((gShadowTris[spAC].vertexCount + var_s2) >= 24) {
+    batchBase = SHADOW_BATCH_VERTS + 1; // Forces a new batch for the first triangle.
+    for (triIndex = 0; triIndex < gShadowTriCount; triIndex++) {
+        if ((gShadowTris[triIndex].vertexCount + batchBase) >= SHADOW_BATCH_VERTS) {
             gCurrShadowHeapData[gShadowTail].texture = gNewShadowTexture;
             gCurrShadowHeapData[gShadowTail].triCount = gNewShadowTriCount;
             gCurrShadowHeapData[gShadowTail].vtxCount = gNewShadowVtxCount;
             gShadowTail++;
-            var_s2 = 0;
+            batchBase = 0;
         }
-        var_t0 = gShadowTris[spAC].bucketVertexMask;
+        bucketMask = gShadowTris[triIndex].bucketVertexMask;
 
-        for (i = 0; i < gShadowTris[spAC].vertexCount; i++) {
+        for (i = 0; i < gShadowTris[triIndex].vertexCount; i++) {
             vert = &gCurrShadowVerts[gNewShadowVtxCount];
             gNewShadowVtxCount++;
-            if (var_t0 & 1) {
-                vert->x = gShadowBucketVertices[gShadowTris[spAC].vertexIndices[i]].x;
-                xDiff = gShadowBucketVertices[gShadowTris[spAC].vertexIndices[i]].x - gNewShadowObj->trans.x_position;
-                vert->y = (gShadowBucketVertices[gShadowTris[spAC].vertexIndices[i]].y + gShadowYOffset);
-                vert->z = gShadowBucketVertices[gShadowTris[spAC].vertexIndices[i]].z;
-                zDiff = gShadowBucketVertices[gShadowTris[spAC].vertexIndices[i]].z - gNewShadowObj->trans.z_position;
+            if (bucketMask & 1) {
+                vert->x = gShadowBucketVertices[gShadowTris[triIndex].vertexIndices[i]].x;
+                xDiff =
+                    gShadowBucketVertices[gShadowTris[triIndex].vertexIndices[i]].x - gNewShadowObj->trans.x_position;
+                vert->y = (gShadowBucketVertices[gShadowTris[triIndex].vertexIndices[i]].y + gShadowYOffset);
+                vert->z = gShadowBucketVertices[gShadowTris[triIndex].vertexIndices[i]].z;
+                zDiff =
+                    gShadowBucketVertices[gShadowTris[triIndex].vertexIndices[i]].z - gNewShadowObj->trans.z_position;
             } else {
-                vert->x = gShadowVertices[gShadowTris[spAC].vertexIndices[i]].x;
-                xDiff = gShadowVertices[gShadowTris[spAC].vertexIndices[i]].x - gNewShadowObj->trans.x_position;
-                vert->y = (gShadowVertices[gShadowTris[spAC].vertexIndices[i]].y + gShadowYOffset);
-                vert->z = gShadowVertices[gShadowTris[spAC].vertexIndices[i]].z;
-                zDiff = gShadowVertices[gShadowTris[spAC].vertexIndices[i]].z - gNewShadowObj->trans.z_position;
+                vert->x = gShadowVertices[gShadowTris[triIndex].vertexIndices[i]].x;
+                xDiff = gShadowVertices[gShadowTris[triIndex].vertexIndices[i]].x - gNewShadowObj->trans.x_position;
+                vert->y = (gShadowVertices[gShadowTris[triIndex].vertexIndices[i]].y + gShadowYOffset);
+                vert->z = gShadowVertices[gShadowTris[triIndex].vertexIndices[i]].z;
+                zDiff = gShadowVertices[gShadowTris[triIndex].vertexIndices[i]].z - gNewShadowObj->trans.z_position;
             }
-            var_t0 >>= 1;
+            bucketMask >>= 1;
             vert->r = 255;
             vert->g = 255;
             vert->b = 255;
             vert->a = alpha;
-            sp90[i] = ((((xDiff * yRotCos) - (zDiff * yRotSin)) * scale) + temp_f18);
-            sp80[i] = ((((zDiff * yRotCos) + (xDiff * yRotSin)) * scale) + temp_f18);
+            uCoords[i] = ((((xDiff * yRotCos) - (zDiff * yRotSin)) * scale) + texCentre);
+            vCoords[i] = ((((zDiff * yRotCos) + (xDiff * yRotSin)) * scale) + texCentre);
         }
 
-        for (i = 1; i < (gShadowTris[spAC].vertexCount - 1); i++) {
+        for (i = 1; i < (gShadowTris[triIndex].vertexCount - 1); i++) {
             tri = &gCurrShadowTris[gNewShadowTriCount];
             gNewShadowTriCount++;
-            tri->flags = 0x40;
-            tri->vi0 = var_s2 + i;
-            tri->vi1 = var_s2 + i + 1;
-            tri->vi2 = var_s2;
-            tri->uv0.u = sp90[i];
-            tri->uv0.v = sp80[i];
-            tri->uv1.u = sp90[i + 1];
-            tri->uv1.v = sp80[i + 1];
-            tri->uv2.u = sp90[0];
-            tri->uv2.v = sp80[0];
+            tri->flags = BACKFACE_DRAW;
+            tri->vi0 = batchBase + i;
+            tri->vi1 = batchBase + i + 1;
+            tri->vi2 = batchBase;
+            tri->uv0.u = uCoords[i];
+            tri->uv0.v = vCoords[i];
+            tri->uv1.u = uCoords[i + 1];
+            tri->uv1.v = vCoords[i + 1];
+            tri->uv2.u = uCoords[0];
+            tri->uv2.v = vCoords[0];
         }
-        var_s2 += gShadowTris[spAC].vertexCount;
+        batchBase += gShadowTris[triIndex].vertexCount;
     }
 }
 
@@ -753,48 +753,48 @@ void shadow_build_mesh(void) {
  * triangles under it; feeds the object's shading.
  */
 f32 shadow_light_level(void) {
-    f32 var_f2;
+    f32 shadedArea;
     f32 x0, z0, x1, z1, x2, z2;
-    s32 temp_t5;
-    s32 var_s2;
+    s32 bucketMask;
+    s32 v;
     s32 i;
 
-    var_f2 = 0.0f;
+    shadedArea = 0.0f;
     if (gShadowTriCount > 0) {
         if (gShadowCentreShared != 0) {
             if (gShadowCentreTri > 0) {
-                var_f2 = gShadowLightLevels[gShadowCentreTri] * gShadowArea;
+                shadedArea = gShadowLightLevels[gShadowCentreTri] * gShadowArea;
             }
         } else {
             for (i = 0; i < gShadowTriCount; i++) {
                 if (gShadowTris[i].lightLevel > 0) {
-                    temp_t5 = gShadowTris[i].bucketVertexMask;
-                    if (temp_t5 & 1) {
+                    bucketMask = gShadowTris[i].bucketVertexMask;
+                    if (bucketMask & 1) {
                         x0 = gShadowBucketVertices[gShadowTris[i].vertexIndices[0]].x;
                         z0 = gShadowBucketVertices[gShadowTris[i].vertexIndices[0]].z;
                     } else {
                         x0 = gShadowVertices[gShadowTris[i].vertexIndices[0]].x;
                         z0 = gShadowVertices[gShadowTris[i].vertexIndices[0]].z;
                     }
-                    temp_t5 >>= 1;
-                    if (temp_t5 & 1) {
+                    bucketMask >>= 1;
+                    if (bucketMask & 1) {
                         x1 = gShadowBucketVertices[gShadowTris[i].vertexIndices[1]].x;
                         z1 = gShadowBucketVertices[gShadowTris[i].vertexIndices[1]].z;
                     } else {
                         x1 = gShadowVertices[gShadowTris[i].vertexIndices[1]].x;
                         z1 = gShadowVertices[gShadowTris[i].vertexIndices[1]].z;
                     }
-                    temp_t5 >>= 1;
-                    for (var_s2 = 2; var_s2 < gShadowTris[i].vertexCount; var_s2++) {
-                        if (temp_t5 & 1) {
-                            x2 = gShadowBucketVertices[gShadowTris[i].vertexIndices[var_s2]].x;
-                            z2 = gShadowBucketVertices[gShadowTris[i].vertexIndices[var_s2]].z;
+                    bucketMask >>= 1;
+                    for (v = 2; v < gShadowTris[i].vertexCount; v++) {
+                        if (bucketMask & 1) {
+                            x2 = gShadowBucketVertices[gShadowTris[i].vertexIndices[v]].x;
+                            z2 = gShadowBucketVertices[gShadowTris[i].vertexIndices[v]].z;
                         } else {
-                            x2 = gShadowVertices[gShadowTris[i].vertexIndices[var_s2]].x;
-                            z2 = gShadowVertices[gShadowTris[i].vertexIndices[var_s2]].z;
+                            x2 = gShadowVertices[gShadowTris[i].vertexIndices[v]].x;
+                            z2 = gShadowVertices[gShadowTris[i].vertexIndices[v]].z;
                         }
-                        temp_t5 >>= 1;
-                        var_f2 +=
+                        bucketMask >>= 1;
+                        shadedArea +=
                             area_triangle_2d(x0, z0, x1, z1, x2, z2) * gShadowLightLevels[gShadowTris[i].lightLevel];
                         x1 = x2;
                         z1 = z2;
@@ -803,38 +803,38 @@ f32 shadow_light_level(void) {
             }
         }
 
-        if (gShadowArea < var_f2) {
-            var_f2 = gShadowArea * 0.99f;
+        if (gShadowArea < shadedArea) {
+            shadedArea = gShadowArea * 0.99f;
         }
     }
-    return (gShadowArea - var_f2) / gShadowArea;
+    return (gShadowArea - shadedArea) / gShadowArea;
 }
 
 /**
- * Whether a polygon's bounding box overlaps the rectangle (x0, z0)-(x1, x2).
+ * Whether a polygon's bounding box overlaps the rectangle (x0, z0)-(x1, z1).
  */
-s32 polygon_overlaps_rect(f32 x0, f32 z0, f32 x1, f32 x2, s32 count, Vec4f *arg5) {
+s32 polygon_overlaps_rect(f32 x0, f32 z0, f32 x1, f32 z1, s32 count, Vec4f *points) {
     if (count > 0) {
-        f32 minX = arg5[0].x;
-        f32 maxX = arg5[0].x;
-        f32 minZ = arg5[0].z;
-        f32 maxZ = arg5[0].z;
+        f32 minX = points[0].x;
+        f32 maxX = points[0].x;
+        f32 minZ = points[0].z;
+        f32 maxZ = points[0].z;
         s32 i;
 
         for (i = 1; i < count; i++) {
-            if (arg5[i].x < minX) {
-                minX = arg5[i].x;
-            } else if (maxX < arg5[i].x) {
-                maxX = arg5[i].x;
+            if (points[i].x < minX) {
+                minX = points[i].x;
+            } else if (maxX < points[i].x) {
+                maxX = points[i].x;
             }
-            if (arg5[i].z < minZ) {
-                minZ = arg5[i].z;
-            } else if (maxZ < arg5[i].z) {
-                maxZ = arg5[i].z;
+            if (points[i].z < minZ) {
+                minZ = points[i].z;
+            } else if (maxZ < points[i].z) {
+                maxZ = points[i].z;
             }
         }
 
-        if ((x0 <= maxX) && (z0 <= maxZ) && (minX <= x1) && (minZ <= x2)) {
+        if ((x0 <= maxX) && (z0 <= maxZ) && (minX <= x1) && (minZ <= z1)) {
             return -1;
         }
     }
@@ -842,146 +842,142 @@ s32 polygon_overlaps_rect(f32 x0, f32 z0, f32 x1, f32 x2, s32 count, Vec4f *arg5
     return 0;
 }
 
-// arg0 is always 3
-// arg1 always has size 8 (that's why spE0 is also of size 8)
-// arg2 is always 4
+// inCount is always 3
+// poly always has size 8 (that's why scratch is also of size 8)
+// edgeCount is always 4
 /**
  * Clips a polygon against the four edges of a rectangle (Sutherland-Hodgman),
  * returning the vertex count; the output can hold up to 8 vertices.
  */
-s32 clip_polygon_to_rect(s32 arg0, ShadowPlane *arg1, s32 arg2, Vec2f *arg3) {
-    ShadowPlane spE0[8];
-    f32 temp_f12;
-    f32 temp_f14;
-    f32 temp_f16;
-    f32 temp_f22;
-    f32 temp_f24;
-    f32 var_f2;
-    s32 var_a1;
-    s32 var_v1_3;
-    s32 var_a0;
-    s32 var_t2;
-    UNUSED s32 var_t5;
-    s32 var_v0;
-    s32 var_v1;
-    s32 var_t1;
-    s32 var_s2;
-    ShadowPlane *var_s0;
-    ShadowPlane *var_s3;
-    ShadowPlane *swap; // swap var for var_s0 and var_s3
+s32 clip_polygon_to_rect(s32 inCount, ShadowPlane *poly, s32 edgeCount, Vec2f *rect) {
+    ShadowPlane scratch[8];
+    f32 edgeNormalX;
+    f32 edgeNormalZ;
+    f32 currDist;
+    f32 nextDist;
+    f32 t;
+    f32 edgeD;
+    s32 bucketMatch;
+    s32 bucketPos;
+    s32 bucketLeft;
+    s32 outCount;
+    s32 edge;
+    s32 next;
+    s32 v;
+    s32 count;
+    ShadowPlane *dstPoly;
+    ShadowPlane *srcPoly;
+    ShadowPlane *swap; // swap var for dstPoly and srcPoly
 
-    var_s3 = arg1;
-    var_s0 = spE0;
-    var_s2 = arg0;
-    var_v0 = 0;
+    srcPoly = poly;
+    dstPoly = scratch;
+    count = inCount;
+    edge = 0;
 
-    while (var_v0 < arg2 && var_s2 >= 3) {
-        var_v1 = var_v0 + 1;
-        if (var_v1 >= arg2) {
-            var_v1 = 0;
+    while (edge < edgeCount && count >= 3) {
+        next = edge + 1;
+        if (next >= edgeCount) {
+            next = 0;
         }
 
-        temp_f12 = arg3[var_v1].y - arg3[var_v0].y;
-        temp_f14 = -(arg3[var_v1].x - arg3[var_v0].x);
-        if (arg3[var_v0].x < arg3[var_v1].x) {
-            var_f2 = (temp_f12 * arg3[var_v0].x) + (arg3[var_v0].y * temp_f14);
-            var_f2 = -var_f2;
+        edgeNormalX = rect[next].y - rect[edge].y;
+        edgeNormalZ = -(rect[next].x - rect[edge].x);
+        if (rect[edge].x < rect[next].x) {
+            edgeD = (edgeNormalX * rect[edge].x) + (rect[edge].y * edgeNormalZ);
+            edgeD = -edgeD;
         } else {
-            var_f2 = (temp_f12 * arg3[var_v1].x) + (arg3[var_v1].y * temp_f14);
-            var_f2 = -var_f2;
+            edgeD = (edgeNormalX * rect[next].x) + (rect[next].y * edgeNormalZ);
+            edgeD = -edgeD;
         }
 
-        for (var_t1 = 0, var_t2 = 0; var_t1 < var_s2; var_t1++) {
-            var_v1 = var_t1 + 1;
-            if (var_v1 >= var_s2) {
-                var_v1 = 0;
+        for (v = 0, outCount = 0; v < count; v++) {
+            next = v + 1;
+            if (next >= count) {
+                next = 0;
             }
-            temp_f16 = (temp_f12 * var_s3[var_t1].x) + (var_s3[var_t1].z * temp_f14) + var_f2;
-            temp_f22 = (temp_f12 * var_s3[var_v1].x) + (var_s3[var_v1].z * temp_f14) + var_f2;
-            if ((temp_f16 >= 0.0f && temp_f22 < 0.0f) || (temp_f16 < 0.0f && temp_f22 >= 0.0f)) {
-                var_a0 = gShadowBucketCounts[var_v0];
-                var_a1 = -1;
-                var_v1_3 = var_v0 << 5;
-                while (var_a0 > 0 && var_a1 < 0) {
-                    if ((gShadowBucketVertices[var_v1_3].edgeStartX == var_s3[var_t1].x) &&
-                        (gShadowBucketVertices[var_v1_3].edgeStartZ == var_s3[var_t1].z) &&
-                        (gShadowBucketVertices[var_v1_3].edgeEndX == var_s3[var_v1].x) &&
-                        (gShadowBucketVertices[var_v1_3].edgeEndZ == var_s3[var_v1].z)) {
-                        var_a1 = var_v1_3;
-                    } else if ((gShadowBucketVertices[var_v1_3].edgeStartX == var_s3[var_v1].x) &&
-                               (gShadowBucketVertices[var_v1_3].edgeStartZ == var_s3[var_v1].z) &&
-                               (gShadowBucketVertices[var_v1_3].edgeEndX == var_s3[var_t1].x) &&
-                               (gShadowBucketVertices[var_v1_3].edgeEndZ == var_s3[var_t1].z)) {
-                        var_a1 = var_v1_3;
+            currDist = (edgeNormalX * srcPoly[v].x) + (srcPoly[v].z * edgeNormalZ) + edgeD;
+            nextDist = (edgeNormalX * srcPoly[next].x) + (srcPoly[next].z * edgeNormalZ) + edgeD;
+            if ((currDist >= 0.0f && nextDist < 0.0f) || (currDist < 0.0f && nextDist >= 0.0f)) {
+                bucketLeft = gShadowBucketCounts[edge];
+                bucketMatch = -1;
+                bucketPos = edge << 5;
+                while (bucketLeft > 0 && bucketMatch < 0) {
+                    if ((gShadowBucketVertices[bucketPos].edgeStartX == srcPoly[v].x) &&
+                        (gShadowBucketVertices[bucketPos].edgeStartZ == srcPoly[v].z) &&
+                        (gShadowBucketVertices[bucketPos].edgeEndX == srcPoly[next].x) &&
+                        (gShadowBucketVertices[bucketPos].edgeEndZ == srcPoly[next].z)) {
+                        bucketMatch = bucketPos;
+                    } else if ((gShadowBucketVertices[bucketPos].edgeStartX == srcPoly[next].x) &&
+                               (gShadowBucketVertices[bucketPos].edgeStartZ == srcPoly[next].z) &&
+                               (gShadowBucketVertices[bucketPos].edgeEndX == srcPoly[v].x) &&
+                               (gShadowBucketVertices[bucketPos].edgeEndZ == srcPoly[v].z)) {
+                        bucketMatch = bucketPos;
                     }
-                    var_a0 -= 1;
-                    var_v1_3++;
+                    bucketLeft -= 1;
+                    bucketPos++;
                 }
-                if (var_a1 >= 0) {
-                    var_s0[var_t2].planeD.clip.bucketVertexIndex = var_a1;
-                    var_s0[var_t2].x = gShadowBucketVertices[var_a1].x;
-                    var_s0[var_t2].z = gShadowBucketVertices[var_a1].z;
-                    var_t2++;
+                if (bucketMatch >= 0) {
+                    dstPoly[outCount].planeD.clip.bucketVertexIndex = bucketMatch;
+                    dstPoly[outCount].x = gShadowBucketVertices[bucketMatch].x;
+                    dstPoly[outCount].z = gShadowBucketVertices[bucketMatch].z;
+                    outCount++;
                 } else {
-                    temp_f24 = temp_f16 / (temp_f16 - temp_f22);
-                    var_s0[var_t2].x = var_s3[var_t1].x + ((var_s3[var_v1].x - var_s3[var_t1].x) * temp_f24);
-                    var_s0[var_t2].z = var_s3[var_t1].z + ((var_s3[var_v1].z - var_s3[var_t1].z) * temp_f24);
-                    if (gShadowBucketCounts[var_v0] > 0x1F) {
-                        gShadowBucketCounts[var_v0] = 0x1F;
+                    t = currDist / (currDist - nextDist);
+                    dstPoly[outCount].x = srcPoly[v].x + ((srcPoly[next].x - srcPoly[v].x) * t);
+                    dstPoly[outCount].z = srcPoly[v].z + ((srcPoly[next].z - srcPoly[v].z) * t);
+                    if (gShadowBucketCounts[edge] > SHADOW_BUCKET_SIZE - 1) {
+                        gShadowBucketCounts[edge] = SHADOW_BUCKET_SIZE - 1;
                     }
-                    var_v1_3 = gShadowBucketCounts[var_v0] + (var_v0 << 5);
-                    gShadowBucketVertices[var_v1_3].edgeStartX = var_s3[var_t1].x;
-                    gShadowBucketVertices[var_v1_3].edgeStartZ = var_s3[var_t1].z;
-                    gShadowBucketVertices[var_v1_3].edgeEndX = var_s3[var_v1].x;
-                    gShadowBucketVertices[var_v1_3].edgeEndZ = var_s3[var_v1].z;
-                    gShadowBucketVertices[var_v1_3].x = var_s0[var_t2].x;
-                    gShadowBucketVertices[var_v1_3].z = var_s0[var_t2].z;
-                    gShadowBucketVertices[var_v1_3].plane = gShadowCurrentPlane;
-                    gShadowBucketCounts[var_v0]++;
-                    var_s0[var_t2].planeD.clip.bucketVertexIndex = var_v1_3;
-                    var_t2++;
+                    bucketPos = gShadowBucketCounts[edge] + (edge << 5);
+                    gShadowBucketVertices[bucketPos].edgeStartX = srcPoly[v].x;
+                    gShadowBucketVertices[bucketPos].edgeStartZ = srcPoly[v].z;
+                    gShadowBucketVertices[bucketPos].edgeEndX = srcPoly[next].x;
+                    gShadowBucketVertices[bucketPos].edgeEndZ = srcPoly[next].z;
+                    gShadowBucketVertices[bucketPos].x = dstPoly[outCount].x;
+                    gShadowBucketVertices[bucketPos].z = dstPoly[outCount].z;
+                    gShadowBucketVertices[bucketPos].plane = gShadowCurrentPlane;
+                    gShadowBucketCounts[edge]++;
+                    dstPoly[outCount].planeD.clip.bucketVertexIndex = bucketPos;
+                    outCount++;
                 }
             }
-            if (temp_f22 <= 0.0f) {
-                var_s0[var_t2].planeD.clip.bucketVertexIndex = var_s3[var_v1].planeD.clip.bucketVertexIndex;
-                var_s0[var_t2].x = var_s3[var_v1].x;
-                var_s0[var_t2].z = var_s3[var_v1].z;
-                var_t2++;
+            if (nextDist <= 0.0f) {
+                dstPoly[outCount].planeD.clip.bucketVertexIndex = srcPoly[next].planeD.clip.bucketVertexIndex;
+                dstPoly[outCount].x = srcPoly[next].x;
+                dstPoly[outCount].z = srcPoly[next].z;
+                outCount++;
             }
         }
-        var_s2 = var_t2;
-        var_v0++;
+        count = outCount;
+        edge++;
 
-        swap = var_s3;
-        var_s3 = var_s0;
-        var_s0 = swap;
+        swap = srcPoly;
+        srcPoly = dstPoly;
+        dstPoly = swap;
     }
 
-    if (var_s2 >= 3) {
-        if (var_s3 != arg1) {
-            for (var_t1 = 0; var_t1 < var_s2; var_t1++) {
-                arg1[var_t1].x = var_s3[var_t1].x;
-                arg1[var_t1].z = var_s3[var_t1].z;
-                arg1[var_t1].planeD.clip.bucketVertexIndex = var_s3[var_t1].planeD.clip.bucketVertexIndex;
+    if (count >= 3) {
+        if (srcPoly != poly) {
+            for (v = 0; v < count; v++) {
+                poly[v].x = srcPoly[v].x;
+                poly[v].z = srcPoly[v].z;
+                poly[v].planeD.clip.bucketVertexIndex = srcPoly[v].planeD.clip.bucketVertexIndex;
             }
         }
     } else {
-        var_s2 = 0;
+        count = 0;
     }
-    return var_s2;
+    return count;
 }
 
 /**
  * Marks whether the shadow's centre falls inside the triangle, so the light
  * level and shadow placement can prefer that triangle.
  */
-void shadow_check_centre_in_triangle(ShadowPlane arg0[3]) {
+void shadow_check_centre_in_triangle(ShadowPlane tri[3]) {
     f32 diff;
     f32 shadowX;
     f32 shadowZ;
-    f32 var_f6;
-    f32 var_f8;
-    f32 var_f10;
     s32 found1;
     s32 found2;
     s32 found3;
@@ -993,12 +989,12 @@ void shadow_check_centre_in_triangle(ShadowPlane arg0[3]) {
     shadowX = gNewShadowObj->trans.x_position;
     shadowZ = gNewShadowObj->trans.z_position;
 
-    diff = (shadowX - arg0[0].x) * (arg0[1].z - arg0[0].z) - (arg0[1].x - arg0[0].x) * (shadowZ - arg0[0].z);
+    diff = (shadowX - tri[0].x) * (tri[1].z - tri[0].z) - (tri[1].x - tri[0].x) * (shadowZ - tri[0].z);
     if (diff >= 0.0f) {
         found1 = TRUE;
     }
 
-    diff = (shadowX - arg0[1].x) * (arg0[2].z - arg0[1].z) - (arg0[2].x - arg0[1].x) * (shadowZ - arg0[1].z);
+    diff = (shadowX - tri[1].x) * (tri[2].z - tri[1].z) - (tri[2].x - tri[1].x) * (shadowZ - tri[1].z);
     if (diff >= 0.0f) {
         found2 = TRUE;
     }
@@ -1007,7 +1003,7 @@ void shadow_check_centre_in_triangle(ShadowPlane arg0[3]) {
         return;
     }
 
-    diff = (shadowX - arg0[2].x) * (arg0[0].z - arg0[2].z) - (arg0[0].x - arg0[2].x) * (shadowZ - arg0[2].z);
+    diff = (shadowX - tri[2].x) * (tri[0].z - tri[2].z) - (tri[0].x - tri[2].x) * (shadowZ - tri[2].z);
     if (diff >= 0.0f) {
         found3 = TRUE;
     }

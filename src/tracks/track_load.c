@@ -16,7 +16,8 @@ static const PcField sLevelModelFields[] = {
 static const PcField sLevelSegmentFields[] = {
     PCU_FIELD(LevelModelSegment, vertices, 0x00, 2, PCU_PTR), // vertices, triangles
     PCU_FIELD(LevelModelSegment, unused8, 0x08, 1, PCU_U32),
-    PCU_FIELD(LevelModelSegment, batches, 0x0C, 4, PCU_PTR), // batches, unk10, collisionFacets, collisionPlanes
+    PCU_FIELD(LevelModelSegment, batches, 0x0C, 4,
+              PCU_PTR), // batches, triangleGridMasks, collisionFacets, collisionPlanes
     PCU_FIELD(LevelModelSegment, numberOfVertices, 0x1C, 3, PCU_U16),
     PCU_FIELD(LevelModelSegment, pad22, 0x22, 6, PCU_BYTES),
     PCU_FIELD(LevelModelSegment, visibilityBitfieldOffset, 0x28, 1, PCU_U16),
@@ -75,7 +76,7 @@ static void pc_load_level_model(LevelModel *heap, s32 assetOffset, s32 compSize)
         PC_REBASE(&segs[k], triangles, Triangle *);
         PC_REBASE(&segs[k], batches, TriangleBatchInfo *);
         PC_REBASE(&segs[k], collisionFacets, CollisionFacetPlanes *);
-        // unk10, collisionPlanes, unk2C, unk34 are assigned at runtime.
+        // triangleGridMasks, collisionPlanes, unused2C, waterBatchIndices are assigned at runtime.
     }
     heap->segments = (LevelModelSegment *) (uintptr_t) end;
     end += PC_ALIGN16((u32) (heap->numberOfSegments * sizeof(LevelModelSegment)));
@@ -127,8 +128,9 @@ static void pc_swap_level_segment_contents(LevelModelSegment *seg) {
 void generate_track(s32 modelId) {
     s32 i, k;
     ptrint_t j;
-    s32 temp_s4;
-    s32 temp;
+    s32 compressedSize;
+    s32 trackSize;
+    s32 batch;
     s32 mdl;
 
     set_texture_colour_tag(COLOUR_TAG_GREEN);
@@ -151,9 +153,9 @@ void generate_track(s32 modelId) {
     }
 
     mdl = gLevelModelTable[modelId];
-    temp_s4 = gLevelModelTable[modelId + 1] - mdl;
+    compressedSize = gLevelModelTable[modelId + 1] - mdl;
 
-    pc_load_level_model(gCurrentLevelModel, mdl, temp_s4);
+    pc_load_level_model(gCurrentLevelModel, mdl, compressedSize);
     stubbed_printf("post gzip_inflate segs=%d tex=%d\n", gCurrentLevelModel->numberOfSegments,
                    gCurrentLevelModel->numberOfTextures);
     mempool_free(gLevelModelTable); // Done with the level models table, so free it.
@@ -189,22 +191,24 @@ void generate_track(s32 modelId) {
         segment_find_water_batches(&gCurrentLevelModel->segments[k]);
         j = (ptrint_t) align16(((u8 *) (uintptr_t) (gCurrentLevelModel->segments[k].numWaterBatches * 2)) + j);
     }
-    temp_s4 = (s32) (j - (ptrint_t) gCurrentLevelModel);
-    if (temp_s4 > LEVEL_MODEL_MAX_SIZE) {
-        pc_log("ERROR!! TrackMem overflow .. %d\n", temp_s4);
+    trackSize = (s32) (j - (ptrint_t) gCurrentLevelModel);
+    if (trackSize > LEVEL_MODEL_MAX_SIZE) {
+        pc_log("ERROR!! TrackMem overflow .. %d\n", trackSize);
     }
     mempool_free_timer(0);
     mempool_free(gTrackModelHeap);
-    mempool_alloc_fixed(temp_s4, (u8 *) gTrackModelHeap, COLOUR_TAG_YELLOW);
+    mempool_alloc_fixed(trackSize, (u8 *) gTrackModelHeap, COLOUR_TAG_YELLOW);
     mempool_free_timer(2);
     stubbed_printf("pre minimap_init\n");
     minimap_init(gCurrentLevelModel);
     stubbed_printf("post minimap_init\n");
 
     for (i = 0; i < gCurrentLevelModel->numberOfSegments; i++) {
-        for (temp_s4 = 0; temp_s4 < gCurrentLevelModel->segments[i].numberOfBatches; temp_s4++) {
-            for (k = gCurrentLevelModel->segments[i].batches[temp_s4].verticesOffset;
-                 k < gCurrentLevelModel->segments[i].batches[temp_s4 + 1].verticesOffset; k++) {
+        for (batch = 0; batch < gCurrentLevelModel->segments[i].numberOfBatches; batch++) {
+            for (k = gCurrentLevelModel->segments[i].batches[batch].verticesOffset;
+                 k < gCurrentLevelModel->segments[i].batches[batch + 1].verticesOffset; k++) {
+                // Vertices marked r = g = 1 carry their alpha in b: move it to a, make them neutral grey
+                // and have the batch use vertex alpha.
                 // Why do this? Why not just set the vertex colors in the model itself?
                 if (gCurrentLevelModel->segments[i].vertices[k].r == 1 &&
                     gCurrentLevelModel->segments[i].vertices[k].g == 1) {
@@ -212,7 +216,7 @@ void generate_track(s32 modelId) {
                     gCurrentLevelModel->segments[i].vertices[k].r = 0x80;
                     gCurrentLevelModel->segments[i].vertices[k].g = 0x80;
                     gCurrentLevelModel->segments[i].vertices[k].b = 0x80;
-                    gCurrentLevelModel->segments[i].batches[temp_s4].flags |= 0x08000000;
+                    gCurrentLevelModel->segments[i].batches[batch].flags |= RENDER_VTX_ALPHA;
                 }
             }
         }
@@ -232,7 +236,7 @@ void segment_find_water_batches(LevelModelSegment *segment) {
     segment->waterHeight = -10000;
     numVerts = 0;
     for (i = 0; i < segment->numberOfBatches; i++) {
-        if (segment->batches[i].flags & 0x2000) {
+        if (segment->batches[i].flags & RENDER_WATER) {
             segment->waterBatchIndices[numVerts++] = i;
             curVertY = segment->vertices[segment->batches[i].verticesOffset].y;
             if (segment->waterHeight == -10000 || segment->waterHeight < curVertY) {

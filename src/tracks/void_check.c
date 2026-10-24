@@ -1,5 +1,8 @@
 #include "tracks_internal.h"
 
+// Set on the first point of each pair, once the pairs are linked up in void_check.
+#define VOID_POINT_PAIR_START 2
+
 /**
  * Allocates control data and geometry for the void.
  * The void refers to the flat coloured background that's shaped in real time to prevent
@@ -7,8 +10,8 @@
  */
 void void_init(s32 viewportCount) {
     s32 i;
-    s32 sp30;
-    s32 sp2C;
+    s32 pointsSize;
+    s32 pairsSize;
     s32 vtxLimit;
     s32 triLimit;
     u8 *ptr;
@@ -20,23 +23,23 @@ void void_init(s32 viewportCount) {
         gVoidPrimLimit >>= 1;
     }
 
-    sp30 = (gVoidCheckMaxPoints + 6) * sizeof(VoidCheckPoint);
-    sp2C = gVoidCheckMaxPoints + 5;
+    pointsSize = (gVoidCheckMaxPoints + 6) * sizeof(VoidCheckPoint);
+    pairsSize = gVoidCheckMaxPoints + 5;
     vtxLimit = (gVoidPrimLimit + 5) * 4 * sizeof(Vertex);
     triLimit = (gVoidPrimLimit + 5) * 2 * sizeof(Triangle);
 
     gVoidMesh = mempool_alloc_safe(viewportCount * sizeof(VoidMesh), COLOUR_TAG_CYAN);
-    gVoidData = mempool_alloc_safe(sp30 + sp2C + (vtxLimit + triLimit) * 2 * viewportCount, COLOUR_TAG_CYAN);
+    gVoidData = mempool_alloc_safe(pointsSize + pairsSize + (vtxLimit + triLimit) * 2 * viewportCount, COLOUR_TAG_CYAN);
 
     ptr = gVoidData;
 
     if (ptr != NULL) {
         gVoidCheckPoints = (VoidCheckPoint *) ptr;
-        ptr += sp30;
+        ptr += pointsSize;
 
         gVoidCheckPairs = (s8 *) ptr;
         // Align by 8
-        ptr = (u8 *) ((uintptr_t) (ptr + sp2C + 8) & ~7);
+        ptr = (u8 *) ((uintptr_t) (ptr + pairsSize + 8) & ~7);
 
         for (i = 0; i < viewportCount; i++) {
             gVoidMesh[i].tris[0] = (Triangle *) ptr;
@@ -72,18 +75,17 @@ void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex) {
     s16 j;
     f32 yCameraSins;
     f32 yCameraCoss;
-    f32 temp_f22;
+    f32 aheadPlaneD;
     Vertex *vtx;
     Triangle *tri;
-    s16 temp_s3;
-    s16 var_s0;
-    s16 var_s4;
+    s16 nextOffset;
+    s16 openCount;
+    s16 currOffset;
     s16 breakLoop;
     s32 *ptr2;
     LevelModelSegmentBoundingBox *bbox;
     s16 sum;
-    s8 sp7C[24]; // possible UB here, real size is unknown
-    s32 pad;
+    s8 openPairs[24]; // possible UB here, real size is unknown
 
     gVoidTris[0] = gVoidMesh[viewportIndex].tris[0];
     gVoidTris[1] = gVoidMesh[viewportIndex].tris[1];
@@ -99,7 +101,7 @@ void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex) {
     gVoidCheckAheadX = gSceneActiveCamera->trans.x_position + yCameraSins * 250.0;
     gVoidCheckAheadZ = gSceneActiveCamera->trans.z_position + yCameraCoss * 250.0;
 
-    temp_f22 = -(yCameraSins * gVoidCheckAheadX + yCameraCoss * gVoidCheckAheadZ);
+    aheadPlaneD = -(yCameraSins * gVoidCheckAheadX + yCameraCoss * gVoidCheckAheadZ);
 
     gVoidCheckSidePlaneX = -yCameraCoss;
     gVoidCheckSidePlaneZ = yCameraSins;
@@ -109,15 +111,15 @@ void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex) {
     for (; i < numberOfSegments; i++) {
         bbox = &gCurrentLevelModel->segmentsBoundingBoxes[segmentIds[i]];
         breakLoop = 0;
-        breakLoop += bbox->x1 * yCameraSins + yCameraCoss * bbox->z1 + temp_f22 <= 0.0;
-        breakLoop += yCameraSins * bbox->x2 + yCameraCoss * bbox->z1 + temp_f22 <= 0.0;
-        breakLoop += bbox->x1 * yCameraSins + yCameraCoss * bbox->z2 + temp_f22 <= 0.0;
-        breakLoop += yCameraSins * bbox->x2 + yCameraCoss * bbox->z2 + temp_f22 <= 0.0;
+        breakLoop += bbox->x1 * yCameraSins + yCameraCoss * bbox->z1 + aheadPlaneD <= 0.0;
+        breakLoop += yCameraSins * bbox->x2 + yCameraCoss * bbox->z1 + aheadPlaneD <= 0.0;
+        breakLoop += bbox->x1 * yCameraSins + yCameraCoss * bbox->z2 + aheadPlaneD <= 0.0;
+        breakLoop += yCameraSins * bbox->x2 + yCameraCoss * bbox->z2 + aheadPlaneD <= 0.0;
         if (breakLoop & 3) {
             void_check_add_segment_edges(&gCurrentLevelModel->segments[segmentIds[i]], yCameraSins, yCameraCoss,
-                                         temp_f22);
+                                         aheadPlaneD);
             if (gCurrentLevelModel->segments[segmentIds[i]].segmentFlags & 2) {
-                void_check_add_bbox_edges(bbox, yCameraSins, yCameraCoss, temp_f22);
+                void_check_add_bbox_edges(bbox, yCameraSins, yCameraCoss, aheadPlaneD);
             }
         }
     }
@@ -151,18 +153,18 @@ void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex) {
         }
     } while (!breakLoop);
 
-    var_s0 = 0;
+    openCount = 0;
 
     for (i = 0; i < gVoidCheckPointCount; i++) {
         j = gVoidCheckPoints[i].pairIndex * 2;
         if (gVoidCheckPairs[j] == -1) {
-            gVoidCheckPoints[i].flags |= 2;
+            gVoidCheckPoints[i].flags |= VOID_POINT_PAIR_START;
             gVoidCheckPairs[j] = i;
         } else {
             gVoidCheckPairs[j + 1] = i;
         }
     }
-    var_s4 = temp_s3 = gVoidCheckPoints[0].sideOffset;
+    currOffset = nextOffset = gVoidCheckPoints[0].sideOffset;
 
     vtx = gTrackVtxPtr;
     tri = gTrackTriPtr;
@@ -177,16 +179,16 @@ void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex) {
 
     i = 0;
     while (i < gVoidCheckPointCount) {
-        while (i < gVoidCheckPointCount && var_s4 == gVoidCheckPoints[i].sideOffset) {
-            if (gVoidCheckPoints[i].flags & 2) {
-                sp7C[var_s0] = gVoidCheckPoints[i].pairIndex;
-                var_s0++;
+        while (i < gVoidCheckPointCount && currOffset == gVoidCheckPoints[i].sideOffset) {
+            if (gVoidCheckPoints[i].flags & VOID_POINT_PAIR_START) {
+                openPairs[openCount] = gVoidCheckPoints[i].pairIndex;
+                openCount++;
             } else {
-                for (j = 0; j < var_s0; j++) {
-                    if (sp7C[j] == gVoidCheckPoints[i].pairIndex) {
-                        var_s0--;
-                        while (j < var_s0) {
-                            sp7C[j] = sp7C[j + 1];
+                for (j = 0; j < openCount; j++) {
+                    if (openPairs[j] == gVoidCheckPoints[i].pairIndex) {
+                        openCount--;
+                        while (j < openCount) {
+                            openPairs[j] = openPairs[j + 1];
                             j++;
                         }
                     }
@@ -195,10 +197,10 @@ void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex) {
             i++;
         }
         if (i < gVoidCheckPointCount) {
-            temp_s3 = gVoidCheckPoints[i].sideOffset;
-            if (var_s4 != temp_s3) {
-                void_check_sort_points(var_s0, sp7C, temp_s3, var_s4);
-                var_s4 = temp_s3;
+            nextOffset = gVoidCheckPoints[i].sideOffset;
+            if (currOffset != nextOffset) {
+                void_check_sort_points(openCount, openPairs, nextOffset, currOffset);
+                currOffset = nextOffset;
             }
         }
     }
@@ -214,37 +216,37 @@ void void_check(u8 *segmentIds, s32 numberOfSegments, s32 viewportIndex) {
  * Void check: adds the edges of a segment bounding box where it crosses the
  * camera plane, for segments that are open to the void.
  */
-void void_check_add_bbox_edges(LevelModelSegmentBoundingBox *arg0, f32 arg1, f32 arg2, f32 arg3) {
-    f32 sp80[4];
-    f32 sp70[4];
-    f32 sp60[4];
+void void_check_add_bbox_edges(LevelModelSegmentBoundingBox *bbox, f32 sinY, f32 cosY, f32 planeD) {
+    f32 cornerX[4];
+    f32 cornerZ[4];
+    f32 cornerDist[4];
     f32 temp;
-    f32 sp54[2];
-    f32 sp4C[2];
+    f32 crossX[2];
+    f32 crossZ[2];
     s16 index;
     s16 nextIndex;
-    s16 sp40[4];
-    s16 var_t0;
-    s16 temp2;
+    s16 cornerBehind[4];
+    s16 crossCount;
+    s16 behindCount;
 
-    sp80[0] = arg0->x1;
-    sp70[0] = arg0->z1;
-    sp80[1] = arg0->x2;
-    sp70[1] = arg0->z1;
-    sp80[2] = arg0->x2;
-    sp70[2] = arg0->z2;
-    sp80[3] = arg0->x1;
-    sp70[3] = arg0->z2;
+    cornerX[0] = bbox->x1;
+    cornerZ[0] = bbox->z1;
+    cornerX[1] = bbox->x2;
+    cornerZ[1] = bbox->z1;
+    cornerX[2] = bbox->x2;
+    cornerZ[2] = bbox->z2;
+    cornerX[3] = bbox->x1;
+    cornerZ[3] = bbox->z2;
 
-    temp2 = 0;
+    behindCount = 0;
     for (index = 0; index < 4; index++) {
-        sp60[index] = (arg1 * sp80[index]) + (sp70[index] * arg2) + arg3;
-        sp40[index] = sp60[index] <= 0.0;
-        temp2 += sp40[index];
+        cornerDist[index] = (sinY * cornerX[index]) + (cornerZ[index] * cosY) + planeD;
+        cornerBehind[index] = cornerDist[index] <= 0.0;
+        behindCount += cornerBehind[index];
     }
-    if (temp2 != 0) {
-        var_t0 = 0;
-        if (temp2 == 4) {
+    if (behindCount != 0) {
+        crossCount = 0;
+        if (behindCount == 4) {
             return;
         }
         for (index = 0; index < 4; index++) {
@@ -252,40 +254,40 @@ void void_check_add_bbox_edges(LevelModelSegmentBoundingBox *arg0, f32 arg1, f32
             if (nextIndex >= 4) {
                 nextIndex = 0;
             }
-            if ((sp40[nextIndex] != sp40[index]) != 0U) {
-                temp = sp60[index] / (sp60[index] - sp60[nextIndex]);
-                sp54[var_t0] = sp80[index] + ((sp80[nextIndex] - sp80[index]) * temp);
-                sp4C[var_t0] = sp70[index] + ((sp70[nextIndex] - sp70[index]) * temp);
-                var_t0++;
+            if ((cornerBehind[nextIndex] != cornerBehind[index]) != 0U) {
+                temp = cornerDist[index] / (cornerDist[index] - cornerDist[nextIndex]);
+                crossX[crossCount] = cornerX[index] + ((cornerX[nextIndex] - cornerX[index]) * temp);
+                crossZ[crossCount] = cornerZ[index] + ((cornerZ[nextIndex] - cornerZ[index]) * temp);
+                crossCount++;
             }
         }
-        if (var_t0 != 2) {
+        if (crossCount != 2) {
             return;
         }
 
-        sp60[0] = (gVoidCheckSidePlaneX * sp54[0]) + (gVoidCheckSidePlaneZ * sp4C[0]) + gVoidCheckSidePlaneD;
-        sp60[1] = (gVoidCheckSidePlaneX * sp54[1]) + (gVoidCheckSidePlaneZ * sp4C[1]) + gVoidCheckSidePlaneD;
+        cornerDist[0] = (gVoidCheckSidePlaneX * crossX[0]) + (gVoidCheckSidePlaneZ * crossZ[0]) + gVoidCheckSidePlaneD;
+        cornerDist[1] = (gVoidCheckSidePlaneX * crossX[1]) + (gVoidCheckSidePlaneZ * crossZ[1]) + gVoidCheckSidePlaneD;
 
-        if (sp60[1] < sp60[0]) {
-            temp = sp60[0];
-            sp60[0] = sp60[1];
-            sp60[1] = temp;
+        if (cornerDist[1] < cornerDist[0]) {
+            temp = cornerDist[0];
+            cornerDist[0] = cornerDist[1];
+            cornerDist[1] = temp;
         }
 
         // Returns must be on the same line.
         // clang-format off
-        if (-300.0 > sp60[1]) { return; }
-        if (sp60[0] > 300.0) { return; }
+        if (-300.0 > cornerDist[1]) { return; }
+        if (cornerDist[0] > 300.0) { return; }
         // clang-format on
 
-        if (sp60[0] < -300.0) {
-            sp60[0] = -300.0f;
+        if (cornerDist[0] < -300.0) {
+            cornerDist[0] = -300.0f;
         }
-        if (sp60[1] > 300.0) {
-            sp60[1] = 300.0f;
+        if (cornerDist[1] > 300.0) {
+            cornerDist[1] = 300.0f;
         }
-        void_check_insert_point(sp60[1], gCurrentLevelModel->lowerYBounds - 195, 0);
-        void_check_insert_point(sp60[0], gCurrentLevelModel->lowerYBounds - 195, 0);
+        void_check_insert_point(cornerDist[1], gCurrentLevelModel->lowerYBounds - 195, 0);
+        void_check_insert_point(cornerDist[0], gCurrentLevelModel->lowerYBounds - 195, 0);
     }
 }
 
@@ -293,7 +295,7 @@ void void_check_add_bbox_edges(LevelModelSegmentBoundingBox *arg0, f32 arg1, f32
  * Void check: walks a segment's triangles and records where their edges cross
  * the camera plane.
  */
-void void_check_add_segment_edges(LevelModelSegment *segment, f32 arg1, f32 arg2, f32 arg3) {
+void void_check_add_segment_edges(LevelModelSegment *segment, f32 sinY, f32 cosY, f32 planeD) {
     s16 i;
     s16 index;
     s16 verticesOffset;
@@ -302,22 +304,25 @@ void void_check_add_segment_edges(LevelModelSegment *segment, f32 arg1, f32 arg2
     s16 currFaceOffset;
     s16 j;
     Vertex *vert;
-    s8 spF8[3];
+    s8 sideFlags[3];
     f32 temp;
-    s16 var_s0;
-    s16 var_t0;
+    s16 frontCount;
+    s16 crossCount;
+    s16 inRange;
+    s16 planeIndex;
+    s16 pointFlags;
 #ifdef AVOID_UB
-    f32 spE8[3]; // This really should be size of 3, but something is keeping it from matching that way.
+    f32 vertX[3]; // This really should be size of 3, but something is keeping it from matching that way.
 #else
-    f32 spE8[2];
+    f32 vertX[2];
 #endif
-    f32 spDC[3];
-    f32 spD0[3];
-    f32 spC4[3];
-    f32 spB8[3];
-    f32 spB0[2];
-    f32 spA8[2];
-    f32 spA0[2];
+    f32 vertY[3];
+    f32 vertZ[3];
+    f32 planeDist[3];
+    f32 crossY[3];
+    f32 crossX[2];
+    f32 crossZ[2];
+    f32 unusedCrossY[2];
 
     if (gVoidCheckPointCount >= gVoidCheckMaxPoints) {
         return;
@@ -334,86 +339,88 @@ void void_check_add_segment_edges(LevelModelSegment *segment, f32 arg1, f32 arg2
             if ((segment->triangles[j].flags & BACKFACE_DRAW)) {
                 continue;
             }
-            var_t0 = 0;
+            frontCount = 0;
             for (index = 0; index < 3; index++) {
                 vert = &(segment->triangles[j].verticesArray[index + 1] + verticesOffset)[segment->vertices];
-                spE8[index] = vert->x;
-                spDC[index] = vert->y;
-                spD0[index] = vert->z;
-                spC4[index] = (arg1 * spE8[index]) + (arg2 * spD0[index]) + arg3;
+                vertX[index] = vert->x;
+                vertY[index] = vert->y;
+                vertZ[index] = vert->z;
+                planeDist[index] = (sinY * vertX[index]) + (cosY * vertZ[index]) + planeD;
 
-                spF8[index] = (spC4[index] <= 0.0);
-                var_t0 += (spF8[index] <= 0.0);
+                sideFlags[index] = (planeDist[index] <= 0.0);
+                frontCount += (sideFlags[index] <= 0.0);
             }
-            if ((var_t0 == 1) || (var_t0 == 2)) {
-                for (var_s0 = 0, index = 0; index < 3; index++) {
+            if ((frontCount == 1) || (frontCount == 2)) {
+                for (crossCount = 0, index = 0; index < 3; index++) {
                     nextIndex = index + 1;
                     if (nextIndex >= 3) {
                         nextIndex = 0;
                     }
-                    if ((spF8[nextIndex] != spF8[index]) != 0) {
-                        temp = spC4[index] / (spC4[index] - spC4[nextIndex]);
-                        spB0[var_s0] = spE8[index] + ((spE8[nextIndex] - spE8[index]) * temp);
-                        spB8[var_s0] = spDC[index] + ((spDC[nextIndex] - spDC[index]) * temp);
-                        spA0[var_s0] = spB8[var_s0];
-                        spA8[var_s0] = spD0[index] + ((spD0[nextIndex] - spD0[index]) * temp);
-                        var_s0++;
+                    if ((sideFlags[nextIndex] != sideFlags[index]) != 0) {
+                        temp = planeDist[index] / (planeDist[index] - planeDist[nextIndex]);
+                        crossX[crossCount] = vertX[index] + ((vertX[nextIndex] - vertX[index]) * temp);
+                        crossY[crossCount] = vertY[index] + ((vertY[nextIndex] - vertY[index]) * temp);
+                        unusedCrossY[crossCount] = crossY[crossCount];
+                        crossZ[crossCount] = vertZ[index] + ((vertZ[nextIndex] - vertZ[index]) * temp);
+                        crossCount++;
                     }
                 }
 
-                var_s0 = 0;
-                spF8[0] = 0;
-                spF8[1] = 0;
-                spC4[0] = (gVoidCheckSidePlaneX * spB0[0]) + (gVoidCheckSidePlaneZ * spA8[0]) + gVoidCheckSidePlaneD;
-                spC4[1] = (gVoidCheckSidePlaneX * spB0[1]) + (gVoidCheckSidePlaneZ * spA8[1]) + gVoidCheckSidePlaneD;
-                if (spC4[0] < -300.0) {
-                    spF8[0] = 1;
+                inRange = 0;
+                sideFlags[0] = 0;
+                sideFlags[1] = 0;
+                planeDist[0] =
+                    (gVoidCheckSidePlaneX * crossX[0]) + (gVoidCheckSidePlaneZ * crossZ[0]) + gVoidCheckSidePlaneD;
+                planeDist[1] =
+                    (gVoidCheckSidePlaneX * crossX[1]) + (gVoidCheckSidePlaneZ * crossZ[1]) + gVoidCheckSidePlaneD;
+                if (planeDist[0] < -300.0) {
+                    sideFlags[0] = 1;
                 }
-                if (spC4[0] > 300.0) {
-                    spF8[0] |= 2;
+                if (planeDist[0] > 300.0) {
+                    sideFlags[0] |= 2;
                 }
-                if (spC4[1] < -300.0) {
-                    spF8[1] = 1;
+                if (planeDist[1] < -300.0) {
+                    sideFlags[1] = 1;
                 }
-                if (spC4[1] > 300.0) {
-                    spF8[1] |= 2;
+                if (planeDist[1] > 300.0) {
+                    sideFlags[1] |= 2;
                 }
                 // clang-format off
-                if ((spF8[0] | spF8[1]) == 0) {  var_s0 = 1; }
+                if ((sideFlags[0] | sideFlags[1]) == 0) {  inRange = 1; }
                 // clang-format on
-                else if ((spF8[1] != spF8[0]) != 0) {
+                else if ((sideFlags[1] != sideFlags[0]) != 0) {
                     index = 0;
-                    if (spC4[1] < spC4[0]) {
+                    if (planeDist[1] < planeDist[0]) {
                         index = 1;
                     }
                     nextIndex = 1 - index;
-                    if (spF8[index] == 1) {
-                        temp = ((-spC4[index] - 300.0) / (spC4[nextIndex] - spC4[index]));
-                        spB8[index] = spB8[index] + ((spB8[nextIndex] - spB8[index]) * temp);
-                        spC4[index] = -300.0f;
+                    if (sideFlags[index] == 1) {
+                        temp = ((-planeDist[index] - 300.0) / (planeDist[nextIndex] - planeDist[index]));
+                        crossY[index] = crossY[index] + ((crossY[nextIndex] - crossY[index]) * temp);
+                        planeDist[index] = -300.0f;
                     }
-                    if (spF8[nextIndex] == 2) {
-                        temp = ((spC4[nextIndex] - 300.0) / (spC4[nextIndex] - spC4[index]));
-                        spB8[nextIndex] = spB8[nextIndex] + ((spB8[index] - spB8[nextIndex]) * temp);
-                        spC4[nextIndex] = 300.0f;
+                    if (sideFlags[nextIndex] == 2) {
+                        temp = ((planeDist[nextIndex] - 300.0) / (planeDist[nextIndex] - planeDist[index]));
+                        crossY[nextIndex] = crossY[nextIndex] + ((crossY[index] - crossY[nextIndex]) * temp);
+                        planeDist[nextIndex] = 300.0f;
                     }
-                    var_s0 = 1;
+                    inRange = 1;
                 }
-                if (var_s0 != 0) {
-                    var_t0 = (segment->collisionFacets[j].basePlaneIndex << 2);
-                    temp = (spB0[0] + gVoidCheckSidePlaneX) * segment->collisionPlanes[var_t0];
-                    temp += spB8[0] * segment->collisionPlanes[var_t0 + 1];
-                    temp += (spA8[0] + gVoidCheckSidePlaneZ) * segment->collisionPlanes[var_t0 + 2];
-                    temp += segment->collisionPlanes[var_t0 + 3];
-                    var_s0 = (temp > 0.0) << 2;
-                    if (segment->collisionPlanes[var_t0 + 1] < 0.0f) {
-                        var_s0 |= 1;
+                if (inRange != 0) {
+                    planeIndex = (segment->collisionFacets[j].basePlaneIndex << 2);
+                    temp = (crossX[0] + gVoidCheckSidePlaneX) * segment->collisionPlanes[planeIndex];
+                    temp += crossY[0] * segment->collisionPlanes[planeIndex + 1];
+                    temp += (crossZ[0] + gVoidCheckSidePlaneZ) * segment->collisionPlanes[planeIndex + 2];
+                    temp += segment->collisionPlanes[planeIndex + 3];
+                    pointFlags = (temp > 0.0) << 2;
+                    if (segment->collisionPlanes[planeIndex + 1] < 0.0f) {
+                        pointFlags |= 1;
                     }
-                    if (spC4[0] == spC4[1]) {
-                        var_s0 |= 8;
+                    if (planeDist[0] == planeDist[1]) {
+                        pointFlags |= 8;
                     }
-                    void_check_insert_point(spC4[0], spB8[0], var_s0);
-                    void_check_insert_point(spC4[1], spB8[1], var_s0);
+                    void_check_insert_point(planeDist[0], crossY[0], pointFlags);
+                    void_check_insert_point(planeDist[1], crossY[1], pointFlags);
                 }
             }
         }
@@ -424,17 +431,17 @@ void void_check_add_segment_edges(LevelModelSegment *segment, f32 arg1, f32 arg2
  * Void check: inserts a crossing point into the sorted point list, pairing
  * points as it goes.
  */
-void void_check_insert_point(s16 arg0, s16 arg1, s32 arg2) {
+void void_check_insert_point(s16 sideOffset, s16 height, s32 flags) {
     s16 i;
     s16 j;
 
     if (gVoidCheckPointCount < gVoidCheckMaxPoints) {
         i = 0;
-        while (i < gVoidCheckPointCount && gVoidCheckPoints[i].sideOffset < arg0) {
+        while (i < gVoidCheckPointCount && gVoidCheckPoints[i].sideOffset < sideOffset) {
             i++;
         }
-        while (i < gVoidCheckPointCount && arg0 == gVoidCheckPoints[i].sideOffset &&
-               gVoidCheckPoints[i].height < arg1) {
+        while (i < gVoidCheckPointCount && sideOffset == gVoidCheckPoints[i].sideOffset &&
+               gVoidCheckPoints[i].height < height) {
             i++;
         }
         j = gVoidCheckPointCount;
@@ -445,11 +452,11 @@ void void_check_insert_point(s16 arg0, s16 arg1, s32 arg2) {
             gVoidCheckPoints[j].flags = gVoidCheckPoints[j - 1].flags;
             j--;
         }
-        gVoidCheckPoints[i].sideOffset = arg0;
-        gVoidCheckPoints[i].height = arg1;
+        gVoidCheckPoints[i].sideOffset = sideOffset;
+        gVoidCheckPoints[i].height = height;
         gVoidCheckPoints[i].unused4 = 0;
         gVoidCheckPoints[i].pairIndex = gVoidCheckPairIndex;
-        gVoidCheckPoints[i].flags = arg2;
+        gVoidCheckPoints[i].flags = flags;
         gVoidCheckPairs[gVoidCheckPointCount] = -1;
         if (gVoidCheckPointCount & 1) {
             gVoidCheckPairIndex++;
@@ -462,76 +469,78 @@ void void_check_insert_point(s16 arg0, s16 arg1, s32 arg2) {
  * Void check: orders the paired crossing points so the spans between them can
  * be tested against the camera.
  */
-void void_check_sort_points(s16 arg0, s8 *arg1, f32 arg2, f32 arg3) {
+void void_check_sort_points(s16 openCount, s8 *openPairs, f32 nextOffset, f32 currOffset) {
     VoidCheckPoint *next;
     VoidCheckPoint *curr;
-    s16 temp3;
-    s16 temp4;
-    f32 curr_unk0;
-    f32 curr_unk2;
-    f32 next_unk0;
-    f32 next_unk2;
+    s16 heightIndex0;
+    s16 heightIndex1;
+    f32 currSide;
+    f32 currHeight;
+    f32 nextSide;
+    f32 nextHeight;
     s32 noSwap;
     s16 i;
     s16 j;
-    f32 sp94[20];
-    f32 sp6C[10];
-    s8 sp60[10];
-    s8 temp;
-    s8 temp0;
-    s8 temp1;
+    f32 spanHeights[20];
+    f32 spanMidSum[10];
+    s8 order[10];
+    s8 pair;
+    s8 currFlag;
+    s8 nextFlag;
     s8 swapByte;
 
-    if (arg0 >= 10 || arg0 == 0) {
+    if (openCount >= 10 || openCount == 0) {
         return;
     }
 
-    for (j = 0, i = 0; i < arg0;) {
-        temp = arg1[i];
-        curr = &gVoidCheckPoints[gVoidCheckPairs[(s16) (temp * 2)]];
-        next = &gVoidCheckPoints[gVoidCheckPairs[((s16) (temp * 2)) + 1]];
-        curr_unk0 = (f32) curr->sideOffset;
-        curr_unk2 = (f32) curr->height;
-        next_unk0 = (f32) next->sideOffset;
-        next_unk2 = (f32) next->height;
-        if (curr_unk0 == next_unk0) {
+    for (j = 0, i = 0; i < openCount;) {
+        pair = openPairs[i];
+        curr = &gVoidCheckPoints[gVoidCheckPairs[(s16) (pair * 2)]];
+        next = &gVoidCheckPoints[gVoidCheckPairs[((s16) (pair * 2)) + 1]];
+        currSide = (f32) curr->sideOffset;
+        currHeight = (f32) curr->height;
+        nextSide = (f32) next->sideOffset;
+        nextHeight = (f32) next->height;
+        if (currSide == nextSide) {
             return;
         }
-        sp94[j++] = ((next_unk2 - curr_unk2) * ((curr_unk0 - arg3) / ((curr_unk0 - next_unk0)))) + curr_unk2;
-        sp6C[i] = sp94[j - 1];
-        sp60[i] = i;
-        sp94[j++] = ((curr_unk2 - next_unk2) * ((arg2 - next_unk0) / ((curr_unk0 - next_unk0)))) + next_unk2;
-        sp6C[i] += sp94[j - 1];
+        spanHeights[j++] =
+            ((nextHeight - currHeight) * ((currSide - currOffset) / ((currSide - nextSide)))) + currHeight;
+        spanMidSum[i] = spanHeights[j - 1];
+        order[i] = i;
+        spanHeights[j++] =
+            ((currHeight - nextHeight) * ((nextOffset - nextSide) / ((currSide - nextSide)))) + nextHeight;
+        spanMidSum[i] += spanHeights[j - 1];
         i++;
     }
 
     do {
         noSwap = TRUE;
-        for (i = 0; i < arg0 - 1; i++) {
-            if (sp6C[sp60[i + 1]] < sp6C[sp60[i]]) {
-                swapByte = arg1[i];
-                arg1[i] = arg1[i + 1];
-                arg1[i + 1] = swapByte;
-                swapByte = sp60[i];
-                sp60[i] = sp60[i + 1];
-                sp60[i + 1] = swapByte;
+        for (i = 0; i < openCount - 1; i++) {
+            if (spanMidSum[order[i + 1]] < spanMidSum[order[i]]) {
+                swapByte = openPairs[i];
+                openPairs[i] = openPairs[i + 1];
+                openPairs[i + 1] = swapByte;
+                swapByte = order[i];
+                order[i] = order[i + 1];
+                order[i + 1] = swapByte;
                 noSwap = FALSE;
             }
         }
     } while (noSwap == FALSE);
 
-    for (i = 0; i < arg0 - 1; i++) {
-        temp0 = gVoidCheckPoints[gVoidCheckPairs[arg1[i] * 2]].flags & 1;
-        temp1 = gVoidCheckPoints[gVoidCheckPairs[arg1[i + 1] * 2]].flags & 1;
-        if (temp0 && !temp1) {
-            temp3 = (sp60[i] * 2);
-            temp4 = (sp60[i + 1] * 2);
-            void_generate_primitive(&sp94[temp3], &sp94[temp4], arg3, arg2);
+    for (i = 0; i < openCount - 1; i++) {
+        currFlag = gVoidCheckPoints[gVoidCheckPairs[openPairs[i] * 2]].flags & 1;
+        nextFlag = gVoidCheckPoints[gVoidCheckPairs[openPairs[i + 1] * 2]].flags & 1;
+        if (currFlag && !nextFlag) {
+            heightIndex0 = (order[i] * 2);
+            heightIndex1 = (order[i + 1] * 2);
+            void_generate_primitive(&spanHeights[heightIndex0], &spanHeights[heightIndex1], currOffset, nextOffset);
         }
     }
 }
 
-s32 void_generate_primitive(f32 *arg0, f32 *arg1, f32 arg2, f32 arg3) {
+s32 void_generate_primitive(f32 *topHeights, f32 *bottomHeights, f32 startOffset, f32 endOffset) {
     Vertex *verts;
     Triangle *tris;
     s32 triIndex;
@@ -556,10 +565,10 @@ s32 void_generate_primitive(f32 *arg0, f32 *arg1, f32 arg2, f32 arg3) {
         gVoidCurrTris = gTrackTriPtr;
     }
 
-    vertX1 = arg2 * gVoidCheckSidePlaneX + gVoidCheckAheadX;
-    vertZ1 = arg2 * gVoidCheckSidePlaneZ + gVoidCheckAheadZ;
-    vertX2 = arg3 * gVoidCheckSidePlaneX + gVoidCheckAheadX;
-    vertZ2 = arg3 * gVoidCheckSidePlaneZ + gVoidCheckAheadZ;
+    vertX1 = startOffset * gVoidCheckSidePlaneX + gVoidCheckAheadX;
+    vertZ1 = startOffset * gVoidCheckSidePlaneZ + gVoidCheckAheadZ;
+    vertX2 = endOffset * gVoidCheckSidePlaneX + gVoidCheckAheadX;
+    vertZ2 = endOffset * gVoidCheckSidePlaneZ + gVoidCheckAheadZ;
 
     colour_r = gVoidColourR;
     colour_g = gVoidColourG;
@@ -568,7 +577,7 @@ s32 void_generate_primitive(f32 *arg0, f32 *arg1, f32 arg2, f32 arg3) {
 
     verts = gTrackVtxPtr;
     verts[0].x = vertX1;
-    verts[0].y = arg0[0] + 2.0f;
+    verts[0].y = topHeights[0] + 2.0f;
     verts[0].z = vertZ1;
     verts[0].r = colour_r;
     verts[0].g = colour_g;
@@ -576,7 +585,7 @@ s32 void_generate_primitive(f32 *arg0, f32 *arg1, f32 arg2, f32 arg3) {
     verts[0].a = colour_a;
 
     verts[1].x = vertX2;
-    verts[1].y = arg0[1] + 2.0f;
+    verts[1].y = topHeights[1] + 2.0f;
     verts[1].z = vertZ2;
     verts[1].r = colour_r;
     verts[1].g = colour_g;
@@ -584,7 +593,7 @@ s32 void_generate_primitive(f32 *arg0, f32 *arg1, f32 arg2, f32 arg3) {
     verts[1].a = colour_a;
 
     verts[2].x = vertX1;
-    verts[2].y = arg1[0] - 2.0f;
+    verts[2].y = bottomHeights[0] - 2.0f;
     verts[2].z = vertZ1;
     verts[2].r = colour_r;
     verts[2].g = colour_g;
@@ -592,7 +601,7 @@ s32 void_generate_primitive(f32 *arg0, f32 *arg1, f32 arg2, f32 arg3) {
     verts[2].a = colour_a;
 
     verts[3].x = vertX2;
-    verts[3].y = arg1[1] - 2.0f;
+    verts[3].y = bottomHeights[1] - 2.0f;
     verts[3].z = vertZ2;
     verts[3].r = colour_r;
     verts[3].g = colour_g;

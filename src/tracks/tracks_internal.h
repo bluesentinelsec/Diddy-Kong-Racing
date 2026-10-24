@@ -50,6 +50,12 @@
 #define PC_ALIGN16(x) (((x) + 15) & ~15)
 #define PC_REBASE(obj, field, T) (obj)->field = (T) ((uintptr_t) (obj)->field + LEVEL_MODEL_PC_DELTA)
 
+// gShadowBucketVertices holds one bucket of this many clip vertices per edge of the shadow rectangle.
+#define SHADOW_BUCKET_SIZE 32
+// Set on a triangle's edge plane index when the plane faces the other way for it (shared edges).
+#define EDGE_PLANE_FLIPPED 0x8000
+#define EDGE_PLANE_INDEX_MASK 0x7FFF
+
 extern LevelModel *gCurrentLevelModel;
 extern LevelHeader *gCurrentLevelHeader2;
 extern u8 *gVoidData;
@@ -160,11 +166,12 @@ void trackbg_render_gradient(void);
 void skydome_render(void);
 void initialise_player_viewport_vars(s32 updateRate);
 s32 get_level_segment_index_from_position(f32 xPos, f32 yPos, f32 zPos);
-s32 get_inside_segment_count_xz(s32 x, s32 z, s32 *arg2);
-s32 get_inside_segment_count_xyz(s32 *arg0, s16 xPos1, s16 yPos1, s16 zPos1, s16 xPos2, s16 yPos2, s16 zPos2);
+s32 get_inside_segment_count_xz(s32 x, s32 z, s32 *segmentsOut);
+s32 get_inside_segment_count_xyz(s32 *segmentsOut, s16 xPos1, s16 yPos1, s16 zPos1, s16 xPos2, s16 yPos2, s16 zPos2);
 void compute_frustum_planes(void);
 void generate_track(s32 modelId);
-void segment_compute_triangle_grid_masks(LevelModelSegment *segment, LevelModelSegmentBoundingBox *bbox, s32 arg2);
+void segment_compute_triangle_grid_masks(LevelModelSegment *segment, LevelModelSegmentBoundingBox *bbox,
+                                         s32 segmentIndex);
 s32 track_init_collision(LevelModelSegment *block);
 void shadow_render(Object *obj, ShadowData *shadow);
 void watereffect_render(Object *obj, WaterEffect *effect);
