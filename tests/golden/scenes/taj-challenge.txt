@@ -1,0 +1,18 @@
+# frames 5000
+# save 100
+# level 0
+# Taj's car challenge in the central hub on the 100% save: a honk calls Taj, a second
+# brings him over (his greeting at about frame 790), Challenges, Car Challenge, and the
+# race against him from about frame 980, driven by the autopilot (AUTO).
+# Format: <frame> <buttons> <stickX> <stickY> [p<N>], held until the next line (DKR_INPUT_SCRIPT).
+600 Z 0 0
+603 - 0 0
+700 Z 0 0
+703 - 0 0
+860 - 0 -70
+864 - 0 0
+900 A 0 0
+903 - 0 0
+960 A 0 0
+963 - 0 0
+1020 AUTO 0 0

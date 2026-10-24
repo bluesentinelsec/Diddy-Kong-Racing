@@ -207,8 +207,8 @@ the port honest:
   boss (Tricky, Bluey, Bubbler, Smokey and both Wizpig races), the three battle
   arenas, an adventure-mode race, Diddy on the character select screen, eight
   more tracks picked by coverage (the loop-de-loop, bridges, lava, snowballs,
-  weapons, the pirate ship), the Future Fun Land hub, the Options and Magic
-  Codes menus, and a drive around the central hub (doors, Taj, the music fade
+  weapons, the pirate ship), the Future Fun Land hub, Taj's car challenge, the
+  Options and Magic Codes menus (through to the credits), and a drive around the central hub (doors, Taj, the music fade
   zones). Each script's header gives its length (`# frames N`) and, as needed,
   `# save 100` to start from the 100%-completion save image, `# level N` to
   start level N straight from the title menu (for the places the menus cannot
