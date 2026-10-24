@@ -1,11 +1,17 @@
 #include "objects_internal.h"
 
+// ainode_pick_next target: with this bit set the low bits are a node ID, otherwise it is a node's target tag.
+#define AINODE_TARGET_IS_NODE 0x100
+#define AINODE_TARGET_NODE_MASK 0x7F
+// Each AI node links to up to four neighbours.
+#define AINODE_ADJACENT_COUNT 4
+
 /**
  * Loop through every existing spectate camera and sort them by index.
  */
 void spectate_update(void) {
     Object *objPtr;
-    Object *temp;
+    Object *currCamera;
     s32 continueLoop;
     s32 i;
 
@@ -26,10 +32,10 @@ void spectate_update(void) {
         continueLoop = TRUE;
         for (i = 0; i < gCameraObjCount - 1; i++) {
             objPtr = (*gCameraObjList)[i + 1];
-            temp = (*gCameraObjList)[i];
-            if (temp->properties.camControl.cameraID > objPtr->properties.camControl.cameraID) {
+            currCamera = (*gCameraObjList)[i];
+            if (currCamera->properties.camControl.cameraID > objPtr->properties.camControl.cameraID) {
                 (*gCameraObjList)[i] = (*gCameraObjList)[i + 1];
-                (*gCameraObjList)[i + 1] = temp;
+                (*gCameraObjList)[i + 1] = currCamera;
                 continueLoop = FALSE;
             }
         }
@@ -116,10 +122,10 @@ void ainode_update(void) {
     f32 diffY;
     s32 i;
     s32 j;
-    s8 index;  // Must be an s8
-    u8 index2; // Must be an u8
+    s8 elevation; // Must be an s8
+    u8 nodeID;    // Must be an u8
     s16 swap;
-    Object_AiNode *aiNodeObj64;
+    Object_AiNode *aiNodeData;
     s8 nodeIDs[AINODE_COUNT];
     s8 elevations[AINODE_COUNT];
 
@@ -136,9 +142,9 @@ void ainode_update(void) {
         obj = gObjPtrList[i];
         if (!(obj->trans.flags & OBJ_FLAGS_PARTICLE) && obj->behaviorId == BHV_AINODE) {
             aiNodeEntry = &obj->level_entry->aiNode;
-            index2 = aiNodeEntry->nodeID;
-            if (!(index2 & AINODE_COUNT)) {
-                (*gAINodes)[index2] = obj;
+            nodeID = aiNodeEntry->nodeID;
+            if (!(nodeID & AINODE_COUNT)) {
+                (*gAINodes)[nodeID] = obj;
                 nodeIDs[nodeCount] = aiNodeEntry->nodeID;
                 elevations[nodeCount] = aiNodeEntry->elevation & 3;
                 nodeCount++;
@@ -152,20 +158,20 @@ void ainode_update(void) {
     for (i = 0; i < AINODE_COUNT; i++) {
         obj = (*gAINodes)[i];
         if (obj != NULL) {
-            aiNodeObj64 = obj->ai_node;
+            aiNodeData = obj->ai_node;
             aiNodeEntry = &obj->level_entry->aiNode;
-            for (j = 0; j < 4; j++) {
-                index2 = aiNodeEntry->adjacent[j];
-                if (!(index2 & AINODE_COUNT)) {
-                    nextAiNodeObj = (*gAINodes)[index2];
-                    aiNodeObj64->nodeObj[j] = nextAiNodeObj;
+            for (j = 0; j < AINODE_ADJACENT_COUNT; j++) {
+                nodeID = aiNodeEntry->adjacent[j];
+                if (!(nodeID & AINODE_COUNT)) {
+                    nextAiNodeObj = (*gAINodes)[nodeID];
+                    aiNodeData->nodeObj[j] = nextAiNodeObj;
                     if (nextAiNodeObj == NULL) {
                         aiNodeEntry->adjacent[j] = -1;
                     } else {
                         diffX = obj->trans.x_position - nextAiNodeObj->trans.x_position;
                         diffY = obj->trans.y_position - nextAiNodeObj->trans.y_position;
                         diffZ = obj->trans.z_position - nextAiNodeObj->trans.z_position;
-                        aiNodeObj64->distToNode[j] = sqrtf((diffX * diffX) + (diffY * diffY) + (diffZ * diffZ));
+                        aiNodeData->distToNode[j] = sqrtf((diffX * diffX) + (diffY * diffY) + (diffZ * diffZ));
                     }
                 }
             }
@@ -193,14 +199,14 @@ void ainode_update(void) {
         gElevationHeights[i] = -20000.0f;
     }
 
-    index = elevations[0];
+    elevation = elevations[0];
     for (i = 0; i < nodeCount - 1;) {
-        while (i < nodeCount - 1 && index >= elevations[i]) {
+        while (i < nodeCount - 1 && elevation >= elevations[i]) {
             i++;
         }
-        if (index < elevations[i]) {
-            index = elevations[i];
-            gElevationHeights[index] =
+        if (elevation < elevations[i]) {
+            elevation = elevations[i];
+            gElevationHeights[elevation] =
                 ((*gAINodes)[nodeIDs[i]]->trans.y_position + (*gAINodes)[nodeIDs[i - 1]]->trans.y_position) * 0.5;
         } else {
             i = nodeCount;
@@ -243,8 +249,7 @@ s32 ainode_register(Object *obj) {
  * Search through each AI node and find the one closest to the coordinates given.
  * Can choose to include or ignore elevation.
  */
-s32 ainode_find_nearest(f32 diffX, f32 diffY, f32 diffZ, s32 useElevation) {
-    UNUSED f32 pad[6];
+s32 ainode_find_nearest(f32 posX, f32 posY, f32 posZ, s32 useElevation) {
     s32 elevation;
     f32 len;
     f32 x;
@@ -252,18 +257,18 @@ s32 ainode_find_nearest(f32 diffX, f32 diffY, f32 diffZ, s32 useElevation) {
     f32 y;
     f32 dist;
     s32 findDist;
-    s32 numSteps;
+    s32 nodeIndex;
     s32 result;
     Object *obj;
     LevelObjectEntry_AiNode *levelObj;
 
     if (useElevation) {
-        elevation = obj_elevation(diffY);
+        elevation = obj_elevation(posY);
     }
     dist = 50000.0;
-    result = 0xFF;
-    for (numSteps = 0; numSteps != AINODE_COUNT; numSteps++) {
-        obj = (*gAINodes)[numSteps];
+    result = NODE_NONE;
+    for (nodeIndex = 0; nodeIndex != AINODE_COUNT; nodeIndex++) {
+        obj = (*gAINodes)[nodeIndex];
         if (obj) {
             levelObj = &((obj->level_entry)->aiNode);
             findDist = TRUE;
@@ -274,13 +279,13 @@ s32 ainode_find_nearest(f32 diffX, f32 diffY, f32 diffZ, s32 useElevation) {
                 findDist = FALSE;
             }
             if (findDist) {
-                x = obj->trans.x_position - diffX;
-                y = obj->trans.y_position - diffY;
-                z = obj->trans.z_position - diffZ;
+                x = obj->trans.x_position - posX;
+                y = obj->trans.y_position - posY;
+                z = obj->trans.z_position - posZ;
                 len = sqrtf((x * x) + (y * y) + (z * z));
                 if (len < dist) {
                     dist = len;
-                    result = numSteps;
+                    result = nodeIndex;
                 }
             }
         }
@@ -301,19 +306,19 @@ f32 npc_follow_ai_nodes(Object_NPC *npc, Object *npcParentObj, f32 updateRateF, 
     f32 xDiff;
     f32 yDiff;
     f32 zDiff;
-    f32 tempYDiff;
-    UNUSED s32 pad_sp84;
+    f32 targetY;
     s32 i;
-    f32 var_f20_2;
-    s32 var_s0;
-    s32 someBool;
+    f32 newProgress;
+    s32 pass;
+    s32 angleDiff;
+    s32 passedNode;
 
     if (osTvType == OS_TV_TYPE_PAL) {
         updateRateF *= 1.2;
     }
 
     for (i = 0; i < 5; i++) {
-        if (npc->nodeData[i] == 0xFF) {
+        if (npc->nodeData[i] == NODE_NONE) {
             return 0.0f;
         }
 
@@ -330,34 +335,34 @@ f32 npc_follow_ai_nodes(Object_NPC *npc, Object *npcParentObj, f32 updateRateF, 
     xDiff2 = catmull_rom_interpolation(xPositions, 0, npc->splineProgress);
     yDiff2 = catmull_rom_interpolation(yPositions, 0, npc->splineProgress);
     zDiff2 = catmull_rom_interpolation(zPositions, 0, npc->splineProgress);
-    someBool = FALSE;
+    passedNode = FALSE;
     if (npc->splineStep == 0.0f) {
         npc->splineStep = 0.01f;
     }
 
-    for (var_s0 = 0; var_s0 != 2; var_s0++) {
-        var_f20_2 = npc->splineProgress + (npc->splineStep * updateRateF);
-        if (var_f20_2 >= 1.0) {
-            someBool = TRUE;
-            var_f20_2 -= 1.0;
+    for (pass = 0; pass != 2; pass++) {
+        newProgress = npc->splineProgress + (npc->splineStep * updateRateF);
+        if (newProgress >= 1.0) {
+            passedNode = TRUE;
+            newProgress -= 1.0;
         }
-        xDiff = catmull_rom_interpolation(xPositions, someBool, var_f20_2);
-        yDiff = catmull_rom_interpolation(yPositions, someBool, var_f20_2);
-        zDiff = catmull_rom_interpolation(zPositions, someBool, var_f20_2);
+        xDiff = catmull_rom_interpolation(xPositions, passedNode, newProgress);
+        yDiff = catmull_rom_interpolation(yPositions, passedNode, newProgress);
+        zDiff = catmull_rom_interpolation(zPositions, passedNode, newProgress);
         xDiff -= xDiff2;
         yDiff -= yDiff2;
         zDiff -= zDiff2;
-        if (var_s0 == 0) {
-            someBool = FALSE;
+        if (pass == 0) {
+            passedNode = FALSE;
             dist = sqrtf((xDiff * xDiff) + (yDiff * yDiff) + (zDiff * zDiff)) / updateRateF;
             if (dist != 0.0f) {
                 npc->splineStep *= (speedF / dist);
             }
         }
     }
-    npc->splineProgress = var_f20_2;
+    npc->splineProgress = newProgress;
     xDiff2 = xDiff + xDiff2;
-    tempYDiff = yDiff2 = yDiff + yDiff2;
+    targetY = yDiff2 = yDiff + yDiff2;
     zDiff2 = zDiff + zDiff2;
 
     xDiff = xDiff2 - npcParentObj->trans.x_position;
@@ -380,31 +385,31 @@ f32 npc_follow_ai_nodes(Object_NPC *npc, Object *npcParentObj, f32 updateRateF, 
         dist = speedF;
     }
     if (dist >= 1.0) {
-        var_s0 = (arctan2_f(xDiff, zDiff) - (npcParentObj->trans.rotation.y_rotation & 0xFFFF)) - 0x8000;
-        if (var_s0 > 0x8000) {
-            var_s0 -= 0xFFFF;
+        angleDiff = (arctan2_f(xDiff, zDiff) - (npcParentObj->trans.rotation.y_rotation & 0xFFFF)) - 0x8000;
+        if (angleDiff > 0x8000) {
+            angleDiff -= 0xFFFF;
         }
-        if (var_s0 < -0x8000) {
-            var_s0 += 0xFFFF;
+        if (angleDiff < -0x8000) {
+            angleDiff += 0xFFFF;
         }
-        npcParentObj->trans.rotation.y_rotation += ((var_s0 * (s32) updateRateF)) >> 4;
-        var_s0 = arctan2_f(yDiff, 255.0f) - (npcParentObj->trans.rotation.x_rotation & 0xFFFF);
-        if (var_s0 > 0x8000) {
-            var_s0 -= 0xFFFF;
+        npcParentObj->trans.rotation.y_rotation += ((angleDiff * (s32) updateRateF)) >> 4;
+        angleDiff = arctan2_f(yDiff, 255.0f) - (npcParentObj->trans.rotation.x_rotation & 0xFFFF);
+        if (angleDiff > 0x8000) {
+            angleDiff -= 0xFFFF;
         }
-        if (var_s0 < -0x8000) {
-            var_s0 += 0xFFFF;
+        if (angleDiff < -0x8000) {
+            angleDiff += 0xFFFF;
         }
-        npcParentObj->trans.rotation.x_rotation += ((var_s0 * (s32) updateRateF)) >> 4;
+        npcParentObj->trans.rotation.x_rotation += ((angleDiff * (s32) updateRateF)) >> 4;
     }
 
     npcParentObj->trans.rotation.z_rotation = 0;
     xDiff = sins_f((s16) (npcParentObj->trans.rotation.y_rotation + 0x8000)) * dist;
     move_object(npcParentObj, xDiff * updateRateF, 0.0f,
                 coss_f((npcParentObj->trans.rotation.y_rotation + 0x8000)) * dist * updateRateF);
-    npcParentObj->trans.y_position = tempYDiff;
+    npcParentObj->trans.y_position = targetY;
     dist = dist * updateRateF * 2;
-    if (someBool != 0) {
+    if (passedNode != 0) {
         npc->nodeData[0] = npc->nodeData[1];
         npc->nodeData[1] = npc->nodeData[2];
         npc->nodeData[2] = npc->nodeData[3];
@@ -421,7 +426,7 @@ s32 ainode_find_next(s32 nodeId, s32 nextNodeId, s32 direction) {
     Object_AiNode *aiNode;
     s32 nextIndex;
     s32 i;
-    s32 someCount;
+    s32 foundCount;
 
     if (nodeId < -1 || nodeId >= AINODE_COUNT) {
         return NODE_NONE;
@@ -434,145 +439,151 @@ s32 ainode_find_next(s32 nodeId, s32 nextNodeId, s32 direction) {
     entry = &aiNodeObj->level_entry->aiNode;
     aiNode = aiNodeObj->ai_node;
     direction = direction & 3;
-    someCount = 0;
+    foundCount = 0;
     nextIndex = (aiNode->directions[direction] + 1) & 3;
 
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < AINODE_ADJACENT_COUNT; i++) {
         if (entry->adjacent[nextIndex] != NODE_NONE && entry->adjacent[nextIndex] != nextNodeId) {
             aiNode->directions[direction] = nextIndex;
-            i = 4; // break
-            someCount++;
+            i = AINODE_ADJACENT_COUNT; // break
+            foundCount++;
         }
         nextIndex = (nextIndex + 1) & 3;
     }
 
-    if (someCount == 0) {
+    if (foundCount == 0) {
         return NODE_NONE;
     } else {
         return entry->adjacent[aiNode->directions[direction]];
     }
 }
 
-/** Chooses the next AI node for a racer from the node graph. */
-s16 ainode_pick_next(s32 arg0, s32 arg1, s32 arg2, s32 arg3) {
+/**
+ * Chooses the next AI node for a racer from the node graph: a cheapest-path search outward from startNodeId
+ * (skipping the first link it meets between it and excludeNodeId) until it reaches target, a node ID with
+ * AINODE_TARGET_IS_NODE set or otherwise a target tag. Returns the neighbour of the start node that the path leaves
+ * through, and records that link in the start node's directions[direction].
+ */
+s16 ainode_pick_next(s32 startNodeId, s32 target, s32 excludeNodeId, s32 direction) {
     s16 result;
-    s32 sp370;
-    s16 var_t1;
-    s16 sp36C;
-    s16 temp2;
+    s32 pathCost;
+    s16 openCount;
+    s16 openIdx;
+    s16 neighbourId;
     s16 i;
     LevelObjectEntry_AiNode *aiNodeEntry;
-    s8 someBool;
-    s8 var_s3;
-    s8 var_s5;
-    s8 temp;
-    s32 var_ra;
+    s8 isStartNode;
+    s8 firstStepNode;
+    s8 backEdgeCount;
+    s8 action; // 0: skip this neighbour, 1: lower its cost in the open list, 2: add it to the list
+    s8 swapTemp;
+    s32 currentCost;
     Object_AiNode *aiNode;
     Object *aiNodeObj;
-    s32 sp154[AINODE_COUNT];
-    s8 spD4[AINODE_COUNT];
-    s8 sp54[AINODE_COUNT];
+    s32 bestCost[AINODE_COUNT];
+    s8 openNodes[AINODE_COUNT];
+    s8 openFirstStep[AINODE_COUNT];
 
     // Only matches with do {} while?
     i = 0;
     do {
-        sp154[i] = 0;
+        bestCost[i] = 0;
         i++;
     } while (i < AINODE_COUNT);
 
-    aiNodeObj = (*gAINodes)[arg0];
+    aiNodeObj = (*gAINodes)[startNodeId];
     aiNode = aiNodeObj->ai_node;
     aiNodeEntry = &aiNodeObj->level_entry->aiNode;
-    var_t1 = 0;
-    var_ra = 0;
+    openCount = 0;
+    currentCost = 0;
     result = NODE_NONE;
-    var_s3 = 0;
-    someBool = 1;
-    var_s5 = 0;
+    firstStepNode = 0;
+    isStartNode = 1;
+    backEdgeCount = 0;
     do {
-        for (i = 0; i < 4; i++) {
+        for (i = 0; i < AINODE_ADJACENT_COUNT; i++) {
             if (aiNode->nodeObj[i] != 0) {
-                temp2 = aiNodeEntry->adjacent[i];
-                temp = 1;
-                if (((arg0 == aiNodeEntry->nodeID) && (temp2 == arg2)) ||
-                    ((arg2 == aiNodeEntry->nodeID) && (temp2 == arg0))) {
-                    temp = 0;
-                    if (var_s5 != 0) {
-                        temp = 1;
+                neighbourId = aiNodeEntry->adjacent[i];
+                action = 1;
+                if (((startNodeId == aiNodeEntry->nodeID) && (neighbourId == excludeNodeId)) ||
+                    ((excludeNodeId == aiNodeEntry->nodeID) && (neighbourId == startNodeId))) {
+                    action = 0;
+                    if (backEdgeCount != 0) {
+                        action = 1;
                     }
-                    var_s5++;
+                    backEdgeCount++;
                 }
-                if (temp != 0) {
-                    sp36C = 0;
-                    temp = 0;
-                    while ((sp36C < var_t1) && (temp2 != spD4[sp36C])) {
-                        sp36C++;
+                if (action != 0) {
+                    openIdx = 0;
+                    action = 0;
+                    while ((openIdx < openCount) && (neighbourId != openNodes[openIdx])) {
+                        openIdx++;
                     }
 
-                    sp370 = aiNode->distToNode[i] + var_ra;
-                    if (sp36C == var_t1) {
-                        temp = 2;
-                    } else if (sp370 < sp154[temp2]) {
-                        temp = 1;
+                    pathCost = aiNode->distToNode[i] + currentCost;
+                    if (openIdx == openCount) {
+                        action = 2;
+                    } else if (pathCost < bestCost[neighbourId]) {
+                        action = 1;
                     }
                 }
-                if (temp != 0) {
-                    while (sp36C < var_t1 - 1) {
-                        spD4[sp36C] = spD4[sp36C + 1];
-                        sp54[sp36C] = sp54[sp36C + 1];
-                        sp36C++;
+                if (action != 0) {
+                    while (openIdx < openCount - 1) {
+                        openNodes[openIdx] = openNodes[openIdx + 1];
+                        openFirstStep[openIdx] = openFirstStep[openIdx + 1];
+                        openIdx++;
                     }
-                    if (temp == 2) {
-                        var_t1++;
+                    if (action == 2) {
+                        openCount++;
                     }
-                    sp154[temp2] = sp370;
+                    bestCost[neighbourId] = pathCost;
 
-                    sp36C = var_t1 - 1;
+                    openIdx = openCount - 1;
 
-                    sp54[sp36C] = (someBool) ? aiNodeEntry->adjacent[i] : var_s3;
-                    spD4[sp36C] = aiNodeEntry->adjacent[i];
+                    openFirstStep[openIdx] = (isStartNode) ? aiNodeEntry->adjacent[i] : firstStepNode;
+                    openNodes[openIdx] = aiNodeEntry->adjacent[i];
 
-                    while ((sp36C > 0) && (sp154[spD4[sp36C - 1]] < sp154[spD4[sp36C]])) {
-                        temp = spD4[sp36C];
-                        spD4[sp36C] = spD4[sp36C - 1];
-                        spD4[sp36C - 1] = temp;
-                        temp = sp54[sp36C];
-                        sp54[sp36C] = sp54[sp36C - 1] & 0xFF & 0xFF & 0xFF;
-                        sp54[sp36C - 1] = temp & 0xFF;
-                        sp36C--;
+                    while ((openIdx > 0) && (bestCost[openNodes[openIdx - 1]] < bestCost[openNodes[openIdx]])) {
+                        swapTemp = openNodes[openIdx];
+                        openNodes[openIdx] = openNodes[openIdx - 1];
+                        openNodes[openIdx - 1] = swapTemp;
+                        swapTemp = openFirstStep[openIdx];
+                        openFirstStep[openIdx] = openFirstStep[openIdx - 1] & 0xFF & 0xFF & 0xFF;
+                        openFirstStep[openIdx - 1] = swapTemp & 0xFF;
+                        openIdx--;
                     }
                 }
             }
         }
 
-        if (var_t1 > 0) {
-            var_t1--;
-            aiNodeObj = (*gAINodes)[spD4[var_t1]];
+        if (openCount > 0) {
+            openCount--;
+            aiNodeObj = (*gAINodes)[openNodes[openCount]];
             aiNodeEntry = &aiNodeObj->level_entry->aiNode;
-            var_s3 = sp54[var_t1];
-            var_ra = sp154[aiNodeEntry->nodeID];
+            firstStepNode = openFirstStep[openCount];
+            currentCost = bestCost[aiNodeEntry->nodeID];
             aiNode = aiNodeObj->ai_node;
-            someBool = 0;
-            if (arg1 & 0x100) {
-                if ((arg1 & 0x7F) == spD4[var_t1]) {
-                    result = var_s3;
+            isStartNode = 0;
+            if (target & AINODE_TARGET_IS_NODE) {
+                if ((target & AINODE_TARGET_NODE_MASK) == openNodes[openCount]) {
+                    result = firstStepNode;
                 }
-            } else if (arg1 == aiNodeEntry->targetTag) {
-                result = var_s3;
+            } else if (target == aiNodeEntry->targetTag) {
+                result = firstStepNode;
             }
-            if ((var_t1 == 0) && (result == 0xFF)) {
-                result = var_s3;
+            if ((openCount == 0) && (result == NODE_NONE)) {
+                result = firstStepNode;
             }
         }
-    } while ((result == NODE_NONE) && (var_t1 > 0));
+    } while ((result == NODE_NONE) && (openCount > 0));
 
-    if (result != 0xFF) {
-        aiNodeObj = (*gAINodes)[arg0];
+    if (result != NODE_NONE) {
+        aiNodeObj = (*gAINodes)[startNodeId];
         aiNodeEntry = &aiNodeObj->level_entry->aiNode;
         aiNode = aiNodeObj->ai_node;
-        for (i = 0; (i < 4) && (result != aiNodeEntry->adjacent[i]); i++) {}
-        if (i < 4) {
-            aiNode->directions[arg3] = i;
+        for (i = 0; (i < AINODE_ADJACENT_COUNT) && (result != aiNodeEntry->adjacent[i]); i++) {}
+        if (i < AINODE_ADJACENT_COUNT) {
+            aiNode->directions[direction] = i;
         }
     }
     return result;

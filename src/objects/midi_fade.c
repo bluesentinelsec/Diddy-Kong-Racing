@@ -1,5 +1,18 @@
 #include "objects_internal.h"
 
+#define MIDI_CHANNEL_COUNT 16
+
+// Object_MidiFade channel modes (one 2-bit mode per crossing direction).
+#define MIDI_FADE_OFF 0
+#define MIDI_FADE_ON 1
+#define MIDI_FADE_OUT 2
+#define MIDI_FADE_IN 3
+#define MIDI_FADE_PROGRESS_END 0xFE // progress at which a fade is complete
+
+// Object_MidiFadePoint channel modes.
+#define MIDI_POINT_FADE_OUT 1 // quieter with distance from the point
+#define MIDI_POINT_FADE_IN 2  // louder with distance from the point
+
 /**
  * Fade channels by the player's distance from a midi fade point: full inside the inner
  * radius, gone at the outer one. Only acts while its sequence is playing.
@@ -26,9 +39,9 @@ static void midi_fade_point_apply(Object *racerObj, Object *obj) {
         range = (point->outerRadius - point->innerRadius);
         fade = (127.0f * distance) / range;
     }
-    for (i = 0; i < 16; i++) {
+    for (i = 0; i < MIDI_CHANNEL_COUNT; i++) {
         switch (point->channelModes[i]) {
-            case 1:
+            case MIDI_POINT_FADE_OUT:
                 if (fade >= 0x7B) {
                     music_channel_off(i);
                 } else {
@@ -36,7 +49,7 @@ static void midi_fade_point_apply(Object *racerObj, Object *obj) {
                     music_channel_on(i);
                 }
                 break;
-            case 2:
+            case MIDI_POINT_FADE_IN:
                 if ((music_channel_fade(i) > 0) && (music_channel_active(i) == 0)) {
                     music_channel_fade_set(i, fade);
                 }
@@ -138,26 +151,26 @@ static void midi_fade_advance(s32 updateRate) {
         midiFade->timer = durationFrames;
     }
     progress = (midiFade->timer * 254.0f) / durationFrames;
-    if (progress < 0xFE) {
+    if (progress < MIDI_FADE_PROGRESS_END) {
         midiFade->progress = progress;
     } else {
-        midiFade->progress = 0xFE;
+        midiFade->progress = MIDI_FADE_PROGRESS_END;
     }
-    for (i = 0; i < 16; i++) {
+    for (i = 0; i < MIDI_CHANNEL_COUNT; i++) {
         mode = midiFade->channelModes[i];
         if (midiFade->direction == -1) {
             mode >>= 2;
         }
         mode &= 3;
         switch (mode) {
-            case 1:
+            case MIDI_FADE_ON:
                 music_channel_on(i);
                 music_channel_fade_set(i, 0x7FU);
                 break;
-            case 0:
+            case MIDI_FADE_OFF:
                 music_channel_off(i);
                 break;
-            case 3:
+            case MIDI_FADE_IN:
                 if (midiFade->progress >= 0x80) {
                     level = (midiFade->progress - 0x7F) & 0xFF;
                     music_channel_on(i);
@@ -166,7 +179,7 @@ static void midi_fade_advance(s32 updateRate) {
                     }
                 }
                 break;
-            case 2:
+            case MIDI_FADE_OUT:
                 if (midiFade->progress < 0x7F) {
                     level = (0x7F - midiFade->progress) & 0xFF;
                     if (level < music_channel_fade(i)) {
@@ -180,7 +193,7 @@ static void midi_fade_advance(s32 updateRate) {
                 break;
         }
     }
-    if (midiFade->progress == 0xFE) {
+    if (midiFade->progress == MIDI_FADE_PROGRESS_END) {
         gCurrentMidiFade = 0;
     }
 }

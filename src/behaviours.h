@@ -301,7 +301,7 @@ void func_800387C0(s32 arg0, s32 arg1);
 void anim_object_spawn_target(Object *obj, LevelObjectEntry_Animation *animEntry);
 void anim_objects_spawn_targets(void);
 void calc_env_mapping_for_object(ObjectModel *, s16, s16, s16);
-s32 ainode_find_nearest(f32 diffX, f32 diffY, f32 diffZ, s32 useElevation);
+s32 ainode_find_nearest(f32 posX, f32 posY, f32 posZ, s32 useElevation);
 void object_id_assign(Object *, s32);
 
 s32 anim_count_actors(s32);

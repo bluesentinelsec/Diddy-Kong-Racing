@@ -1,5 +1,8 @@
 #include "objects_internal.h"
 
+// Boosts started for a non-racer (racer index -1) take slots counting down from the last one.
+#define BOOST_OVERRIDE_FIRST_ID (NUMBER_OF_CHARACTERS - 1)
+
 static f32 gBoostFanDirections[16] = { 0.0f, 1.0f,  0.70711f,  0.70711f,  1.0f,  0.0f, 0.70711f,  -0.70711f,
                                        0.0f, -1.0f, -0.70711f, -0.70711f, -1.0f, 0.0f, -0.70711f, 0.70711f };
 
@@ -36,7 +39,7 @@ void racerfx_alloc(s32 numberOfVertices, s32 numberOfTriangles) {
         if (gBoostEffectObjects[i] != NULL) {
             gBoostEffectObjects[i]->properties.boost.obj = NULL;
             gBoostEffectObjects[i]->properties.boost.indexes = 0;
-            boostObj[i].effectState = 0;
+            boostObj[i].effectState = BOOST_FX_GROW;
             boostObj[i].effectScale = 0.0f;
             boostObj[i].sprite = tex_load_sprite(boostObj[i].spriteId, 0);
             boostObj[i].tex = load_texture(boostObj[i].textureId);
@@ -47,7 +50,7 @@ void racerfx_alloc(s32 numberOfVertices, s32 numberOfTriangles) {
         }
         gBoostEffectFree[i] = TRUE;
     }
-    gBoostObjOverrideID = 9;
+    gBoostObjOverrideID = BOOST_OVERRIDE_FIRST_ID;
     objEntry.common.objectID = ASSET_OBJECT_ID_SHIELD;
     objEntry.common.size = sizeof(LevelObjectEntry_Boost2);
     objEntry.common.x = 0;
@@ -110,41 +113,40 @@ void racerfx_free(void) {
 }
 
 /** Builds the fan of vertices and triangles for one boost flame, facing the racer's rotation. */
-void boost_build_fan_mesh(Vertex *vertices, Triangle *triangles, ObjectTransform *trans, f32 arg3, f32 arg4, s16 arg5,
-                          TextureHeader *tex) {
-    s32 sp80[8];
+void boost_build_fan_mesh(Vertex *vertices, Triangle *triangles, ObjectTransform *trans, f32 fanRadius, f32 fanLength,
+                          s16 angle, TextureHeader *tex) {
+    s32 vertexUVs[BOOST_TRI_COUNT];
     s32 i;
     s32 height, width;
     s16 *v;
-    Vec3f sp64;
+    Vec3f vertexPos;
     s32 *tri;
     f32 *ptr;
-    s32 temp;
 
     v = (s16 *) vertices;
 
-    sp64.z = -arg4;
-    vec3f_rotate_py(&trans->rotation, &sp64);
+    vertexPos.z = -fanLength;
+    vec3f_rotate_py(&trans->rotation, &vertexPos);
 
     // A rather strange way to fill structures
 
-    *v++ = sp64.f[0] + trans->x_position;
-    *v++ = sp64.f[1] + trans->y_position;
-    *v++ = sp64.f[2] + trans->z_position;
+    *v++ = vertexPos.f[0] + trans->x_position;
+    *v++ = vertexPos.f[1] + trans->y_position;
+    *v++ = vertexPos.f[2] + trans->z_position;
     *v++ = -1;
     *v++ = -1;
 
     ptr = gBoostFanDirections;
-    for (i = 0; i < 8; i++) {
-        sp64.x = *ptr++ * arg3;
-        sp64.y = *ptr++ * arg3;
-        sp64.z = 0.0f;
+    for (i = 0; i < BOOST_TRI_COUNT; i++) {
+        vertexPos.x = *ptr++ * fanRadius;
+        vertexPos.y = *ptr++ * fanRadius;
+        vertexPos.z = 0.0f;
 
-        vec3f_rotate(&trans->rotation, &sp64);
+        vec3f_rotate(&trans->rotation, &vertexPos);
 
-        *v++ = sp64.f[0] + trans->x_position;
-        *v++ = sp64.f[1] + trans->y_position;
-        *v++ = sp64.f[2] + trans->z_position;
+        *v++ = vertexPos.f[0] + trans->x_position;
+        *v++ = vertexPos.f[1] + trans->y_position;
+        *v++ = vertexPos.f[2] + trans->z_position;
         *v++ = -1;
         *v++ = -1;
     }
@@ -152,26 +154,26 @@ void boost_build_fan_mesh(Vertex *vertices, Triangle *triangles, ObjectTransform
     width = (tex->width - 1) << 4;
     height = (tex->height - 1) << 4;
 
-    for (i = 0; i < 8; i++) {
-        sp80[i] = width + ((sins_s16(arg5) * width) >> 16);
-        sp80[i] |= ((height << 16) + height * coss_s16(arg5)) & 0xFFFF0000;
-        arg5 += 0x2000;
+    for (i = 0; i < BOOST_TRI_COUNT; i++) {
+        vertexUVs[i] = width + ((sins_s16(angle) * width) >> 16);
+        vertexUVs[i] |= ((height << 16) + height * coss_s16(angle)) & 0xFFFF0000;
+        angle += 0x2000;
     }
 
     tri = (s32 *) triangles;
-    for (i = 0; i < 8; i++) {
+    for (i = 0; i < BOOST_TRI_COUNT; i++) {
         *tri++ = DKR_TRIANGLE(BACKFACE_CULL, 0, i + 1, ((i + 1) & 7) + 1);
         *tri++ = ((width & 0xFFFF) << 16) | (height & 0xFFFF);
-        *tri++ = sp80[i];
-        *tri++ = sp80[(i + 1) & 7];
+        *tri++ = vertexUVs[i];
+        *tri++ = vertexUVs[(i + 1) & 7];
     }
 }
 
 /** Starts or restyles a racer's boost effect object for its vehicle and boost type. */
-void racer_set_boost_effect(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev, s32 boostType, s32 arg4) {
-    Vec3f sp74;
-    f32 temp_f0;
-    f32 var_f2;
+void racer_set_boost_effect(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev, s32 boostType, s32 keepActive) {
+    Vec3f fanOffset;
+    f32 fanLength;
+    f32 fanRadius;
     Object_Boost *boostAsset;
     ObjectTransform objTrans;
     Object_Boost *objBoostRacer;
@@ -210,19 +212,20 @@ void racer_set_boost_effect(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev,
             if (boostData != NULL) {
                 gBoostVehicleIds[racerIndex] = vehicleIDPrev;
                 gBoostTypes[racerIndex] = boostType;
-                if (objBoostRacer->effectState == 2) {
-                    temp_f0 = coss_f(objBoostRacer->pulseTimer << 12);
-                    var_f2 =
-                        (boostData->fanRadiusBase + (temp_f0 * boostData->fanRadiusPulse)) * objBoostRacer->effectScale;
-                    temp_f0 =
-                        (boostData->fanLengthBase + (temp_f0 * boostData->fanLengthPulse)) * objBoostRacer->effectScale;
+                if (objBoostRacer->effectState == BOOST_FX_ACTIVE) {
+                    // fanLength holds the pulse cosine until it is overwritten with the length below.
+                    fanLength = coss_f(objBoostRacer->pulseTimer << 12);
+                    fanRadius = (boostData->fanRadiusBase + (fanLength * boostData->fanRadiusPulse)) *
+                                objBoostRacer->effectScale;
+                    fanLength = (boostData->fanLengthBase + (fanLength * boostData->fanLengthPulse)) *
+                                objBoostRacer->effectScale;
                     if ((boostType & 3) == BOOST_MEDIUM) {
-                        var_f2 *= 1.09f;
-                        temp_f0 *= 1.09f;
+                        fanRadius *= 1.09f;
+                        fanLength *= 1.09f;
                     }
                     if ((boostType & 3) >= BOOST_LARGE) {
-                        var_f2 *= 1.18f;
-                        temp_f0 *= 1.18f;
+                        fanRadius *= 1.18f;
+                        fanLength *= 1.18f;
                     }
                     objTrans.x_position = boostData->position.x;
                     objTrans.y_position = boostData->position.y;
@@ -232,7 +235,7 @@ void racer_set_boost_effect(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev,
                     objTrans.rotation.x_rotation = 0;
                     objTrans.rotation.z_rotation = 0;
                     boost_build_fan_mesh(&gBoostVerts[gBoostVertFlip][gNumOfBoostVerts],
-                                         &gBoostTris[gBoostVertFlip][gNumOfBoostTris], &objTrans, var_f2, temp_f0,
+                                         &gBoostTris[gBoostVertFlip][gNumOfBoostTris], &objTrans, fanRadius, fanLength,
                                          objBoostRacer->pulseTimer << 12, objBoostType->tex);
                     gBoostEffectObjects[racerIndex]->properties.boost.indexes =
                         (racerIndex << 28) | (gNumOfBoostVerts << 14) | gNumOfBoostTris;
@@ -243,15 +246,15 @@ void racer_set_boost_effect(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev,
                 gBoostEffectObjects[racerIndex]->trans.x_position = 0.0f;
                 gBoostEffectObjects[racerIndex]->trans.y_position = 0.0f;
                 gBoostEffectObjects[racerIndex]->trans.z_position = 0.0f;
-                sp74.x = boostData->position.x;
-                sp74.y = boostData->position.y;
-                sp74.z = boostData->position.z;
-                vec3f_rotate(&racerObj->trans.rotation, &sp74);
+                fanOffset.x = boostData->position.x;
+                fanOffset.y = boostData->position.y;
+                fanOffset.z = boostData->position.z;
+                vec3f_rotate(&racerObj->trans.rotation, &fanOffset);
                 ignore_bounds_check();
-                move_object(gBoostEffectObjects[racerIndex], racerObj->trans.x_position + sp74.f[0],
-                            racerObj->trans.y_position + sp74.f[1], racerObj->trans.z_position + sp74.f[2]);
+                move_object(gBoostEffectObjects[racerIndex], racerObj->trans.x_position + fanOffset.f[0],
+                            racerObj->trans.y_position + fanOffset.f[1], racerObj->trans.z_position + fanOffset.f[2]);
             }
-            if (arg4 != FALSE) {
+            if (keepActive != FALSE) {
                 gBoostEffectFree[racerIndex] = FALSE;
             }
         }
@@ -265,7 +268,7 @@ void racer_set_boost_effect(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev,
 void racerfx_update(s32 updateRate) {
     s32 i;
     Object_Boost *boostObj;
-    s32 temp;
+    s32 racerIndex;
     Object_Boost *asset20;
     f32 updateRateF;
     Object_Racer *racer;
@@ -274,7 +277,7 @@ void racerfx_update(s32 updateRate) {
     gNumOfBoostVerts = 0;
     gNumOfBoostTris = 0;
     asset20 = (Object_Boost *) get_misc_asset(ASSET_MISC_20);
-    gBoostObjOverrideID = 9;
+    gBoostObjOverrideID = BOOST_OVERRIDE_FIRST_ID;
     for (i = 0; i < NUMBER_OF_CHARACTERS; i++) {
         if (gBoostEffectFree[i] && gBoostEffectObjects[i] != NULL) {
             gBoostEffectObjects[i]->properties.boost.obj = NULL;
@@ -294,23 +297,23 @@ void racerfx_update(s32 updateRate) {
         boostObj->pulseTimer += updateRate;
         if (racer->boostTimer != 0) {
             boostObj->lingerTimer = 20;
-            if (boostObj->effectState == 0) {
+            if (boostObj->effectState == BOOST_FX_GROW) {
                 boostObj->effectScale += updateRateF * 0.25f;
                 updateRateF = 0.0f;
                 if (boostObj->effectScale > 2.4f) {
                     boostObj->effectScale = 4.8f - boostObj->effectScale;
-                    boostObj->effectState = 1;
+                    boostObj->effectState = BOOST_FX_SETTLE;
                 }
             }
-            if (boostObj->effectState == 1) {
+            if (boostObj->effectState == BOOST_FX_SETTLE) {
                 boostObj->effectScale -= updateRateF * 0.25f;
                 updateRateF = 0.0f;
                 if (boostObj->effectScale < 1.0f) {
-                    boostObj->effectState = 2;
+                    boostObj->effectState = BOOST_FX_ACTIVE;
                     boostObj->effectScale = 1.0f - boostObj->effectScale;
                 }
             }
-            if (boostObj->effectState == 2) {
+            if (boostObj->effectState == BOOST_FX_ACTIVE) {
                 if (boostObj->effectScale < 1.0f) {
                     boostObj->effectScale += updateRateF * 0.125f;
                     if (boostObj->effectScale > 1.0f) {
@@ -322,40 +325,40 @@ void racerfx_update(s32 updateRate) {
             if (boostObj->lingerTimer > 0) {
                 boostObj->lingerTimer -= updateRate;
             } else {
-                if (boostObj->effectState == 2) {
+                if (boostObj->effectState == BOOST_FX_ACTIVE) {
                     boostObj->effectScale -= updateRateF * 0.05f;
                     updateRateF = 0.0f;
                     if (boostObj->effectScale < 0.0f) {
-                        boostObj->effectState = 0;
+                        boostObj->effectState = BOOST_FX_GROW;
                         boostObj->effectScale += 1.0f;
                     }
                 }
-                if (boostObj->effectState < 2) {
+                if (boostObj->effectState < BOOST_FX_ACTIVE) {
                     boostObj->effectScale -= (updateRateF * 0.1f);
                     if (boostObj->effectScale < 0.0f) {
                         boostObj->effectScale = 0.0f;
                     }
-                    boostObj->effectState = 0;
+                    boostObj->effectState = BOOST_FX_GROW;
                 }
             }
         }
         if ((boostObj->effectState > 0) || (boostObj->effectScale > 0.0f)) {
             racer_set_boost_effect((*gRacers)[i], racer->racerIndex, racer->vehicleIDPrev, racer->boostType, 0);
         }
-        temp = racer->racerIndex;
-        gRacerFXData[temp].magnetPulseTimer += updateRate;
-        gRacerFXData[temp].magnetSpinTimer += updateRate;
+        racerIndex = racer->racerIndex;
+        gRacerFXData[racerIndex].magnetPulseTimer += updateRate;
+        gRacerFXData[racerIndex].magnetSpinTimer += updateRate;
         if (racer->magnetTimer != 0) {
-            if (gRacerFXData[temp].magnetFade + (updateRate << 2) < 32) {
-                gRacerFXData[temp].magnetFade += (updateRate << 2);
+            if (gRacerFXData[racerIndex].magnetFade + (updateRate << 2) < 32) {
+                gRacerFXData[racerIndex].magnetFade += (updateRate << 2);
             } else {
-                gRacerFXData[temp].magnetFade = 32;
+                gRacerFXData[racerIndex].magnetFade = 32;
             }
         } else {
-            if (gRacerFXData[temp].magnetFade - updateRate > 0) {
-                gRacerFXData[temp].magnetFade -= updateRate;
+            if (gRacerFXData[racerIndex].magnetFade - updateRate > 0) {
+                gRacerFXData[racerIndex].magnetFade -= updateRate;
             } else {
-                gRacerFXData[temp].magnetFade = 0;
+                gRacerFXData[racerIndex].magnetFade = 0;
             }
         }
     }

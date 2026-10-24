@@ -69,11 +69,11 @@ void obj_shade_fast(ObjectModel *model, Object *obj, f32 intensity) {
 /**
  * The dynamic ambient lighting half of obj_shade_fancy's pair (see objects.c).
  * Rotates the shadow light direction into object space (optionally through
- * the projection matrix first, when arg2 is set), then shades each vertex
+ * the projection matrix first, when cameraRelative is set), then shades each vertex
  * with an ambient + diffuse greyscale term.
  * Used for racers, the Rare logo, Wizpig's face, etc.
  */
-void calc_dynamic_lighting_for_object_2(Object *obj, ObjectModel *model, s16 arg2, f32 intensity) {
+void calc_dynamic_lighting_for_object_2(Object *obj, ObjectModel *model, s16 cameraRelative, f32 intensity) {
     Vec3f direction;
     ObjectTransform trans;
     MtxF mtx;
@@ -96,7 +96,7 @@ void calc_dynamic_lighting_for_object_2(Object *obj, ObjectModel *model, s16 arg
     direction.x = shading->shadowDirX << 2;
     direction.y = shading->shadowDirY << 2;
     direction.z = shading->shadowDirZ << 2;
-    if (arg2) {
+    if (cameraRelative) {
         mtxf_transform_dir(get_projection_matrix_f32(), &direction, &direction);
     }
 

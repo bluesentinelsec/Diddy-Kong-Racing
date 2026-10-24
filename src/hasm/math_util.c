@@ -288,11 +288,11 @@ s32 get_rng_seed(void) {
  * Official Name: mathRnd
  */
 s32 rand_range(s32 min, s32 max) {
-    s64 temp = gCurrentRNGSeed;
+    s64 nextSeed = gCurrentRNGSeed;
 
-    temp = (temp << 32) | (temp >> 1);
-    temp = temp ^ ((gCurrentRNGSeed & 0xFFFFF) << 12);
-    gCurrentRNGSeed = temp ^ ((temp >> 20) & 0xFFF);
+    nextSeed = (nextSeed << 32) | (nextSeed >> 1);
+    nextSeed = nextSeed ^ ((gCurrentRNGSeed & 0xFFFFF) << 12);
+    gCurrentRNGSeed = nextSeed ^ ((nextSeed >> 20) & 0xFFF);
 
     return (u32) (gCurrentRNGSeed - min) % (max - min + 1) + min;
 }

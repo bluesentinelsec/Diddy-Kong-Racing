@@ -43,6 +43,19 @@
 #include "waves.h"
 #include "weather.h"
 
+// ObjectInteraction hitboxKind values (see the field in structs.h).
+#define HITBOX_KIND_VERTICAL_RANGE 1 // a cylinder: yRangeMin..yRangeMax, in units of 10
+#define HITBOX_KIND_MODEL 2          // collides through its model's facets (collision_objectmodel)
+#define HITBOX_KIND_MODEL_SPHERES 3  // collides through its model's collision spheres
+#define HITBOX_KIND_REACH_ABOVE 4    // a sphere that reaches further up: height above it counts at 0.3
+
+#define COLLISION_PAIR_COUNT 16 // entries in gCollisionPairs
+
+// Object_Boost effectState: the flame swells past full size, shrinks back, then holds at full size.
+#define BOOST_FX_GROW 0
+#define BOOST_FX_SETTLE 1
+#define BOOST_FX_ACTIVE 2
+
 #define OBJECT_MAP_SIZE 0x3000
 #define MAX_CHECKPOINTS 60
 #define OBJECT_POOL_SIZE (0x15800 * 3) // host objects carry 8-byte pointers
@@ -86,7 +99,7 @@ extern s8 gNonDefaultVehicle;
 extern s8 gAnimFrameParity;
 extern s8 gAnimFrameState[2];
 extern s8 gBossRaceIds[2];
-extern s8 D_8011AD26;
+extern s8 gAnimInitAllChannels; // Next anim_objects_spawn_targets also re-inits channel 20 targets.
 extern f32 gObjectModelScaleY;
 extern f32 gCurrentLightIntensity;
 extern Object *gGhostObjPlayer;
@@ -104,7 +117,7 @@ extern s16 gTransformAngleY;
 extern s16 gRaceEndTimer;
 extern s8 gRaceEndStage;
 extern s8 gNumRacersSaved;
-extern s8 unused_D_8011AD52;
+extern s8 gRaceFinishUnusedArg;
 extern s8 gCutsceneSkipRequested;
 extern Gfx *gDeferredDls[10];
 extern s16 gDeferredDlCount;
@@ -188,15 +201,15 @@ void obj_tex_animate(Object *obj, s32 updateRate);
 void obj_door_number(ObjectModel *model, Object *obj);
 void ignore_bounds_check(void);
 s32 move_object(Object *obj, f32 xPos, f32 yPos, f32 zPos);
-void object_scroll_texture(Object *obj, s32 arg1);
+void object_scroll_texture(Object *obj, s32 updateRate);
 void obj_tick_anims(void);
 void process_object_interactions(void);
 void object_init_collision(Object *obj);
 void obj_collision_transform(Object *obj);
 u32 collision_pairs_tick(void);
-s32 model_resolve_collisions(ObjectModel *arg0, s32 arg1, s32 *numCollisions, f32 *originPointsX, f32 *originPointsY,
-                             f32 *originPointsZ, f32 *targetPointsX, f32 *targetPointsY, f32 *targetPointsZ,
-                             f32 *collisionRadii, s8 *surfaces, f32 scale);
+s32 model_resolve_collisions(ObjectModel *model, s32 numPoints, s32 *numCollisions, f32 *originPointsX,
+                             f32 *originPointsY, f32 *originPointsZ, f32 *targetPointsX, f32 *targetPointsY,
+                             f32 *targetPointsZ, f32 *collisionRadii, s8 *surfaces, f32 scale);
 void set_taj_challenge_type(s32 vehicleID);
 f32 distance_between_objects(Object *a, Object *b);
 void checkpoint_update_all(void);
@@ -210,11 +223,11 @@ Object *get_racer_object(s32 index);
 void debug_render_checkpoint_node(s32 checkpointID, s32 pathID, Gfx **dList, Mtx **mtx, Vertex **vtx);
 void spectate_update(void);
 void set_world_shading(f32 ambient, f32 diffuse, s16 angleX, s16 angleY, s16 angleZ);
-void set_shading_properties(ShadeProperties *arg0, f32 ambient, f32 diffuse, s16 angleX, s16 angleY, s16 angleZ);
-void obj_shade_fancy(ObjectModel *model, Object *object, s32 arg2, f32 intensity);
+void set_shading_properties(ShadeProperties *shading, f32 ambient, f32 diffuse, s16 angleX, s16 angleY, s16 angleZ);
+void obj_shade_fancy(ObjectModel *model, Object *object, s32 cameraRelative, f32 intensity);
 s32 *get_misc_asset(s32 index);
 void cutscene_set(s32 cutsceneID);
-void override_pos_apply(s8 arg0);
+void override_pos_apply(s8 collidablePass);
 void override_pos_update(void);
 void anim_objects_update(void);
 s8 anim_prev_frame_state(void);

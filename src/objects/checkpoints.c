@@ -1,5 +1,8 @@
 #include "objects_internal.h"
 
+// Alternate-route checkpoints are numbered this far above their main-route twin.
+#define CHECKPOINT_ALT_ID_OFFSET 255
+
 /**
  * Gather the checkpoint objects of the current challenge type into gTrackCheckpoints.
  * Alternate-route checkpoints are numbered 255 above their main-route twin. Returns how
@@ -23,7 +26,7 @@ static s32 checkpoints_collect(void) {
                 gTrackCheckpoints[gNumberOfMainCheckpoints].obj = obj;
                 checkpointID = checkpointEntry->index;
                 if (checkpointEntry->isAltCheckpoint) {
-                    checkpointID += 255;
+                    checkpointID += CHECKPOINT_ALT_ID_OFFSET;
                     alternateCount++;
                 }
                 gTrackCheckpoints[gNumberOfMainCheckpoints].checkpointID = checkpointID;
@@ -77,7 +80,7 @@ static void checkpoints_link_alternates(void) {
     s32 j;
 
     for (i = gNumberOfMainCheckpoints; i < gNumberOfTotalCheckpoints; i++) {
-        mainID = gTrackCheckpoints[i].checkpointID - 255;
+        mainID = gTrackCheckpoints[i].checkpointID - CHECKPOINT_ALT_ID_OFFSET;
         for (j = 0; j < gNumberOfMainCheckpoints; j++) {
             if (mainID == gTrackCheckpoints[j].checkpointID) {
                 gTrackCheckpoints[j].altRouteID = i;
@@ -355,7 +358,6 @@ Object *find_taj_object(void) {
  * find the opponent one place ahead of the racer; if it's -1, find the opponent one place behind.
  */
 Object *racer_find_nearest_opponent_relative(Object_Racer *racer, s32 position, f32 *distance) {
-    UNUSED s32 pad;
     Object *tempRacerObj;
     position = (racer->racerOrder - position) - 1;
     if (position < 0 || position >= gNumRacers) {
@@ -378,7 +380,6 @@ f32 racer_calc_distance_to_opponent(Object_Racer *racer1, Object_Racer *racer2) 
     Object_Racer *temp_racer;
     f32 totalDistance;
     s32 r1_ccp;
-    UNUSED s32 pad;
     s32 reverseOrder;
     s32 checkpointID;
 

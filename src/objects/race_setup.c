@@ -417,24 +417,159 @@ static void taj_challenge_check(Settings *settings) {
 }
 
 /**
+ * Decide how many racers take part and how many of them are human, from the player count and race
+ * type. A time trial seats racers like a hub world, so `raceType` may change. Returns the number of
+ * human players.
+ */
+static s32 racers_set_count(s32 playerCount, u8 *raceType, enum GameMode gameMode, RacerSpawnPoint *spawns) {
+    s32 numPlayers;
+
+    numPlayers = playerCount + 1;
+    gNumRacers = 8;
+    gTwoActivePlayersInAdventure = FALSE;
+    if (race_is_adventure_2P()) {
+        numPlayers = 2;
+        gTwoActivePlayersInAdventure = TRUE;
+        set_scene_viewport_num(VIEWPORT_LAYOUT_2_PLAYERS);
+    }
+    if (*raceType == RACETYPE_HUBWORLD) {
+        gTimeTrialEnabled = 0;
+    }
+    gIsTimeTrial = gTimeTrialEnabled;
+    if (gIsTimeTrial) {
+        *raceType = RACETYPE_HUBWORLD; // Time trials seat racers like a hub world: humans only.
+    }
+    if (*raceType == RACETYPE_HUBWORLD || numPlayers >= 3) {
+        gNumRacers = numPlayers;
+        if (level_properties_get() == 0 && gSpawnAngleOffset != 0) {
+            spawns[0].angle += gSpawnAngleOffset;
+            gSpawnAngleOffset = 0;
+        }
+    } else if (numPlayers == 2) {
+        gNumRacers = get_multiplayer_racer_count();
+    }
+    if (*raceType & RACETYPE_CHALLENGE) {
+        gNumRacers = 4;
+    }
+    gBossRaceMode = 0;
+    if (*raceType == RACETYPE_BOSS) {
+        gNumRacers = 2;
+        numPlayers = 1;
+        gBossRaceMode = 1;
+    }
+    gRollingDemo = FALSE;
+    if (gameMode == GAMEMODE_MENU && *raceType == RACETYPE_DEFAULT) {
+        gNumRacers = 6;
+        gRollingDemo = TRUE;
+        gBossRaceMode = 2;
+    }
+    return numPlayers;
+}
+
+/**
+ * Spawn each racer on its grid slot and fill it in. Hub worlds spawn only the human players.
+ */
+static void racers_spawn_all(LevelObjectEntry_Racer *racerEntry, Settings *settings, Vehicle vehicle, s32 numPlayers,
+                             u8 raceType, enum GameMode gameMode, s8 *pushForces, LevelHeader *levelHeader,
+                             RacerSpawnPoint *spawns) {
+    Object *racerObj;
+    s32 prevVehicle;
+    s16 objectID;
+    s32 port;
+    s32 i;
+
+    prevVehicle = -1;
+    for (i = 0; i < gNumRacers; i++) {
+        port = racer_port_for_slot(settings, i, raceType);
+        racerEntry->playerIndex = port < numPlayers ? port : 4;
+        if (raceType == RACETYPE_HUBWORLD && racerEntry->playerIndex == 4) {
+            continue; // No AI in hub worlds.
+        }
+        vehicle = racer_spawn_vehicle(vehicle, i, racerEntry->playerIndex, numPlayers, levelHeader);
+        objectID = racer_object_id(settings, i, port, vehicle);
+        racerEntry->common.objectID = objectID;
+        racerEntry->common.size = ((objectID & 0x100) >> 1) | 0x10;
+        racerEntry->common.x = spawns[i].x;
+        racerEntry->common.y = spawns[i].y;
+        racerEntry->common.z = spawns[i].z;
+        racerEntry->angleY = spawns[i].angle;
+        racerObj = spawn_object((LevelObjectEntryCommon *) racerEntry,
+                                racer_spawn_flags(racerEntry->playerIndex, numPlayers, vehicle));
+        racerObj->trans.rotation.y_rotation = spawns[i].angle;
+        (*gRacers)[i] = racerObj;
+        gRacersByPosition[i] = racerObj;
+        gRacersByPort[port] = racerObj;
+        if (prevVehicle != -1 && prevVehicle != (s32) vehicle) {
+            gNonDefaultVehicle = TRUE;
+        }
+        prevVehicle = vehicle;
+        racer_init_fields(racerObj, settings, i, port, vehicle, raceType, gameMode, pushForces);
+    }
+}
+
+/**
+ * In game, free the objects whose header says they don't appear in time trials or multiplayer.
+ */
+static void racers_remove_unwanted_objects(s32 numPlayers) {
+    Object *racerObj;
+    s32 headerFlags;
+    s32 j;
+
+    if (get_game_mode() == GAMEMODE_INGAME) {
+        for (j = 0; j < gObjectCount; j++) {
+            racerObj = gObjPtrList[j];
+            headerFlags = racerObj->header->flags;
+            if (headerFlags & OBJECT_HEADER_NO_TIME_TRIAL && gIsTimeTrial) {
+                free_object(racerObj);
+            } else if (headerFlags & OBJECT_HEADER_NO_MULTIPLATER && numPlayers >= 2) {
+                free_object(racerObj);
+            }
+        }
+    }
+}
+
+/**
+ * Load the time trial ghosts and spawn the player's best-time ghost and the staff ghost when there
+ * is data for them (single player time trials only).
+ */
+static void racers_spawn_time_trial_ghosts(LevelObjectEntry_Racer *racerEntry, s32 numPlayers,
+                                           RacerSpawnPoint *spawns) {
+    s16 objectID;
+
+    gGhostObjStaff = NULL;
+    timetrial_free_staff_ghost();
+    gTimeTrialContPak = -1;
+    if (gIsTimeTrial && numPlayers == 1) {
+        timetrial_reset_player_ghost();
+        gTimeTrialContPak = timetrial_init_player_ghost(PLAYER_ONE);
+        gHasGhostToSave = 0;
+        if (gTimeTrialVehicle >= VEHICLE_BOSSES) {
+            gTimeTrialVehicle = VEHICLE_CAR;
+        }
+        if (timetrial_valid_player_ghost()) {
+            objectID = gRacerObjectTable[gTimeTrialCharacter + (gTimeTrialVehicle * NUM_CHARACTERS)];
+            gGhostObjPlayer = racers_spawn_ghost(racerEntry, objectID, &spawns[0]);
+        }
+        if (timetrial_init_staff_ghost(level_id())) {
+            objectID = gRacerObjectTable[(gMapDefaultVehicle * NUM_CHARACTERS) + 8];
+            gGhostObjStaff = racers_spawn_ghost(racerEntry, objectID, &spawns[0]);
+        }
+    }
+}
+
+/**
  * Takes the level header and decides which race type to activate.
  * Sets up the racer spawning. Initialising vehicle types, racer count, then
  * spawning them into the world in their assigned order.
  */
 void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     LevelObjectEntry_Racer *racerEntry;
-    Object *racerObj;
     enum GameMode gameMode;
     s32 numPlayers;
     s32 cutsceneID;
     s8 *pushForces;
-    s32 prevVehicle;
-    s16 objectID;
     RacerSpawnPoint spawns[8];
     Settings *settings;
-    s32 port;
-    s32 i;
-    s32 j;
     u8 raceType;
     LevelHeader *levelHeader;
     Camera *cutsceneCameraSegment;
@@ -476,45 +611,7 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     gPrevTimeTrialVehicle = gSetupPointVehicle;
 
     // How many racers, and how many of them are human.
-    numPlayers = playerCount + 1;
-    gNumRacers = 8;
-    gTwoActivePlayersInAdventure = FALSE;
-    if (race_is_adventure_2P()) {
-        numPlayers = 2;
-        gTwoActivePlayersInAdventure = TRUE;
-        set_scene_viewport_num(VIEWPORT_LAYOUT_2_PLAYERS);
-    }
-    if (raceType == RACETYPE_HUBWORLD) {
-        gTimeTrialEnabled = 0;
-    }
-    gIsTimeTrial = gTimeTrialEnabled;
-    if (gIsTimeTrial) {
-        raceType = RACETYPE_HUBWORLD; // Time trials seat racers like a hub world: humans only.
-    }
-    if (raceType == RACETYPE_HUBWORLD || numPlayers >= 3) {
-        gNumRacers = numPlayers;
-        if (level_properties_get() == 0 && gSpawnAngleOffset != 0) {
-            spawns[0].angle += gSpawnAngleOffset;
-            gSpawnAngleOffset = 0;
-        }
-    } else if (numPlayers == 2) {
-        gNumRacers = get_multiplayer_racer_count();
-    }
-    if (raceType & RACETYPE_CHALLENGE) {
-        gNumRacers = 4;
-    }
-    gBossRaceMode = 0;
-    if (raceType == RACETYPE_BOSS) {
-        gNumRacers = 2;
-        numPlayers = 1;
-        gBossRaceMode = 1;
-    }
-    gRollingDemo = FALSE;
-    if (gameMode == GAMEMODE_MENU && raceType == RACETYPE_DEFAULT) {
-        gNumRacers = 6;
-        gRollingDemo = TRUE;
-        gBossRaceMode = 2;
-    }
+    numPlayers = racers_set_count(playerCount, &raceType, gameMode, spawns);
     racers_assign_starting_positions(settings);
 
     racerEntry = mempool_alloc_safe(sizeof(LevelObjectEntry_Racer), COLOUR_TAG_YELLOW);
@@ -523,33 +620,7 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
     racerEntry->angleZ = 0;
     gIsNonCarRacers = levelHeader->vehicle != VEHICLE_CAR;
     gBossRaceIds[1] = levelHeader->bossRaceID;
-    prevVehicle = -1;
-    for (i = 0; i < gNumRacers; i++) {
-        port = racer_port_for_slot(settings, i, raceType);
-        racerEntry->playerIndex = port < numPlayers ? port : 4;
-        if (raceType == RACETYPE_HUBWORLD && racerEntry->playerIndex == 4) {
-            continue; // No AI in hub worlds.
-        }
-        vehicle = racer_spawn_vehicle(vehicle, i, racerEntry->playerIndex, numPlayers, levelHeader);
-        objectID = racer_object_id(settings, i, port, vehicle);
-        racerEntry->common.objectID = objectID;
-        racerEntry->common.size = ((objectID & 0x100) >> 1) | 0x10;
-        racerEntry->common.x = spawns[i].x;
-        racerEntry->common.y = spawns[i].y;
-        racerEntry->common.z = spawns[i].z;
-        racerEntry->angleY = spawns[i].angle;
-        racerObj = spawn_object((LevelObjectEntryCommon *) racerEntry,
-                                racer_spawn_flags(racerEntry->playerIndex, numPlayers, vehicle));
-        racerObj->trans.rotation.y_rotation = spawns[i].angle;
-        (*gRacers)[i] = racerObj;
-        gRacersByPosition[i] = racerObj;
-        gRacersByPort[port] = racerObj;
-        if (prevVehicle != -1 && prevVehicle != (s32) vehicle) {
-            gNonDefaultVehicle = TRUE;
-        }
-        prevVehicle = vehicle;
-        racer_init_fields(racerObj, settings, i, port, vehicle, raceType, gameMode, pushForces);
-    }
+    racers_spawn_all(racerEntry, settings, vehicle, numPlayers, raceType, gameMode, pushForces, levelHeader, spawns);
     if (raceType != RACETYPE_BOSS) {
         gBossRaceMode = 0;
     }
@@ -557,36 +628,8 @@ void track_setup_racers(Vehicle vehicle, u32 entranceID, s32 playerCount) {
         gNonDefaultVehicle = FALSE;
     }
     // Remove unwanted objects depending on race type.
-    if (get_game_mode() == GAMEMODE_INGAME) {
-        for (j = 0; j < gObjectCount; j++) {
-            racerObj = gObjPtrList[j];
-            i = racerObj->header->flags;
-            if (i & OBJECT_HEADER_NO_TIME_TRIAL && gIsTimeTrial) {
-                free_object(racerObj);
-            } else if (i & OBJECT_HEADER_NO_MULTIPLATER && numPlayers >= 2) {
-                free_object(racerObj);
-            }
-        }
-    }
-    gGhostObjStaff = NULL;
-    timetrial_free_staff_ghost();
-    gTimeTrialContPak = -1;
-    if (gIsTimeTrial && numPlayers == 1) {
-        timetrial_reset_player_ghost();
-        gTimeTrialContPak = timetrial_init_player_ghost(PLAYER_ONE);
-        gHasGhostToSave = 0;
-        if (gTimeTrialVehicle >= VEHICLE_BOSSES) {
-            gTimeTrialVehicle = VEHICLE_CAR;
-        }
-        if (timetrial_valid_player_ghost()) {
-            objectID = gRacerObjectTable[gTimeTrialCharacter + (gTimeTrialVehicle * NUM_CHARACTERS)];
-            gGhostObjPlayer = racers_spawn_ghost(racerEntry, objectID, &spawns[0]);
-        }
-        if (timetrial_init_staff_ghost(level_id())) {
-            objectID = gRacerObjectTable[(gMapDefaultVehicle * NUM_CHARACTERS) + 8];
-            gGhostObjStaff = racers_spawn_ghost(racerEntry, objectID, &spawns[0]);
-        }
-    }
+    racers_remove_unwanted_objects(numPlayers);
+    racers_spawn_time_trial_ghosts(racerEntry, numPlayers, spawns);
 
     gEventCountdown = 100; // Racers settle as if the countdown were running.
     racers_settle();
