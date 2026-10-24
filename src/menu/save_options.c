@@ -321,7 +321,8 @@ void savemenu_render_element(SaveFileData *file, s32 x, s32 y) {
  */
 void savemenu_render(UNUSED s32 updateRate) {
     s32 videoWidth;
-    s32 temp;
+    s32 arrowY;
+    s32 fileIndex;
     s32 offsetX;
     s32 x;
     s32 scroll;
@@ -377,11 +378,12 @@ void savemenu_render(UNUSED s32 updateRate) {
               ALIGN_MIDDLE_CENTER);
 
     if (drawLowerElements) {
-        temp = (osTvType == OS_TV_TYPE_PAL) ? SCREEN_HEIGHT_HALF_PAL : SCREEN_HEIGHT_HALF;
-        temp += ((s32) (gMenuFlow.blinkTimer & 0x1F) >> 1);
+        arrowY = (osTvType == OS_TV_TYPE_PAL) ? SCREEN_HEIGHT_HALF_PAL : SCREEN_HEIGHT_HALF;
+        arrowY += ((s32) (gMenuFlow.blinkTimer & 0x1F) >> 1);
 
-        for (scroll = 0; scroll < 2; scroll += 1, temp += 16) {
-            texrect_draw(&gMenuFrame.displayList, gMenuSelectionArrowDown, SCREEN_WIDTH_HALF, temp, 255, 255, 255, 255);
+        for (scroll = 0; scroll < 2; scroll += 1, arrowY += 16) {
+            texrect_draw(&gMenuFrame.displayList, gMenuSelectionArrowDown, SCREEN_WIDTH_HALF, arrowY, 255, 255, 255,
+                         255);
         }
     }
 
@@ -391,39 +393,39 @@ void savemenu_render(UNUSED s32 updateRate) {
 
     if (drawUpperElements) {
         scroll = (s32) gSaveMenuScrollSource;
-        temp = scroll;
+        fileIndex = scroll;
         offsetX = SAVEMENU_OFFSET_X - (s32) ((gSaveMenuScrollSource - scroll) * SAVEMENU_OFFSET_SCROLL);
         x = offsetX;
-        while (x < videoWidth && temp < gSaveMenuOptionCountUpper) {
-            savemenu_render_element(&gSaveMenuFilesSource[temp], x, 64);
+        while (x < videoWidth && fileIndex < gSaveMenuOptionCountUpper) {
+            savemenu_render_element(&gSaveMenuFilesSource[fileIndex], x, 64);
             x += SAVEMENU_ELEMENT_SIZE;
-            temp++;
+            fileIndex++;
         }
-        temp = scroll;
+        fileIndex = scroll;
         x = offsetX;
-        while ((x > 0) && (temp > 0)) {
-            temp--;
+        while ((x > 0) && (fileIndex > 0)) {
+            fileIndex--;
             x -= SAVEMENU_ELEMENT_SIZE;
-            savemenu_render_element(&gSaveMenuFilesSource[temp], x, 64);
+            savemenu_render_element(&gSaveMenuFilesSource[fileIndex], x, 64);
         }
     }
 
     if (drawLowerElements) {
         scroll = (s32) gSaveMenuScrollDest;
-        temp = scroll;
+        fileIndex = scroll;
         offsetX = SAVEMENU_OFFSET_X - (s32) ((gSaveMenuScrollDest - (f32) scroll) * SAVEMENU_OFFSET_SCROLL);
         x = offsetX;
-        while (x < videoWidth && temp < gSaveMenuOptionCountLower) {
-            savemenu_render_element(&gSaveMenuFilesDest[temp], x, 144);
+        while (x < videoWidth && fileIndex < gSaveMenuOptionCountLower) {
+            savemenu_render_element(&gSaveMenuFilesDest[fileIndex], x, 144);
             x += SAVEMENU_ELEMENT_SIZE;
-            temp++;
+            fileIndex++;
         }
-        temp = scroll;
+        fileIndex = scroll;
         x = offsetX;
-        while (x > 0 && temp > 0) {
-            temp--;
+        while (x > 0 && fileIndex > 0) {
+            fileIndex--;
             x -= SAVEMENU_ELEMENT_SIZE;
-            savemenu_render_element(&gSaveMenuFilesDest[temp], x, 144);
+            savemenu_render_element(&gSaveMenuFilesDest[fileIndex], x, 144);
         }
     }
 
@@ -469,13 +471,14 @@ SIDeviceStatus savemenu_load_sources(void) {
     s32 i;
     s32 fileIndex;
     SIDeviceStatus result;
-    SIDeviceStatus temp;
+    SIDeviceStatus status;
+    SIDeviceStatus nameIndex;
     char *fileNames[16];
     char *fileExts[16];
     u8 fileTypes[16];
     Settings *settings;
     u32 fileSizes[16];
-    char *temp_D_80126A64;
+    char *nameCursor;
 
 #ifdef AVOID_UB
     // If gSaveMenuSourceState == 0, then result will be undefined.
@@ -501,7 +504,7 @@ SIDeviceStatus savemenu_load_sources(void) {
     gSaveMenuFilesSource[gSaveMenuOptionCountUpper].hasData = 1;
     gSaveMenuFilesSource[gSaveMenuOptionCountUpper++].fileSize = get_time_data_file_size();
     gSaveMenuFilesSource[gSaveMenuOptionCountUpper++].saveFileType = SAVE_FILE_TYPE_CART_BONUSES;
-    temp_D_80126A64 = sSaveMenuFilenames;
+    nameCursor = sSaveMenuFilenames;
     do {
         numAttempts = 1;
         if (gSaveMenuSourceState != 0) {
@@ -509,9 +512,9 @@ SIDeviceStatus savemenu_load_sources(void) {
 
             do {
                 result = get_controller_pak_file_list(0, MAX_CPAK_FILES, fileNames, fileExts, fileSizes, fileTypes);
-                temp = result & 0xFF; // strip the controller index from the result to just get the SI Device Status
+                status = result & 0xFF; // strip the controller index from the result to just get the SI Device Status
                 numAttempts++;
-            } while (temp == CONTROLLER_PAK_CHANGED && numAttempts < 3);
+            } while (status == CONTROLLER_PAK_CHANGED && numAttempts < 3);
 
             if (result == CONTROLLER_PAK_GOOD) {
                 for (fileIndex = 0; fileIndex < MAX_CPAK_FILES; fileIndex++) {
@@ -525,10 +528,10 @@ SIDeviceStatus savemenu_load_sources(void) {
                         if (fileTypes[fileIndex] == SAVE_FILE_TYPE_CPAK_SAVE) {
                             if (read_game_data_from_controller_pak(0, fileExts[fileIndex], settings) ==
                                 CONTROLLER_PAK_GOOD) {
-                                gSaveMenuFilesSource[gSaveMenuOptionCountUpper].saveFileExt = temp_D_80126A64;
-                                temp_D_80126A64[0] = *fileExts[fileIndex];
-                                temp_D_80126A64[1] = NULL;
-                                temp_D_80126A64 += 2;
+                                gSaveMenuFilesSource[gSaveMenuOptionCountUpper].saveFileExt = nameCursor;
+                                nameCursor[0] = *fileExts[fileIndex];
+                                nameCursor[1] = NULL;
+                                nameCursor += 2;
                                 gSaveMenuFilesSource[gSaveMenuOptionCountUpper].balloonCount = *settings->balloonsPtr;
                                 gSaveMenuFilesSource[gSaveMenuOptionCountUpper].adventureTwo =
                                     (settings->cutsceneFlags & 4) != 0; // Is in Adventure Two?
@@ -537,38 +540,38 @@ SIDeviceStatus savemenu_load_sources(void) {
                                 gSaveMenuOptionCountUpper--;
                             }
                         } else {
-                            temp = 0;
+                            nameIndex = 0;
                             if ((fileTypes[fileIndex] == SAVE_FILE_TYPE_CPAK_OTHER) ||
                                 (fileTypes[fileIndex] == SAVE_FILE_TYPE_CPAK_TIMES)) {
                                 if (fileTypes[fileIndex] == SAVE_FILE_TYPE_CPAK_TIMES) {
-                                    temp = CONTROLLER_PAK_BAD_DATA;
+                                    nameIndex = CONTROLLER_PAK_BAD_DATA;
                                 }
-                                gSaveMenuFilesSource[gSaveMenuOptionCountUpper].saveFileExt = temp_D_80126A64;
-                                while (fileNames[fileIndex][temp] != '\0') {
-                                    *temp_D_80126A64 = fileNames[fileIndex][temp];
-                                    temp++;
-                                    temp_D_80126A64++;
+                                gSaveMenuFilesSource[gSaveMenuOptionCountUpper].saveFileExt = nameCursor;
+                                while (fileNames[fileIndex][nameIndex] != '\0') {
+                                    *nameCursor = fileNames[fileIndex][nameIndex];
+                                    nameIndex++;
+                                    nameCursor++;
                                 }
 
                                 if ((fileExts[fileIndex] != NULL) && (fileExts[fileIndex][0] != '\0')) {
-                                    *temp_D_80126A64 = '.';
-                                    temp_D_80126A64++;
-                                    temp = 0;
-                                    while (fileExts[fileIndex][temp] != '\0') {
-                                        *temp_D_80126A64 = fileExts[fileIndex][temp];
-                                        temp_D_80126A64++;
-                                        temp++;
+                                    *nameCursor = '.';
+                                    nameCursor++;
+                                    nameIndex = 0;
+                                    while (fileExts[fileIndex][nameIndex] != '\0') {
+                                        *nameCursor = fileExts[fileIndex][nameIndex];
+                                        nameCursor++;
+                                        nameIndex++;
                                     }
                                 }
-                                *temp_D_80126A64 = NULL;
-                                temp_D_80126A64++;
+                                *nameCursor = NULL;
+                                nameCursor++;
                             }
                         }
                         gSaveMenuOptionCountUpper++;
                     }
                 }
                 cpak_free_files();
-            } else if (temp == CONTROLLER_PAK_RUMBLE_PAK_FOUND) {
+            } else if (status == CONTROLLER_PAK_RUMBLE_PAK_FOUND) {
                 gSaveMenuRumbleConnected = TRUE;
                 if (gSaveMenuSourceState < 0) {
                     result = CONTROLLER_PAK_GOOD;
@@ -577,9 +580,9 @@ SIDeviceStatus savemenu_load_sources(void) {
                     gSaveMenuRumbleNag = TRUE;
                     gSaveMenuRumbleNagSet = FALSE;
                 }
-            } else if (temp == CONTROLLER_PAK_NOT_FOUND) {
+            } else if (status == CONTROLLER_PAK_NOT_FOUND) {
                 result = CONTROLLER_PAK_GOOD;
-            } else if (gSaveMenuSourceState < 0 && temp == CONTROLLER_PAK_CHANGED) {
+            } else if (gSaveMenuSourceState < 0 && status == CONTROLLER_PAK_CHANGED) {
                 numAttempts = 0;
             }
         }
@@ -665,7 +668,6 @@ void savemenu_move(s32 updateRate) {
 SIDeviceStatus savemenu_write(void) {
     s32 i;
     SIDeviceStatus ret;
-    UNUSED s32 pad[2];
     char fileExt[PFS_FILE_EXT_LEN];
     Settings *settings;
 
@@ -927,7 +929,7 @@ s32 savemenu_input_dest(s32 buttonsPressed, s32 direction) {
  * Allows the player to confirm their choice. This begins the write process.
  * Otherwise, they can back out to the destination selection.
  */
-s32 savemenu_input_confirm(s32 buttonsPressed, UNUSED s32 arg1) {
+s32 savemenu_input_confirm(s32 buttonsPressed, UNUSED s32 yAxis) {
     if (buttonsPressed & B_BUTTON) {
         sound_play(SOUND_MENU_BACK3, NULL);
         gMenuFlow.stage = SAVEMENU_CHOOSE_DEST;
@@ -945,7 +947,6 @@ s32 savemenu_input_confirm(s32 buttonsPressed, UNUSED s32 arg1) {
  * This resolves having a rumble pak connected, or a damaged controller pak.
  */
 s32 savemenu_input_message(s32 buttonsPressed, s32 yAxis) {
-    UNUSED s32 pad[2];
     s32 stage;
     s32 i;
     s32 highlight;
@@ -1200,7 +1201,6 @@ SIDeviceStatus menu_find_usable_pak(s32 *controllerIndex, s32 xAxisDirection) {
     s32 j;
     s32 k;
     s32 i;
-    UNUSED s32 pad;
     s32 paksWithStatusSuccess;
     s32 ret;
     u32 bytesFree;

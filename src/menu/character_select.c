@@ -105,7 +105,7 @@ static CharacterSelectData gCharacterSelectBytesComplete[] = {
 static s32 gEnteredCharSelectFrom = 0;
 
 // Set from charselect_prev()
-// Set to the value *arg1 when arg0 is 2, but that never happens.
+// Set to the value *unusedValue when context is 2, but that never happens.
 // Not read from anywhere, so I'd consider this to be unused.
 static UNUSED s32 unused_800DFFD4 = -1;
 
@@ -113,7 +113,7 @@ static UNUSED s32 unused_800DFFD4 = -1;
  * Set the previous menu type for the character select.
  * This ensures when leaving the character select menu, you return to where you were.
  */
-void charselect_prev(s32 context, UNUSED s32 *arg1) {
+void charselect_prev(s32 context, UNUSED s32 *unusedValue) {
     switch (context) {
         default:
             gEnteredCharSelectFrom = 0;
@@ -124,7 +124,7 @@ void charselect_prev(s32 context, UNUSED s32 *arg1) {
             return;
         case 2: // Unused
             gEnteredCharSelectFrom = 2;
-            unused_800DFFD4 = *arg1;
+            unused_800DFFD4 = *unusedValue;
             return;
     }
 }
@@ -224,22 +224,22 @@ void charselect_new_player(void) {
     s32 i;
     s32 j;
     s32 takenChar;
-    s32 var_a2;
+    s32 character;
 
     for (i = 0; i < MAXCONTROLLERS; i++) {
         if (!gRaceSetup.activePlayers[i]) {
-            var_a2 = -1;
+            character = -1;
             if (gMenuInput.buttons[i] & (A_BUTTON | START_BUTTON)) {
                 do {
-                    var_a2++;
+                    character++;
                     takenChar = TRUE;
                     for (j = 0; (j < ARRAY_COUNT(gRaceSetup.activePlayers)) && takenChar; j++) {
-                        if (gRaceSetup.activePlayers[j] && var_a2 == gRaceSetup.playerCharacters[j]) {
+                        if (gRaceSetup.activePlayers[j] && character == gRaceSetup.playerCharacters[j]) {
                             takenChar = FALSE;
                         }
                     }
                 } while (takenChar == FALSE);
-                gRaceSetup.playerCharacters[i] = var_a2;
+                gRaceSetup.playerCharacters[i] = character;
                 gRaceSetup.activePlayers[i] = TRUE;
                 gRaceSetup.numberOfActivePlayers++;
                 gMenuCurrentCharacter.channelIndex =

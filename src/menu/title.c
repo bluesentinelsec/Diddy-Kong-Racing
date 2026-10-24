@@ -79,8 +79,8 @@ void init_title_screen_variables(void) {
 }
 
 void menu_intro_names_update(f32 updateRateF) {
-    f32 temp;
-    f32 temp2;
+    f32 elapsed;
+    f32 duration;
     s32 didUpdate;
     s32 xPos;
     s32 yPos;
@@ -126,10 +126,10 @@ void menu_intro_names_update(f32 updateRateF) {
 
     if (introCharData->slideInStartTime <= sIntroNameTimer) {
         if (sIntroNameTimer < introCharData->slideInEndTime) {
-            temp = (sIntroNameTimer - introCharData->slideInStartTime);
-            temp2 = (introCharData->slideInEndTime - introCharData->slideInStartTime);
-            xPos = (introCharData->startX + (((introCharData->centreX - introCharData->startX) * temp) / temp2));
-            yPos = (introCharData->startY + (((introCharData->centreY - introCharData->startY) * temp) / temp2));
+            elapsed = (sIntroNameTimer - introCharData->slideInStartTime);
+            duration = (introCharData->slideInEndTime - introCharData->slideInStartTime);
+            xPos = (introCharData->startX + (((introCharData->centreX - introCharData->startX) * elapsed) / duration));
+            yPos = (introCharData->startY + (((introCharData->centreY - introCharData->startY) * elapsed) / duration));
             text = introCharData->text;
             didUpdate = TRUE;
         } else if (sIntroNameTimer <= introCharData->holdEndTime) {
@@ -138,10 +138,10 @@ void menu_intro_names_update(f32 updateRateF) {
             text = introCharData->text;
             didUpdate = TRUE;
         } else if (sIntroNameTimer < introCharData->slideOutEndTime) {
-            temp = (sIntroNameTimer - introCharData->holdEndTime);
-            temp2 = (introCharData->slideOutEndTime - introCharData->holdEndTime);
-            xPos = (introCharData->centreX + (((introCharData->endX - introCharData->centreX) * temp) / temp2));
-            yPos = (introCharData->centreY + (((introCharData->endY - introCharData->centreY) * temp) / temp2));
+            elapsed = (sIntroNameTimer - introCharData->holdEndTime);
+            duration = (introCharData->slideOutEndTime - introCharData->holdEndTime);
+            xPos = (introCharData->centreX + (((introCharData->endX - introCharData->centreX) * elapsed) / duration));
+            yPos = (introCharData->centreY + (((introCharData->endY - introCharData->centreY) * elapsed) / duration));
             text = introCharData->text;
             didUpdate = TRUE;
         } else {
@@ -218,7 +218,6 @@ void menu_title_screen_init(void) {
  * Also render the selection options.
  */
 void render_title_screen(UNUSED s32 updateRate, f32 updateRateF) {
-    UNUSED u32 foo[2];
     s32 alpha;
     f32 scale;
     s32 i;
@@ -265,15 +264,15 @@ void render_title_screen(UNUSED s32 updateRate, f32 updateRateF) {
  * Fade music to make voice clips more audible.
  */
 s32 menu_title_screen_loop(s32 updateRate) {
-    UNUSED s32 temp_v0_5;
-    s32 sp28;
+    s32 demoTimedOut;
+    s32 cutsceneId;
     s8 *demo;
     s32 contrIndex;
     f32 updateRateF;
-    Camera *sp18;
+    Camera *camera;
     s8 playerCount;
 
-    sp18 = cam_get_active_camera();
+    camera = cam_get_active_camera();
     gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
     menu_input();
     if (osTvType == OS_TV_TYPE_PAL) {
@@ -290,21 +289,21 @@ s32 menu_title_screen_loop(s32 updateRate) {
     if (sTitleScreenDemoIds[gTitleDemoIndex] == sTitleScreenDemoIds[0]) {
         gMenuFlow.opacityDecayTimer += updateRate;
     }
-    sp28 = 0;
+    demoTimedOut = 0;
     if (gTitleDemoTimer > 0) {
         gTitleDemoTimer -= updateRate;
         if (gTitleDemoTimer < 60 && gTitleDemoTimer + updateRate >= 60) {
             music_fade(-768);
-            sp28 = 0;
+            demoTimedOut = 0;
             transition_begin(&gFadeTitleScreenDemo);
         }
         if (gTitleDemoTimer <= 0) {
-            sp28 = 1;
+            demoTimedOut = 1;
         }
     } else {
         gTitleDemoTimer = 0;
     }
-    if (gMenuInput.delay == 0 && (anim_prev_frame_state() || sp28)) {
+    if (gMenuInput.delay == 0 && (anim_prev_frame_state() || demoTimedOut)) {
         if (gTitleDemoTimer) {} // Fakematch
         gTitleDemoIndex += DEMO_INDEX_SIZE;
         demo = &sTitleScreenDemoIds[gTitleDemoIndex];
@@ -337,7 +336,7 @@ s32 menu_title_screen_loop(s32 updateRate) {
             gTitleRevealTimer += updateRate;
             if (gTitleRevealTimer >= 32) {
                 gTitleRevealTimer = 32;
-                sp18->shakeMagnitude = 8.0f;
+                camera->shakeMagnitude = 8.0f;
                 sound_play(SOUND_EXPLOSION, NULL);
             }
         } else {
@@ -398,14 +397,14 @@ s32 menu_title_screen_loop(s32 updateRate) {
         titlescreen_free();
         disable_new_screen_transitions();
         if (gTitleScreenCurrentOption == 0) {
-            sp28 = 0;
+            cutsceneId = 0;
             if (is_drumstick_unlocked()) {
-                sp28 = 1;
+                cutsceneId = 1;
             }
             if (is_tt_unlocked()) {
-                sp28 ^= 3;
+                cutsceneId ^= 3;
             }
-            load_level_for_menu(ASSET_LEVEL_CHARACTERSELECT, -1, sp28);
+            load_level_for_menu(ASSET_LEVEL_CHARACTERSELECT, -1, cutsceneId);
             charselect_prev(0, NULL);
             menu_init(MENU_CHARACTER_SELECT);
             return MENU_RESULT_CONTINUE;

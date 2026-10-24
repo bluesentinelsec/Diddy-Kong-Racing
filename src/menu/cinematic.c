@@ -18,19 +18,19 @@ static s16 gCinematicObjectIndices[12] = { 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0
  * Set the parameters of the cutscene from the arguments, and decide wether the player can skip
  * the cutscenes.
  */
-void cinematic_start(s8 *params, s32 arg1, s32 endFlags, s32 skipFlagsA, s32 skipFlagsB, s8 *portraits) {
-    s32 phi_v1;
+void cinematic_start(s8 *params, s32 cinematicIndex, s32 endFlags, s32 skipFlagsA, s32 skipFlagsB, s8 *portraits) {
+    s32 index;
 
-    phi_v1 = 0;
-    while (phi_v1 < arg1) {
-        phi_v1++;
+    index = 0;
+    while (index < cinematicIndex) {
+        index++;
         while (-1 != *params) {
             params += 3;
         }
         params++;
     }
 
-    if (phi_v1 == 0 && (s8 *) get_misc_asset(ASSET_MISC_CINEMATIC_RACE) == params) {
+    if (index == 0 && (s8 *) get_misc_asset(ASSET_MISC_CINEMATIC_RACE) == params) {
         gCinematicMusicChangeOff = TRUE;
     } else {
         gCinematicMusicChangeOff = FALSE;

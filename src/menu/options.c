@@ -75,10 +75,8 @@ void optionscreen_render(UNUSED s32 updateRate) {
 s32 menu_options_loop(s32 updateRate) {
     s32 buttonsPressed;
     s32 i;
-    UNUSED s32 pad0;
     s32 analogueX;
     s32 analogueY;
-    UNUSED s32 pad1;
 
     gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
     if (gMenuInput.delay != 0) {
@@ -224,21 +222,22 @@ void audio_options_render(UNUSED s32 updateRate) {
     s32 i;
     s32 yOffset;
     s32 j;
-    s32 temp;
+    s32 songNumber;
+    s32 blinkAlpha;
 
-    temp = gMusicTestSongIndex;
+    songNumber = gMusicTestSongIndex;
 
     for (i = 0; (gMusicTestString[i] < '0') || (gMusicTestString[i] > '9'); i++) {}
 
-    j = temp / 10;
+    j = songNumber / 10;
     gMusicTestString[i] = '0' + j;
-    temp -= (j * 10);
+    songNumber -= (j * 10);
     i++;
-    gMusicTestString[i] = '0' + temp;
+    gMusicTestString[i] = '0' + songNumber;
 
-    temp = gMenuFlow.blinkTimer * 8;
-    if (temp >= 256) {
-        temp = 511 - temp;
+    blinkAlpha = gMenuFlow.blinkTimer * 8;
+    if (blinkAlpha >= 256) {
+        blinkAlpha = 511 - blinkAlpha;
     }
     gAudioMenuStrings[0].text = gAudioOutputStrings[gAudioOutputType];
     mtx_ortho(&gMenuFrame.displayList, &gMenuFrame.hudMat);
@@ -283,7 +282,7 @@ void audio_options_render(UNUSED s32 updateRate) {
     for (; gAudioMenuStrings[j].text != NULL; j++) {
         set_text_font(gAudioMenuStrings[j].font);
         if (j == i) {
-            set_text_colour(255, 255, 255, temp, 255);
+            set_text_colour(255, 255, 255, blinkAlpha, 255);
         } else {
             set_text_colour(gAudioMenuStrings[j].red, gAudioMenuStrings[j].green, gAudioMenuStrings[j].blue,
                             gAudioMenuStrings[j].alpha, gAudioMenuStrings[j].opacity);

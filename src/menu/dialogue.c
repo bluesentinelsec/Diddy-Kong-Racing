@@ -159,8 +159,8 @@ void render_dialogue_option(char *text, s32 yOffset, s32 optionID) {
 /**
  * Sets the variable controlling which Taj Challenge dialogue is to be used.
  */
-void set_next_taj_challenge_menu(s32 arg0) {
-    gNextTajChallengeMenu = arg0;
+void set_next_taj_challenge_menu(s32 menuId) {
+    gNextTajChallengeMenu = menuId;
 }
 
 /**

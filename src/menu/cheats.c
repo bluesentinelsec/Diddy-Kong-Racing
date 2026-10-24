@@ -59,7 +59,6 @@ void cheatmenu_render(UNUSED s32 updateRate) {
     s32 xPos, yPos;
     char displayChar[2];
     s32 chr;
-    UNUSED s32 pad1;
     s32 offsetY;
 
     set_text_background_colour(0, 0, 0, 0);

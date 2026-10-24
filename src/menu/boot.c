@@ -322,8 +322,7 @@ s32 menu_controller_pak_loop(s32 updateRate) {
     s32 playMoveSound = FALSE;
     s32 playCancelSound = FALSE;
     s32 playSelectedSound = FALSE;
-    UNUSED s32 pad;
-    s32 temp_v1_2;
+    s32 maxScroll;
 
     gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
     if (gMenuInput.delay < 20) {
@@ -442,9 +441,9 @@ s32 menu_controller_pak_loop(s32 updateRate) {
                         if (gMenuFlow.curIndex < gMenuFlow.opacityDecayTimer) {
                             gMenuFlow.opacityDecayTimer = gMenuFlow.curIndex;
                         }
-                        temp_v1_2 = 16 - sControllerPakMenuNumberOfRows;
-                        if (temp_v1_2 < gMenuFlow.opacityDecayTimer) {
-                            gMenuFlow.opacityDecayTimer = temp_v1_2;
+                        maxScroll = 16 - sControllerPakMenuNumberOfRows;
+                        if (maxScroll < gMenuFlow.opacityDecayTimer) {
+                            gMenuFlow.opacityDecayTimer = maxScroll;
                         }
                         if (gMenuFlow.opacityDecayTimer < 0) {
                             gMenuFlow.opacityDecayTimer = 0;

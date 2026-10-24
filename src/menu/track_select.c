@@ -259,10 +259,12 @@ UNUSED s32 trackmenu_active(void) {
 void menu_track_select_init(void) {
     s32 levelCount;
     s32 worldCount;
-    s32 sp74;
+    s32 world;
+    s32 clearedCount;
     s32 i;
     s32 j;
-    s32 var_a0;
+    s32 vertexX;
+    s32 track;
     Settings *settings;
     s8 *trackIds;
 
@@ -295,18 +297,18 @@ void menu_track_select_init(void) {
     enable_new_screen_transitions();
     bgdraw_fillcolour(50, 105, 223);
 
-    for (sp74 = 0; sp74 < 5; sp74++) {
-        if (gTracksMenuBgTextureIndices[sp74 * 3] != -1) {
-            menu_asset_load(gTracksMenuBgTextureIndices[sp74 * 3]);
-            gTracksMenuBgTextures[sp74 << 1] = gMenuLoaded.assets[gTracksMenuBgTextureIndices[sp74 * 3]];
+    for (world = 0; world < 5; world++) {
+        if (gTracksMenuBgTextureIndices[world * 3] != -1) {
+            menu_asset_load(gTracksMenuBgTextureIndices[world * 3]);
+            gTracksMenuBgTextures[world << 1] = gMenuLoaded.assets[gTracksMenuBgTextureIndices[world * 3]];
         } else {
-            gTracksMenuBgTextures[sp74 << 1] = NULL;
+            gTracksMenuBgTextures[world << 1] = NULL;
         }
-        if (gTracksMenuBgTextureIndices[sp74 * 3 + 1] != -1) {
-            menu_asset_load(gTracksMenuBgTextureIndices[sp74 * 3 + 1]);
-            gTracksMenuBgTextures[(sp74 << 1) + 1] = gMenuLoaded.assets[gTracksMenuBgTextureIndices[sp74 * 3 + 1]];
+        if (gTracksMenuBgTextureIndices[world * 3 + 1] != -1) {
+            menu_asset_load(gTracksMenuBgTextureIndices[world * 3 + 1]);
+            gTracksMenuBgTextures[(world << 1) + 1] = gMenuLoaded.assets[gTracksMenuBgTextureIndices[world * 3 + 1]];
         } else {
-            gTracksMenuBgTextures[(sp74 << 1) + 1] = NULL;
+            gTracksMenuBgTextures[(world << 1) + 1] = NULL;
         }
     }
 
@@ -316,15 +318,15 @@ void menu_track_select_init(void) {
     gTrackSelectBgVertices[0] = (Vertex *) (gTrackSelectBgTriangles[1] + i);
     gTrackSelectBgVertices[1] = gTrackSelectBgVertices[0] + i * 2;
 
-    var_a0 = -160;
+    vertexX = -160;
     for (i = 0; i < 2; i++) {
         for (j = 0; j < 80; j++) {
-            gTrackSelectBgVertices[i][j].x = var_a0;
+            gTrackSelectBgVertices[i][j].x = vertexX;
             gTrackSelectBgVertices[i][j].z = -0x400;
             gTrackSelectBgVertices[i][j].r = 255;
             gTrackSelectBgVertices[i][j].g = 255;
             gTrackSelectBgVertices[i][j].b = 255;
-            var_a0 = -var_a0;
+            vertexX = -vertexX;
         }
     }
     for (i = 0; i < 2; i++) {
@@ -369,20 +371,20 @@ void menu_track_select_init(void) {
                     gTrackSelect.trackIds[i][j] = trackIds[getTrackId(j)];
                 }
             } else if (j == 4) {
-                for (var_a0 = 0, sp74 = 0; (var_a0 < 4) ^ 0; var_a0++) {
-                    if (trackIds[getTrackId(var_a0)] != -1 &&
-                        ((settings->courseFlagsPtr[trackIds[getTrackId(var_a0)]] &
+                for (track = 0, clearedCount = 0; (track < 4) ^ 0; track++) {
+                    if (trackIds[getTrackId(track)] != -1 &&
+                        ((settings->courseFlagsPtr[trackIds[getTrackId(track)]] &
                           (RACE_CLEARED | RACE_CLEARED_SILVER_COINS)) == (RACE_CLEARED | RACE_CLEARED_SILVER_COINS))) {
-                        sp74++;
+                        clearedCount++;
                     }
                 }
-                if (sp74 == 4 && i != 4) {
+                if (clearedCount == 4 && i != 4) {
                     // Not Tricky 1 / 2
                     if ((settings->bosses & (0x82 << i)) != (0x82 << i)) {
-                        sp74 = 0;
+                        clearedCount = 0;
                     }
                 }
-                if (sp74 == 4) {
+                if (clearedCount == 4) {
                     gTrackSelect.trackIds[i][j] = trackIds[getTrackId(j)];
                 }
             } else if (j == 5 && (settings->keys & (1 << (i + 1)))) {
@@ -605,7 +607,7 @@ void menu_track_select_unload(void) {
 }
 
 s32 trackmenu_render_background(Gfx **dList, Mtx **mtx) {
-    s32 sp7C;
+    s32 scrollX;
     s32 yPos;
     s32 texU;
     s32 texV;
@@ -615,8 +617,7 @@ s32 trackmenu_render_background(Gfx **dList, Mtx **mtx) {
     s32 prevAlpha;
     s32 prevIndex;
     s32 numVertices;
-    s32 temp;
-    s32 temp2;
+    s32 scrollY;
     Vertex *tempVertices;
     Triangle *triangles;
     Triangle *tempTriangles;
@@ -632,14 +633,14 @@ s32 trackmenu_render_background(Gfx **dList, Mtx **mtx) {
     pc_gfx_mtx_tag((*mtx) - 1, gTrackSelectBgVertices, PC_MTX_SITE_WIDE_SURFACE);
     rendermode_reset(dList);
     gDPPipeSync((*dList)++);
-    sp7C = gTrackSelectX;
-    temp2 = -gTrackSelectY;
-    curIndex = temp2 / (gTrackSelect.viewportY >> 3);
+    scrollX = gTrackSelectX;
+    scrollY = -gTrackSelectY;
+    curIndex = scrollY / (gTrackSelect.viewportY >> 3);
     if (curIndex >= 42) {
         return 1;
     }
-    temp2 -= (curIndex * (gTrackSelect.viewportY >> 3));
-    yPos = gTrackSelect.viewportHalfY + temp2;
+    scrollY -= (curIndex * (gTrackSelect.viewportY >> 3));
+    yPos = gTrackSelect.viewportHalfY + scrollY;
     gDPSetPrimColor((*dList)++, 0, 0, 255, 255, 255, 255);
     gDPSetEnvColor((*dList)++, 255, 255, 255, 0);
     vertices = gTrackSelectBgVertices[gTrackSelectVertsFlip];
@@ -668,7 +669,7 @@ s32 trackmenu_render_background(Gfx **dList, Mtx **mtx) {
         prevIndex += gTrackSelectBgData[index + 3];
         index += 4;
         if (bgTexture != NULL) {
-            texU = ((bgTexture->width - 1) & sp7C) << 5;
+            texU = ((bgTexture->width - 1) & scrollX) << 5;
             texU += (gTrackSelectBgData[index] << 5);
             index++;
             texV = bgTexture->height << 5;
@@ -726,19 +727,16 @@ s32 trackmenu_render_background(Gfx **dList, Mtx **mtx) {
  */
 void trackmenu_render_names(UNUSED s32 updateRate) {
     s32 i;
-    UNUSED s32 pad[3];
     s32 trackSelectX;
     s32 trackSelectY;
     char *levelName;
     s32 maxTrackY;
     s8 *trackMenuIds;
     Settings *settings;
-    UNUSED s32 pad1;
     s32 trackX;
     s32 trackY;
     s32 j;
     s32 startIndex;
-    UNUSED s32 pad2;
     s32 k;
 
     settings = get_settings();
@@ -883,9 +881,7 @@ void trackmenu_track_view(s32 updateRate) {
  * If a player presses A, then scale the viewport up, provided the course has finished loading.
  */
 void trackmenu_input(s32 updateRate) {
-    UNUSED s32 pad1[2];
     s32 scaleOffset;
-    UNUSED s32 pad2[2];
     s32 spaceWorldUnlocked;
     s32 centreY;
     s32 centreX;
@@ -1019,21 +1015,21 @@ void trackmenu_timetrial_sound(UNUSED s32 updateRate) {
  * selected column (races, trophy races or challenges).
  */
 static void trackmenu_render_wood_frame(void) {
-    s32 sp84;
+    s32 frameImage;
 
     if (gSelectedTrackX == 4) {
-        sp84 = 6;
+        frameImage = 6;
     } else if (gSelectedTrackX == 5) {
-        sp84 = 5;
+        frameImage = 5;
     } else {
-        sp84 = 4;
+        frameImage = 4;
     }
-    gMenuLoaded.images[sp84].trans.x_position = 0.0f;
-    gMenuLoaded.images[sp84].trans.y_position = 0.0f;
+    gMenuLoaded.images[frameImage].trans.x_position = 0.0f;
+    gMenuLoaded.images[frameImage].trans.y_position = 0.0f;
     if (osTvType == OS_TV_TYPE_PAL) {
         gTrackSelect.woodFrameHeightScale = 1.2f;
     }
-    menu_element_render(sp84);
+    menu_element_render(frameImage);
     gTrackSelect.woodFrameHeightScale = 1.0f;
 }
 
@@ -1042,7 +1038,7 @@ static void trackmenu_render_wood_frame(void) {
  * on the two tracks that forbid them in multiplayer.
  */
 static s32 trackmenu_available_vehicles(void) {
-    s32 availableVehicleFlags; // sp7C
+    s32 availableVehicleFlags;
 
     availableVehicleFlags = leveltable_vehicle_usable(gTrackSelect.previewTrackId);
 #if VERSION >= VERSION_79
@@ -1063,63 +1059,65 @@ static s32 trackmenu_available_vehicles(void) {
  * Returns the pulse value, reused for other highlights this frame.
  */
 static s32 trackmenu_render_track_name(void) {
-    s32 sp84;
+    s32 blinkAlpha;
 
     set_text_font(ASSET_FONTS_BIGFONT);
     set_text_colour(192, 192, 255, 0, gMenuFrame.guiOpacity);
     set_text_background_colour(0, 0, 0, 0);
     draw_text(&gMenuFrame.displayList, POS_CENTRED, 43, level_name(gTrackSelect.previewTrackId), ALIGN_MIDDLE_CENTER);
-    sp84 = gMenuFlow.blinkTimer * 8;
-    if (sp84 > 255) {
-        sp84 = 511 - sp84;
+    blinkAlpha = gMenuFlow.blinkTimer * 8;
+    if (blinkAlpha > 255) {
+        blinkAlpha = 511 - blinkAlpha;
     }
-    set_current_dialogue_background_colour(7, 255, sp84, 0, gMenuFrame.guiOpacity);
-    return sp84;
+    set_current_dialogue_background_colour(7, 255, blinkAlpha, 0, gMenuFrame.guiOpacity);
+    return blinkAlpha;
 }
 
 /**
  * Draw the "ADVENTURE" / "ADVENTURE TWO" choice panel, highlighting the current choice.
  */
-static void trackmenu_render_adventure_choice(s32 regionOffset, s32 sp84) {
+static void trackmenu_render_adventure_choice(s32 regionOffset, s32 blinkAlpha) {
     s32 k;
     s32 y;
-    s32 temp2;
-    s32 temp;
+    s32 panelWidth;
+    s32 choice;
+    s32 textOffset;
     s32 i;
     s32 j;
 
-    temp2 = get_text_width(gMenuLoaded.text[ASSET_MENU_TEXT_ADVENTURE2], 0, 0); // "ADVENTURE"
-    k = get_text_width(gMenuLoaded.text[ASSET_MENU_TEXT_ADVENTURETWO2], 0, 0);  // "ADVENTURE TWO"
-    if (temp2 < k) {
-        temp2 = k;
+    panelWidth = get_text_width(gMenuLoaded.text[ASSET_MENU_TEXT_ADVENTURE2], 0, 0); // "ADVENTURE"
+    k = get_text_width(gMenuLoaded.text[ASSET_MENU_TEXT_ADVENTURETWO2], 0, 0);       // "ADVENTURE TWO"
+    if (panelWidth < k) {
+        panelWidth = k;
     }
-    if (temp2 < gTracksMenuAdventureButton.width) {
-        temp2 = gTracksMenuAdventureButton.width;
+    if (panelWidth < gTracksMenuAdventureButton.width) {
+        panelWidth = gTracksMenuAdventureButton.width;
     } else {
-        temp2 += 12;
+        panelWidth += 12;
     }
-    menu_panel_draw_textured(&gMenuFrame.displayList, -(temp2 >> 1), SCREEN_HEIGHT_HALF - gTracksMenuAdventureButton.y,
-                             temp2, gTracksMenuAdventureButton.height, gTracksMenuAdventureButton.borderWidth,
+    menu_panel_draw_textured(&gMenuFrame.displayList, -(panelWidth >> 1),
+                             SCREEN_HEIGHT_HALF - gTracksMenuAdventureButton.y, panelWidth,
+                             gTracksMenuAdventureButton.height, gTracksMenuAdventureButton.borderWidth,
                              gTracksMenuAdventureButton.borderHeight,
                              gMenuFrame.guiOpacity + COLOUR_RGBA32(176, 224, 192, 0), gMenuLoaded.assets[67]);
     menu_geometry_end();
     set_text_font(ASSET_FONTS_FUNFONT);
-    for (temp = 0, temp2 = 0,
+    for (textOffset = 0, choice = 0,
         y = gTracksMenuAdventureButton.colourMax + gTracksMenuAdventureButton.y + regionOffset + 1;
-         temp2 < 2; temp2++, temp++, y += 16) {
+         choice < 2; choice++, textOffset++, y += 16) {
         for (j = 0, i = y; j < 4; j += 2, i -= 2) {
             if (j == 0) {
                 set_text_colour(0, 0, 0, 255, gMenuFrame.guiOpacity >> 1);
             } else {
                 k = 0;
-                if (temp2 == gTracksMenuAdventureHighlightIndex) {
-                    k = sp84;
+                if (choice == gTracksMenuAdventureHighlightIndex) {
+                    k = blinkAlpha;
                 }
                 set_text_colour(255, 255, 255, k, gMenuFrame.guiOpacity);
             }
             // gMenuLoaded.text[146] = "ADVENTURE", gMenuLoaded.text[147] = "ADVENTURE TWO"
             draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 1 - j, i,
-                      gMenuLoaded.text[ASSET_MENU_TEXT_ADVENTURE2 + temp], ALIGN_MIDDLE_CENTER);
+                      gMenuLoaded.text[ASSET_MENU_TEXT_ADVENTURE2 + textOffset], ALIGN_MIDDLE_CENTER);
         }
     }
 }
@@ -1131,7 +1129,7 @@ static void trackmenu_render_best_times(Settings *settings, s32 regionOffset) {
     union {
         char buffer[4];
         s32 word;
-    } filename; // sp78
+    } filename;
 
     filename.word = 0; // Set all 4 bytes as '\0'?
     set_text_font(ASSET_FONTS_FUNFONT);
@@ -1157,7 +1155,7 @@ static void trackmenu_render_best_times(Settings *settings, s32 regionOffset) {
  * Draw the option heading: the vehicle or time trial title box for one player
  * (with the time trial on/off choices), or the player name tags in multiplayer.
  */
-static void trackmenu_render_option_heading(s32 regionOffset, s32 sp74) {
+static void trackmenu_render_option_heading(s32 regionOffset, s32 showRacerCount) {
     s32 k;
     s32 y;
     s32 j;
@@ -1181,7 +1179,7 @@ static void trackmenu_render_option_heading(s32 regionOffset, s32 sp74) {
                 }
             }
         }
-    } else if (!sp74) {
+    } else if (!showRacerCount) {
         // Probably fake
         y = gRaceSetup.numberOfActivePlayers;
         j = ((y - 1) * y);
@@ -1206,25 +1204,25 @@ static void trackmenu_render_option_heading(s32 regionOffset, s32 sp74) {
 static void trackmenu_render_vehicle_choices(Settings *settings, s32 regionOffset, s32 availableVehicleFlags) {
     s32 k;
     s32 y;
-    s32 temp2;
+    s32 player;
     s32 j;
 
     j = ((gRaceSetup.numberOfActivePlayers - 1) * gRaceSetup.numberOfActivePlayers) >> 1;
     for (k = 0, y = regionOffset + 139; k < 3; k++) {
         if ((1 << k) & availableVehicleFlags) {
-            for (temp2 = 0; temp2 < gRaceSetup.numberOfActivePlayers; temp2++) {
-                if (k == gRaceSetup.playerVehicles[temp2]) {
+            for (player = 0; player < gRaceSetup.numberOfActivePlayers; player++) {
+                if (k == gRaceSetup.playerVehicles[player]) {
                     // Highlighted
                     texrect_draw(&gMenuFrame.displayList, gRaceSelectionImages[(k * 3) + 1],
-                                 gTracksMenuVehicleNamePositions[j + temp2], y, 255, 255, 255, gMenuFrame.guiOpacity);
+                                 gTracksMenuVehicleNamePositions[j + player], y, 255, 255, 255, gMenuFrame.guiOpacity);
                 } else if (settings->courseFlagsPtr[gTrackSelect.previewTrackId] & 2) {
                     // Not highlighted
                     texrect_draw(&gMenuFrame.displayList, gRaceSelectionImages[(k * 3) + 2],
-                                 gTracksMenuVehicleNamePositions[j + temp2], y, 255, 255, 255, gMenuFrame.guiOpacity);
+                                 gTracksMenuVehicleNamePositions[j + player], y, 255, 255, 255, gMenuFrame.guiOpacity);
                 } else {
                     // Not available (Ghosted out)
                     texrect_draw(&gMenuFrame.displayList, gRaceSelectionImages[(k * 3) + 2],
-                                 gTracksMenuVehicleNamePositions[j + temp2], y, 255, 255, 255,
+                                 gTracksMenuVehicleNamePositions[j + player], y, 255, 255, 255,
                                  (gMenuFrame.guiOpacity / 2));
                 }
             }
@@ -1236,7 +1234,7 @@ static void trackmenu_render_vehicle_choices(Settings *settings, s32 regionOffse
 /**
  * Draw the chosen vehicle (or time trial) picture for each player, then the border around it.
  */
-static void trackmenu_render_vehicle_pictures(s32 regionOffset, s32 sp74) {
+static void trackmenu_render_vehicle_pictures(s32 regionOffset, s32 showRacerCount) {
     s32 y;
 
     y = regionOffset + 139;
@@ -1254,7 +1252,7 @@ static void trackmenu_render_vehicle_pictures(s32 regionOffset, s32 sp74) {
                          regionOffset + 139, 255, 255, 255, gMenuFrame.guiOpacity);
         }
     }
-    if (gRaceSetup.numberOfActivePlayers == 2 && !sp74) {
+    if (gRaceSetup.numberOfActivePlayers == 2 && !showRacerCount) {
         // Draw vehicle image for first player
         texrect_draw(&gMenuFrame.displayList, gRaceSelectionImages[gRaceSetup.playerVehicles[PLAYER_ONE] * 3], 79, y,
                      255, 255, 255, gMenuFrame.guiOpacity);
@@ -1267,7 +1265,7 @@ static void trackmenu_render_vehicle_pictures(s32 regionOffset, s32 sp74) {
                      255, 255, 255, gMenuFrame.guiOpacity);
     }
     rendermode_reset(&gMenuFrame.displayList);
-    if (gRaceSetup.numberOfActivePlayers <= 2 && !sp74) {
+    if (gRaceSetup.numberOfActivePlayers <= 2 && !showRacerCount) {
         // Draw border around vehicle images
         gMenuLoaded.images[7].trans.y_position = -52.0f;
         if (gRaceSetup.numberOfActivePlayers == 1) {
@@ -1285,16 +1283,17 @@ static void trackmenu_render_vehicle_pictures(s32 regionOffset, s32 sp74) {
 /**
  * Draw the two player "NUMBER OF RACERS" panel and its three choices, pulsing the chosen one.
  */
-static void trackmenu_render_racer_count(s32 regionOffset, s32 sp84) {
-    s32 temp2;
+static void trackmenu_render_racer_count(s32 regionOffset, s32 blinkAlpha) {
+    s32 panelWidth;
+    s32 option;
 
-    temp2 = get_text_width(gMenuLoaded.text[ASSET_MENU_TEXT_NUMBEROFRACERS], 0, 0); // "NUMBER OF RACERS"
-    if ((gTwoPlayerRacerCountMenu.width - 12) < temp2) {
-        temp2 = temp2 + 12;
+    panelWidth = get_text_width(gMenuLoaded.text[ASSET_MENU_TEXT_NUMBEROFRACERS], 0, 0); // "NUMBER OF RACERS"
+    if ((gTwoPlayerRacerCountMenu.width - 12) < panelWidth) {
+        panelWidth = panelWidth + 12;
     } else {
-        temp2 = gTwoPlayerRacerCountMenu.width;
+        panelWidth = gTwoPlayerRacerCountMenu.width;
     }
-    menu_panel_draw_textured(&gMenuFrame.displayList, -(temp2 >> 1), 120 - gTwoPlayerRacerCountMenu.y, temp2,
+    menu_panel_draw_textured(&gMenuFrame.displayList, -(panelWidth >> 1), 120 - gTwoPlayerRacerCountMenu.y, panelWidth,
                              gTwoPlayerRacerCountMenu.height, gTwoPlayerRacerCountMenu.borderWidth,
                              gTwoPlayerRacerCountMenu.borderHeight, COLOUR_RGBA32(176, 224, 192, 255),
                              gMenuLoaded.assets[67]);
@@ -1311,21 +1310,21 @@ static void trackmenu_render_racer_count(s32 regionOffset, s32 sp84) {
     cam_set_sprite_anim_mode(SPRITE_ANIM_FRAME_INDEX);
     sprite_opaque(FALSE);
 
-    for (temp2 = 0; temp2 < 3; temp2++) {
-        if (temp2 == gRaceSetup.multiplayerRacerCount) {
+    for (option = 0; option < 3; option++) {
+        if (option == gRaceSetup.multiplayerRacerCount) {
             if (gMenuFlow.stage <= TRACKMENU_OPT_2) {
-                gMenuFrame.guiColourG = 255 - sp84;
-                gMenuFrame.guiColourB = 255 - sp84;
+                gMenuFrame.guiColourG = 255 - blinkAlpha;
+                gMenuFrame.guiColourB = 255 - blinkAlpha;
             } else {
                 gMenuFrame.guiColourG = 0;
                 gMenuFrame.guiColourB = 0;
             }
         }
         gMenuLoaded.images[0].trans.x_position =
-            (gTwoPlayerRacerCountMenu.textPos[(temp2 << 1) + 2] + gTwoPlayerRacerCountMenu.x) - 160;
+            (gTwoPlayerRacerCountMenu.textPos[(option << 1) + 2] + gTwoPlayerRacerCountMenu.x) - 160;
         gMenuLoaded.images[0].trans.y_position =
-            (-gTwoPlayerRacerCountMenu.textPos[(temp2 << 1) + 2 + 1] - gTwoPlayerRacerCountMenu.y) + 120;
-        gMenuLoaded.images[0].spriteOffset = (temp2 << 1) + 2;
+            (-gTwoPlayerRacerCountMenu.textPos[(option << 1) + 2 + 1] - gTwoPlayerRacerCountMenu.y) + 120;
+        gMenuLoaded.images[0].spriteOffset = (option << 1) + 2;
         menu_element_render(0);
         gMenuFrame.guiColourG = 255;
         gMenuFrame.guiColourB = 255;
@@ -1337,16 +1336,16 @@ static void trackmenu_render_racer_count(s32 regionOffset, s32 sp84) {
 /**
  * Draw the per-player setup options (heading, vehicle choices, vehicle pictures, racer count).
  */
-static void trackmenu_render_player_options(Settings *settings, s32 regionOffset, s32 availableVehicleFlags, s32 sp84,
-                                            s32 sp74) {
-    trackmenu_render_option_heading(regionOffset, sp74);
-    if ((gRaceSetup.numberOfActivePlayers > 1 || gMenuFlow.stage == TRACKMENU_OPT_1) && !sp74) {
+static void trackmenu_render_player_options(Settings *settings, s32 regionOffset, s32 availableVehicleFlags,
+                                            s32 blinkAlpha, s32 showRacerCount) {
+    trackmenu_render_option_heading(regionOffset, showRacerCount);
+    if ((gRaceSetup.numberOfActivePlayers > 1 || gMenuFlow.stage == TRACKMENU_OPT_1) && !showRacerCount) {
         // Draws "Car", "Hover", "Plane" text choice images.
         trackmenu_render_vehicle_choices(settings, regionOffset, availableVehicleFlags);
     }
-    trackmenu_render_vehicle_pictures(regionOffset, sp74);
-    if (sp74) {
-        trackmenu_render_racer_count(regionOffset, sp84);
+    trackmenu_render_vehicle_pictures(regionOffset, showRacerCount);
+    if (showRacerCount) {
+        trackmenu_render_racer_count(regionOffset, blinkAlpha);
     }
 }
 
@@ -1384,10 +1383,10 @@ static void trackmenu_render_adventure_flags(Settings *settings) {
 /**
  * Draw the "OK?" confirmation once every option has been chosen.
  */
-static void trackmenu_render_ok_prompt(s32 regionOffset, s32 sp74) {
+static void trackmenu_render_ok_prompt(s32 regionOffset, s32 showRacerCount) {
     if (gTrackSelectCursorX != 5) {
-        if ((gMenuFlow.stage == TRACKMENU_OPT_2 && !sp74) || (gMenuFlow.stage == TRACKMENU_OPT_3 && sp74) ||
-            gMenuFlow.stage == TRACKMENU_OPT_4) {
+        if ((gMenuFlow.stage == TRACKMENU_OPT_2 && !showRacerCount) ||
+            (gMenuFlow.stage == TRACKMENU_OPT_3 && showRacerCount) || gMenuFlow.stage == TRACKMENU_OPT_4) {
             set_text_font(ASSET_FONTS_BIGFONT);
             set_text_colour(255, 255, 255, 0, gMenuFrame.guiOpacity);
             if (gTrackSelectCursorX >= 4) {
@@ -1404,20 +1403,20 @@ static void trackmenu_render_ok_prompt(s32 regionOffset, s32 sp74) {
  * racer count and whether to use time trial mode.
  */
 void trackmenu_setup_render(UNUSED s32 updateRate) {
-    s32 sp84;
-    s32 regionOffset;          // sp80
-    s32 availableVehicleFlags; // sp7C
-    s32 sp74;
-    Settings *settings; // sp70
+    s32 blinkAlpha;
+    s32 regionOffset;
+    s32 availableVehicleFlags;
+    s32 showRacerCount;
+    Settings *settings;
 
     regionOffset = 0;
-    sp74 = FALSE;
+    showRacerCount = FALSE;
     settings = get_settings();
     if (osTvType == OS_TV_TYPE_PAL) {
         regionOffset = 12;
     }
     if (gRaceSetup.numberOfActivePlayers == 2 && gTrackSelectCursorX < 4 && gMenuFlow.stage > TRACKMENU_CHOOSE) {
-        sp74 = TRUE;
+        showRacerCount = TRUE;
     }
     camDisableUserView(0, TRUE);
     menu_camera_centre();
@@ -1431,15 +1430,16 @@ void trackmenu_setup_render(UNUSED s32 updateRate) {
             gMenuFrame.guiOpacity = 0;
         }
         availableVehicleFlags = trackmenu_available_vehicles();
-        sp84 = trackmenu_render_track_name();
+        blinkAlpha = trackmenu_render_track_name();
         if (gMenuFlow.stage == TRACKMENU_MIRROR ||
             (gMenuFlow.stage == TRACKMENU_OPT_2 && gTrackSelectCursorX == 4 && is_adventure_two_unlocked())) {
-            trackmenu_render_adventure_choice(regionOffset, sp84);
+            trackmenu_render_adventure_choice(regionOffset, blinkAlpha);
         }
         if (gTrackSelectCursorX < 4) {
             trackmenu_render_best_times(settings, regionOffset);
             if (gMenuFlow.stage != TRACKMENU_MIRROR) {
-                trackmenu_render_player_options(settings, regionOffset, availableVehicleFlags, sp84, sp74);
+                trackmenu_render_player_options(settings, regionOffset, availableVehicleFlags, blinkAlpha,
+                                                showRacerCount);
             }
         }
         if (gTrackSelectCursorX < 4) {
@@ -1451,7 +1451,7 @@ void trackmenu_setup_render(UNUSED s32 updateRate) {
                          gMenuFrame.guiOpacity);
             rendermode_reset(&gMenuFrame.displayList);
         }
-        trackmenu_render_ok_prompt(regionOffset, sp74);
+        trackmenu_render_ok_prompt(regionOffset, showRacerCount);
         gMenuFrame.guiOpacity = 255;
     }
 }
@@ -1739,16 +1739,16 @@ void trackmenu_update_vehicle_select(s32 updateRate) {
 s32 trackmenu_staff_beaten(s32 mapId) {
     s8 *trackIdArray;
     s32 index;
-    s32 temp;
+    s32 trackIndex;
 
     trackIdArray = (s8 *) get_misc_asset(ASSET_MISC_MAIN_TRACKS_IDS);
 
     index = 0;
-    temp = -1;
+    trackIndex = -1;
     if (trackIdArray[0] != -1) {
-        while (temp < 0) {
+        while (trackIndex < 0) {
             if (mapId == (s32) trackIdArray[index]) {
-                temp = index;
+                trackIndex = index;
             }
             index++;
             if (trackIdArray[index] == -1) {
@@ -1757,14 +1757,14 @@ s32 trackmenu_staff_beaten(s32 mapId) {
         }
     }
 
-    if (temp >= 0) {
-        u64 temp2 = 0x10 << temp;
-        if ((temp2 & gRaceSetup.eepromSettings) == 0) {
-            temp = -1;
+    if (trackIndex >= 0) {
+        u64 staffFlag = 0x10 << trackIndex;
+        if ((staffFlag & gRaceSetup.eepromSettings) == 0) {
+            trackIndex = -1;
         }
     }
 
-    return temp;
+    return trackIndex;
 }
 
 /**
@@ -1834,7 +1834,7 @@ void menu_adventure_track_init(void) {
  * Render the setup gui when in a track preview in adventure mode.
  * This includes the vehicle selection and if time trial is enabled, the best times.
  */
-void adventuretrack_render(UNUSED s32 updateRate, s32 arg1, s32 arg2) {
+void adventuretrack_render(UNUSED s32 updateRate, s32 courseProgress, s32 silverCoinChallenge) {
     s32 alpha;
     s32 y;
     s32 greenAmount;
@@ -1868,7 +1868,7 @@ void adventuretrack_render(UNUSED s32 updateRate, s32 arg1, s32 arg2) {
             set_text_colour(255, 255, 255, 0, 255);
             draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, 43, levelName, ALIGN_MIDDLE_CENTER);
             if (!(leveltable_type(mapID) & RACETYPE_CHALLENGE)) {
-                if (arg2 == 0) {
+                if (silverCoinChallenge == 0) {
                     if (is_time_trial_enabled()) {
                         if (trackmenu_staff_beaten(mapID) >= 0) {
                             texrect_draw(&gMenuFrame.displayList, gRaceSelectionTTTexture, SCREEN_HEIGHT - 36,
@@ -1938,7 +1938,7 @@ void adventuretrack_render(UNUSED s32 updateRate, s32 arg1, s32 arg2) {
                     savedY = y;
 
                     for (i = 0; i <= VEHICLE_PLANE; i++) {
-                        alpha = (arg1 < 2 && leveltable_vehicle_default(mapID) != (Vehicle) i) ? 128 : 255;
+                        alpha = (courseProgress < 2 && leveltable_vehicle_default(mapID) != (Vehicle) i) ? 128 : 255;
                         if ((1 << i) & mask) {
                             if (i == gRaceSetup.playerVehicles[0]) {
                                 texrect_draw(&gMenuFrame.displayList, gRaceSelectionImages[i * 3 + 1], 104, y, 255, 255,
@@ -2012,8 +2012,8 @@ s32 menu_adventure_track_loop(s32 updateRate) {
     s32 vehicle2;
     s32 challenge;
     s32 mapId;
-    s32 sp20;
-    s32 sp1C;
+    s32 silverCoinChallenge;
+    s32 courseProgress;
     Settings *settings;
 
     if (gMenuFlow.stage < ADVENTURESETUP_VEHICLE) {
@@ -2022,27 +2022,27 @@ s32 menu_adventure_track_loop(s32 updateRate) {
     settings = get_settings();
     mapId = settings->levelExit->raw[2 + gTrackSelect.previewTrackId];
     challenge = FALSE;
-    sp1C = 0;
+    courseProgress = 0;
     if (settings->courseFlagsPtr[mapId] & RACE_CLEARED) {
-        sp1C = 1;
+        courseProgress = 1;
     }
     if (settings->courseFlagsPtr[mapId] & RACE_CLEARED_SILVER_COINS) {
-        sp1C = 2;
+        courseProgress = 2;
     }
     if (leveltable_type(mapId) & RACETYPE_CHALLENGE) {
         challenge = TRUE;
     }
-    sp20 = FALSE;
+    silverCoinChallenge = FALSE;
     if (!is_time_trial_enabled()) {
-        if (sp1C == 1) {
+        if (courseProgress == 1) {
             if (settings->worldId == WORLD_FUTURE_FUN_LAND || (settings->bosses & (1 << settings->worldId))) {
-                sp20 = TRUE;
+                silverCoinChallenge = TRUE;
             }
         }
     }
     gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
-    adventuretrack_render(updateRate, sp1C, sp20);
-    if (sp1C < 2) {
+    adventuretrack_render(updateRate, courseProgress, silverCoinChallenge);
+    if (courseProgress < 2) {
         gRaceSetup.playerVehicles[PLAYER_ONE] = leveltable_vehicle_default(mapId);
     }
     vehicle = gRaceSetup.playerVehicles[PLAYER_ONE];
@@ -2050,7 +2050,7 @@ s32 menu_adventure_track_loop(s32 updateRate) {
     vehicle2 = vehicle;
     menu_input();
     if (gMenuInput.delay == 0) {
-        if (gMenuFlow.stage != ADVENTURESETUP_VEHICLE || sp20 || challenge) {
+        if (gMenuFlow.stage != ADVENTURESETUP_VEHICLE || silverCoinChallenge || challenge) {
             if (gMenuInput.buttons[PLAYER_ONE] & (A_BUTTON | START_BUTTON)) {
                 if (challenge) {
                     set_current_text(10000);
@@ -2060,7 +2060,7 @@ s32 menu_adventure_track_loop(s32 updateRate) {
                 sound_play(SOUND_SELECT2, NULL);
             } else if (gMenuInput.buttons[PLAYER_ONE] & B_BUTTON) {
                 sound_play(SOUND_MENU_BACK3, NULL);
-                if (sp20 || challenge) {
+                if (silverCoinChallenge || challenge) {
                     if (challenge) {
                         set_current_text(10000);
                     }
@@ -2078,7 +2078,7 @@ s32 menu_adventure_track_loop(s32 updateRate) {
             } else if (gMenuInput.buttons[PLAYER_ONE] & (A_BUTTON | START_BUTTON)) {
                 gMenuFlow.stage = ADVENTURESETUP_CONFIRM;
                 sound_play(SOUND_CAR_REV2, NULL);
-            } else if (sp1C >= 2) {
+            } else if (courseProgress >= 2) {
                 if (gMenuInput.stickY[PLAYER_ONE] > 0) {
                     do {
                         vehicle--;
@@ -2177,9 +2177,7 @@ s32 is_in_tracks_mode(void) {
  * Comes in wood, iron and gold colours.
  */
 void render_track_selection_viewport_border(ObjectModel *objMdl) {
-    UNUSED s32 pad1[4];
     s32 flags;
-    UNUSED s32 pad2[4];
     TextureHeader *tex;
     Triangle *tris;
     s32 triOffset;

@@ -602,7 +602,6 @@ void menu_panel_draw_textured(Gfx **dList, s32 startX, s32 startY, s32 width, s3
     s8(*texCoords)[4];
     s16(*texColors)[4];
     u8(*woodPanelTexCoords)[12];
-    UNUSED s32 pad;
 
     gMenuGeometry[gWoodPanelCount].texture[gMenuTrisFlip] = tex;
     if (tex != NULL) {
@@ -685,12 +684,12 @@ void menu_panel_draw_textured(Gfx **dList, s32 startX, s32 startY, s32 width, s3
     gWoodPanelCount++;
 }
 
-void menu_panel_draw_bordered(Gfx **dList, s32 startX, s32 startY, s32 width, s32 height, s32 borderWidth, s32 borderHeight,
-                   s32 colour0, s32 colour1, s32 colour2, s32 colour3) {
-    s32 temp_ra;
-    s32 temp_t3;
-    s32 temp_t4;
-    s32 temp_t5;
+void menu_panel_draw_bordered(Gfx **dList, s32 startX, s32 startY, s32 width, s32 height, s32 borderWidth,
+                              s32 borderHeight, s32 colour0, s32 colour1, s32 colour2, s32 colour3) {
+    s32 lryStep;
+    s32 ulxStep;
+    s32 ulyStep;
+    s32 lrxStep;
     s32 recUly;
     s32 recUlx;
     s32 uly;
@@ -711,10 +710,10 @@ void menu_panel_draw_bordered(Gfx **dList, s32 startX, s32 startY, s32 width, s3
     i = 0;
     while (i < 4) {
         index = i << 2;
-        temp_t3 = sPanelCornerSigns[index + 0];
-        temp_t4 = sPanelCornerSigns[index + 1];
-        temp_t5 = sPanelCornerSigns[index + 2];
-        temp_ra = sPanelCornerSigns[index + 3];
+        ulxStep = sPanelCornerSigns[index + 0];
+        ulyStep = sPanelCornerSigns[index + 1];
+        lrxStep = sPanelCornerSigns[index + 2];
+        lryStep = sPanelCornerSigns[index + 3];
         ulx = startX;
         y0Orig = startY;
         uly = y0Orig;
@@ -766,10 +765,10 @@ void menu_panel_draw_bordered(Gfx **dList, s32 startX, s32 startY, s32 width, s3
                 }
                 gDPFillRectangle((*dList)++, recUlx, recUly, recLrx, recLry);
             }
-            ulx += temp_t3;
-            uly += temp_t4;
-            recLrx += temp_t5;
-            recLry += temp_ra;
+            ulx += ulxStep;
+            uly += ulyStep;
+            recLrx += lrxStep;
+            recLry += lryStep;
         }
         i++;
     }
@@ -794,7 +793,7 @@ void menu_panel_draw_bordered(Gfx **dList, s32 startX, s32 startY, s32 width, s3
  * Searches the controller pak to see if it has enough space to support the destination file.
  */
 SIDeviceStatus savemenu_check_space(s32 controllerIndex, s32 *pakState, SaveFileData *file, s32 *index, s32 fileSize,
-                                    UNUSED s32 arg5) {
+                                    UNUSED s32 sourceControllerIndex) {
     SIDeviceStatus ret = CONTROLLER_PAK_GOOD;
 
     if (*pakState) {
@@ -828,26 +827,26 @@ SIDeviceStatus savemenu_check_space(s32 controllerIndex, s32 *pakState, SaveFile
  * and the image that goes over the viewport when the level is not loaded.
  */
 void trackmenu_render_2D(s32 x, s32 y, char *hubName, char *trackName, s32 rectOpacity, s32 imageId, s32 copyViewPort,
-                         DrawTexture *arg7, s32 arg8) {
+                         DrawTexture *frameTextures, s32 arrowFlags) {
     s32 xTemp;
     s32 yTemp;
     s32 opacity;
     s32 i;
-    s32 sp6C;
+    s32 regionOffset;
     s32 x1;
     s32 y1;
     s32 x2;
     s32 y2;
-    f32 sp58;
-    f32 sp54;
+    f32 scaleX;
+    f32 scaleY;
     s16 *offsets;
-    s32 temp;
+    s32 leftX;
 
-    sp6C = 0;
+    regionOffset = 0;
     xTemp = x + 160;
     yTemp = gTrackSelect.viewportHalfY - y;
     if (osTvType == OS_TV_TYPE_PAL) {
-        sp6C = 12;
+        regionOffset = 12;
     }
     set_text_font(ASSET_FONTS_BIGFONT);
     set_text_background_colour(0, 0, 0, 0);
@@ -864,38 +863,40 @@ void trackmenu_render_2D(s32 x, s32 y, char *hubName, char *trackName, s32 rectO
             set_kerning(TRUE);
         }
         set_text_colour(0, 0, 0, 255, opacity / 2);
-        draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 1, (yTemp - sp6C) - 85, hubName, ALIGN_MIDDLE_CENTER);
+        draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF + 1, (yTemp - regionOffset) - 85, hubName,
+                  ALIGN_MIDDLE_CENTER);
         set_text_colour(255, 255, 255, 0, opacity);
-        draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, (yTemp - sp6C) - 88, hubName, ALIGN_MIDDLE_CENTER);
+        draw_text(&gMenuFrame.displayList, SCREEN_WIDTH_HALF, (yTemp - regionOffset) - 88, hubName,
+                  ALIGN_MIDDLE_CENTER);
         gTrackSelect.hubName = hubName;
         set_kerning(FALSE);
     }
     set_text_colour(255, 255, 255, 0, opacity);
-    draw_text(&gMenuFrame.displayList, xTemp, sp6C + yTemp + 88, trackName, ALIGN_MIDDLE_CENTER);
+    draw_text(&gMenuFrame.displayList, xTemp, regionOffset + yTemp + 88, trackName, ALIGN_MIDDLE_CENTER);
     if (rectOpacity > 0) {
         if (((yTemp - (gTrackSelect.viewportY >> 2)) < gTrackSelect.viewportY) &&
             (((gTrackSelect.viewportY >> 2) + yTemp) > 0)) {
-            sp58 = 1.25f;
-            sp54 = 1.25f;
+            scaleX = 1.25f;
+            scaleY = 1.25f;
             if (osTvType == OS_TV_TYPE_PAL) {
-                sp54 *= 1.1;
+                scaleY *= 1.1;
             }
-            temp = xTemp - 80;
+            leftX = xTemp - 80;
             if (copyViewPort) {
                 copy_viewport_frame_size_to_coords(0, &x1, &y1, &x2, &y2);
-                temp = x1;
-                sp58 = (x2 - temp) / 128.0f;
-                sp54 = (y2 - y1) / 96.0f;
+                leftX = x1;
+                scaleX = (x2 - leftX) / 128.0f;
+                scaleY = (y2 - y1) / 96.0f;
             } else {
                 x2 = xTemp + 80;
             }
-            x1 = temp;
-            if (temp < SCREEN_WIDTH && xTemp > 0) {
-                texrect_draw_scaled(&gMenuFrame.displayList, arg7, xTemp, yTemp, sp58, sp54,
+            x1 = leftX;
+            if (leftX < SCREEN_WIDTH && xTemp > 0) {
+                texrect_draw_scaled(&gMenuFrame.displayList, frameTextures, xTemp, yTemp, scaleX, scaleY,
                                     (rectOpacity & 0xFF) | ~0xFF, TEXRECT_FLIP_X);
             }
             if (xTemp < SCREEN_WIDTH && x2 > 0) {
-                texrect_draw_scaled(&gMenuFrame.displayList, arg7, xTemp, yTemp, sp58, sp54,
+                texrect_draw_scaled(&gMenuFrame.displayList, frameTextures, xTemp, yTemp, scaleX, scaleY,
                                     (rectOpacity & 0xFF) | ~0xFF, 0);
             }
             rendermode_reset(&gMenuFrame.displayList);
@@ -912,7 +913,7 @@ void trackmenu_render_2D(s32 x, s32 y, char *hubName, char *trackName, s32 rectO
     menu_element_render(imageId);
     gTrackSelect.woodFrameHeightScale = 1.0f;
     for (i = 0; i < 4; i++) {
-        if ((1 << i) & arg8) {
+        if ((1 << i) & arrowFlags) {
             texrect_draw(&gMenuFrame.displayList, gMenuSelectionArrows[i], offsets[(i << 1)] + xTemp + 1,
                          offsets[(i << 1) + 1] + yTemp + 1, 0, 0, 0, 128);
             texrect_draw(&gMenuFrame.displayList, gMenuSelectionArrows[i], offsets[(i << 1)] + xTemp - 1,
@@ -927,10 +928,9 @@ void trackmenu_render_2D(s32 x, s32 y, char *hubName, char *trackName, s32 rectO
 
 void load_menu_text(s32 language) {
     char **menuText;
-    char **temp;
+    char **textTable;
     s32 langIndex;
     s32 size;
-    char **fake;
 
     if (gMenuTextLangTable == NULL) {
         gMenuTextLangTable = (s32 *) asset_table_load(ASSET_MENU_TEXT_TABLE);
@@ -959,9 +959,9 @@ void load_menu_text(s32 language) {
     size = gMenuTextLangTable[langIndex + 1];
     langIndex = gMenuTextLangTable[langIndex];
     size -= langIndex;
-    temp = gMenuLoaded.text;
+    textTable = gMenuLoaded.text;
 
-    if (temp == NULL) {
+    if (textTable == NULL) {
         return;
     }
 
@@ -1206,35 +1206,34 @@ UNUSED void menu_button_uvs(f32 u, f32 v) {
 }
 
 void menu_panels_render(Gfx **dList) {
-    UNUSED s16 pad;
     s32 i;
-    s32 var_t0;
+    s32 texEnabled;
     TextureHeader *tex;
     TextureHeader *lastTex;
 
     gSPDisplayList((*dList)++, &dMenuHudSettings);
-    var_t0 = -1;
+    texEnabled = -1;
     lastTex = NULL;
 
     for (i = 0; i < gWoodPanelCount; i++) {
         if (!gMenuGeometry[i].drawnImmediately[gMenuTrisFlip]) {
             tex = gMenuGeometry[i].texture[gMenuTrisFlip];
             if (tex != NULL) {
-                if (var_t0 != 1) {
-                    var_t0 = 1;
+                if (texEnabled != 1) {
+                    texEnabled = 1;
                     gDkrDmaDisplayList((*dList)++, OS_K0_TO_PHYSICAL(&dMenuHudDrawModes[1]), 2);
                 }
                 if (lastTex != tex) {
                     gDkrDmaDisplayList((*dList)++, OS_K0_TO_PHYSICAL(tex->cmd), tex->numberOfCommands);
                     lastTex = tex;
                 }
-            } else if (var_t0 != 0) {
-                var_t0 = 0;
+            } else if (texEnabled != 0) {
+                texEnabled = 0;
                 gDkrDmaDisplayList((*dList)++, OS_K0_TO_PHYSICAL(&dMenuHudDrawModes[0]), 2);
             }
             gDPPipeSync((*dList)++);
             gSPVertexDKR((*dList)++, OS_K0_TO_PHYSICAL(gMenuGeometry[i].vertices[gMenuTrisFlip]), 20, 0);
-            gSPPolygon((*dList)++, OS_K0_TO_PHYSICAL(gMenuGeometry[i].triangles[gMenuTrisFlip]), 10, var_t0);
+            gSPPolygon((*dList)++, OS_K0_TO_PHYSICAL(gMenuGeometry[i].triangles[gMenuTrisFlip]), 10, texEnabled);
         }
     }
     gWoodPanelCount = 0;
@@ -1519,7 +1518,6 @@ void menu_number_render(s32 number, s32 x, s32 y, s32 r, s32 g, s32 b, s32 a, UN
     s32 i;
     s32 hasProcessedDigit;
     s32 curDigit;
-    UNUSED s32 pad[2];
     u8 digits[10];
 
     strLen = 0;

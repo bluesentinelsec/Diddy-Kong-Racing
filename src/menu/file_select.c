@@ -175,11 +175,11 @@ void fileselect_render_element(s32 imageID, s32 xOffset, s32 yOffset, s32 red, s
  */
 void fileselect_render(UNUSED s32 updateRate) {
     s32 yPos;
-    s32 var_s2;
+    s32 fileIcon;
+    s32 highlighted;
     s32 glow;
     u32 colour;
     s32 i;
-    UNUSED s32 pad[3];
     // Also receives the untrimmed menu-text names ("GAME A" etc.) for unstarted
     // slots, which are longer than SavefileInfo.name.
     char trimmedFilename[16];
@@ -210,11 +210,11 @@ void fileselect_render(UNUSED s32 updateRate) {
         for (i = 0; i < NUMBER_OF_SAVE_FILES; i++) {
             if (gSavefileInfo[i].isStarted) {
                 sprite_opaque(FALSE);
-                var_s2 = 11;
+                fileIcon = 11;
                 if (gSavefileInfo[i].isAdventure2) {
-                    var_s2 = 12;
+                    fileIcon = 12;
                 }
-                fileselect_render_element(var_s2, gFileSelectButtons[i].x + gFileSelectElementPos[2],
+                fileselect_render_element(fileIcon, gFileSelectButtons[i].x + gFileSelectElementPos[2],
                                           gFileSelectButtons[i].y + gFileSelectElementPos[3], 0, 0, 0, 128);
                 cam_set_sprite_anim_mode(SPRITE_ANIM_FRAME_INDEX);
                 gMenuLoaded.images->spriteOffset = gSavefileInfo[i].balloonCount / 10;
@@ -247,21 +247,21 @@ void fileselect_render(UNUSED s32 updateRate) {
     set_text_background_colour(0, 0, 0, 0);
     set_text_colour(255, 255, 255, 0, 255);
     for (i = 0; i < NUMBER_OF_SAVE_FILES; i++) {
-        var_s2 = FALSE;
+        highlighted = FALSE;
         if (gFileCopy) {
             if (gFileConfirm == 0 && i == gSaveFileIndex3) {
-                var_s2 = TRUE;
+                highlighted = TRUE;
             } else if (gFileConfirm > 0 && i == gSaveFileIndex2) {
-                var_s2 = TRUE;
+                highlighted = TRUE;
             }
         } else if (gFileErase) {
             if (i == gSaveFileIndex3) {
-                var_s2 = TRUE;
+                highlighted = TRUE;
             }
         } else if (gMenuFlow.stage == 0 && i == gRaceSetup.saveFileIndex) {
-            var_s2 = TRUE;
+            highlighted = TRUE;
         }
-        if (var_s2) {
+        if (highlighted) {
             colour = glow | ~0xFF;
             menu_panel_draw_bordered(&gMenuFrame.displayList, gFileSelectButtons[i].x, gFileSelectButtons[i].y + yPos,
                                      gFileSelectButtons[i].width, gFileSelectButtons[i].height,
