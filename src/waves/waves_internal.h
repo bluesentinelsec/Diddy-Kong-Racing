@@ -21,7 +21,35 @@
 #include <ultra64.h>
 
 #define gWaveVisibleBlocksBody (gWaveVisibleBlocks + 2)
-#define D_8012A600_COUNT 24
+// Entries of gWaveVisibleBlocksBody (gWaveVisibleBlocks after its first two).
+#define WAVE_VISIBLE_BLOCKS_BODY_COUNT 24
+
+// gWaveDetailLevels holds the water depth under each wave vertex. Below this depth the swell is damped
+// towards gWaveController.minDetailScale; at or above it the waves have their full height.
+#define WAVE_FULL_SWELL_DEPTH 0x7F
+
+// Each column of the wave grid lists up to WAVE_GEN_SLOTS wave generators (swells) that reach it, as indices
+// into gWaveGenList; unused slots hold WAVE_GEN_SLOT_EMPTY and come after the used ones.
+#define WAVE_GEN_SLOTS 8
+#define WAVE_GEN_SLOT_EMPTY 0xFF
+// Wave generators a level can have at once (entries of gWaveGenObjs).
+#define WAVE_GEN_MAX 32
+// wavegen_register flags: the swell travels along one axis instead of spreading out in rings.
+#define WAVEGEN_LINEAR_X 1
+#define WAVEGEN_LINEAR_Z 2
+
+// Starting (and fully faded) value of LevelModel_Alternate.viewportFade.
+#define WAVE_FADE_MAX 0x80
+
+// gWaveController.waveViewDist: wave cells drawn in full around the camera, as a square this many cells
+// across. Two-player games always use the near distance.
+#define WAVE_VIEW_DIST_NEAR 3
+#define WAVE_VIEW_DIST_FAR 5
+// Most wave cells that can be visible at once (WAVE_VIEW_DIST_FAR squared); each vertex buffer holds a grid
+// for every one.
+#define WAVE_MAX_VISIBLE_CELLS 25
+// Two-player games always use this many wave subdivisions per segment, whatever the level header says.
+#define WAVE_SUBDIVISIONS_2P 4
 
 extern f32 *gWaveHeightTable;
 extern Vec2s *gWaveHeightIndices;
@@ -87,16 +115,16 @@ extern f32 gWaveMagnitude;
 extern s32 gWavePowerDivisor;
 
 void wave_block_build_vertices(s32 blockID, s32 viewportID);
-void wave_block_build_vertices_depth_shaded(s32 blockID, s32 arg1);
+void wave_block_build_vertices_depth_shaded(s32 blockID, s32 viewportID);
 void waves_update(s32 updateRate);
 void waves_render(Gfx **dList, Mtx **mtx, s32 viewportID);
 void waves_init_level(LevelModel *level, LevelHeader *header);
 void waves_build_sine_table(void);
 void waves_init_collision(LevelModel *model);
-f32 waves_get_y(s32 blockID, s32 arg1, s32 arg2);
+f32 waves_get_y(s32 blockID, s32 cellX, s32 cellZ);
 void wavegen_destroy(Object *obj);
-WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 arg4, f32 arg5, f32 arg6, f32 arg7,
-                          s32 flags);
+WaveGen *wavegen_register(Object *obj, f32 xPos, f32 zPos, f32 waveSize, s32 phase, f32 waveSpeed, f32 wavelength,
+                          f32 amplitude, s32 flags);
 void wave_gens_update(s32 updateRate);
 
 #endif
