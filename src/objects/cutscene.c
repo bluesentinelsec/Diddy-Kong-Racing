@@ -10,6 +10,25 @@ typedef struct AnimPathPoints {
     f32 roll[5];
 } AnimPathPoints;
 
+// Animation channel (and override-pos cutscene id) that plays in every cutscene.
+#define ANIM_CHANNEL_ALL 20
+// Animation attach mode that starts the actor at the active camera.
+#define ANIM_ATTACH_CAMERA 18
+
+// Object_AnimatedObject rotateType: how a cutscene actor turns along its path.
+#define ANIM_ROTATE_SPIN 1       // spin by its yaw/roll/pitch speeds
+#define ANIM_ROTATE_FACE_ALONG 2 // face along the path
+#define ANIM_ROTATE_FACE_ACTOR 3 // face another actor; any other value interpolates the node rotations
+
+/** One frame's step along a cutscene path segment (see anim_path_measure_step). */
+typedef struct AnimPathMove {
+    s32 segment; // 0, or 1 once the step has crossed into the next node's segment
+    f32 t;       // position within the segment
+    f32 x;       // move from the actor's position
+    f32 y;
+    f32 z;
+} AnimPathMove;
+
 /**
  * Return the index of the currently active cutscene.
  */
@@ -60,7 +79,7 @@ void anim_objects_prepare(void) {
         obj = gObjPtrList[i];
         if (obj != NULL && !(obj->trans.flags & OBJ_FLAGS_PARTICLE) && obj->behaviorId == BHV_ANIMATION) {
             entryAnimation = &obj->level_entry->animation;
-            if (entryAnimation->channel != gCutsceneID && entryAnimation->channel != 20) {
+            if (entryAnimation->channel != gCutsceneID && entryAnimation->channel != ANIM_CHANNEL_ALL) {
                 obj->trans.flags |= OBJ_FLAGS_UNK_2000;
                 if (obj->animTarget != NULL) {
                     obj->animTarget->trans.flags |= OBJ_FLAGS_UNK_2000;
@@ -98,26 +117,26 @@ void anim_objects_prepare(void) {
 }
 
 /** Applies the cutscene's override positions to the objects they target. */
-void override_pos_apply(s8 arg0) {
+void override_pos_apply(s8 collidablePass) {
     LevelObjectEntry_OverridePos *overridePosEntry;
     Object *overridePosObj;
     Object_OverridePos *overridePos;
     s32 i;
     s32 j;
-    s32 someBool;
+    s32 noCollision;
     Object *animTarget;
 
     for (i = 0; i < gOverridePosCount; i++) {
         overridePosObj = gOverridePosObjects[i];
         overridePosEntry = &overridePosObj->level_entry->overridePos;
         overridePos = overridePosObj->override_pos;
-        if ((overridePosEntry->cutsceneId == gCutsceneID) || ((overridePosEntry->cutsceneId == 20))) {
+        if ((overridePosEntry->cutsceneId == gCutsceneID) || ((overridePosEntry->cutsceneId == ANIM_CHANNEL_ALL))) {
             for (j = 0; (j < gAnimObjectCount) &&
                         (overridePosEntry->behaviorId != gAnimObjects[j]->properties.animation.behaviourID);
                  j++) {}
             if (j != gAnimObjectCount && gAnimObjects[j]->animTarget != NULL) {
-                someBool = (gAnimObjects[j]->animTarget->collisionData != NULL) ? FALSE : TRUE;
-                if (arg0 != someBool) {
+                noCollision = (gAnimObjects[j]->animTarget->collisionData != NULL) ? FALSE : TRUE;
+                if (collidablePass != noCollision) {
                     animTarget = gAnimObjects[j]->animTarget;
                     overridePos->x = animTarget->trans.x_position;
                     overridePos->y = animTarget->trans.y_position;
@@ -161,17 +180,15 @@ void override_pos_update(void) {
 
 /** Per-frame update of the cutscene animation objects and their actors. */
 void anim_objects_update(void) {
-    s32 pad[3];
     LevelObjectEntry_OverridePos *overridePos;
     Object *obj;
     s32 numOfObjs;
-    s32 pad2;
     s32 i;
     s32 stopLooping;
-    s32 sp28;
+    s32 orderInActor;
     s16 animActorIndex1;
     s16 animActorIndex2;
-    s32 var_a0;
+    s32 prevActorIndex;
     Object *animObj1;
     LevelObjectEntry_Animation *animation1;
     LevelObjectEntry_Animation *animation2;
@@ -180,7 +197,7 @@ void anim_objects_update(void) {
         for (numOfObjs = 0; numOfObjs < gAnimObjectCount; numOfObjs++) {
             obj = gAnimObjects[numOfObjs];
             animation1 = &obj->level_entry->animation;
-            if (obj->animTarget != NULL && animation1->channel != 20) {
+            if (obj->animTarget != NULL && animation1->channel != ANIM_CHANNEL_ALL) {
                 animObj1 = obj->animTarget;
                 free_object(animObj1);
                 obj->animTarget = NULL;
@@ -197,8 +214,7 @@ void anim_objects_update(void) {
             if (!(gObjPtrList[i]->trans.flags & OBJ_FLAGS_PARTICLE)) {
                 if (gObjPtrList[i]->behaviorId == BHV_OVERRIDE_POS) {
                     overridePos = &gObjPtrList[i]->level_entry->overridePos;
-                    if (overridePos->cutsceneId == gCutsceneID ||
-                        overridePos->cutsceneId == (CUTSCENE_SHERBET_ISLAND_BOSS | CUTSCENE_ADVENTURE_TWO)) {
+                    if (overridePos->cutsceneId == gCutsceneID || overridePos->cutsceneId == ANIM_CHANNEL_ALL) {
                         gOverridePosObjects[numOfObjs] = gObjPtrList[i];
                         numOfObjs++;
                     }
@@ -230,10 +246,10 @@ void anim_objects_update(void) {
             animActorIndex1 = animation1->actorIndex;
             animActorIndex2 = animation2->actorIndex;
 
-            if (animation1->channel == 20) {
+            if (animation1->channel == ANIM_CHANNEL_ALL) {
                 animActorIndex1 -= 400;
             }
-            if (animation2->channel == 20) {
+            if (animation2->channel == ANIM_CHANNEL_ALL) {
                 animActorIndex2 -= 400;
             }
 
@@ -260,14 +276,14 @@ void anim_objects_update(void) {
         }
     } while (stopLooping == FALSE);
 
-    var_a0 = -101;
+    prevActorIndex = -101;
     for (i = 0; i < numOfObjs; i += 1) {
         animation1 = &gAnimObjects[i]->level_entry->animation;
-        if (animation1->actorIndex != var_a0) {
-            var_a0 = animation1->actorIndex;
-            sp28 = 0;
+        if (animation1->actorIndex != prevActorIndex) {
+            prevActorIndex = animation1->actorIndex;
+            orderInActor = 0;
         }
-        animation1->order = sp28++; // It is possible that sp28 could not be initalized?
+        animation1->order = orderInActor++; // It is possible that orderInActor could not be initalized?
         gAnimObjects[i]->properties.animation.action = 0;
     }
 
@@ -289,7 +305,7 @@ void anim_objects_spawn_targets(void) {
         if (obj->animTarget == NULL && animation->order == 0 && animation->objectIdToSpawn != -1) {
             anim_object_spawn_target(obj, animation);
         }
-        if (gAnimInitAllChannels || animation->channel != 20) {
+        if (gAnimInitAllChannels || animation->channel != ANIM_CHANNEL_ALL) {
             if (obj->animTarget != NULL) {
                 obj_init_animobject(obj, obj->animTarget);
             }
@@ -416,14 +432,14 @@ s8 anim_group_get(void) {
     return gAnimGroup;
 }
 
-void anim_group_set(s32 arg0) {
-    if (arg0 != gAnimGroup) {
+void anim_group_set(s32 group) {
+    if (group != gAnimGroup) {
         gAnimObjectCount = 0;
     }
-    gAnimGroup = arg0;
+    gAnimGroup = group;
 }
 
-s32 anim_count_actors(s32 arg0) {
+s32 anim_count_actors(s32 actorIndex) {
     s32 i;
     s32 count;
     if (gAnimObjectCount == 0) {
@@ -432,7 +448,7 @@ s32 anim_count_actors(s32 arg0) {
 
     count = 0;
     for (i = 0; i < gAnimObjectCount; i++) {
-        if (gAnimObjects[i]->properties.animation.behaviourID == arg0) {
+        if (gAnimObjects[i]->properties.animation.behaviourID == actorIndex) {
             count++;
         }
     }
@@ -480,7 +496,7 @@ static s32 anim_path_loop_node(s32 first, s32 count) {
 /**
  * The five control points around the actor's current node: the node before, the node, and
  * the three after, extrapolated past either end of a path that does not loop. A node
- * marked with unk22 takes its position from the actor's camera instead.
+ * with attach mode 1 takes its position from the actor's camera instead.
  */
 static void anim_path_control_points(s32 first, s32 count, s32 loopNode, s32 nodeIndex, s8 cameraID,
                                      AnimPathPoints *pts) {
@@ -887,42 +903,13 @@ static void anim_actor_advance_model_frame(Object *obj, Object_AnimatedObject *a
 }
 
 /**
- * Drive a cutscene actor along its path of animation nodes for one frame: handle its
- * start delay and cues, step its model animation, then move it along the spline at the
- * node speed and rotate it by its rotate type. Returns 1 when the actor has nothing to do.
+ * Count down the actor's start delay and run its first node's setup once it expires.
+ * Returns -1 once the actor is running, otherwise the value anim_object_follow_path returns
+ * this frame (1 for a hidden actor still waiting, 0 for a visible one).
  */
-s32 anim_object_follow_path(Object *obj, s32 updateRate, Object *target) {
-    Object_AnimatedObject *anim;
+static s32 anim_actor_wait_start(Object *obj, Object_AnimatedObject *anim, s32 updateRate) {
     LevelObjectEntry_Animation *entry;
-    AnimPathPoints pts;
-    f32 rate;
-    f32 t;
-    f32 moveX;
-    f32 moveY;
-    f32 moveZ;
-    f32 moved;
-    f32 invBaseScale;
-    f32 nodeSpeed;
-    f32 nextNodeSpeed;
-    s32 first;
-    s32 count;
-    s32 loopNode;
-    s32 segment;
-    s32 pass;
-    s32 node;
-    s32 nextNode;
 
-    if (gCutsceneID < 0) {
-        return 1;
-    }
-    if (updateRate >= 9) {
-        updateRate = 8;
-    }
-    rate = updateRate;
-    anim = obj->animatedObject;
-    if (osTvType == 0) {
-        rate *= 1.2;
-    }
     if (anim->startDelay < 0) {
         anim_actor_check_skip(anim);
     }
@@ -944,43 +931,25 @@ s32 anim_object_follow_path(Object *obj, s32 updateRate, Object *target) {
         }
         return 0;
     }
+    return -1;
+}
 
-    obj->trans.flags &= ~OBJ_FLAGS_INVISIBLE;
-    anim_actor_play_cues(anim);
-    anim_actor_update_opacity(obj, anim, updateRate);
-    anim_actor_update_fade(anim);
+/**
+ * Find this frame's step along the path segment. Two passes: the first measures how far the
+ * current step would move the actor and rescales the step to hold the node speed; the second
+ * takes the corrected step. Fills in the segment (0, or 1 once the step crosses into the next
+ * node), the position within it and the move from the actor's position.
+ */
+static void anim_path_measure_step(Object *obj, Object_AnimatedObject *anim, AnimPathPoints *pts, f32 rate,
+                                   AnimPathMove *move) {
+    f32 t;
+    f32 moveX;
+    f32 moveY;
+    f32 moveZ;
+    f32 moved;
+    s32 segment;
+    s32 pass;
 
-    if (anim->rotateType == 1) {
-        obj->trans.rotation.y_rotation += (s16) (anim->yawSpinSpeed * (f32) (rate * 8.0));
-        obj->trans.rotation.x_rotation += (s16) (anim->rollSpinSpeed * (f32) (rate * 8.0));
-        obj->trans.rotation.z_rotation += (s16) (anim->pitchSpinSpeed * (f32) (rate * 8.0));
-    }
-    if (target != NULL && target->header->modelType == 0) {
-        anim_actor_advance_model_frame(obj, anim, target, rate);
-    }
-
-    if (anim->speed <= 0.0) {
-        return anim_actor_update(obj, updateRate);
-    }
-    if (!anim_path_find(anim->actorIndex, &first, &count)) {
-        return anim_actor_update(obj, updateRate);
-    }
-    loopNode = anim_path_loop_node(first, count);
-    invBaseScale = 1.0 / gAnimObjects[0]->header->scale;
-    if (loopNode == -1 && anim->nodeIndex >= count - 1) {
-        return anim_actor_update(obj, updateRate);
-    }
-    if (anim->pauseCounter >= 0) {
-        if (gCutsceneSkipRequested == 0) {
-            anim->pauseCounter -= updateRate;
-        }
-        return 0;
-    }
-
-    anim_path_control_points(first, count, loopNode, anim->nodeIndex, anim->cameraID, &pts);
-
-    // Two passes: the first measures how far the current step would move the actor and
-    // rescales the step to hold the node speed; the second takes the corrected step.
     if (anim->segmentStep == 0) {
         anim->segmentStep = 0.01f;
     }
@@ -991,13 +960,13 @@ s32 anim_object_follow_path(Object *obj, s32 updateRate, Object *target) {
             t -= 1.0;
         }
         if (anim->linearInterp == 0) {
-            moveX = catmull_rom_interpolation(pts.x, segment, t);
-            moveY = catmull_rom_interpolation(pts.y, segment, t);
-            moveZ = catmull_rom_interpolation(pts.z, segment, t);
+            moveX = catmull_rom_interpolation(pts->x, segment, t);
+            moveY = catmull_rom_interpolation(pts->y, segment, t);
+            moveZ = catmull_rom_interpolation(pts->z, segment, t);
         } else {
-            moveX = lerp(pts.x, segment, t);
-            moveY = lerp(pts.y, segment, t);
-            moveZ = lerp(pts.z, segment, t);
+            moveX = lerp(pts->x, segment, t);
+            moveY = lerp(pts->y, segment, t);
+            moveZ = lerp(pts->z, segment, t);
         }
         moveX -= obj->trans.x_position;
         moveY -= obj->trans.y_position;
@@ -1010,36 +979,26 @@ s32 anim_object_follow_path(Object *obj, s32 updateRate, Object *target) {
             }
         }
     }
+    move->segment = segment;
+    move->t = t;
+    move->x = moveX;
+    move->y = moveY;
+    move->z = moveZ;
+}
 
-    obj->trans.scale = catmull_rom_interpolation(pts.scale, segment, t) * invBaseScale * obj->header->scale;
-    // Reaching the last node of a path that ends: land exactly on it.
-    if (segment != 0 && loopNode == -1 && count == anim->nodeIndex + 2) {
-        moveX = catmull_rom_interpolation(pts.x, 0, 1.0f);
-        moveY = catmull_rom_interpolation(pts.y, 0, 1.0f);
-        moveZ = catmull_rom_interpolation(pts.z, 0, 1.0f);
-        moveX -= obj->trans.x_position;
-        moveY -= obj->trans.y_position;
-        moveZ -= obj->trans.z_position;
-    }
-    obj->x_velocity = moveX / rate;
-    obj->y_velocity = moveY / rate;
-    obj->z_velocity = moveZ / rate;
-    move_object(obj, moveX, moveY, moveZ);
+/**
+ * Save the segment position and set the actor's speed: the current node's speed, blended towards
+ * the next node's across the segment. `staleMoveZ` is what the original reads when there is no
+ * next node.
+ */
+static void anim_path_update_speed(Object_AnimatedObject *anim, s32 first, s32 count, s32 loopNode, s32 segment, f32 t,
+                                   f32 staleMoveZ) {
+    LevelObjectEntry_Animation *entry;
+    f32 nodeSpeed;
+    f32 nextNodeSpeed;
+    s32 node;
+    s32 nextNode;
 
-    switch (anim->rotateType) {
-        case 1:
-            break;
-        case 2:
-            anim_path_face_along(obj, anim, &pts, segment, t, &moveZ);
-            break;
-        case 3:
-            break;
-        default:
-            anim_path_apply_node_rotation(obj, anim, &pts, segment, t);
-            break;
-    }
-
-    // Node speed: the current node's, blended towards the next node's across the segment.
     node = anim->nodeIndex;
     anim->segmentProgress = t;
     if (loopNode != -1 && node >= count) {
@@ -1066,34 +1025,142 @@ s32 anim_object_follow_path(Object *obj, s32 updateRate, Object *target) {
                     nextNodeSpeed = nodeSpeed;
                 }
             } else {
-                nextNodeSpeed = moveZ; //!@bug uninitialised in the original: it reads the stale z move
+                nextNodeSpeed = staleMoveZ; //!@bug uninitialised in the original: it reads the stale z move
             }
             anim->speed = ((nextNodeSpeed - nodeSpeed) * t) + nodeSpeed;
         }
     }
+}
 
-    if (segment != 0) {
-        anim->nodeIndex += 1;
-        if (loopNode == -1) {
-            if (anim->nodeIndex >= count) {
-                anim->nodeIndex = count - 1;
-            } else {
-                entry = &gAnimObjects[first + anim->nodeIndex]->level_entry->animation;
-                anim_actor_apply_entry(obj, entry, anim, first);
-            }
+/**
+ * The actor has crossed into the next segment: advance to the next node (looping back or
+ * stopping at the last one) and apply that node's settings.
+ */
+static void anim_path_next_node(Object *obj, Object_AnimatedObject *anim, s32 first, s32 count, s32 loopNode) {
+    LevelObjectEntry_Animation *entry;
+    s32 node;
+
+    anim->nodeIndex += 1;
+    if (loopNode == -1) {
+        if (anim->nodeIndex >= count) {
+            anim->nodeIndex = count - 1;
         } else {
-            if (count < anim->nodeIndex) {
-                anim->nodeIndex = loopNode + 1;
-            }
-            node = anim->nodeIndex;
-            if (anim->nodeIndex >= count) {
-                node = (anim->nodeIndex - count) + loopNode;
-            }
-            entry = &gAnimObjects[first + node]->level_entry->animation;
+            entry = &gAnimObjects[first + anim->nodeIndex]->level_entry->animation;
             anim_actor_apply_entry(obj, entry, anim, first);
         }
+    } else {
+        if (count < anim->nodeIndex) {
+            anim->nodeIndex = loopNode + 1;
+        }
+        node = anim->nodeIndex;
+        if (anim->nodeIndex >= count) {
+            node = (anim->nodeIndex - count) + loopNode;
+        }
+        entry = &gAnimObjects[first + node]->level_entry->animation;
+        anim_actor_apply_entry(obj, entry, anim, first);
     }
-    if (anim->rotateType == 3) {
+}
+
+/**
+ * Drive a cutscene actor along its path of animation nodes for one frame: handle its
+ * start delay and cues, step its model animation, then move it along the spline at the
+ * node speed and rotate it by its rotate type. Returns 1 when the actor has nothing to do.
+ */
+s32 anim_object_follow_path(Object *obj, s32 updateRate, Object *target) {
+    Object_AnimatedObject *anim;
+    AnimPathPoints pts;
+    AnimPathMove move;
+    f32 rate;
+    f32 invBaseScale;
+    s32 first;
+    s32 count;
+    s32 loopNode;
+    s32 waitResult;
+
+    if (gCutsceneID < 0) {
+        return 1;
+    }
+    if (updateRate >= 9) {
+        updateRate = 8;
+    }
+    rate = updateRate;
+    anim = obj->animatedObject;
+    if (osTvType == OS_TV_TYPE_PAL) {
+        rate *= 1.2;
+    }
+    waitResult = anim_actor_wait_start(obj, anim, updateRate);
+    if (waitResult != -1) {
+        return waitResult;
+    }
+
+    obj->trans.flags &= ~OBJ_FLAGS_INVISIBLE;
+    anim_actor_play_cues(anim);
+    anim_actor_update_opacity(obj, anim, updateRate);
+    anim_actor_update_fade(anim);
+
+    if (anim->rotateType == ANIM_ROTATE_SPIN) {
+        obj->trans.rotation.y_rotation += (s16) (anim->yawSpinSpeed * (f32) (rate * 8.0));
+        obj->trans.rotation.x_rotation += (s16) (anim->rollSpinSpeed * (f32) (rate * 8.0));
+        obj->trans.rotation.z_rotation += (s16) (anim->pitchSpinSpeed * (f32) (rate * 8.0));
+    }
+    if (target != NULL && target->header->modelType == OBJECT_MODEL_TYPE_3D_MODEL) {
+        anim_actor_advance_model_frame(obj, anim, target, rate);
+    }
+
+    if (anim->speed <= 0.0) {
+        return anim_actor_update(obj, updateRate);
+    }
+    if (!anim_path_find(anim->actorIndex, &first, &count)) {
+        return anim_actor_update(obj, updateRate);
+    }
+    loopNode = anim_path_loop_node(first, count);
+    invBaseScale = 1.0 / gAnimObjects[0]->header->scale;
+    if (loopNode == -1 && anim->nodeIndex >= count - 1) {
+        return anim_actor_update(obj, updateRate);
+    }
+    if (anim->pauseCounter >= 0) {
+        if (gCutsceneSkipRequested == 0) {
+            anim->pauseCounter -= updateRate;
+        }
+        return 0;
+    }
+
+    anim_path_control_points(first, count, loopNode, anim->nodeIndex, anim->cameraID, &pts);
+    anim_path_measure_step(obj, anim, &pts, rate, &move);
+
+    obj->trans.scale = catmull_rom_interpolation(pts.scale, move.segment, move.t) * invBaseScale * obj->header->scale;
+    // Reaching the last node of a path that ends: land exactly on it.
+    if (move.segment != 0 && loopNode == -1 && count == anim->nodeIndex + 2) {
+        move.x = catmull_rom_interpolation(pts.x, 0, 1.0f);
+        move.y = catmull_rom_interpolation(pts.y, 0, 1.0f);
+        move.z = catmull_rom_interpolation(pts.z, 0, 1.0f);
+        move.x -= obj->trans.x_position;
+        move.y -= obj->trans.y_position;
+        move.z -= obj->trans.z_position;
+    }
+    obj->x_velocity = move.x / rate;
+    obj->y_velocity = move.y / rate;
+    obj->z_velocity = move.z / rate;
+    move_object(obj, move.x, move.y, move.z);
+
+    switch (anim->rotateType) {
+        case ANIM_ROTATE_SPIN:
+            break;
+        case ANIM_ROTATE_FACE_ALONG:
+            anim_path_face_along(obj, anim, &pts, move.segment, move.t, &move.z);
+            break;
+        case ANIM_ROTATE_FACE_ACTOR:
+            break;
+        default:
+            anim_path_apply_node_rotation(obj, anim, &pts, move.segment, move.t);
+            break;
+    }
+
+    anim_path_update_speed(anim, first, count, loopNode, move.segment, move.t, move.z);
+    if (move.segment != 0) {
+        anim_path_next_node(obj, anim, first, count, loopNode);
+    }
+    if (anim->rotateType == ANIM_ROTATE_FACE_ACTOR) {
         anim_path_face_actor(obj, anim->targetActorIndex);
     }
     obj->particleEmittersEnabled = anim->emitterMask;
@@ -1101,9 +1168,9 @@ s32 anim_object_follow_path(Object *obj, s32 updateRate, Object *target) {
     return 0;
 }
 
-s32 anim_stage_reached(s8 arg0) {
-    if (arg0 >= gAnimStage) {
-        gAnimStage = arg0;
+s32 anim_stage_reached(s8 stage) {
+    if (stage >= gAnimStage) {
+        gAnimStage = stage;
         return TRUE;
     }
     return FALSE;
@@ -1118,7 +1185,7 @@ void anim_actor_init(Object *obj, Object_AnimatedObject *animObj, LevelObjectEnt
         animObj->cameraStage = gAnimCameraCount;
         gAnimCameraCount++;
     }
-    if (entry->attachMode == 18) {
+    if (entry->attachMode == ANIM_ATTACH_CAMERA) {
         set_active_camera(animObj->cameraID);
         camera = cam_get_active_camera_no_cutscenes();
         animObjTrans->x_position = camera->trans.x_position;
@@ -1182,11 +1249,12 @@ void anim_actor_apply_entry(Object *obj, LevelObjectEntry_Animation *entry, Obje
     }
 }
 
-void anim_actor_trigger(s32 arg0) {
+void anim_actor_trigger(s32 actorIndex) {
     s32 i;
-    arg0 &= 0xFF; //?
+    actorIndex &= 0xFF; //?
 
-    for (i = 0; i < gAnimObjectCount && (arg0 != (gAnimObjects[i]->properties.animation.behaviourID & 0xFF)); i++) {}
+    for (i = 0; i < gAnimObjectCount && (actorIndex != (gAnimObjects[i]->properties.animation.behaviourID & 0xFF));
+         i++) {}
 
     if (i < gAnimObjectCount) {
         if (gAnimObjects[i]->animTarget != NULL) {

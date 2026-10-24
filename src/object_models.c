@@ -7,10 +7,10 @@
 #include "macros.h"
 #include "memory.h"
 #include "objects.h"
+#include "pc_swap.h"
 #include "racer.h"
 #include "textures_sprites.h"
 #include "tracks.h"
-#include "pc_swap.h"
 
 #define MODEL_LOADED_MAX 70
 
@@ -100,7 +100,7 @@ static const PcField sObjectModelFields[] = {
     PCU_END,
 };
 
-static u8 *sPcModelDisk;    // inflated N64 image of the model being loaded
+static u8 *sPcModelDisk; // inflated N64 image of the model being loaded
 static s32 sPcModelDiskSize;
 
 // Inflate model `assetOffset` (compressed size `compSize`) into host scratch.
@@ -191,12 +191,12 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
     s32 i;
     s32 cacheIndex;
     ObjectModel *objMdl;
-    s32 sp48;
-    s32 temp_s0;
+    s32 compSize;
+    s32 assetOffset;
     ModelInstance *instance;
-    s8 sp3F;
+    s8 textureMissing;
 #if VERSION >= VERSION_79
-    s8 var_a2;
+    s8 tookFreeSlot;
     s8 cacheChanged;
 #endif
     u32 compressedData;
@@ -220,13 +220,13 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
     }
 
 #if VERSION >= VERSION_79
-    var_a2 = FALSE;
+    tookFreeSlot = FALSE;
     cacheChanged = FALSE;
 #endif
     if (gModelCacheFreeCount > 0) {
         gModelCacheFreeCount--;
 #if VERSION >= VERSION_79
-        var_a2 = TRUE;
+        tookFreeSlot = TRUE;
 #endif
         cacheIndex = gModelCacheFreeSlots[gModelCacheFreeCount];
     } else {
@@ -237,16 +237,16 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
         gModelCacheCount++;
     }
 
-    temp_s0 = gObjectModelTable[modelID];
-    sp48 = gObjectModelTable[modelID + 1] - temp_s0;
-    pc_object_model_inflate(temp_s0, sp48);
+    assetOffset = gObjectModelTable[modelID];
+    compSize = gObjectModelTable[modelID + 1] - assetOffset;
+    pc_object_model_inflate(assetOffset, compSize);
     modelSize = pc_object_model_alloc_size();
     objMdl = (ObjectModel *) mempool_alloc(modelSize, COLOUR_TAG_RED);
     if (objMdl == NULL) {
         pc_free(sPcModelDisk);
         sPcModelDisk = NULL;
 #if VERSION >= VERSION_79
-        if (var_a2) {
+        if (tookFreeSlot) {
             gModelCacheFreeCount++;
         }
         if (cacheChanged) {
@@ -271,16 +271,16 @@ ModelInstance *object_model_init(s32 modelID, s32 flags) {
     objMdl->normals = NULL;
     objMdl->numberOfAnimations = 0;
     objMdl->animations = NULL;
-    sp3F = 0;
+    textureMissing = 0;
     for (i = 0; i < objMdl->numberOfTextures; i++) {
         objMdl->textures[i].texture = load_texture(ASSET_SLOT(objMdl->textures[i].texture) | 0x8000);
         if (objMdl->textures[i].texture == NULL) {
-            sp3F = 1;
+            textureMissing = 1;
         }
     }
-    if (!sp3F) {
+    if (!textureMissing) {
         for (i = 0; i < objMdl->numberOfBatches; i++) {
-            if (objMdl->batches[i].textureIndex != 0xFF &&
+            if (objMdl->batches[i].textureIndex != TEX_INDEX_NO_TEXTURE &&
                 objMdl->batches[i].textureIndex >= objMdl->numberOfTextures) {
                 stubbed_printf("TEXTURE ERROR!!\n%d,%d\n", objMdl->batches[i].textureIndex, objMdl->numberOfTextures);
                 goto block_30;
@@ -305,7 +305,7 @@ block_30:
     if (cacheChanged) {
         gModelCacheCount--;
     }
-    if (var_a2) {
+    if (tookFreeSlot) {
         gModelCacheFreeCount++;
     }
 #endif
@@ -321,9 +321,10 @@ block_30:
  * Official name: createModelInstance
  */
 ModelInstance *model_instance_init(ObjectModel *model, s32 flags) {
-    s32 temp;
+    s32 allocSize;
+    s32 vertIndex;
     ModelInstance *result;
-    Vertex *var_v1;
+    Vertex *vertexCopy;
     Vertex *vertex;
     Vertex *mdlVertex;
 
@@ -332,25 +333,25 @@ ModelInstance *model_instance_init(ObjectModel *model, s32 flags) {
     }
 
     if (model->numberOfAnimations != 0 && (flags & OBJECT_BEHAVIOUR_ANIMATION)) {
-        temp = ((model->numberOfVertices * 2) * sizeof(Vertex)) + sizeof(ModelInstance);
-        result = (ModelInstance *) mempool_alloc((model->numberOfAnimatedVertices * 6) + temp, COLOUR_TAG_BLUE);
+        allocSize = ((model->numberOfVertices * 2) * sizeof(Vertex)) + sizeof(ModelInstance);
+        result = (ModelInstance *) mempool_alloc((model->numberOfAnimatedVertices * 6) + allocSize, COLOUR_TAG_BLUE);
         if (result == NULL) {
             return NULL;
         }
         result->vertices[0] = (Vertex *) ((u8 *) result + sizeof(ModelInstance));
         result->vertices[1] =
             (Vertex *) ((u8 *) result + (model->numberOfVertices * sizeof(Vertex)) + sizeof(ModelInstance));
-        result->vertices[2] = (Vertex *) ((u8 *) result + temp);
+        result->vertices[2] = (Vertex *) ((u8 *) result + allocSize);
         result->modelType = MODELTYPE_ANIMATED;
     } else if (model->normals != NULL && (flags & OBJECT_BEHAVIOUR_SHADED)) {
-        temp = (model->numberOfVertices * sizeof(Vertex)) + sizeof(ModelInstance);
-        result = (ModelInstance *) mempool_alloc(temp, COLOUR_TAG_BLUE);
+        allocSize = (model->numberOfVertices * sizeof(Vertex)) + sizeof(ModelInstance);
+        result = (ModelInstance *) mempool_alloc(allocSize, COLOUR_TAG_BLUE);
         if (result == NULL) {
             return NULL;
         }
-        var_v1 = (Vertex *) ((u8 *) result + sizeof(ModelInstance));
-        result->vertices[0] = var_v1;
-        result->vertices[1] = var_v1;
+        vertexCopy = (Vertex *) ((u8 *) result + sizeof(ModelInstance));
+        result->vertices[0] = vertexCopy;
+        result->vertices[1] = vertexCopy;
         result->vertices[2] = NULL;
         result->modelType = MODELTYPE_SHADE;
     } else {
@@ -372,7 +373,7 @@ ModelInstance *model_instance_init(ObjectModel *model, s32 flags) {
     result->animationTaskNum = 0;
     // Shaded models need to be double buffered, so duplicate them.
     if (result->modelType != MODELTYPE_BASIC) {
-        temp = 0;
+        vertIndex = 0;
         vertex = result->vertices[0];
         mdlVertex = &model->vertices[0];
         do {
@@ -385,10 +386,10 @@ ModelInstance *model_instance_init(ObjectModel *model, s32 flags) {
             vertex->a = mdlVertex->a;
             vertex++;
             mdlVertex++;
-            temp++;
-        } while (temp < model->numberOfVertices);
+            vertIndex++;
+        } while (vertIndex < model->numberOfVertices);
 
-        temp = 0;
+        vertIndex = 0;
         vertex = result->vertices[1];
         mdlVertex = &model->vertices[0];
         do {
@@ -401,8 +402,8 @@ ModelInstance *model_instance_init(ObjectModel *model, s32 flags) {
             vertex->a = mdlVertex->a;
             vertex++;
             mdlVertex++;
-            temp++;
-        } while (temp < model->numberOfVertices);
+            vertIndex++;
+        } while (vertIndex < model->numberOfVertices);
     }
     return result;
 }
@@ -412,7 +413,6 @@ ModelInstance *model_instance_init(ObjectModel *model, s32 flags) {
  * Official name: ModFreeModel
  */
 void free_3d_model(ModelInstance *modInst) {
-    UNUSED s32 pad;
     s32 modelIndex;
     ObjectModel *model;
     s32 i;
@@ -499,55 +499,47 @@ void free_model_data(ObjectModel *mdl) {
     mempool_free(mdl);
 }
 
-void model_init_collision(ObjectModel *model) {
+/**
+ * Counts the triangles in batches that take part in collision.
+ */
+static s32 model_count_collision_faces(ObjectModel *model) {
     s32 facesOffset;
-    s32 verticesOffset;
     s32 nextFacesOffset;
-    s32 s4;
+    s32 planeCount;
     s32 i;
-    s32 j;
-    Vertex *v;
-    s32 v1, v2;
-    f32 x5, y5, z5;
-    f32 x1, y1, z1;
-    f32 x2, y2, z2;
-    f32 x3, y3, z3;
-    f32 nx, ny, nz;
-    f32 mag;
-    s32 s3;
-    s32 k;
-    s32 l;
-    s32 index;
-    s32 temp1, temp2;
 
-    if (model->collisionFacets != NULL) {
-        return;
-    }
-
-    s4 = 0;
+    planeCount = 0;
     for (i = 0; i < model->numberOfBatches; i++) {
         facesOffset = model->batches[i].facesOffset;
         nextFacesOffset = model->batches[i + 1].facesOffset;
         if (model->batches[i].flags & RENDER_NO_COLLISION) {
             continue;
         }
-        s4 += nextFacesOffset - facesOffset;
+        planeCount += nextFacesOffset - facesOffset;
     }
+    return planeCount;
+}
 
-    model->collisionFacets = (CollisionFacetPlanes *) mempool_alloc(s4 * sizeof(CollisionFacetPlanes), COLOUR_TAG_RED);
+/**
+ * Writes each collision triangle's own plane (unit normal and plane constant) and points all three of
+ * its edge planes at it for now. Returns the number of planes written.
+ */
+static s32 model_build_face_planes(ObjectModel *model) {
+    s32 facesOffset;
+    s32 verticesOffset;
+    s32 nextFacesOffset;
+    s32 planeCount;
+    s32 i;
+    s32 j;
+    Vertex *v;
+    f32 x1, y1, z1;
+    f32 x2, y2, z2;
+    f32 x3, y3, z3;
+    f32 nx, ny, nz;
+    f32 mag;
+    s32 planeOffset;
 
-    if (model->collisionFacets == NULL) {
-        return;
-    }
-
-    model->collisionPlanes = (f32 *) mempool_alloc(s4 * (sizeof(f32) * 16), COLOUR_TAG_RED);
-    if (model->collisionPlanes == NULL) {
-        mempool_free(model->collisionFacets);
-        model->collisionFacets = NULL;
-        return;
-    }
-
-    s4 = 0;
+    planeCount = 0;
     for (i = 0; i < model->numberOfBatches; i++) {
         facesOffset = model->batches[i].facesOffset;
         verticesOffset = model->batches[i].verticesOffset;
@@ -583,26 +575,49 @@ void model_init_collision(ObjectModel *model) {
                 nz /= mag;
             }
 
-            temp1 = s4 << 2;
-            *(model->collisionPlanes + temp1 + 0) = nx;
-            *(model->collisionPlanes + temp1 + 1) = ny;
-            *(model->collisionPlanes + temp1 + 2) = nz;
-            *(model->collisionPlanes + temp1 + 3) = -(x1 * nx + y1 * ny + z1 * nz);
+            planeOffset = planeCount << 2;
+            *(model->collisionPlanes + planeOffset + 0) = nx;
+            *(model->collisionPlanes + planeOffset + 1) = ny;
+            *(model->collisionPlanes + planeOffset + 2) = nz;
+            *(model->collisionPlanes + planeOffset + 3) = -(x1 * nx + y1 * ny + z1 * nz);
 
-            model->collisionFacets[s4].basePlaneIndex = s4;
-            model->collisionFacets[s4].edgeBisectorPlane[0] = s4;
-            model->collisionFacets[s4].edgeBisectorPlane[1] = s4;
-            model->collisionFacets[s4].edgeBisectorPlane[2] = s4;
+            model->collisionFacets[planeCount].basePlaneIndex = planeCount;
+            model->collisionFacets[planeCount].edgeBisectorPlane[0] = planeCount;
+            model->collisionFacets[planeCount].edgeBisectorPlane[1] = planeCount;
+            model->collisionFacets[planeCount].edgeBisectorPlane[2] = planeCount;
 
-            s4++;
+            planeCount++;
         }
     }
+    return planeCount;
+}
 
-    model->collisionFacetCount = s4;
+/**
+ * Adds a plane along each collision triangle edge, tilted by the neighbouring triangle's normal
+ * (found by model_find_edges), and points the triangle's edge planes at them. The planes are written
+ * after the `planeCount` face planes.
+ */
+static void model_build_edge_planes(ObjectModel *model, s32 planeCount) {
+    s32 facesOffset;
+    s32 verticesOffset;
+    s32 nextFacesOffset;
+    s32 i;
+    s32 j;
+    Vertex *v;
+    s32 v1, v2;
+    f32 x5, y5, z5;
+    f32 x1, y1, z1;
+    f32 x2, y2, z2;
+    f32 x3, y3, z3;
+    f32 nx, ny, nz;
+    f32 mag;
+    s32 facetIndex;
+    s32 k;
+    s32 l;
+    s32 index;
+    s32 planeOffset;
 
-    model_find_edges(model);
-
-    s3 = 0;
+    facetIndex = 0;
     for (i = 0; i < model->numberOfBatches; i++) {
         facesOffset = model->batches[i].facesOffset;
         verticesOffset = model->batches[i].verticesOffset;
@@ -611,8 +626,8 @@ void model_init_collision(ObjectModel *model) {
             nextFacesOffset = facesOffset - 1;
         }
 
-        for (j = facesOffset; j < nextFacesOffset; j++, s3++) {
-            index = model->collisionFacets[s3].basePlaneIndex << 2;
+        for (j = facesOffset; j < nextFacesOffset; j++, facetIndex++) {
+            index = model->collisionFacets[facetIndex].basePlaneIndex << 2;
             nx = *(model->collisionPlanes + index + 0);
             ny = *(model->collisionPlanes + index + 1);
             nz = *(model->collisionPlanes + index + 2);
@@ -626,7 +641,7 @@ void model_init_collision(ObjectModel *model) {
                 v1 = model->triangles[j].verticesArray[1 + k] + verticesOffset;
                 v2 = model->triangles[j].verticesArray[1 + l] + verticesOffset;
 
-                index = model->collisionFacets[s3].edgeBisectorPlane[k] << 2;
+                index = model->collisionFacets[facetIndex].edgeBisectorPlane[k] << 2;
                 x5 = nx + *(model->collisionPlanes + index + 0);
                 y5 = ny + *(model->collisionPlanes + index + 1);
                 z5 = nz + *(model->collisionPlanes + index + 2);
@@ -656,18 +671,53 @@ void model_init_collision(ObjectModel *model) {
                     z5 /= mag;
                 }
 
-                model->collisionFacets[s3].edgeBisectorPlane[k] = s4;
+                model->collisionFacets[facetIndex].edgeBisectorPlane[k] = planeCount;
 
-                temp2 = s4 << 2;
-                *(model->collisionPlanes + temp2 + 0) = x5;
-                *(model->collisionPlanes + temp2 + 1) = y5;
-                *(model->collisionPlanes + temp2 + 2) = z5;
-                *(model->collisionPlanes + temp2 + 3) = -(x1 * x5 + y1 * y5 + z1 * z5);
+                planeOffset = planeCount << 2;
+                *(model->collisionPlanes + planeOffset + 0) = x5;
+                *(model->collisionPlanes + planeOffset + 1) = y5;
+                *(model->collisionPlanes + planeOffset + 2) = z5;
+                *(model->collisionPlanes + planeOffset + 3) = -(x1 * x5 + y1 * y5 + z1 * z5);
 
-                s4++;
+                planeCount++;
             }
         }
     }
+}
+
+/**
+ * Builds the model's collision facets: one plane per collision triangle plus one per edge.
+ */
+void model_init_collision(ObjectModel *model) {
+    s32 planeCount;
+
+    if (model->collisionFacets != NULL) {
+        return;
+    }
+
+    planeCount = model_count_collision_faces(model);
+
+    model->collisionFacets =
+        (CollisionFacetPlanes *) mempool_alloc(planeCount * sizeof(CollisionFacetPlanes), COLOUR_TAG_RED);
+
+    if (model->collisionFacets == NULL) {
+        return;
+    }
+
+    model->collisionPlanes = (f32 *) mempool_alloc(planeCount * (sizeof(f32) * 16), COLOUR_TAG_RED);
+    if (model->collisionPlanes == NULL) {
+        mempool_free(model->collisionFacets);
+        model->collisionFacets = NULL;
+        return;
+    }
+
+    planeCount = model_build_face_planes(model);
+
+    model->collisionFacetCount = planeCount;
+
+    model_find_edges(model);
+
+    model_build_edge_planes(model, planeCount);
 }
 
 void model_find_edges(ObjectModel *mdl) {
@@ -682,8 +732,8 @@ void model_find_edges(ObjectModel *mdl) {
     s32 vertIndex0;
     s32 vertIndex1;
     s32 result;
-    s32 sp60;
-    s32 sp5C;
+    s32 edgeVertIndex;
+    s32 edgeBatchIndex;
 
     count = 0;
     for (i = 0; i < mdl->numberOfBatches; i++) {
@@ -706,7 +756,8 @@ void model_find_edges(ObjectModel *mdl) {
                 vertIndex0 = mdl->triangles[triIndex].verticesArray[vertIndex + 1] + vertOffset;
                 vertIndex1 = mdl->triangles[triIndex].verticesArray[nextVertIndex + 1] + vertOffset;
 
-                result = model_find_triangle_edge(mdl, triIndex, vertIndex0, vertIndex1, &sp5C, &sp60);
+                result =
+                    model_find_triangle_edge(mdl, triIndex, vertIndex0, vertIndex1, &edgeBatchIndex, &edgeVertIndex);
                 if (result != -1) {
                     mdl->collisionFacets[count].edgeBisectorPlane[vertIndex] = result;
                 } else {
@@ -717,7 +768,8 @@ void model_find_edges(ObjectModel *mdl) {
     }
 }
 
-s32 model_find_triangle_edge(ObjectModel *mdl, s32 arg1, s32 arg2, s32 arg3, s32 *outBatchIndex, s32 *outVertexIndex) {
+s32 model_find_triangle_edge(ObjectModel *mdl, s32 skipTri, s32 edgeVert0, s32 edgeVert1, s32 *outBatchIndex,
+                             s32 *outVertexIndex) {
     s32 i;
     s32 endTri;
     s32 count;
@@ -739,7 +791,7 @@ s32 model_find_triangle_edge(ObjectModel *mdl, s32 arg1, s32 arg2, s32 arg3, s32
             endTri = startTri - 1;
         }
         for (triIndex = startTri; triIndex < endTri; triIndex++, count++) {
-            if (triIndex != arg1) {
+            if (triIndex != skipTri) {
                 for (vertIndex = 0; vertIndex < 3; vertIndex++) {
                     nextVertIndex = vertIndex + 1;
                     if (nextVertIndex >= 3) {
@@ -748,7 +800,7 @@ s32 model_find_triangle_edge(ObjectModel *mdl, s32 arg1, s32 arg2, s32 arg3, s32
 
                     vertIndex0 = mdl->triangles[triIndex].verticesArray[vertIndex + 1] + vertOffset;
                     vertIndex1 = mdl->triangles[triIndex].verticesArray[nextVertIndex + 1] + vertOffset;
-                    if (vertices_edge_matches(mdl->vertices, arg2, arg3, vertIndex0, vertIndex1) != 0) {
+                    if (vertices_edge_matches(mdl->vertices, edgeVert0, edgeVert1, vertIndex0, vertIndex1) != 0) {
                         *outVertexIndex = vertIndex;
                         *outBatchIndex = i;
                         return count;
@@ -793,197 +845,270 @@ s32 vertices_edge_matches(Vertex *vertices, s32 i1, s32 i2, s32 i3, s32 i4) {
 #undef NEARBY
 }
 
-// Returns 0 if successful, or 1 if an error occured.
-s32 model_init_normals(ObjectModel *model) {
-    Vertex *vertices;
-    Triangle *triangles;
-    Vec3f *floatNorms;
-    s16 i;
+/**
+ * Counts the vertices in batches that need normals: those not lit by vertex colours, and environment
+ * mapped ones.
+ */
+static s16 model_count_normal_vertices(ObjectModel *model) {
     TriangleBatchInfo *batches;
-    Vec3s *normals;
-    s16 s6;
-    s16 l;
-    s16 q;
+    s16 i;
     s16 k;
-    s16 a2;
-    s16 j;
-    s16 a0;
-    s16 vertOffset;
-    f32 length;
-    Vec3f *v06;
-    s16 *v0;
-    s16 vx, vy, vz;
 
     batches = model->batches;
-    model->normals = NULL;
-
     k = 0;
     for (i = 0; i < model->numberOfBatches; i++) {
         if (batches[i].miscData != BATCH_VTX_COL || (batches[i].flags & RENDER_ENVMAP)) {
             k += batches[i + 1].verticesOffset - batches[i].verticesOffset;
         }
     }
+    return k;
+}
 
-    if (k > 0) {
-        vertices = model->vertices;
-        triangles = model->triangles;
+/**
+ * Calculates every triangle's unit face normal, stored as floating point.
+ */
+static void model_face_normals(ObjectModel *model, Vec3f *floatNorms) {
+    Vertex *vertices;
+    Triangle *triangles;
+    TriangleBatchInfo *batches;
+    s16 i;
+    s16 j;
+    s16 k;
+    s16 vertIndex;
+    s16 vertOffset;
+    f32 length;
 
+    batches = model->batches;
+    vertices = model->vertices;
+    triangles = model->triangles;
+    for (i = 0; i < model->numberOfBatches; i++) {
+        vertOffset = batches[i].verticesOffset;
+        for (j = batches[i].facesOffset; j < batches[i + 1].facesOffset; j++) {
+            f32 faceX[3];
+            f32 faceY[3];
+            f32 faceZ[3];
+            for (k = 0; k < 3; k++) {
+                vertIndex = triangles[j].verticesArray[k + 1] + vertOffset;
+                faceX[k] = vertices[vertIndex].x;
+                faceY[k] = vertices[vertIndex].y;
+                faceZ[k] = vertices[vertIndex].z;
+            }
+
+            floatNorms[j].x =
+                (faceZ[0] - faceZ[2]) * (faceY[0] - faceY[1]) - (faceY[0] - faceY[2]) * (faceZ[0] - faceZ[1]);
+            floatNorms[j].y =
+                (faceZ[0] - faceZ[1]) * (faceX[0] - faceX[2]) - (faceX[0] - faceX[1]) * (faceZ[0] - faceZ[2]);
+            floatNorms[j].z =
+                (faceX[0] - faceX[1]) * (faceY[0] - faceY[2]) - (faceX[0] - faceX[2]) * (faceY[0] - faceY[1]);
+            length = sqrtf(floatNorms[j].x * floatNorms[j].x + floatNorms[j].y * floatNorms[j].y +
+                           floatNorms[j].z * floatNorms[j].z);
+            if (length != 0.0f) {
+                floatNorms[j].x /= length;
+                floatNorms[j].y /= length;
+                floatNorms[j].z /= length;
+            }
+        }
+    }
+}
+
+/**
+ * Gives each vertex that needs a normal a slot in the normal table, sharing the slot of an earlier
+ * vertex at the same position in a batch of the same kind (same misc data, or both environment
+ * mapped). Batches with misc data 0xFE get a slot per vertex; other vertices get -1.
+ * Returns the number of slots.
+ */
+static s16 model_assign_normal_slots(ObjectModel *model, s16 *vertexSlots) {
+    Vertex *vertices;
+    TriangleBatchInfo *batches;
+    s16 i;
+    s16 vertIndex;
+    s16 prevBatch;
+    s16 matchSlot;
+    s16 otherVert;
+    s16 slotCount;
+    s16 vx, vy, vz;
+
+    batches = model->batches;
+    vertices = model->vertices;
+    slotCount = 0;
+
+    for (i = 0; i < model->numberOfBatches; i++) {
+        for (vertIndex = batches[i].verticesOffset; vertIndex < batches[i + 1].verticesOffset; vertIndex++) {
+            if (batches[i].miscData < 0xFE) {
+                matchSlot = -1;
+                vx = vertices[vertIndex].x;
+                vy = vertices[vertIndex].y;
+                vz = vertices[vertIndex].z;
+
+                for (prevBatch = 0; prevBatch <= i && matchSlot < 0; prevBatch++) {
+                    if (batches[i].miscData == batches[prevBatch].miscData) {
+                        otherVert = batches[prevBatch].verticesOffset;
+                        while (((prevBatch == i && otherVert < vertIndex) ||
+                                (prevBatch != i && otherVert < batches[prevBatch + 1].verticesOffset)) &&
+                               matchSlot < 0) {
+                            if (vx == vertices[otherVert].x && vy == vertices[otherVert].y &&
+                                vz == vertices[otherVert].z) {
+                                matchSlot = vertexSlots[otherVert];
+                            }
+                            otherVert++;
+                        }
+                    }
+                }
+                if (matchSlot < 0) {
+                    vertexSlots[vertIndex] = slotCount++;
+                } else {
+                    vertexSlots[vertIndex] = matchSlot;
+                }
+            } else if (batches[i].miscData == 0xFE) {
+                vertexSlots[vertIndex] = slotCount++;
+            } else if (batches[i].flags & RENDER_ENVMAP) {
+                matchSlot = -1;
+                vx = vertices[vertIndex].x;
+                vy = vertices[vertIndex].y;
+                vz = vertices[vertIndex].z;
+                for (prevBatch = 0; prevBatch <= i && matchSlot < 0; prevBatch++) {
+                    if (batches[prevBatch].flags & RENDER_ENVMAP) {
+                        otherVert = batches[prevBatch].verticesOffset;
+                        while (((prevBatch == i && otherVert < vertIndex) ||
+                                (prevBatch != i && otherVert < batches[prevBatch + 1].verticesOffset)) &&
+                               matchSlot < 0) {
+                            if (vx == vertices[otherVert].x && vy == vertices[otherVert].y &&
+                                vz == vertices[otherVert].z) {
+                                matchSlot = vertexSlots[otherVert];
+                            }
+                            otherVert++;
+                        }
+                    }
+                }
+
+                if (matchSlot < 0) {
+                    vertexSlots[vertIndex] = slotCount++;
+                } else {
+                    vertexSlots[vertIndex] = matchSlot;
+                }
+            } else {
+                vertexSlots[vertIndex] = -1;
+            }
+        }
+    }
+    return slotCount;
+}
+
+/**
+ * Sums the face normals of the triangles around each normal slot, then scales each sum to a
+ * length of 0x2000.
+ */
+static void model_sum_vertex_normals(ObjectModel *model, Vec3f *floatNorms, s16 *vertexSlots, Vec3f *slotNormals,
+                                     s16 slotCount) {
+    Triangle *triangles;
+    TriangleBatchInfo *batches;
+    s16 i;
+    s16 j;
+    s16 k;
+    s16 slot;
+    s16 vertOffset;
+    f32 length;
+
+    batches = model->batches;
+    triangles = model->triangles;
+    for (k = 0; k < slotCount; k++) {
+        slotNormals[k].x = 0.0f;
+        slotNormals[k].y = 0.0f;
+        slotNormals[k].z = 0.0f;
+    }
+
+    for (i = 0; i < model->numberOfBatches; i++) {
+        if (batches[i].miscData != BATCH_VTX_COL || (batches[i].flags & RENDER_ENVMAP)) {
+            vertOffset = batches[i].verticesOffset;
+            for (j = batches[i].facesOffset; j < batches[i + 1].facesOffset; j++) {
+                for (k = 0; k < 3; k++) {
+                    slot = triangles[j].verticesArray[k + 1] + vertOffset;
+                    slot = vertexSlots[slot];
+
+                    if (slot >= 0) {
+                        slotNormals[slot].x += floatNorms[j].x;
+                        slotNormals[slot].y += floatNorms[j].y;
+                        slotNormals[slot].z += floatNorms[j].z;
+                    }
+                }
+            }
+        }
+    }
+
+    for (k = 0; k < slotCount; k++) {
+        length = sqrtf(slotNormals[k].x * slotNormals[k].x + slotNormals[k].y * slotNormals[k].y +
+                       slotNormals[k].z * slotNormals[k].z);
+        if (length != 0.0f) {
+            slotNormals[k].x /= length * (1.0f / 0x2000);
+            slotNormals[k].y /= length * (1.0f / 0x2000);
+            slotNormals[k].z /= length * (1.0f / 0x2000);
+        }
+    }
+}
+
+// Returns 0 if successful, or 1 if an error occured.
+s32 model_init_normals(ObjectModel *model) {
+    Vec3f *floatNorms;
+    Vec3s *normals;
+    s16 vertIndex;
+    s16 slot;
+    s16 packedIndex;
+    s16 normalVertexCount;
+    s16 slotCount;
+    Vec3f *slotNormals;
+    s16 *vertexSlots;
+
+    model->normals = NULL;
+
+    normalVertexCount = model_count_normal_vertices(model);
+
+    if (normalVertexCount > 0) {
         floatNorms = (Vec3f *) mempool_alloc(model->numberOfTriangles * sizeof(Vec3f), COLOUR_TAG_ORANGE);
         if (floatNorms == NULL) {
             return 1;
         }
 
-        normals = (Vec3s *) mempool_alloc(k * sizeof(Vec3s), COLOUR_TAG_ORANGE);
+        normals = (Vec3s *) mempool_alloc(normalVertexCount * sizeof(Vec3s), COLOUR_TAG_ORANGE);
         if (normals == NULL) {
             mempool_free(floatNorms);
             return 1;
         }
 
-        // Calculate vertex normals and store them as floating point.
-        for (i = 0; i < model->numberOfBatches; i++) {
-            vertOffset = batches[i].verticesOffset;
-            for (j = batches[i].facesOffset; j < batches[i + 1].facesOffset; j++) {
-                f32 sp70[3];
-                f32 sp64[3];
-                f32 sp58[3];
-                for (k = 0; k < 3; k++) {
-                    a2 = triangles[j].verticesArray[k + 1] + vertOffset;
-                    sp70[k] = vertices[a2].x;
-                    sp64[k] = vertices[a2].y;
-                    sp58[k] = vertices[a2].z;
-                }
+        model_face_normals(model, floatNorms);
 
-                floatNorms[j].x = (sp58[0] - sp58[2]) * (sp64[0] - sp64[1]) - (sp64[0] - sp64[2]) * (sp58[0] - sp58[1]);
-                floatNorms[j].y = (sp58[0] - sp58[1]) * (sp70[0] - sp70[2]) - (sp70[0] - sp70[1]) * (sp58[0] - sp58[2]);
-                floatNorms[j].z = (sp70[0] - sp70[1]) * (sp64[0] - sp64[2]) - (sp70[0] - sp70[2]) * (sp64[0] - sp64[1]);
-                length = sqrtf(floatNorms[j].x * floatNorms[j].x + floatNorms[j].y * floatNorms[j].y +
-                               floatNorms[j].z * floatNorms[j].z);
-                if (length != 0.0f) {
-                    floatNorms[j].x /= length;
-                    floatNorms[j].y /= length;
-                    floatNorms[j].z /= length;
-                }
-            }
-        }
-
-        v0 = (s16 *) mempool_alloc(model->numberOfVertices * sizeof(s16), COLOUR_TAG_ORANGE);
-        if (v0 == NULL) {
+        vertexSlots = (s16 *) mempool_alloc(model->numberOfVertices * sizeof(s16), COLOUR_TAG_ORANGE);
+        if (vertexSlots == NULL) {
             mempool_free(floatNorms);
             mempool_free(normals);
             return 1;
         }
 
-        s6 = 0;
+        slotCount = model_assign_normal_slots(model, vertexSlots);
 
-        for (i = 0; i < model->numberOfBatches; i++) {
-            for (l = batches[i].verticesOffset; l < batches[i + 1].verticesOffset; l++) {
-                if (batches[i].miscData < 0xFE) {
-                    a2 = -1;
-                    vx = vertices[l].x;
-                    vy = vertices[l].y;
-                    vz = vertices[l].z;
-
-                    for (q = 0; q <= i && a2 < 0; q++) {
-                        if (batches[i].miscData == batches[q].miscData) {
-                            a0 = batches[q].verticesOffset;
-                            while (((q == i && a0 < l) || (q != i && a0 < batches[q + 1].verticesOffset)) && a2 < 0) {
-                                if (vx == vertices[a0].x && vy == vertices[a0].y && vz == vertices[a0].z) {
-                                    a2 = v0[a0];
-                                }
-                                a0++;
-                            }
-                        }
-                    }
-                    if (a2 < 0) {
-                        v0[l] = s6++;
-                    } else {
-                        v0[l] = a2;
-                    }
-                } else if (batches[i].miscData == 0xFE) {
-                    v0[l] = s6++;
-                } else if (batches[i].flags & RENDER_ENVMAP) {
-                    a2 = -1;
-                    vx = vertices[l].x;
-                    vy = vertices[l].y;
-                    vz = vertices[l].z;
-                    for (q = 0; q <= i && a2 < 0; q++) {
-                        if (batches[q].flags & RENDER_ENVMAP) {
-                            a0 = batches[q].verticesOffset;
-                            while (((q == i && a0 < l) || (q != i && a0 < batches[q + 1].verticesOffset)) && a2 < 0) {
-                                if (vx == vertices[a0].x && vy == vertices[a0].y && vz == vertices[a0].z) {
-                                    a2 = v0[a0];
-                                }
-                                a0++;
-                            }
-                        }
-                    }
-
-                    if (a2 < 0) {
-                        v0[l] = s6++;
-                    } else {
-                        v0[l] = a2;
-                    }
-                } else {
-                    v0[l] = -1;
-                }
-            }
-        }
-
-        v06 = (Vec3f *) mempool_alloc(s6 * sizeof(Vec3f), COLOUR_TAG_ORANGE);
-        if (v06 == NULL) {
+        slotNormals = (Vec3f *) mempool_alloc(slotCount * sizeof(Vec3f), COLOUR_TAG_ORANGE);
+        if (slotNormals == NULL) {
             mempool_free(floatNorms);
             mempool_free(normals);
-            mempool_free(v0);
+            mempool_free(vertexSlots);
             return 1;
         }
 
-        for (k = 0; k < s6; k++) {
-            v06[k].x = 0.0f;
-            v06[k].y = 0.0f;
-            v06[k].z = 0.0f;
-        }
+        model_sum_vertex_normals(model, floatNorms, vertexSlots, slotNormals, slotCount);
 
-        for (i = 0; i < model->numberOfBatches; i++) {
-            if (batches[i].miscData != BATCH_VTX_COL || (batches[i].flags & RENDER_ENVMAP)) {
-                vertOffset = batches[i].verticesOffset;
-                for (j = batches[i].facesOffset; j < batches[i + 1].facesOffset; j++) {
-                    for (k = 0; k < 3; k++) {
-                        a2 = triangles[j].verticesArray[k + 1] + vertOffset;
-                        a2 = v0[a2];
-
-                        if (a2 >= 0) {
-                            v06[a2].x += floatNorms[j].x;
-                            v06[a2].y += floatNorms[j].y;
-                            v06[a2].z += floatNorms[j].z;
-                        }
-                    }
-                }
-            }
-        }
-
-        for (k = 0; k < s6; k++) {
-            length = sqrtf(v06[k].x * v06[k].x + v06[k].y * v06[k].y + v06[k].z * v06[k].z);
-            if (length != 0.0f) {
-                v06[k].x /= length * (1.0f / 0x2000);
-                v06[k].y /= length * (1.0f / 0x2000);
-                v06[k].z /= length * (1.0f / 0x2000);
-            }
-        }
-
-        a0 = 0;
-        for (k = 0; k < model->numberOfVertices; k++) {
-            a2 = v0[k];
-            if (a2 >= 0) {
-                normals[a0].x = v06[a2].x;
-                normals[a0].y = v06[a2].y;
-                normals[a0].z = v06[a2].z;
-                a0++;
+        packedIndex = 0;
+        for (vertIndex = 0; vertIndex < model->numberOfVertices; vertIndex++) {
+            slot = vertexSlots[vertIndex];
+            if (slot >= 0) {
+                normals[packedIndex].x = slotNormals[slot].x;
+                normals[packedIndex].y = slotNormals[slot].y;
+                normals[packedIndex].z = slotNormals[slot].z;
+                packedIndex++;
             }
         }
 
         model->normals = normals;
-        mempool_free(v0);
-        mempool_free(v06);
+        mempool_free(vertexSlots);
+        mempool_free(slotNormals);
         mempool_free(floatNorms);
     }
     return 0;
@@ -1014,7 +1139,7 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
     s32 i;
     s32 i2;
     uintptr_t animAddress;
-    s32 *temp;
+    s32 *animWords;
 
     start = gAnimationTable[modelID];
     end = gAnimationTable[modelID + 1];
@@ -1028,7 +1153,8 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
         }
     }
     model->numberOfAnimations = end - start;
-    allocAnimData = (ObjectModel_44 *) mempool_alloc(model->numberOfAnimations * sizeof(ObjectModel_44), COLOUR_TAG_RED);
+    allocAnimData =
+        (ObjectModel_44 *) mempool_alloc(model->numberOfAnimations * sizeof(ObjectModel_44), COLOUR_TAG_RED);
     model->animations = allocAnimData;
     if (allocAnimData == NULL) {
         return 1;
@@ -1060,10 +1186,10 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
             asset_load(ASSET_OBJECT_ANIMATIONS, animAddress, assetOffset, assetSize);
             gzip_inflate((u8 *) animAddress, (u8 *) model->animations[i].anim);
         }
-        temp = model->animations[i].anim;
+        animWords = model->animations[i].anim;
         // Big-endian length word.
-        pc_swap32_buf(temp, 4);
-        model->animations[i].animLength = *temp;
+        pc_swap32_buf(animWords, 4);
+        model->animations[i].animLength = *animWords;
         model->animations[i].anim++;
         // Keyframe-0 base pose: numberOfAnimatedVertices x 3 big-endian s16
         // deltas at animData+0xC (obj_animate). Keyframe headers are read
@@ -1081,14 +1207,14 @@ s32 model_anim_init(ObjectModel *model, s32 modelID) {
 void object_update_model_animation(Object *obj) {
     ObjectModel *mdl;
     ModelInstance *modInst;
-    s32 var_v1;
+    s32 limit;
 
     if (obj->modelIndex < 0) {
         obj->modelIndex = 0;
     }
-    var_v1 = obj->header->numberOfModelIds - 1;
-    if (var_v1 < obj->modelIndex) {
-        obj->modelIndex = var_v1;
+    limit = obj->header->numberOfModelIds - 1;
+    if (limit < obj->modelIndex) {
+        obj->modelIndex = limit;
     }
     modInst = obj->modelInstances[obj->modelIndex];
     mdl = modInst->objModel;
@@ -1100,14 +1226,14 @@ void object_update_model_animation(Object *obj) {
             obj->animationID = mdl->numberOfAnimations - 1;
         }
         if (mdl->numberOfAnimations > 0) {
-            var_v1 = mdl->animations[obj->animationID].animLength - 2;
+            limit = mdl->animations[obj->animationID].animLength - 2;
         } else {
-            var_v1 = 0;
+            limit = 0;
         }
         if (obj->animFrame >> 4 < 0) {
-            obj->animFrame = var_v1;
+            obj->animFrame = limit;
         }
-        if (var_v1 < obj->animFrame >> 4) {
+        if (limit < obj->animFrame >> 4) {
             obj->animFrame = 0;
             modInst->animationID = -1;
         }

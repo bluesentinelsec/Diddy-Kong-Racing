@@ -298,12 +298,13 @@ s32 compute_grid_overlap_mask(LevelModelSegmentBoundingBox *bbox, s32 x1, s32 z1
 }
 
 /**
- * Resolves collisions for a list of moving objects against previously identified collision candidates.
- * For each object, the function checks whether the path from `origin` to `target` intersects any collision plane.
- * If so, it adjusts the `target` position to resolve the collision, updates surface type, and sets output flags.
- * Returns a bitmask indicating which objects experienced a collision.
+ * Step 1 of resolve_collisions for one point: while the move from `origin` to `target` crosses a
+ * candidate facet from above, move the target to the facet's surface (straight up on gentle,
+ * non-stone slopes, otherwise out along the normal), noting walls, the normal and the surface type.
+ * Gives up after more than ten pushes and returns the target to the origin.
+ * Returns how many pushes there were.
  */
-s32 resolve_collisions(Vec3f *origin, Vec3f *target, f32 *radius, s8 *surface, s32 numEntries, s32 *numCollisions) {
+static s32 collision_push_forward(Vec3f *origin, Vec3f *target, f32 *radius, s8 *surface) {
     s32 i;
     f32 *collisionPlanes = NULL; // the current segment's plane table; a segment entry always precedes its facets
     f32 A, B, C, D;              // the facet's base plane: normal (A, B, C) and offset D
@@ -314,6 +315,155 @@ s32 resolve_collisions(Vec3f *origin, Vec3f *target, f32 *radius, s8 *surface, s
     f32 outX, outY, outZ;
     f32 intersectionFactor;
     f32 intersectionPointX, intersectionPointY, intersectionPointZ;
+    s32 numCollidedSurfaces = 0;
+    s32 continueSearch;
+
+    do {
+        continueSearch = FALSE;
+
+        for (i = 0; i < gNumCollisionCandidates; i++) {
+            if (COLLISION_ENTRY_IS_SEGMENT(gCollisionCandidates[i])) {
+                collisionPlanes = COLLISION_ENTRY_SEGMENT(gCollisionCandidates[i])->collisionPlanes;
+            } else {
+                facet = (CollisionFacetPlanes *) gCollisionCandidates[i];
+                A = collisionPlanes[facet->basePlaneIndex * 4 + 0];
+                B = collisionPlanes[facet->basePlaneIndex * 4 + 1];
+                C = collisionPlanes[facet->basePlaneIndex * 4 + 2];
+                D = collisionPlanes[facet->basePlaneIndex * 4 + 3];
+                targetDist = (target->x * A + target->y * B + target->z * C + D) - *radius;
+                originDist = (origin->x * A + origin->y * B + origin->z * C + D) - *radius;
+                // Process only one-sided collisions (above -> below plane), with tolerance
+                if (targetDist < -0.1 && originDist >= -0.1) {
+                    diffX = target->x - origin->x;
+                    diffY = target->y - origin->y;
+                    diffZ = target->z - origin->z;
+                    if (targetDist != originDist) {
+                        intersectionFactor = originDist / (originDist - targetDist);
+                    } else {
+                        intersectionFactor = 0.0f;
+                    }
+
+                    intersectionPointX = origin->x + diffX * intersectionFactor;
+                    intersectionPointY = origin->y + diffY * intersectionFactor;
+                    intersectionPointZ = origin->z + diffZ * intersectionFactor;
+
+                    if (facet_contains_point(collisionPlanes, facet, intersectionPointX, intersectionPointY,
+                                             intersectionPointZ)) {
+                        if (B >= 0.707f && gCollisionSurfaces[i] != SURFACE_STONE &&
+                            gCollisionMode == COLLISION_MODE_DEFAULT) {
+                            // Push up vertically if slope is gentle and not stone
+                            outX = target->x;
+                            outY = (*radius - (target->x * A + target->z * C + D)) / B;
+                            outZ = target->z;
+                        } else {
+                            if (B < 0.45 && gCollisionMode != COLLISION_MODE_NO_WALLS) {
+                                // Wall-like surface: store collision normal
+                                gHitWall = TRUE;
+                                gCollisionNormalX = A;
+                                gCollisionNormalY = B;
+                                gCollisionNormalZ = C;
+                            }
+
+                            // Push out along surface normal
+                            outX = target->x - A * targetDist;
+                            outY = target->y - B * targetDist;
+                            outZ = target->z - C * targetDist;
+                        }
+
+                        if (!gHitWall) {
+                            gCollisionNormalX = A;
+                            gCollisionNormalY = B;
+                            gCollisionNormalZ = C;
+                        }
+
+                        // Store surface type with highest priority (higher ID wins)
+                        if (*surface < gCollisionSurfaces[i]) {
+                            *surface = gCollisionSurfaces[i];
+                        }
+
+                        continueSearch = TRUE;
+                        numCollidedSurfaces++;
+                        if (numCollidedSurfaces > 10) {
+                            continueSearch = FALSE;
+                            outX = origin->x;
+                            outY = origin->y;
+                            outZ = origin->z;
+                        }
+
+                        // Update target and recheck collisions
+                        target->x = outX;
+                        target->y = outY;
+                        target->z = outZ;
+                        break;
+                    }
+                }
+            }
+        }
+    } while (continueSearch);
+
+    return numCollidedSurfaces;
+}
+
+/**
+ * Step 2 of resolve_collisions for one point: push the target out along the normal of any facet it
+ * is still less than its radius (plus 3) below, giving up after more than ten pushes.
+ */
+static void collision_push_out(Vec3f *origin, Vec3f *target, f32 *radius) {
+    s32 i;
+    f32 *collisionPlanes = NULL; // the current segment's plane table; a segment entry always precedes its facets
+    f32 A, B, C, D;              // the facet's base plane: normal (A, B, C) and offset D
+    CollisionFacetPlanes *facet;
+    f32 targetDist;
+    f32 outX, outY, outZ;
+    s32 numCollidedSurfaces = 0;
+    s32 continueSearch;
+
+    do {
+        continueSearch = FALSE;
+
+        for (i = 0; i < gNumCollisionCandidates; i++) {
+            if (COLLISION_ENTRY_IS_SEGMENT(gCollisionCandidates[i])) {
+                collisionPlanes = COLLISION_ENTRY_SEGMENT(gCollisionCandidates[i])->collisionPlanes;
+            } else {
+                facet = (CollisionFacetPlanes *) gCollisionCandidates[i];
+                A = collisionPlanes[facet->basePlaneIndex * 4 + 0];
+                B = collisionPlanes[facet->basePlaneIndex * 4 + 1];
+                C = collisionPlanes[facet->basePlaneIndex * 4 + 2];
+                D = collisionPlanes[facet->basePlaneIndex * 4 + 3];
+                targetDist = (target->x * A + target->y * B + target->z * C + D) - *radius;
+                if (targetDist < -0.1 && targetDist > -(*radius + 3.0f)) {
+                    if (facet_contains_point(collisionPlanes, facet, target->x, target->y, target->z)) {
+                        outX = target->x - A * targetDist;
+                        outY = target->y - B * targetDist;
+                        outZ = target->z - C * targetDist;
+
+                        continueSearch = TRUE;
+                        numCollidedSurfaces++;
+                        if (numCollidedSurfaces > 10) {
+                            continueSearch = FALSE;
+                            outX = origin->x;
+                            outY = origin->y;
+                            outZ = origin->z;
+                        }
+
+                        target->x = outX;
+                        target->y = outY;
+                        target->z = outZ;
+                        break;
+                    }
+                }
+            }
+        }
+    } while (continueSearch);
+}
+
+/**
+ * Resolves collisions for a list of moving objects against previously identified collision candidates.
+ * For each object, the function checks whether the path from `origin` to `target` intersects any collision plane.
+ * If so, it adjusts the `target` position to resolve the collision, updates surface type, and sets output flags.
+ * Returns a bitmask indicating which objects experienced a collision.
+ */
+s32 resolve_collisions(Vec3f *origin, Vec3f *target, f32 *radius, s8 *surface, s32 numEntries, s32 *numCollisions) {
     u8 bitMask;
     s8 collisionMask;
 
@@ -325,139 +475,16 @@ s32 resolve_collisions(Vec3f *origin, Vec3f *target, f32 *radius, s8 *surface, s
         return 0;
     }
 
-    // Step 1: forward collision resolution
     while (numEntries > 0) {
-        s32 numCollidedSurfaces = 0;
-        s32 continueSearch;
-
-        do {
-            continueSearch = FALSE;
-
-            for (i = 0; i < gNumCollisionCandidates; i++) {
-                if (COLLISION_ENTRY_IS_SEGMENT(gCollisionCandidates[i])) {
-                    collisionPlanes = COLLISION_ENTRY_SEGMENT(gCollisionCandidates[i])->collisionPlanes;
-                } else {
-                    facet = (CollisionFacetPlanes *) gCollisionCandidates[i];
-                    A = collisionPlanes[facet->basePlaneIndex * 4 + 0];
-                    B = collisionPlanes[facet->basePlaneIndex * 4 + 1];
-                    C = collisionPlanes[facet->basePlaneIndex * 4 + 2];
-                    D = collisionPlanes[facet->basePlaneIndex * 4 + 3];
-                    targetDist = (target->x * A + target->y * B + target->z * C + D) - *radius;
-                    originDist = (origin->x * A + origin->y * B + origin->z * C + D) - *radius;
-                    // Process only one-sided collisions (above -> below plane), with tolerance
-                    if (targetDist < -0.1 && originDist >= -0.1) {
-                        diffX = target->x - origin->x;
-                        diffY = target->y - origin->y;
-                        diffZ = target->z - origin->z;
-                        if (targetDist != originDist) {
-                            intersectionFactor = originDist / (originDist - targetDist);
-                        } else {
-                            intersectionFactor = 0.0f;
-                        }
-
-                        intersectionPointX = origin->x + diffX * intersectionFactor;
-                        intersectionPointY = origin->y + diffY * intersectionFactor;
-                        intersectionPointZ = origin->z + diffZ * intersectionFactor;
-
-                        if (facet_contains_point(collisionPlanes, facet, intersectionPointX, intersectionPointY,
-                                                 intersectionPointZ)) {
-                            if (B >= 0.707f && gCollisionSurfaces[i] != SURFACE_STONE &&
-                                gCollisionMode == COLLISION_MODE_DEFAULT) {
-                                // Push up vertically if slope is gentle and not stone
-                                outX = target->x;
-                                outY = (*radius - (target->x * A + target->z * C + D)) / B;
-                                outZ = target->z;
-                            } else {
-                                if (B < 0.45 && gCollisionMode != COLLISION_MODE_NO_WALLS) {
-                                    // Wall-like surface: store collision normal
-                                    gHitWall = TRUE;
-                                    gCollisionNormalX = A;
-                                    gCollisionNormalY = B;
-                                    gCollisionNormalZ = C;
-                                }
-
-                                // Push out along surface normal
-                                outX = target->x - A * targetDist;
-                                outY = target->y - B * targetDist;
-                                outZ = target->z - C * targetDist;
-                            }
-
-                            if (!gHitWall) {
-                                gCollisionNormalX = A;
-                                gCollisionNormalY = B;
-                                gCollisionNormalZ = C;
-                            }
-
-                            // Store surface type with highest priority (higher ID wins)
-                            if (*surface < gCollisionSurfaces[i]) {
-                                *surface = gCollisionSurfaces[i];
-                            }
-
-                            continueSearch = TRUE;
-                            numCollidedSurfaces++;
-                            if (numCollidedSurfaces > 10) {
-                                continueSearch = FALSE;
-                                outX = origin->x;
-                                outY = origin->y;
-                                outZ = origin->z;
-                            }
-
-                            // Update target and recheck collisions
-                            target->x = outX;
-                            target->y = outY;
-                            target->z = outZ;
-                            break;
-                        }
-                    }
-                }
-            }
-        } while (continueSearch);
-
-        if (numCollidedSurfaces != 0) {
+        // Step 1: forward collision resolution
+        if (collision_push_forward(origin, target, radius, surface) != 0) {
             (*numCollisions)++;
             collisionMask |= bitMask;
         }
         bitMask <<= 1;
 
         // Step 2: ensure object is fully pushed out from underneath
-        numCollidedSurfaces = 0;
-        do {
-            continueSearch = FALSE;
-
-            for (i = 0; i < gNumCollisionCandidates; i++) {
-                if (COLLISION_ENTRY_IS_SEGMENT(gCollisionCandidates[i])) {
-                    collisionPlanes = COLLISION_ENTRY_SEGMENT(gCollisionCandidates[i])->collisionPlanes;
-                } else {
-                    facet = (CollisionFacetPlanes *) gCollisionCandidates[i];
-                    A = collisionPlanes[facet->basePlaneIndex * 4 + 0];
-                    B = collisionPlanes[facet->basePlaneIndex * 4 + 1];
-                    C = collisionPlanes[facet->basePlaneIndex * 4 + 2];
-                    D = collisionPlanes[facet->basePlaneIndex * 4 + 3];
-                    targetDist = (target->x * A + target->y * B + target->z * C + D) - *radius;
-                    if (targetDist < -0.1 && targetDist > -(*radius + 3.0f)) {
-                        if (facet_contains_point(collisionPlanes, facet, target->x, target->y, target->z)) {
-                            outX = target->x - A * targetDist;
-                            outY = target->y - B * targetDist;
-                            outZ = target->z - C * targetDist;
-
-                            continueSearch = TRUE;
-                            numCollidedSurfaces++;
-                            if (numCollidedSurfaces > 10) {
-                                continueSearch = FALSE;
-                                outX = origin->x;
-                                outY = origin->y;
-                                outZ = origin->z;
-                            }
-
-                            target->x = outX;
-                            target->y = outY;
-                            target->z = outZ;
-                            break;
-                        }
-                    }
-                }
-            }
-        } while (continueSearch);
+        collision_push_out(origin, target, radius);
 
         // Advance to next entry
         numEntries--;
