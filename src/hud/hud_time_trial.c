@@ -72,8 +72,8 @@ static void hud_tt_spawn_stopwatch(void) {
  */
 static ModelInstance *hud_tt_animate_stopwatch(Object *ttSWBodyObject, Object_Racer *curRacer, s32 updateRate) {
     ModelInstance *modInst;
-    s32 temp_lo;
-    s32 temp_t6;
+    s32 lastFrame;
+    s32 syncLastFrame;
     f32 animcationFraction;
 
     ttSWBodyObject->animationID = gStopwatchAnimID;
@@ -84,32 +84,32 @@ static ModelInstance *hud_tt_animate_stopwatch(Object *ttSWBodyObject, Object_Ra
             ttSWBodyObject->animFrame = 16;
         } else if (gStopwatchAnimID == 4) {
             animcationFraction = music_animation_fraction();
-            temp_t6 = (modInst->objModel->animations[gStopwatchAnimID].animLength - 1) << 4;
+            syncLastFrame = (modInst->objModel->animations[gStopwatchAnimID].animLength - 1) << 4;
             if (animcationFraction == -1.0) {
                 ttSWBodyObject->animFrame = 0.0;
             } else if (animcationFraction > 0.5) {
                 animcationFraction -= 0.5;
                 animcationFraction *= 2.0;
-                ttSWBodyObject->animFrame = temp_t6 - (animcationFraction * temp_t6);
+                ttSWBodyObject->animFrame = syncLastFrame - (animcationFraction * syncLastFrame);
             } else {
                 animcationFraction *= 2;
-                ttSWBodyObject->animFrame = temp_t6 * animcationFraction;
+                ttSWBodyObject->animFrame = syncLastFrame * animcationFraction;
             }
         } else if (is_game_paused() == FALSE) {
-            if (D_80126D69 < 0) {
-                if (ttSWBodyObject->animFrame > -(updateRate * D_80126D69)) {
-                    ttSWBodyObject->animFrame += (updateRate * D_80126D69);
+            if (gStopwatchAnimStep < 0) {
+                if (ttSWBodyObject->animFrame > -(updateRate * gStopwatchAnimStep)) {
+                    ttSWBodyObject->animFrame += (updateRate * gStopwatchAnimStep);
                 } else {
                     ttSWBodyObject->animFrame = 1;
-                    D_80126D69 = -D_80126D69;
+                    gStopwatchAnimStep = -gStopwatchAnimStep;
                 }
             } else {
-                ttSWBodyObject->animFrame += (updateRate * D_80126D69);
-                temp_lo = (modInst->objModel->animations[gStopwatchAnimID].animLength - 1) << 4;
-                if (ttSWBodyObject->animFrame >= temp_lo) {
+                ttSWBodyObject->animFrame += (updateRate * gStopwatchAnimStep);
+                lastFrame = (modInst->objModel->animations[gStopwatchAnimID].animLength - 1) << 4;
+                if (ttSWBodyObject->animFrame >= lastFrame) {
                     if (sHudMapVisible != 0) {
-                        D_80126D69 = -D_80126D69;
-                        ttSWBodyObject->animFrame = temp_lo - 1;
+                        gStopwatchAnimStep = -gStopwatchAnimStep;
+                        ttSWBodyObject->animFrame = lastFrame - 1;
                     } else {
                         ttSWBodyObject->animFrame = 0;
                         if (curRacer->wrongWayCounter == 0 && curRacer->raceFinished == FALSE) {
@@ -165,18 +165,18 @@ static void hud_tt_stopwatch_hands(Object_Racer *curRacer) {
  */
 static void hud_tt_lap_splits(Object_Racer *curRacer) {
     s32 i;
-    s32 spB8;
-    s32 spB4;
-    s32 spB0;
-    s32 spAC;
+    s32 lapTimeY;
+    s32 minutes;
+    s32 seconds;
+    s32 hundredths;
 
-    spB8 = gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.y;
+    lapTimeY = gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.y;
     for (i = 0; i < curRacer->countLap && i < gHudLevelHeader->laps; i++) {
-        get_timestamp_from_frames(curRacer->lap_times[i], &spB4, &spB0, &spAC);
+        get_timestamp_from_frames(curRacer->lap_times[i], &minutes, &seconds, &hundredths);
         gHudColour = gHudLapColours[i];
-        hud_timer_render(gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.x, spB8, spB4, spB0, spAC, 1);
+        hud_timer_render(gCurrentHud->entry[HUD_LAP_TIME_TEXT].pos.x, lapTimeY, minutes, seconds, hundredths, 1);
         gHudColour = COLOUR_RGBA32(255, 255, 255, 254);
-        spB8 += 12;
+        lapTimeY += 12;
         gDPSetPrimColor(gHudDL++, 0, 0, 255, 255, 255, 255);
         gCurrentHud->entry[HUD_TIME_TRIAL_LAP_NUMBER].spriteOffset = i + 1;
         hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, (HudElement *) &gCurrentHud->entry[HUD_TIME_TRIAL_LAP_NUMBER]);
@@ -367,7 +367,7 @@ static void hud_tt_contpak_error(s32 updateRate) {
     set_kerning(FALSE);
 }
 
-void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
+void hud_main_time_trial(s32 countdown, Object *playerRacerObj, s32 updateRate) {
     Object_Racer *curRacer;
     Object *ttSWBodyObject;
     ModelInstance *modInst;
@@ -406,7 +406,7 @@ void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
     hud_race_time(curRacer, updateRate);
     hud_bananas(curRacer, updateRate);
     hud_wrong_way(curRacer, updateRate);
-    hud_race_start(arg0, updateRate);
+    hud_race_start(countdown, updateRate);
     hud_speedometre(playerRacerObj, updateRate);
     if (get_contpak_error() > 0) {
         hud_tt_contpak_error(updateRate);
@@ -415,7 +415,7 @@ void hud_main_time_trial(s32 arg0, Object *playerRacerObj, s32 updateRate) {
     cam_set_sprite_anim_mode(SPRITE_ANIM_NORMALIZED);
 }
 
-void hud_stopwatch_face(u8 arg0, u8 arg1, u8 animID, u8 arg3, u8 arg4) {
+void hud_stopwatch_face(u8 texIndexB, u8 texIndexA, u8 animID, u8 animStep, u8 pingPong) {
     s32 numberOfBatches;
     s32 i;
     ModelInstance *modInst;
@@ -429,8 +429,8 @@ void hud_stopwatch_face(u8 arg0, u8 arg1, u8 animID, u8 arg3, u8 arg4) {
 
             for (i = 0; i < numberOfBatches; i++) {
                 if (sMinimapTexIndexB == modInst->objModel->batches[i].textureIndex) {
-                    modInst->objModel->batches[i].textureIndex = arg0;
-                    if (arg0 == 4) {
+                    modInst->objModel->batches[i].textureIndex = texIndexB;
+                    if (texIndexB == 4) {
                         modInst->objModel->batches[i].flags |= (RENDER_UNK_0800000 | RENDER_TEX_ANIM);
                         modInst->objModel->hasAnimatedTexture = TRUE;
                     } else {
@@ -439,15 +439,15 @@ void hud_stopwatch_face(u8 arg0, u8 arg1, u8 animID, u8 arg3, u8 arg4) {
                     }
                     numberOfBatches = modInst->objModel->numberOfBatches;
                 } else if (sMinimapTexIndexA == modInst->objModel->batches[i].textureIndex) {
-                    modInst->objModel->batches[i].textureIndex = arg1;
+                    modInst->objModel->batches[i].textureIndex = texIndexA;
                     numberOfBatches = modInst->objModel->numberOfBatches;
                 }
             }
-            sMinimapTexIndexB = arg0;
-            sMinimapTexIndexA = arg1;
+            sMinimapTexIndexB = texIndexB;
+            sMinimapTexIndexA = texIndexA;
             gStopwatchAnimID = animID;
-            D_80126D69 = arg3;
-            sHudMapVisible = arg4;
+            gStopwatchAnimStep = animStep;
+            sHudMapVisible = pingPong;
         }
     }
 }
@@ -556,8 +556,6 @@ void hud_time_trial_message(s16 *playerID) {
  * Has measures for multiplayer, depsite time trial being a single player exclusive mode.
  */
 void hud_time_trial_finish(Object_Racer *racer, s32 updateRate) {
-    UNUSED s32 temp;
-
     switch (gCurrentHud->entry[HUD_RACE_END_FINISH].finishText.status) {
         case TIMETRIAL_FINISH_INIT:
             gHudAudioData[0].volume = 127;
@@ -579,7 +577,6 @@ void hud_time_trial_finish(Object_Racer *racer, s32 updateRate) {
             gCurrentHud->entry[HUD_RACE_END_FINISH].finishText.status = TIMETRIAL_FINISH_IN;
             break;
         case TIMETRIAL_FINISH_IN:
-            temp = (updateRate * 13); // Fakematch
             if (gCurrentHud->entry[HUD_RACE_END_FINISH].pos.x <
                 gCurrentHud->entry[HUD_RACE_END_FINISH].finishText.targetPos - (updateRate * 13)) {
                 gCurrentHud->entry[HUD_RACE_END_FINISH].pos.x += updateRate * 13;

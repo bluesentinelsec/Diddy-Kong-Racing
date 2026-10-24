@@ -138,7 +138,6 @@ void hud_draw_eggs(Object *racerObj, s32 updateRate) {
  */
 void hud_eggs_portrait(Object_Racer *racer, UNUSED s32 updateRate) {
     s32 i;
-    UNUSED s32 pad;
     s32 alpha;
     s32 prevY;
     s32 i2;
@@ -218,7 +217,6 @@ void hud_main_battle(s32 countdown, Object *obj, s32 updateRate) {
  * Portraits are laid out horizontally in 1-player mode and vertically in 2-player mode.
  */
 void hud_battle_portraits(Object *racerObj, s32 updateRate) {
-    s32 pad0;
     s32 i;
     Object_Racer *racer;
     s32 numRacers;
@@ -459,7 +457,6 @@ void hud_silver_coins(Object_Racer *racer, s32 updateRate) {
 void hud_balloons(UNUSED Object_Racer *racer) {
     s32 balloonCount;
     s32 div;
-    UNUSED s32 pad;
     u32 balloonTickTimer;
     Settings *settings;
 

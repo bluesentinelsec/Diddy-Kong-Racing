@@ -4,12 +4,13 @@
  * Loads the minimap sprite from the level data, then sets the global colours for the minimap.
  */
 void minimap_init(LevelModel *model) {
-    s32 sp2C;
+    s32 unusedOut;
     gMinimapRed = (model->minimapColor >> 16) & 0xFF;
     gMinimapGreen = (model->minimapColor >> 8) & 0xFF;
     gMinimapBlue = model->minimapColor & 0xFF;
-    load_sprite_info(model->minimapSpriteIndex, &gMinimapDotOffsetX, &gMinimapDotOffsetY, &sp2C, &sp2C, &sp2C);
-    sprite_get_size(model->minimapSpriteIndex, 0, &gMinimapSpriteWidth, &gMinimapSpriteHeight, &sp2C);
+    load_sprite_info(model->minimapSpriteIndex, &gMinimapDotOffsetX, &gMinimapDotOffsetY, &unusedOut, &unusedOut,
+                     &unusedOut);
+    sprite_get_size(model->minimapSpriteIndex, 0, &gMinimapSpriteWidth, &gMinimapSpriteHeight, &unusedOut);
     model->minimapSpriteIndex = (ptrint_t) tex_load_sprite(model->minimapSpriteIndex, 1);
 }
 
@@ -19,7 +20,6 @@ void minimap_init(LevelModel *model) {
  */
 void minimap_marker_pos(f32 x, f32 z, f32 angleSin, f32 angleCos, f32 modelAspectRatio) {
     LevelModel *lvlMdl;
-    UNUSED s32 pad24[2];
     f32 scaledX;
     f32 scaledY;
     s32 a;

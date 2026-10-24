@@ -151,7 +151,6 @@ void hud_race_start(s32 countdown, s32 updateRate) {
             // Make engine revving sounds of random pitches while the race is waiting to begin.
             if (gRaceStartSoundMask == NULL && boss_race_number() == 0) {
                 f32 frequency;
-                UNUSED s32 pad;
                 Object **racerGroup;
                 Object *randomRacer;
                 Object_Racer *racer;
@@ -207,7 +206,6 @@ void hud_race_start(s32 countdown, s32 updateRate) {
  */
 void hud_bananas(Object_Racer *racer, s32 updateRate) {
     s32 bananas;
-    UNUSED s16 pad;
     s32 temp_lo;
     u8 prevSprite;
     if (racer->playerIndex == PLAYER_COMPUTER ||
@@ -420,11 +418,10 @@ void hud_race_position(Object_Racer *racer, s32 updateRate) {
 }
 
 /**
- * Displays the current lap number onscreen.
- * Also displays the "Lap 2" and "Final Lap" messages when the line is crossed.
- * In multiplayer, shows a cut down display, if the display setting is set to show laps.
+ * Draws the lap counter ("LAP n/total"), with a waving flag on the final lap in 1 or 2 player.
+ * In multiplayer it shows only when the map mode is set to laps, and hides for a few seconds after a lap starts.
  */
-void hud_lap_count(Object_Racer *racer, s32 updateRate) {
+static void hud_lap_counter(Object_Racer *racer, s32 updateRate) {
     if (racer->raceFinished == FALSE &&
         (gHUDNumPlayers <= ONE_PLAYER || racer->lap <= 0 || racer->lap_times[racer->lap] >= 180) &&
         (gHUDNumPlayers <= ONE_PLAYER || gHudMapMode[gHUDNumPlayers][racer->playerIndex] == 3)) {
@@ -450,163 +447,188 @@ void hud_lap_count(Object_Racer *racer, s32 updateRate) {
         hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, &gCurrentHud->entry[HUD_LAP_COUNT_SEPERATOR]);
         hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, &gCurrentHud->entry[HUD_LAP_COUNT_TOTAL]);
     }
+}
+
+/**
+ * Starts the "Lap 2" or "Final Lap" banner just after the racer crosses the line,
+ * setting where each word starts and stops for the current viewport layout.
+ */
+static void hud_lap_text_trigger(Object_Racer *racer) {
+    if (racer->lap_times[racer->lap] < 30 && gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status == LAPTEXT_IDLE &&
+        racer->raceFinished == FALSE) {
+        if (racer->lap == 1 && gHudLevelHeader->laps >= 3) {
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status = LAPTEXT_UNK2;
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction = LAPTEXT_OUT;
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed = FALSE;
+            sound_play(SOUND_WHOOSH1, NULL);
+            switch (gHUDNumPlayers) {
+                case ONE_PLAYER:
+                    gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = -21;
+                    gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos = 32;
+                    gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = -200.0f;
+                    gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x = 211.0f;
+                    break;
+                case TWO_PLAYERS:
+                    gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = -16;
+                    gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos = 27;
+                    gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = -200.0f;
+                    gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x = 211.0f;
+                    break;
+                default:
+                    if (racer->playerIndex != PLAYER_ONE && racer->playerIndex != PLAYER_THREE) {
+                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = 60;
+                        gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos = 91;
+                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = -70.0f;
+                        gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x = 221.0f;
+                    } else {
+                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = -90;
+                        gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos = -59;
+                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = -220.0f;
+                        gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x = 71.0f;
+                    }
+                    break;
+            }
+        } else if (gHudLevelHeader->laps == (0, racer->lap + 1) && racer->lap != 0) {
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status = LAPTEXT_UNK3;
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction = LAPTEXT_IN;
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed = FALSE;
+            sound_play(SOUND_WHOOSH1, NULL);
+            switch (gHUDNumPlayers) {
+                case ONE_PLAYER:
+                    gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = 51;
+                    gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos = -41;
+                    gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = 210.0f;
+                    gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x = -200.0f;
+                    break;
+                case TWO_PLAYERS:
+                    gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = 41;
+                    gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos = -31;
+                    gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = 210.0f;
+                    gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x = -200.0f;
+                    break;
+                default:
+                    if (racer->playerIndex != PLAYER_ONE && racer->playerIndex != PLAYER_THREE) {
+                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = 100;
+                        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos = 50;
+                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = 100.0f;
+                        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x = -50.0f;
+                    } else {
+                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = -50;
+                        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos = -100;
+                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = 50.0f;
+                        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x = -200.0f;
+                    }
+                    break;
+            }
+        }
+    }
+}
+
+/**
+ * Animates the "Lap 2" banner: the two words slide in, T.T calls the lap once both are in place,
+ * and a second into the lap they slide back out until the banner goes idle.
+ */
+static void hud_lap_text_lap_two(Object_Racer *racer, s32 updateRate) {
+    if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction == LAPTEXT_OUT) {
+        if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x <
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos - (updateRate * 13)) {
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x += updateRate * 13;
+        } else {
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos;
+        }
+        if (gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x >
+            gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos + (updateRate * 13)) {
+            gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x -= updateRate * 13;
+        } else {
+            gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x = gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos;
+        }
+        if (racer->lap_times[racer->lap] >= 60) {
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction = LAPTEXT_IN;
+            sound_play(SOUND_WHOOSH1, NULL);
+        }
+        if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x == gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos &&
+            gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x == gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos &&
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed == FALSE) {
+            if (gHUDVoiceSoundMask == NULL) {
+                sound_play(SOUND_VOICE_TT_LAP2, &gHUDVoiceSoundMask);
+            }
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed = TRUE;
+        }
+    } else if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction == LAPTEXT_IN) {
+        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x -= updateRate * 13;
+        gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x += updateRate * 13;
+        if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x < -200.0f) {
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status = LAPTEXT_IDLE;
+        }
+    }
+    gDPSetPrimColor(gHudDL++, 0, 0, 255, 255, 255, 160);
+    hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, &gCurrentHud->entry[HUD_LAP_TEXT_TWO]);
+    hud_element_render(&gHudDL, &gHudMtx, &gHudVtx,
+                       &gCurrentHud->entry[HUD_LAP_TEXT_LAP]); // lap
+    gDPSetPrimColor(gHudDL++, 0, 0, 255, 255, 255, 255);
+}
+
+/**
+ * Animates the "Final Lap" banner: the two words slide in, T.T calls the final lap once both are in place,
+ * and a second into the lap they slide back out until the banner goes idle.
+ */
+static void hud_lap_text_final_lap(Object_Racer *racer, s32 updateRate) {
+    if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction == LAPTEXT_IN) {
+        if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x >
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos + (updateRate * 13)) {
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x -= updateRate * 13;
+        } else {
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos;
+        }
+        if (gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x <
+            gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos - (updateRate * 13)) {
+            gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x += updateRate * 13;
+        } else {
+            gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x = gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos;
+        }
+        if (racer->lap_times[racer->lap] >= 60) {
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction = LAPTEXT_OUT;
+            sound_play(SOUND_WHOOSH1, NULL);
+        }
+        if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x == gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos &&
+            gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x == gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos &&
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed == FALSE) {
+            if (gHUDVoiceSoundMask == NULL) {
+                sound_play(SOUND_VOICE_TT_FINAL_LAP, &gHUDVoiceSoundMask);
+            }
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed = TRUE;
+        }
+    } else if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction == LAPTEXT_OUT) {
+        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x += updateRate * 13;
+        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x -= updateRate * 13;
+        if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x > 200.0f) {
+            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status = LAPTEXT_IDLE;
+        }
+    }
+
+    gDPSetPrimColor(gHudDL++, 0, 0, 255, 255, 255, 160);
+    hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, &gCurrentHud->entry[HUD_LAP_TEXT_FINAL]);
+    hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, &gCurrentHud->entry[HUD_LAP_TEXT_LAP]);
+    gDPSetPrimColor(gHudDL++, 0, 0, 255, 255, 255, 255);
+}
+
+/**
+ * Displays the current lap number onscreen.
+ * Also displays the "Lap 2" and "Final Lap" messages when the line is crossed.
+ * In multiplayer, shows a cut down display, if the display setting is set to show laps.
+ */
+void hud_lap_count(Object_Racer *racer, s32 updateRate) {
+    hud_lap_counter(racer, updateRate);
     if (gHUDNumPlayers == TWO_PLAYERS) {
         sprite_opaque(TRUE);
     }
     if (is_game_paused() == FALSE) {
-        if (racer->lap_times[racer->lap] < 30 && gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status == LAPTEXT_IDLE &&
-            racer->raceFinished == FALSE) {
-            if (racer->lap == 1 && gHudLevelHeader->laps >= 3) {
-                gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status = LAPTEXT_UNK2;
-                gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction = LAPTEXT_OUT;
-                gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed = FALSE;
-                sound_play(SOUND_WHOOSH1, NULL);
-                switch (gHUDNumPlayers) {
-                    case ONE_PLAYER:
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = -21;
-                        gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos = 32;
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = -200.0f;
-                        gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x = 211.0f;
-                        break;
-                    case TWO_PLAYERS:
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = -16;
-                        gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos = 27;
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = -200.0f;
-                        gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x = 211.0f;
-                        break;
-                    default:
-                        if (racer->playerIndex != PLAYER_ONE && racer->playerIndex != PLAYER_THREE) {
-                            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = 60;
-                            gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos = 91;
-                            gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = -70.0f;
-                            gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x = 221.0f;
-                        } else {
-                            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = -90;
-                            gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos = -59;
-                            gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = -220.0f;
-                            gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x = 71.0f;
-                        }
-                        break;
-                }
-            } else if (gHudLevelHeader->laps == (0, racer->lap + 1) && racer->lap != 0) {
-                gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status = LAPTEXT_UNK3;
-                gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction = LAPTEXT_IN;
-                gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed = FALSE;
-                sound_play(SOUND_WHOOSH1, NULL);
-                switch (gHUDNumPlayers) {
-                    case ONE_PLAYER:
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = 51;
-                        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos = -41;
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = 210.0f;
-                        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x = -200.0f;
-                        break;
-                    case TWO_PLAYERS:
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = 41;
-                        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos = -31;
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = 210.0f;
-                        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x = -200.0f;
-                        break;
-                    default:
-                        if (racer->playerIndex != PLAYER_ONE && racer->playerIndex != PLAYER_THREE) {
-                            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = 100;
-                            gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos = 50;
-                            gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = 100.0f;
-                            gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x = -50.0f;
-                        } else {
-                            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos = -50;
-                            gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos = -100;
-                            gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x = 50.0f;
-                            gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x = -200.0f;
-                        }
-                        break;
-                }
-            }
-        }
+        hud_lap_text_trigger(racer);
         if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status != LAPTEXT_IDLE) {
             if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status == LAPTEXT_UNK2) {
-                if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction == LAPTEXT_OUT) {
-                    if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x <
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos - (updateRate * 13)) {
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x += updateRate * 13;
-                    } else {
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x =
-                            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos;
-                    }
-                    if (gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x >
-                        gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos + (updateRate * 13)) {
-                        gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x -= updateRate * 13;
-                    } else {
-                        gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x =
-                            gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos;
-                    }
-                    if (racer->lap_times[racer->lap] >= 60) {
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction = LAPTEXT_IN;
-                        sound_play(SOUND_WHOOSH1, NULL);
-                    }
-                    if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x ==
-                            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos &&
-                        gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x ==
-                            gCurrentHud->entry[HUD_LAP_TEXT_TWO].lapText.targetPos &&
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed == FALSE) {
-                        if (gHUDVoiceSoundMask == NULL) {
-                            sound_play(SOUND_VOICE_TT_LAP2, &gHUDVoiceSoundMask);
-                        }
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed = TRUE;
-                    }
-                } else if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction == LAPTEXT_IN) {
-                    gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x -= updateRate * 13;
-                    gCurrentHud->entry[HUD_LAP_TEXT_TWO].pos.x += updateRate * 13;
-                    if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x < -200.0f) {
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status = LAPTEXT_IDLE;
-                    }
-                }
-                gDPSetPrimColor(gHudDL++, 0, 0, 255, 255, 255, 160);
-                hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, &gCurrentHud->entry[HUD_LAP_TEXT_TWO]);
-                hud_element_render(&gHudDL, &gHudMtx, &gHudVtx,
-                                   &gCurrentHud->entry[HUD_LAP_TEXT_LAP]); // lap
-                gDPSetPrimColor(gHudDL++, 0, 0, 255, 255, 255, 255);
+                hud_lap_text_lap_two(racer, updateRate);
             } else if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status == LAPTEXT_UNK3) {
-                if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction == LAPTEXT_IN) {
-                    if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x >
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos + (updateRate * 13)) {
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x -= updateRate * 13;
-                    } else {
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x =
-                            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos;
-                    }
-                    if (gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x <
-                        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos - (updateRate * 13)) {
-                        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x += updateRate * 13;
-                    } else {
-                        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x =
-                            gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos;
-                    }
-                    if (racer->lap_times[racer->lap] >= 60) {
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction = LAPTEXT_OUT;
-                        sound_play(SOUND_WHOOSH1, NULL);
-                    }
-                    if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x ==
-                            gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.targetPos &&
-                        gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x ==
-                            gCurrentHud->entry[HUD_LAP_TEXT_FINAL].lapText.targetPos &&
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed == FALSE) {
-                        if (gHUDVoiceSoundMask == NULL) {
-                            sound_play(SOUND_VOICE_TT_FINAL_LAP, &gHUDVoiceSoundMask);
-                        }
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.soundPlayed = TRUE;
-                    }
-                } else if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.direction == LAPTEXT_OUT) {
-                    gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x += updateRate * 13;
-                    gCurrentHud->entry[HUD_LAP_TEXT_FINAL].pos.x -= updateRate * 13;
-                    if (gCurrentHud->entry[HUD_LAP_TEXT_LAP].pos.x > 200.0f) {
-                        gCurrentHud->entry[HUD_LAP_TEXT_LAP].lapText.status = LAPTEXT_IDLE;
-                    }
-                }
-
-                gDPSetPrimColor(gHudDL++, 0, 0, 255, 255, 255, 160);
-                hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, &gCurrentHud->entry[HUD_LAP_TEXT_FINAL]);
-                hud_element_render(&gHudDL, &gHudMtx, &gHudVtx, &gCurrentHud->entry[HUD_LAP_TEXT_LAP]);
-                gDPSetPrimColor(gHudDL++, 0, 0, 255, 255, 255, 255);
+                hud_lap_text_final_lap(racer, updateRate);
             }
         }
     }
@@ -786,7 +808,6 @@ void hud_race_time(Object_Racer *racer, s32 updateRate) {
  * Supports a smaller font for multiplayer.
  */
 void hud_timer_render(s32 x, s32 y, s32 minutes, s32 seconds, s32 hundredths, s32 smallFont) {
-    UNUSED s32 pad;
     HudElementBase entry;
     s32 offset1;
     s32 offset2;
