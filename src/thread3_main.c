@@ -85,7 +85,8 @@ FadeTransition gDrumstickSceneTransition =
     FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_WHITE, 30, FADE_STAY);
 FadeTransition gLevelFadeOutTransition =
     FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 30, FADE_STAY);
-FadeTransition sLevelChangeTransition = FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 260, FADE_STAY);
+FadeTransition sLevelChangeTransition =
+    FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_NONE, FADE_COLOR_BLACK, 260, FADE_STAY);
 
 /*******************************/
 
@@ -196,7 +197,8 @@ void main_game_loop(void) {
         rsp_segment(&gCurrDisplayList, SEGMENT_MAIN, 0x00000000);
         rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER, (ptrint_t) gVideoCurrFramebuffer);
         rsp_segment(&gCurrDisplayList, SEGMENT_ZBUFFER, (ptrint_t) gVideoLastDepthBuffer);
-        rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET, (ptrint_t) gVideoCurrFramebuffer - VI_OFFSET); // Unused
+        rsp_segment(&gCurrDisplayList, SEGMENT_FRAMEBUFFER_OFFSET,
+                    (ptrint_t) gVideoCurrFramebuffer - VI_OFFSET); // Unused
     }
     if (gDrawFrameTimer == 0) {
         gfxtask_run_xbus(gDisplayLists[gSPTaskNum], gCurrDisplayList, 0);
@@ -304,7 +306,7 @@ void load_next_ingame_level(s32 numPlayers, s32 trackID, Vehicle vehicle) {
     if (trackID == -1) {
         gPlayableMapId = get_track_id_to_load();
     } else {
-        gPlayableMapId = trackID; // Unused, because arg1 is always -1.
+        gPlayableMapId = trackID; // Unused, because trackID is always -1.
     }
     load_level_game(gPlayableMapId, gGameNumPlayers, gGameCurrentEntrance, vehicle);
 }
@@ -710,38 +712,38 @@ void race_postrace_type(s32 finishState) {
     gPostRaceViewPort = finishState + 1;
 }
 
-void level_settings_apply(UNUSED s32 arg0) {
-    s32 temp;
+void level_settings_apply(UNUSED s32 unused) {
+    s32 exitIndex;
     if (gGameMode != GAMEMODE_UNUSED_4) {
         gPlayableMapId = gLevelExit.fromMapId;
         gGameCurrentEntrance = 0;
         gGameCurrentCutscene = CUTSCENE_ID_UNK_64;
-        temp = gLevelExit.chosenExit;
+        exitIndex = gLevelExit.chosenExit;
         if (gLevelExit.returnEntrance >= 0) {
             gGameCurrentEntrance = gLevelExit.returnEntrance;
         }
-        if (gLevelExit.destCutscene[temp] >= 0) {
-            gGameCurrentCutscene = gLevelExit.destCutscene[temp];
+        if (gLevelExit.destCutscene[exitIndex] >= 0) {
+            gGameCurrentCutscene = gLevelExit.destCutscene[exitIndex];
         }
         gLevelSettingsPending = TRUE;
     }
 }
 
-void level_settings_store_from_exit(s8 *arg0) {
-    // Is arg0 LevelObjectEntry_Exit?
+void level_settings_store_from_exit(s8 *exitEntry) {
+    // Is exitEntry LevelObjectEntry_Exit?
     s32 i;
     if (gGameMode != GAMEMODE_UNUSED_4) {
         gLevelExit.fromMapId = gPlayableMapId;
         for (i = 0; i < 2; i++) {
-            gLevelExit.destMapId[i] = arg0[i + 8];         // 0x8-0x9 - destinationMapId
-            gLevelExit.destEntrance[i] = arg0[i + 10];     // 0xA-0xB - overworldSpawnIndex
-            gLevelExit.unusedC[i] = arg0[i + 12];          // 0xC-0xD - ?
-            gLevelExit.destCutscene[i] = arg0[i + 14];     // 0xE-0xF - ?
-            gLevelExit.unused12[i] = arg0[i + 18];         // 0x12-0x13 - ?
-            gLevelExit.destMenuCutscene[i] = arg0[i + 20]; // 0x14-0x15 - ?
+            gLevelExit.destMapId[i] = exitEntry[i + 8];         // 0x8-0x9 - destinationMapId
+            gLevelExit.destEntrance[i] = exitEntry[i + 10];     // 0xA-0xB - overworldSpawnIndex
+            gLevelExit.unusedC[i] = exitEntry[i + 12];          // 0xC-0xD - ?
+            gLevelExit.destCutscene[i] = exitEntry[i + 14];     // 0xE-0xF - ?
+            gLevelExit.unused12[i] = exitEntry[i + 18];         // 0x12-0x13 - ?
+            gLevelExit.destMenuCutscene[i] = exitEntry[i + 20]; // 0x14-0x15 - ?
         }
-        gLevelExit.unused16 = arg0[22];       // 0x16 - ?
-        gLevelExit.returnEntrance = arg0[23]; // 0x17 returnSpawnIndex
+        gLevelExit.unused16 = exitEntry[22];       // 0x16 - ?
+        gLevelExit.returnEntrance = exitEntry[23]; // 0x17 returnSpawnIndex
         sLevelExitRoute = EXIT_ROUTE_MENU;
     }
 }
@@ -884,9 +886,9 @@ void update_menu_scene(s32 updateRate) {
  */
 void mode_menu(s32 updateRate) {
     s32 menuLoopResult;
-    s32 temp;
+    s32 cutscene;
     s32 playerVehicle;
-    s32 temp5;
+    s32 exitIndex;
     static s32 sFirstMenuFrame = TRUE;
 
     if (sFirstMenuFrame) {
@@ -965,13 +967,13 @@ void mode_menu(s32 updateRate) {
                 gPlayableMapId = gLevelExit.fromMapId;
                 gGameCurrentCutscene = CUTSCENE_ID_UNK_64;
                 gGameMode = GAMEMODE_INGAME;
-                temp5 = gLevelExit.chosenExit;
+                exitIndex = gLevelExit.chosenExit;
                 if (gLevelExit.returnEntrance >= 0) {
                     gGameCurrentEntrance = gLevelExit.returnEntrance;
                 }
-                temp = gLevelExit.destCutscene[temp5];
-                if (temp >= 0) {
-                    gGameCurrentCutscene = temp;
+                cutscene = gLevelExit.destCutscene[exitIndex];
+                if (cutscene >= 0) {
+                    gGameCurrentCutscene = cutscene;
                 }
                 load_level_game(gPlayableMapId, gGameNumPlayers, gGameCurrentEntrance, gLevelDefaultVehicleID);
                 safe_mark_write_save_file(get_save_file_index());
@@ -1144,20 +1146,20 @@ void clear_lap_records(Settings *settings, s32 flags) {
     s32 i, j;
     s32 numWorlds, numLevels;
     s32 index;
-    u16 *temp_v0;
+    u16 *defaultRecords;
 
     level_count(&numLevels, &numWorlds);
-    temp_v0 = (u16 *) get_misc_asset(ASSET_MISC_23);
+    defaultRecords = (u16 *) get_misc_asset(ASSET_MISC_23);
     for (i = 0; i < NUMBER_OF_SAVE_FILES; i++) {
         for (j = 0; j < numLevels; j++) {
             index = (j * 12) + (i * 4);
             if (flags & 1) {
-                settings->flapInitialsPtr[i][j] = temp_v0[index + 3];
-                settings->flapTimesPtr[i][j] = temp_v0[index + 2];
+                settings->flapInitialsPtr[i][j] = defaultRecords[index + 3];
+                settings->flapTimesPtr[i][j] = defaultRecords[index + 2];
             }
             if (flags & 2) {
-                settings->courseInitialsPtr[i][j] = temp_v0[index + 1];
-                settings->courseTimesPtr[i][j] = temp_v0[index];
+                settings->courseInitialsPtr[i][j] = defaultRecords[index + 1];
+                settings->courseTimesPtr[i][j] = defaultRecords[index];
             }
         }
     }
@@ -1449,7 +1451,6 @@ void level_transition_begin(s32 type) {
     }
 }
 
-
 /**
  * Begins a fade transition, then signals to the level loading that it wants to be a trophy race.
  */
@@ -1503,7 +1504,7 @@ void set_pause_lockout_timer(u8 time) {
  */
 void swap_lead_player(void) {
     s32 i;
-    u8 temp;
+    u8 byte;
     u8 *first_racer_data;
     u8 *second_racer_data;
 
@@ -1514,9 +1515,9 @@ void swap_lead_player(void) {
     second_racer_data = (u8 *) (gSettingsPtr->racers + 1);
 
     for (i = 0; i < (s32) sizeof(Racer); i++) {
-        temp = first_racer_data[i];
+        byte = first_racer_data[i];
         first_racer_data[i] = second_racer_data[i];
-        second_racer_data[i] = temp;
+        second_racer_data[i] = byte;
     }
 }
 

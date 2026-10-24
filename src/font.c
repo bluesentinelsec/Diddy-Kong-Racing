@@ -4,9 +4,9 @@
 #include "common.h"
 #include "memory.h"
 #include "menu.h"
+#include "pc_swap.h"
 #include "textures_sprites.h"
 #include "video.h"
-#include "pc_swap.h"
 
 /************ .data ************/
 
@@ -350,10 +350,10 @@ UNUSED void draw_text_plain_unused(Gfx **displayList, char *text, AlignmentFlags
  * Official Name: fontPrintWindowXY?
  */
 void draw_text(Gfx **displayList, s32 xpos, s32 ypos, char *text, AlignmentFlags alignmentFlags) {
-    DialogueBoxBackground *temp = &gDialogueBoxBackground[0];
-    temp->xpos = (xpos == POS_CENTRED) ? temp->width >> 1 : xpos;
-    temp->ypos = (ypos == POS_CENTRED) ? temp->height >> 1 : ypos;
-    render_text_string(displayList, temp, text, alignmentFlags, 1.0f);
+    DialogueBoxBackground *box = &gDialogueBoxBackground[0];
+    box->xpos = (xpos == POS_CENTRED) ? box->width >> 1 : xpos;
+    box->ypos = (ypos == POS_CENTRED) ? box->height >> 1 : ypos;
+    render_text_string(displayList, box, text, alignmentFlags, 1.0f);
 }
 
 /**
@@ -361,8 +361,8 @@ void draw_text(Gfx **displayList, s32 xpos, s32 ypos, char *text, AlignmentFlags
  */
 UNUSED void draw_dialogue_text_unused(Gfx **displayList, s32 dialogueBoxID, char *text, AlignmentFlags alignmentFlags) {
     if (dialogueBoxID >= 0 && dialogueBoxID < DIALOGUEBOXBACKGROUND_COUNT) {
-        DialogueBoxBackground *temp = &gDialogueBoxBackground[dialogueBoxID];
-        render_text_string(displayList, temp, text, alignmentFlags, 1.0f);
+        DialogueBoxBackground *box = &gDialogueBoxBackground[dialogueBoxID];
+        render_text_string(displayList, box, text, alignmentFlags, 1.0f);
     }
 }
 
@@ -373,10 +373,10 @@ UNUSED void draw_dialogue_text_unused(Gfx **displayList, s32 dialogueBoxID, char
 UNUSED void draw_dialogue_text_pos_unused(Gfx **displayList, s32 dialogueBoxID, s32 xpos, s32 ypos, char *text,
                                           AlignmentFlags alignmentFlags) {
     if (dialogueBoxID >= 0 && dialogueBoxID < DIALOGUEBOXBACKGROUND_COUNT) {
-        DialogueBoxBackground *temp = &gDialogueBoxBackground[dialogueBoxID];
-        temp->xpos = (xpos == POS_CENTRED) ? temp->width >> 1 : xpos;
-        temp->ypos = (ypos == POS_CENTRED) ? temp->height >> 1 : ypos;
-        render_text_string(displayList, temp, text, alignmentFlags, 1.0f);
+        DialogueBoxBackground *box = &gDialogueBoxBackground[dialogueBoxID];
+        box->xpos = (xpos == POS_CENTRED) ? box->width >> 1 : xpos;
+        box->ypos = (ypos == POS_CENTRED) ? box->height >> 1 : ypos;
+        render_text_string(displayList, box, text, alignmentFlags, 1.0f);
     }
 }
 
@@ -810,25 +810,25 @@ s32 get_text_width(char *text, s32 x, s32 font) {
  */
 void set_current_dialogue_box_coords(s32 dialogueBoxID, s32 x1, s32 y1, s32 x2, s32 y2) {
     if (dialogueBoxID > 0 && dialogueBoxID < DIALOGUEBOXBACKGROUND_COUNT) {
-        DialogueBoxBackground *temp = &gDialogueBoxBackground[dialogueBoxID];
-        temp->xpos = 0;
-        temp->ypos = 0;
+        DialogueBoxBackground *box = &gDialogueBoxBackground[dialogueBoxID];
+        box->xpos = 0;
+        box->ypos = 0;
         if (x1 < x2) {
-            temp->x1 = (s16) x1;
-            temp->x2 = (s16) x2;
+            box->x1 = (s16) x1;
+            box->x2 = (s16) x2;
         } else {
-            temp->x2 = (s16) x1;
-            temp->x1 = (s16) x2;
+            box->x2 = (s16) x1;
+            box->x1 = (s16) x2;
         }
         if (y1 < y2) {
-            temp->y1 = (s16) y1;
-            temp->y2 = (s16) y2;
+            box->y1 = (s16) y1;
+            box->y2 = (s16) y2;
         } else {
-            temp->y2 = (s16) y1;
-            temp->y1 = (s16) y2;
+            box->y2 = (s16) y1;
+            box->y1 = (s16) y2;
         }
-        temp->width = (temp->x2 - temp->x1) + 1;
-        temp->height = (temp->y2 - temp->y1) + 1;
+        box->width = (box->x2 - box->x1) + 1;
+        box->height = (box->y2 - box->y1) + 1;
     }
 }
 
@@ -841,9 +841,9 @@ void set_dialogue_font(s32 dialogueBoxID, s32 font) {
     gDialogueBoxBackground[dialogueBoxID].font = font;
 #else
     if (dialogueBoxID >= 0 && dialogueBoxID < DIALOGUEBOXBACKGROUND_COUNT) {
-        DialogueBoxBackground *temp = &gDialogueBoxBackground[dialogueBoxID];
+        DialogueBoxBackground *box = &gDialogueBoxBackground[dialogueBoxID];
         if (font < gNumberOfFonts) {
-            temp->font = font;
+            box->font = font;
         }
     }
 #endif
@@ -855,11 +855,11 @@ void set_dialogue_font(s32 dialogueBoxID, s32 font) {
  */
 void set_current_dialogue_background_colour(s32 dialogueBoxID, s32 red, s32 green, s32 blue, s32 alpha) {
     if (dialogueBoxID > 0 && dialogueBoxID < DIALOGUEBOXBACKGROUND_COUNT) {
-        DialogueBoxBackground *temp = &gDialogueBoxBackground[dialogueBoxID];
-        temp->backgroundColourR = red;
-        temp->backgroundColourG = green;
-        temp->backgroundColourB = blue;
-        temp->backgroundColourA = alpha;
+        DialogueBoxBackground *box = &gDialogueBoxBackground[dialogueBoxID];
+        box->backgroundColourR = red;
+        box->backgroundColourG = green;
+        box->backgroundColourB = blue;
+        box->backgroundColourA = alpha;
     }
 }
 
@@ -868,16 +868,16 @@ void set_current_dialogue_background_colour(s32 dialogueBoxID, s32 red, s32 gree
  * Official Name: fontWindowFontColour
  */
 void set_current_text_colour(s32 dialogueBoxID, s32 red, s32 green, s32 blue, s32 alpha, s32 opacity) {
-    DialogueBoxBackground *temp;
+    DialogueBoxBackground *box;
     if (dialogueBoxID <= 0 || dialogueBoxID >= DIALOGUEBOXBACKGROUND_COUNT) {
         return;
     }
-    temp = &gDialogueBoxBackground[dialogueBoxID];
-    temp->textColourR = red;
-    temp->textColourG = green;
-    temp->textColourB = blue;
-    temp->textColourA = alpha;
-    temp->opacity = opacity;
+    box = &gDialogueBoxBackground[dialogueBoxID];
+    box->textColourR = red;
+    box->textColourG = green;
+    box->textColourB = blue;
+    box->textColourA = alpha;
+    box->opacity = opacity;
 }
 
 /**
@@ -940,7 +940,6 @@ UNUSED void render_global_dialogue_text(s32 dialogueBoxID, char *text, s32 numbe
  */
 void *render_dialogue_text(s32 dialogueBoxID, s32 posX, s32 posY, char *text, s32 number, s32 flags) {
     s32 width;
-    UNUSED s32 var_a0;
     char buffer[256];
     DialogueTextElement *ret;
     DialogueBox *textBox;

@@ -85,8 +85,8 @@ void load_level_game(s32 levelId, s32 numberOfPlayers, s32 entranceId, Vehicle v
 void unload_level_game(void);
 void set_drumstick_unlock_transition(void);
 void race_postrace_type(s32 finishState);
-void level_settings_apply(s32 arg0);
-void level_settings_store_from_exit(s8 *arg0);
+void level_settings_apply(s32 unused);
+void level_settings_store_from_exit(s8 *exitEntry);
 GameMode get_game_mode(void);
 void load_menu_with_level_background(s32 menuId, s32 levelId, s32 cutsceneId);
 void set_level_default_vehicle(Vehicle vehicleID);

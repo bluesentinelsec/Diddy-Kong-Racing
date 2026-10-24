@@ -170,7 +170,7 @@ void ttcam_update(s32);
 void trackbg_render_flashy(void);
 void initialise_player_viewport_vars(s32);
 void compute_frustum_planes(void);
-void update_colour_cycle(ColourCycle *arg0, s32 updateRate);
+void update_colour_cycle(ColourCycle *cycle, s32 updateRate);
 void waves_update(s32);
 void waves_render(Gfx **, Mtx **, s32);
 void shadow_find_surface_under_object(Object *);

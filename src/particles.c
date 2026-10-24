@@ -4,13 +4,12 @@
 #include "libc/math.h"
 #include "math_util.h"
 #include "objects.h"
+#include "pc_swap.h"
 #include "textures_sprites.h"
 #include "tracks.h"
 #include <ultra64.h>
-#include "pc_swap.h"
 
 /************ .rodata ************/
-
 
 /*********************************/
 
@@ -247,7 +246,8 @@ void free_particle_assets(void) {
 
 static const PcField sParticleDescriptorFields[] = {
     PCU_FIELD(ParticleDescriptor, kind, 0x00, 2, PCU_BYTES),
-    PCU_FIELD(ParticleDescriptor, flags, 0x02, 5, PCU_U16), // flags, textureID, textureFrameStep, lifeTime, lifeTimeRange
+    PCU_FIELD(ParticleDescriptor, flags, 0x02, 5,
+              PCU_U16), // flags, textureID, textureFrameStep, lifeTime, lifeTimeRange
     PCU_FIELD(ParticleDescriptor, opacity, 0x0C, 2, PCU_BYTES),
     PCU_FIELD(ParticleDescriptor, opacityTimer, 0x0E, 1, PCU_U16),
     PCU_FIELD(ParticleDescriptor, scale, 0x10, 1, PCU_U32),
@@ -270,7 +270,7 @@ static const PcField sParticleBehaviourFields[] = {
     PCU_FIELD(ParticleBehaviour, spawnInterval, 0x40, 2, PCU_U16), // spawnInterval, burstCount
     PCU_FIELD(ParticleBehaviour, rotation, 0x44, 3, PCU_U16),
     PCU_FIELD(ParticleBehaviour, angularVelocity, 0x4A, 3, PCU_U16),
-    PCU_FIELD(ParticleBehaviour, scale, 0x50, 3, PCU_U32), // scale, scaleVelocity, movementParam
+    PCU_FIELD(ParticleBehaviour, scale, 0x50, 3, PCU_U32),              // scale, scaleVelocity, movementParam
     PCU_FIELD(ParticleBehaviour, randomizationFlags, 0x5C, 2, PCU_U32), // randomizationFlags, sourceDistanceRange
     PCU_FIELD(ParticleBehaviour, sourceDirRange, 0x64, 3, PCU_U16),
     PCU_FIELD(ParticleBehaviour, emissionDirRange, 0x6A, 3, PCU_U16),
@@ -810,8 +810,8 @@ void obj_enable_emitter(Object *obj, s32 emitterIndex) {
 
         if (emitter->pointCount > 0) { // Useless if statement, since the loop already does this.
             for (i = 0; i < emitter->pointCount; i++) {
-                PointParticle *temp = emitter->refPoints[i];
-                temp->base.destroyTimer = 0;
+                PointParticle *point = emitter->refPoints[i];
+                point->base.destroyTimer = 0;
             }
         }
         if (behaviour->flags & PARTICLE_SOURCE_OFFSET_ENABLED) {
@@ -2416,7 +2416,7 @@ UNUSED void render_active_particles(Gfx **dList, Mtx **mtx, Vertex **vtx) {
 void render_particle(Particle *particle, Gfx **dList, Mtx **mtx, Vertex **vtx, s32 flags) {
     s32 renderFlags;
     s32 alpha;
-    s32 temp;
+    s32 frame;
     ParticleModel *model;
     Vertex *tempvtx;
 
@@ -2439,11 +2439,11 @@ void render_particle(Particle *particle, Gfx **dList, Mtx **mtx, Vertex **vtx, s
             gDPSetPrimColor((*dList)++, 0, 0, 255, 255, 255, 255);
         }
         if (particle->kind == PARTICLE_KIND_SPRITE) {
-            temp = particle->textureFrame;
+            frame = particle->textureFrame;
             particle->textureFrame >>= 8;
             particle->textureFrame = (particle->textureFrame * 255) / (particle->sprite->numberOfFrames);
             render_sprite_billboard(dList, mtx, vtx, (Object *) particle, particle->sprite, renderFlags);
-            particle->textureFrame = temp;
+            particle->textureFrame = frame;
         } else {
             model = particle->model;
             if (model->texture) {
@@ -2473,9 +2473,9 @@ void render_particle(Particle *particle, Gfx **dList, Mtx **mtx, Vertex **vtx, s
                     regenerate_point_particles_mesh((PointParticle *) particle);
                 }
                 model = particle->model;
-                temp = ((PointParticle *) particle)->modelFrame;
-                temp <<= 3;
-                tempvtx = &model->vertices[temp];
+                frame = ((PointParticle *) particle)->modelFrame;
+                frame <<= 3;
+                tempvtx = &model->vertices[frame];
                 material_set(dList, model->texture, renderFlags, particle->textureFrame << 8);
                 gSPVertexDKR((*dList)++, OS_K0_TO_PHYSICAL(tempvtx), model->vertexCount, 0);
                 gSPPolygon((*dList)++, OS_K0_TO_PHYSICAL(model->triangles), model->triangleCount, TRIN_ENABLE_TEXTURE);

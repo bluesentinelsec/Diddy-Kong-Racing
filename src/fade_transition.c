@@ -251,19 +251,21 @@ s32 transition_begin(FadeTransition *transition) {
                                       gTransitionBarnDoorTris);
                 break;
             case FADE_BARNDOOR_VERTICAL:
-                transition_init_shape(transition, 12, 8, (s16 *) gTransitionBarnVerticalCoords, sBarnDoorTrisA, sBarnDoorTrisB,
-                                      gTransitionBarnDoorAlpha, gTransitionBarnDoorAlpha, gTransitionBarnDoorTris);
+                transition_init_shape(transition, 12, 8, (s16 *) gTransitionBarnVerticalCoords, sBarnDoorTrisA,
+                                      sBarnDoorTrisB, gTransitionBarnDoorAlpha, gTransitionBarnDoorAlpha,
+                                      gTransitionBarnDoorTris);
                 break;
             case FADE_CIRCLE:
                 transition_init_circle(transition);
                 break;
             case FADE_WAVES:
-                transition_init_shape(transition, 92, 80, (s16 *) gTransitionWaveCoords, sWaveTransitionTrisA, sWaveTransitionTrisB,
-                                      gTransitionWaveAlpha, gTransitionWaveAlpha, gTransitionWaveTris);
+                transition_init_shape(transition, 92, 80, (s16 *) gTransitionWaveCoords, sWaveTransitionTrisA,
+                                      sWaveTransitionTrisB, gTransitionWaveAlpha, gTransitionWaveAlpha,
+                                      gTransitionWaveTris);
                 break;
             case FADE_BARNDOOR_DIAGONAL:
-                transition_init_shape(transition, 10, 6, (s16 *) gTransitionBarnDiagCoords, sBarnDoorDiagTrisA, sBarnDoorDiagTrisB,
-                                      gTransitionBarnDoorDiagAlpha, gTransitionBarnDoorDiagAlpha,
+                transition_init_shape(transition, 10, 6, (s16 *) gTransitionBarnDiagCoords, sBarnDoorDiagTrisA,
+                                      sBarnDoorDiagTrisB, gTransitionBarnDoorDiagAlpha, gTransitionBarnDoorDiagAlpha,
                                       gTransitionBarnDoorDiagTris);
                 break;
             case FADE_DISABLED:
@@ -398,16 +400,16 @@ void transition_fullscreen_start(FadeTransition *transition) {
  * Slowly dade in or out by increasing or decreasing opacity.
  */
 void transition_update_fullscreen(s32 updateRate) {
-    s32 var_v0;
+    s32 finished;
     do {
-        var_v0 = TRUE;
+        finished = TRUE;
         if ((sTransitionFadeTimer) > 0) {
             if (updateRate < sTransitionFadeTimer) {
                 sTransitionFadeTimer -= updateRate;
                 sTransitionOpacity += gTransitionOpacityVel * updateRate;
             } else {
                 updateRate -= sTransitionFadeTimer;
-                var_v0 = FALSE;
+                finished = FALSE;
                 if (gTransitionOpacityVel < 0.0f) {
                     sTransitionOpacity = 0.0f;
                 } else {
@@ -431,11 +433,11 @@ void transition_update_fullscreen(s32 updateRate) {
                     gTransitionInvert = 0;
                     sTransitionFadeTimer = sTransitionFadeDuration;
                     gTransitionOpacityVel = -gTransitionOpacityVel;
-                    var_v0 = FALSE;
+                    finished = FALSE;
                 }
             }
         }
-    } while (var_v0 == FALSE && updateRate > 0);
+    } while (finished == FALSE && updateRate > 0);
 }
 
 /**
@@ -456,7 +458,6 @@ void transition_render_fullscreen(Gfx **dList, UNUSED Mtx **mtx, UNUSED Vertex *
  */
 void transition_init_shape(FadeTransition *transition, s32 numVerts, s32 numTris, s16 *coords, u8 *nextPos,
                            u8 *targetPos, u8 *nextAlpha, u8 *targetAlpha, u8 *vertIndices) {
-    UNUSED s32 pad;
     u8 *swap;
     s32 sizeVerts;
     s32 sizeTris;
@@ -593,8 +594,8 @@ void transition_init_circle(FadeTransition *transition) {
     s32 i;
     s32 j;
     s32 k;
-    f32 var_f12;
-    f32 var_f20;
+    f32 radiusY;
+    f32 radiusX;
     s32 sizeVerts;
     s32 sizeTris;
     s16 xSins;
@@ -623,12 +624,12 @@ void transition_init_circle(FadeTransition *transition) {
         }
     }
 
-    var_f12 = 180.0f;
-    var_f20 = 240.0f;
+    radiusY = 180.0f;
+    radiusX = 240.0f;
     k = 0;
     for (i = 0; i < 9; i++, k += 0x1000) {
-        xSins = sins_f(k) * var_f20;
-        yCoss = coss_f(k) * var_f12;
+        xSins = sins_f(k) * radiusX;
+        yCoss = coss_f(k) * radiusY;
         for (j = 0; j < 2; j++) {
             sTransitionVtx[j][i << 1].x = xSins;
             sTransitionVtx[j][i << 1].y = yCoss;
@@ -648,15 +649,15 @@ void transition_init_circle(FadeTransition *transition) {
     if (transition->type & FADE_FLAG_OUT) {
         sFadeOffsetX = 0.0f;
         sFadeOffsetY = 0.0f;
-        sFadeStepX = var_f20 / sTransitionFadeTimer;
-        sFadeStepY = var_f12 / sTransitionFadeTimer;
-        sFadeTargetX = var_f20;
-        sFadeTargetY = var_f12;
+        sFadeStepX = radiusX / sTransitionFadeTimer;
+        sFadeStepY = radiusY / sTransitionFadeTimer;
+        sFadeTargetX = radiusX;
+        sFadeTargetY = radiusY;
     } else {
-        sFadeOffsetX = var_f20;
-        sFadeOffsetY = var_f12;
-        sFadeStepX = (-var_f20) / sTransitionFadeTimer;
-        sFadeStepY = (-var_f12) / sTransitionFadeTimer;
+        sFadeOffsetX = radiusX;
+        sFadeOffsetY = radiusY;
+        sFadeStepX = (-radiusX) / sTransitionFadeTimer;
+        sFadeStepY = (-radiusY) / sTransitionFadeTimer;
         sFadeTargetX = 0.0f;
         sFadeTargetY = 0.0f;
     }
@@ -694,20 +695,20 @@ void transition_init_circle(FadeTransition *transition) {
 }
 
 void transition_update_circle(s32 updateRate) {
-    f32 temp_f20;
-    f32 temp_f2;
-    f32 temp_f16;
-    s16 temp_f6;
+    f32 pointX;
+    f32 pointY;
+    f32 scaledY;
+    s16 scaledX;
     s32 i;
-    f32 arg0F;
-    f32 new_var;
+    f32 updateRateF;
+    f32 widen;
     s32 j;
 
-    arg0F = updateRate;
+    updateRateF = updateRate;
     if (sTransitionFadeTimer > 0) {
         if (updateRate < sTransitionFadeTimer) {
-            sFadeOffsetX += (arg0F * sFadeStepX);
-            sFadeOffsetY += (arg0F * sFadeStepY);
+            sFadeOffsetX += (updateRateF * sFadeStepX);
+            sFadeOffsetY += (updateRateF * sFadeStepY);
             sTransitionFadeTimer -= updateRate;
         } else {
             sFadeOffsetX = sFadeTargetX;
@@ -716,24 +717,24 @@ void transition_update_circle(s32 updateRate) {
         }
 
         for (j = 0, i = 0; i < 9; i++, j += 0x1000) {
-            new_var = 1.2f;
-            temp_f20 = sins_f(j) * sFadeOffsetX;
-            temp_f2 = coss_f(j) * sFadeOffsetY;
-            temp_f6 = (temp_f20 * new_var);
-            temp_f16 = (temp_f2 * new_var);
-            sTransitionVtx[sTransitionTaskNum][(i << 1) + 1].x = temp_f6;
-            sTransitionVtx[sTransitionTaskNum][(i << 1) + 1].y = temp_f16;
-            sTransitionVtx[sTransitionTaskNum][(i << 1) + 37].x = -temp_f6;
-            sTransitionVtx[sTransitionTaskNum][(i << 1) + 37].y = temp_f16;
-            sTransitionVtx[sTransitionTaskNum][(i << 1) + 18].x = temp_f6;
-            sTransitionVtx[sTransitionTaskNum][(i << 1) + 18].y = temp_f16;
-            sTransitionVtx[sTransitionTaskNum][(i << 1) + 54].x = -temp_f6;
-            sTransitionVtx[sTransitionTaskNum][(i << 1) + 54].y = temp_f16;
-            sTransitionVtx[sTransitionTaskNum][(i << 1) + 19].x = temp_f20;
-            sTransitionVtx[sTransitionTaskNum][(i << 1) + 19].y = temp_f2;
-            temp_f6 = temp_f20;
-            sTransitionVtx[sTransitionTaskNum][(i << 1) + 55].x = -temp_f6;
-            sTransitionVtx[sTransitionTaskNum][(i << 1) + 55].y = temp_f2;
+            widen = 1.2f;
+            pointX = sins_f(j) * sFadeOffsetX;
+            pointY = coss_f(j) * sFadeOffsetY;
+            scaledX = (pointX * widen);
+            scaledY = (pointY * widen);
+            sTransitionVtx[sTransitionTaskNum][(i << 1) + 1].x = scaledX;
+            sTransitionVtx[sTransitionTaskNum][(i << 1) + 1].y = scaledY;
+            sTransitionVtx[sTransitionTaskNum][(i << 1) + 37].x = -scaledX;
+            sTransitionVtx[sTransitionTaskNum][(i << 1) + 37].y = scaledY;
+            sTransitionVtx[sTransitionTaskNum][(i << 1) + 18].x = scaledX;
+            sTransitionVtx[sTransitionTaskNum][(i << 1) + 18].y = scaledY;
+            sTransitionVtx[sTransitionTaskNum][(i << 1) + 54].x = -scaledX;
+            sTransitionVtx[sTransitionTaskNum][(i << 1) + 54].y = scaledY;
+            sTransitionVtx[sTransitionTaskNum][(i << 1) + 19].x = pointX;
+            sTransitionVtx[sTransitionTaskNum][(i << 1) + 19].y = pointY;
+            scaledX = pointX;
+            sTransitionVtx[sTransitionTaskNum][(i << 1) + 55].x = -scaledX;
+            sTransitionVtx[sTransitionTaskNum][(i << 1) + 55].y = pointY;
         }
     } else if (gTransitionEndTimer != 0xFFFF) {
         if (updateRate < gTransitionEndTimer) {

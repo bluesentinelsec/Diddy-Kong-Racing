@@ -28,9 +28,7 @@ s8 gAntiPiracyViewport = FALSE;
 
 #define SCISSOR_INTERLACE G_SC_NON_INTERLACE
 
-ScreenViewport gScreenViewports[
-    5
-] = {
+ScreenViewport gScreenViewports[5] = {
     { DEFAULT_VIEWPORT },
     { DEFAULT_VIEWPORT },
     { DEFAULT_VIEWPORT },
@@ -260,7 +258,7 @@ void camera_init_tracks_menu(Gfx **dList, Mtx **mtxS) {
     s16 angleY;
     s16 angleX;
     s16 angleZ;
-    s16 sp24;
+    s16 pitch;
     f32 posX;
     f32 posY;
     f32 posZ;
@@ -274,7 +272,7 @@ void camera_init_tracks_menu(Gfx **dList, Mtx **mtxS) {
     posX = cam->trans.x_position;
     posY = cam->trans.y_position;
     posZ = cam->trans.z_position;
-    sp24 = cam->pitch;
+    pitch = cam->pitch;
     cam->trans.rotation.z_rotation = 0;
     cam->trans.rotation.x_rotation = 0;
     cam->trans.rotation.y_rotation = -0x8000;
@@ -284,7 +282,7 @@ void camera_init_tracks_menu(Gfx **dList, Mtx **mtxS) {
     cam->trans.z_position = 0.0f;
     update_envmap_position(0.0f, 0.0f, -1.0f);
     viewport_main(dList, mtxS);
-    cam->pitch = sp24;
+    cam->pitch = pitch;
     cam->trans.rotation.y_rotation = angleY;
     cam->trans.rotation.x_rotation = angleX;
     cam->trans.rotation.z_rotation = angleZ;
@@ -337,15 +335,15 @@ void camera_reset(s32 xPos, s32 yPos, s32 zPos, s32 angleZ, s32 angleX, s32 angl
  * The first 4 are reserved for the 4 player viewports, so the misc views, used in the title screen
  * and course previews instead use the next 4.
  */
-void write_to_object_render_stack(s32 stackPos, f32 xPos, f32 yPos, f32 zPos, s16 arg4, s16 arg5, s16 arg6) {
+void write_to_object_render_stack(s32 stackPos, f32 xPos, f32 yPos, f32 zPos, s16 angleY, s16 angleX, s16 angleZ) {
     stackPos += 4;
     gCameras[stackPos].pitch = 0;
     gCameras[stackPos].trans.x_position = xPos;
     gCameras[stackPos].trans.y_position = yPos;
     gCameras[stackPos].trans.z_position = zPos;
-    gCameras[stackPos].trans.rotation.y_rotation = arg4;
-    gCameras[stackPos].trans.rotation.x_rotation = arg5;
-    gCameras[stackPos].trans.rotation.z_rotation = arg6;
+    gCameras[stackPos].trans.rotation.y_rotation = angleY;
+    gCameras[stackPos].trans.rotation.x_rotation = angleX;
+    gCameras[stackPos].trans.rotation.z_rotation = angleZ;
     gCameras[stackPos].cameraSegmentID = get_level_segment_index_from_position(xPos, yPos, zPos);
     gCutsceneCameraActive = TRUE;
 }
@@ -473,8 +471,8 @@ void copy_viewports_to_stack(void) {
     }
 }
 
-void camEnableUserView(s32 viewPortIndex, s32 arg1) {
-    if (arg1) {
+void camEnableUserView(s32 viewPortIndex, s32 extraBackground) {
+    if (extraBackground) {
         gScreenViewports[viewPortIndex].flags |= VIEWPORT_EXTRA_BG;
     } else {
         gScreenViewports[viewPortIndex].flags |= VIEWPORT_UNK_02;
@@ -482,8 +480,8 @@ void camEnableUserView(s32 viewPortIndex, s32 arg1) {
     gScreenViewports[viewPortIndex].flags &= ~VIEWPORT_UNK_04;
 }
 
-void camDisableUserView(s32 viewPortIndex, s32 arg1) {
-    if (arg1) {
+void camDisableUserView(s32 viewPortIndex, s32 extraBackground) {
+    if (extraBackground) {
         gScreenViewports[viewPortIndex].flags &= ~VIEWPORT_EXTRA_BG;
     } else {
         gScreenViewports[viewPortIndex].flags |= VIEWPORT_UNK_04;
@@ -505,21 +503,21 @@ s32 check_viewport_background_flag(s32 viewPortIndex) {
  */
 void viewport_menu_set(s32 viewPortIndex, s32 x1, s32 y1, s32 x2, s32 y2) {
     s32 widthAndHeight, width, height;
-    s32 temp;
+    s32 swap;
 
     widthAndHeight = fb_size();
     height = GET_VIDEO_HEIGHT(widthAndHeight) & 0xFFFF;
     width = GET_VIDEO_WIDTH(widthAndHeight);
 
     if (x2 < x1) {
-        temp = x1;
+        swap = x1;
         x1 = x2;
-        x2 = temp;
+        x2 = swap;
     }
     if (y2 < y1) {
-        temp = y1;
+        swap = y1;
         y1 = y2;
-        y2 = temp;
+        y2 = swap;
     }
 
     if (x1 >= width || x2 < 0 || y1 >= height || y2 < 0) {
@@ -799,10 +797,10 @@ void viewport_scissor(Gfx **dList) {
     s32 ulx;
     s32 uly;
     s32 numViewports;
-    s32 temp;
-    s32 temp2;
-    s32 temp3;
-    s32 temp4;
+    s32 halfGapY;
+    s32 halfGapX;
+    s32 centreY;
+    s32 centreX;
     s32 width;
     s32 height;
 
@@ -821,30 +819,30 @@ void viewport_scissor(Gfx **dList) {
         lrx += width;\
         lry += height;
         // clang-format on
-        temp = lry >> 7;
-        temp2 = lrx >> 8;
-        temp4 = lrx >> 1;
-        temp3 = lry >> 1;
+        halfGapY = lry >> 7;
+        halfGapX = lrx >> 8;
+        centreX = lrx >> 1;
+        centreY = lry >> 1;
         switch (numViewports) {
             case 1:
                 switch (gActiveCameraID) {
                     case 0:
-                        lry = temp3 - temp;
+                        lry = centreY - halfGapY;
                         break;
                     default:
-                        uly = temp3 + temp;
-                        lry -= temp;
+                        uly = centreY + halfGapY;
+                        lry -= halfGapY;
                         break;
                 }
                 break;
             case 2:
                 switch (gActiveCameraID) {
                     case 0:
-                        lrx = temp4 - temp2;
+                        lrx = centreX - halfGapX;
                         break;
                     default:
-                        ulx = temp4 + temp2;
-                        lrx -= temp2;
+                        ulx = centreX + halfGapX;
+                        lrx -= halfGapX;
                         break;
                 }
                 break;
@@ -852,24 +850,24 @@ void viewport_scissor(Gfx **dList) {
                 // clang-format off
                 switch (gActiveCameraID) {
                     case 0:
-                        lrx = temp4 - temp2;\
-                        lry = temp3 - temp;
+                        lrx = centreX - halfGapX;\
+                        lry = centreY - halfGapY;
                         break;
                     case 1:
-                        ulx = temp4 + temp2;
-                        lrx -= temp2;
-                        lry = temp3 - temp;
+                        ulx = centreX + halfGapX;
+                        lrx -= halfGapX;
+                        lry = centreY - halfGapY;
                         break;
                     case 2:
-                        uly = temp3 + temp;
-                        lrx = temp4 - temp2;\
-                        lry -= temp;
+                        uly = centreY + halfGapY;
+                        lrx = centreX - halfGapX;\
+                        lry -= halfGapY;
                         break;
                     case 3:
-                        ulx = temp4 + temp2;\
-                        uly = temp3 + temp;
-                        lrx -= temp2;\
-                        lry -= temp;
+                        ulx = centreX + halfGapX;\
+                        uly = centreY + halfGapY;
+                        lrx -= halfGapX;\
+                        lry -= halfGapY;
                         break;
                 }
                 // clang-format on
@@ -1025,7 +1023,6 @@ void viewport_reset(Gfx **dList) {
     gActiveCameraID = 0;
 }
 
-
 /**
  * Sets the matrix position to the world origin (0, 0, 0)
  * Used when the next thing rendered relies on there not being any matrix offset.
@@ -1066,7 +1063,7 @@ s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, S
     f32 lateralDist;
     f32 sineY;
     f32 cosY;
-    f32 temp;
+    f32 rotatedX;
     f32 diffZ;
     s32 tanX;
     s32 tanY;
@@ -1096,9 +1093,9 @@ s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, S
         sineY = sins_f(obj->trans.rotation.y_rotation);
         cosY = coss_f(obj->trans.rotation.y_rotation);
 
-        temp = (diffX * cosY) + (diffZ * sineY);
+        rotatedX = (diffX * cosY) + (diffZ * sineY);
         diffZ = (diffZ * cosY) - (diffX * sineY);
-        diffX = temp;
+        diffX = rotatedX;
 
         // Calculate the angle between the camera direction and the vertical plane of the vehicle
         tanY = arctan2_f(diffX, sqrtf((diffY * diffY) + (diffZ * diffZ)));
@@ -1226,7 +1223,6 @@ s32 render_sprite_billboard(Gfx **dList, Mtx **mtx, Vertex **vtx, Object *obj, S
  */
 void render_ortho_triangle_image(Gfx **dList, Mtx **mtx, Vertex **vtx, ObjectSegment *segment, Sprite *sprite,
                                  s32 flags) {
-    UNUSED s32 pad;
     f32 scale;
     s32 index;
     Vertex *vertex;
@@ -1296,7 +1292,6 @@ void render_ortho_triangle_image(Gfx **dList, Mtx **mtx, Vertex **vtx, ObjectSeg
  * Used for wavy type effects like the shield.
  */
 void mtx_shear_push(Gfx **dList, Mtx **mtx, Object *obj, Object *objBase, f32 shear) {
-    UNUSED s32 pad;
     f32 cossf_x_arg2;
     f32 cossf_y_arg2;
     f32 sinsf_x_arg2;
@@ -1548,7 +1543,7 @@ UNUSED void get_modelmatrix_vector(f32 *x, f32 *y, f32 *z) {
  * If the stack pos is less than zero, set the RSP stack pos to 0.
  */
 void mtx_pop(Gfx **dList) {
-    s32 temp;
+    s32 underflow;
 
     gCameraMatrixPos--;
     gModelMatrixStackPos--;
@@ -1557,7 +1552,7 @@ void mtx_pop(Gfx **dList) {
         stubbed_printf("camPopModelMtx: model stack negative overflow!!\n");
     }
 
-    if ((temp = gCameraMatrixPos < 0)) { // temp required to match
+    if ((underflow = gCameraMatrixPos < 0)) { // underflow required to match
         stubbed_printf("camPopModelMtx: bsp stack negative overflow!!\n");
     }
 

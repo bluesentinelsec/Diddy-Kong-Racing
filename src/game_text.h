@@ -57,7 +57,7 @@ void set_delayed_text(s32 textID, f32 delay);
 s32 textbox_visible(void);
 void process_onscreen_textbox(s32 updateRate);
 void find_next_subtitle(void);
-s32 game_text_parse_controls(s32 arg0, TextBox *textbox);
+s32 game_text_parse_controls(s32 index, TextBox *textbox);
 void render_subtitles(void);
 void set_current_text(s32 textID);
 s32 dialogue_challenge_loop(void);

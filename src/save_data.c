@@ -297,57 +297,54 @@ void rumble_update(s32 updateRate) {
     }
 }
 
-// arg0 is the number of bits we care about.
-/** Bit-level save serialisation: reads the next `arg0` bits from the save stream. */
-s32 save_read_bits(s32 arg0) {
+/** Bit-level save serialisation: reads the next `bitCount` bits from the save stream. */
+s32 save_read_bits(s32 bitCount) {
     s32 ret;
-    u32 var_v0;
+    u32 mask;
 
-    if (arg0 <= 0) {
+    if (bitCount <= 0) {
         return 0;
     }
 
     ret = 0;
-    var_v0 = 1 << (arg0 - 1);
+    mask = 1 << (bitCount - 1);
 
-    // Loop backwards through arg0
-    while (arg0 != 0) {
+    // Loop backwards through bitCount
+    while (bitCount != 0) {
         // After shifting sSaveStreamBit right 8 times
         if (sSaveStreamBit == 0) {
             sSaveStreamByte = *sSaveStreamPtr++;
             sSaveStreamBit = 128; // 1000 0000 in binary.
         }
         if (sSaveStreamByte & sSaveStreamBit) {
-            ret |= var_v0;
+            ret |= mask;
         }
-        var_v0 >>= 1;
+        mask >>= 1;
         sSaveStreamBit >>= 1;
-        arg0--;
+        bitCount--;
     }
 
     return ret;
 }
 
-// arg0 is the number of bits we care about
-// arg1 is the bit being looked for.
-/** Writes the low `arg0` bits of a value to the save stream. */
-void save_write_bits(s32 arg0, u32 arg1) {
-    u32 var_v0;
+/** Writes the low `bitCount` bits of a value to the save stream. */
+void save_write_bits(s32 bitCount, u32 value) {
+    u32 mask;
 
-    if (arg0 > 0) {
-        var_v0 = 1 << (arg0 - 1);
-        while (arg0 != 0) {
+    if (bitCount > 0) {
+        mask = 1 << (bitCount - 1);
+        while (bitCount != 0) {
             if (sSaveStreamBit == 0) {
                 *sSaveStreamPtr++ = sSaveStreamByte;
                 sSaveStreamByte = 0;
                 sSaveStreamBit = 128; // Reset the byte counter, so we can shift 8 times before coming back here.
             }
-            if (arg1 & var_v0) {
+            if (value & mask) {
                 sSaveStreamByte |= sSaveStreamBit;
             }
-            var_v0 >>= 1;
+            mask >>= 1;
             sSaveStreamBit >>= 1;
-            arg0--;
+            bitCount--;
         }
         *sSaveStreamPtr = sSaveStreamByte;
     }
@@ -358,40 +355,40 @@ void populate_settings_from_save_data(Settings *settings, u8 *saveData) {
     s32 levelCount;
     s32 worldCount;
     s32 raceType;
-    s32 var_s1;
-    s16 var_a0;
-    u8 temp_v1;
+    s32 bitsRead;
+    s16 checksum;
+    u8 courseStatus;
 
     clear_game_progress(settings);
     level_count(&levelCount, &worldCount);
     sSaveStreamPtr = saveData;
     sSaveStreamByte = sSaveStreamBit = 0;
-    var_a0 = save_read_bits(16) - 5;
+    checksum = save_read_bits(16) - 5;
     // clang-format off
     // Must be one line
-    for (i = 2; i < 40; i++) { var_a0 -= saveData[i]; }
+    for (i = 2; i < 40; i++) { checksum -= saveData[i]; }
     // clang-format on
-    if (var_a0 == 0) {
-        for (i = 0, var_s1 = 0; i < levelCount; i++) {
+    if (checksum == 0) {
+        for (i = 0, bitsRead = 0; i < levelCount; i++) {
             raceType = leveltable_type(i);
             if ((raceType == RACETYPE_DEFAULT) || (raceType & RACETYPE_CHALLENGE) || (raceType == RACETYPE_BOSS)) {
-                temp_v1 = save_read_bits(2);
-                if (temp_v1 > 0) {
+                courseStatus = save_read_bits(2);
+                if (courseStatus > 0) {
                     // Set Map Visited
                     settings->courseFlagsPtr[i] |= RACE_VISITED;
                 }
-                if (temp_v1 >= 2) {
+                if (courseStatus >= 2) {
                     // Set Map Completed
                     settings->courseFlagsPtr[i] |= RACE_CLEARED;
                 }
-                if (temp_v1 >= 3) {
+                if (courseStatus >= 3) {
                     // Set Map Silver Coin Challenge Completed
                     settings->courseFlagsPtr[i] |= RACE_CLEARED_SILVER_COINS;
                 }
-                var_s1 += 2;
+                bitsRead += 2;
             }
         }
-        save_read_bits(68 - var_s1);
+        save_read_bits(68 - bitsRead);
         settings->tajFlags = save_read_bits(6);
         settings->trophies = save_read_bits(10);
         settings->bosses = save_read_bits(12);
@@ -412,20 +409,20 @@ void populate_settings_from_save_data(Settings *settings, u8 *saveData) {
 }
 
 void save_pack_progress(Settings *settings, u8 *saveData) {
-    s16 var_v0;
+    s16 checksum;
     s8 raceType;
     u8 courseStatus;
     s32 levelCount;
     s32 worldCount;
     s32 i;
-    s32 var_s0;
+    s32 bitsWritten;
 
     level_count(&levelCount, &worldCount);
     sSaveStreamPtr = saveData;
     sSaveStreamByte = 0;
     sSaveStreamBit = 128;
     save_write_bits(16, 0);
-    for (i = 0, var_s0 = 0; i < levelCount; i++) {
+    for (i = 0, bitsWritten = 0; i < levelCount; i++) {
         raceType = leveltable_type(i);
         if ((raceType == RACETYPE_DEFAULT) || (raceType & RACETYPE_CHALLENGE) || (raceType == RACETYPE_BOSS)) {
             courseStatus = 0;
@@ -442,10 +439,10 @@ void save_pack_progress(Settings *settings, u8 *saveData) {
                 courseStatus++;
             }
             save_write_bits(2, courseStatus);
-            var_s0 += 2;
+            bitsWritten += 2;
         }
     }
-    save_write_bits(68 - var_s0, 0);
+    save_write_bits(68 - bitsWritten, 0);
     save_write_bits(6, settings->tajFlags);
     save_write_bits(10, settings->trophies);
     save_write_bits(12, settings->bosses);
@@ -461,28 +458,28 @@ void save_pack_progress(Settings *settings, u8 *saveData) {
     save_write_bits(32, settings->cutsceneFlags);
     save_write_bits(16, settings->filename);
     save_write_bits(8, 0);
-    for (i = 2, var_v0 = 5; i < 40; i++) {
-        var_v0 += saveData[i];
+    for (i = 2, checksum = 5; i < 40; i++) {
+        checksum += saveData[i];
     }
     sSaveStreamPtr = saveData;
     sSaveStreamByte = 0;
     sSaveStreamBit = 128;
-    save_write_bits(16, var_v0);
+    save_write_bits(16, checksum);
 }
 
-// arg1 is eepromData, from read_eeprom_data
-// arg2 seems to be a flag for either lap times or course initials?
-void save_unpack_records(Settings *settings, u8 *saveData, u8 arg2) {
+// saveData is the eeprom data, from read_eeprom_data.
+// recordFlags picks which records to unpack: SAVE_DATA_FLAG_READ_FLAP_TIMES and/or SAVE_DATA_FLAG_READ_COURSE_TIMES.
+void save_unpack_records(Settings *settings, u8 *saveData, u8 recordFlags) {
     s16 availableVehicles;
     s32 levelCount;
     s32 worldCount;
     s32 i;
     s16 sum;
 
-    clear_lap_records(settings, arg2);
+    clear_lap_records(settings, recordFlags);
     level_count(&levelCount, &worldCount);
 
-    if (arg2 & 1) {
+    if (recordFlags & 1) {
         sSaveStreamPtr = saveData;
         sSaveStreamByte = 0;
         sSaveStreamBit = 0;
@@ -513,7 +510,7 @@ void save_unpack_records(Settings *settings, u8 *saveData, u8 arg2) {
             }
         }
     }
-    if (arg2 & 2) {
+    if (recordFlags & 2) {
         sSaveStreamPtr = saveData + 192;
         sSaveStreamByte = 0;
         sSaveStreamBit = 0;
@@ -643,13 +640,13 @@ SIDeviceStatus get_file_extension(s32 controllerIndex, s32 fileType, char *fileE
     char *fileExtensions[MAX_CPAK_FILES];
     u8 fileTypes[MAX_CPAK_FILES];
     u32 fileSizes[MAX_CPAK_FILES];
-    s32 var_s1;
+    s32 usedExtensions;
     s32 fileNum;
     char fileExtChar;
     SIDeviceStatus ret;
 
     fileExtChar = BLANK_EXT_CHAR;
-    var_s1 = 0;
+    usedExtensions = 0;
     ret =
         get_controller_pak_file_list(controllerIndex, MAX_CPAK_FILES, fileNames, fileExtensions, fileSizes, fileTypes);
     if (ret == CONTROLLER_PAK_GOOD) {
@@ -668,13 +665,13 @@ SIDeviceStatus get_file_extension(s32 controllerIndex, s32 fileType, char *fileE
             if (fileExtChar < fileExtensions[fileNum][0]) {
                 fileExtChar = fileExtensions[fileNum][0];
             }
-            var_s1 |= (1 << (fileExtensions[fileNum][0] + (BLANK_EXT_CHAR - 1)));
+            usedExtensions |= (1 << (fileExtensions[fileNum][0] + (BLANK_EXT_CHAR - 1)));
         }
         if (fileExtChar == BLANK_EXT_CHAR) {
             fileExtChar = 'A';
         } else if (fileExtChar == 'Z') {
-            for (fileExtChar = 'A'; fileExtChar <= 'Z'; var_s1 >>= 1, fileExtChar++) {
-                if (!(var_s1 & 1)) {
+            for (fileExtChar = 'A'; fileExtChar <= 'Z'; usedExtensions >>= 1, fileExtChar++) {
+                if (!(usedExtensions & 1)) {
                     break;
                 }
             }
@@ -734,8 +731,7 @@ s32 read_game_data_from_controller_pak(s32 controllerIndex, char *fileExt, Setti
     return ret;
 }
 
-s32 write_game_data_to_controller_pak(s32 controllerIndex, Settings *arg1) {
-    UNUSED s32 pad;
+s32 write_game_data_to_controller_pak(s32 controllerIndex, Settings *settings) {
     char *fileExt;
     u8 *gameData; // Probably a struct where the first s32 is GAMD
     s32 ret;
@@ -744,7 +740,7 @@ s32 write_game_data_to_controller_pak(s32 controllerIndex, Settings *arg1) {
     fileSize = get_game_data_file_size(); // 256 bytes
     gameData = mempool_alloc_safe(fileSize, COLOUR_TAG_WHITE);
     *((s32 *) gameData) = GAMD;
-    save_pack_progress(arg1, gameData + 4);
+    save_pack_progress(settings, gameData + 4);
     ret = get_file_extension(controllerIndex, 3, (char *) &fileExt);
     if (ret == CONTROLLER_PAK_GOOD) {
         ret = write_controller_pak_file(controllerIndex, -1, "DKRACING-ADV", (char *) &fileExt, gameData, fileSize);
@@ -783,7 +779,7 @@ s32 read_time_data_from_controller_pak(s32 controllerIndex, char *fileExt, Setti
             if (status == CONTROLLER_PAK_GOOD) {
                 if (*cpakData == TIMD) {
                     save_unpack_records(settings, (u8 *) (cpakData + 1),
-                                  SAVE_DATA_FLAG_READ_FLAP_TIMES | SAVE_DATA_FLAG_READ_COURSE_TIMES);
+                                        SAVE_DATA_FLAG_READ_FLAP_TIMES | SAVE_DATA_FLAG_READ_COURSE_TIMES);
                 } else {
                     status = CONTROLLER_PAK_BAD_DATA;
                 }
@@ -801,17 +797,16 @@ s32 read_time_data_from_controller_pak(s32 controllerIndex, char *fileExt, Setti
     return status;
 }
 
-s32 write_time_data_to_controller_pak(s32 controllerIndex, Settings *arg1) {
+s32 write_time_data_to_controller_pak(s32 controllerIndex, Settings *settings) {
     u8 *timeData; // Should probably be a struct or maybe an array?
     s32 ret;
     s32 fileSize;
-    UNUSED s32 pad;
     char *fileExt;
 
     fileSize = get_time_data_file_size(); // 512 bytes
     timeData = mempool_alloc_safe(fileSize, COLOUR_TAG_WHITE);
     *((s32 *) timeData) = TIMD;
-    save_pack_records(arg1, timeData + 4);
+    save_pack_records(settings, timeData + 4);
     ret = get_file_extension(controllerIndex, 4, (char *) &fileExt);
     if (ret == CONTROLLER_PAK_GOOD) {
         ret = write_controller_pak_file(controllerIndex, -1, "DKRACING-TIMES", (char *) &fileExt, timeData, fileSize);
@@ -973,8 +968,7 @@ s32 write_save_data(s32 saveFileNum, Settings *settings) {
 
 /**
  * Read Eeprom Data for addresses 0x10 - 0x39
- * arg1 is a flag
- * arg1 is descended from (gSaveDataFlags & 3) so the first 2 bits of that value.
+ * flags is descended from (gSaveDataFlags & 3) so the first 2 bits of that value.
  * bit 1 is for 0x10 - 0x27 - SAVE_DATA_FLAG_READ_FLAP_TIMES
  * bit 2 is for 0x28 - 0x39 - SAVE_DATA_FLAG_READ_COURSE_TIMES
  */
@@ -1013,8 +1007,7 @@ s32 read_eeprom_data(Settings *settings, u8 flags) {
 /**
  * Write Eeprom Data for addresses 0x10 - 0x39
  * 0x80 - 0x1C8 in file
- * arg1 is a flag
- * arg1 is descended from gSaveDataFlags bits 4 and 5.
+ * flags is descended from gSaveDataFlags bits 4 and 5.
  * bit 1 is for 0x10 - 0x27 - SAVE_DATA_FLAG_READ_FLAP_TIMES
  * bit 2 is for 0x28 - 0x39 - SAVE_DATA_FLAG_READ_COURSE_TIMES
  */
@@ -1165,7 +1158,7 @@ s32 get_ghost_data_file_size(void) {
 
 /** Loads a time-trial ghost for a level and vehicle from the controller pak. */
 s32 ghost_load(s32 controllerIndex, s16 levelId, s16 vehicleId, u16 *ghostCharacterId, s16 *ghostTime,
-                  s16 *ghostNodeCount, GhostPakFile *ghostData) {
+               s16 *ghostNodeCount, GhostPakFile *ghostData) {
     GhostPakDirEntry *ghostDataBody;
     GhostPakFile *cPakFile;
     s32 pakStatus;
@@ -1278,42 +1271,43 @@ typedef struct GhostData {
 } GhostData;
 
 SIDeviceStatus ghost_file_create(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
-                             s16 ghostNodeCount, u8 *dest) {
+                                 s16 ghostNodeCount, u8 *dest) {
     GhostPakDirEntry *ghostBody;
     GhostPakFile *ghost = NULL;
     s32 i;
-    s32 sp30 = 0x1000;
-    s32 sp24;
+    s32 slotSize = 0x1000;
+    s32 ghostsSize;
     s32 pakStatus;
 
     if (1) {} // fake
-    sp30 += GHSS_SIZE;
-    sp24 = sp30 * 6;
+    slotSize += GHSS_SIZE;
+    ghostsSize = slotSize * 6;
     if (1) {} // fake
-    ghost = mempool_alloc_safe(sp24 + (GHSS_SIZE * 2), COLOUR_TAG_BLACK);
+    ghost = mempool_alloc_safe(ghostsSize + (GHSS_SIZE * 2), COLOUR_TAG_BLACK);
     ghost->signature = GHSS;
     ghostBody = &ghost->data[0];
     ghostBody[0].levelID = levelId;
     ghostBody[0].vehicleID = vehicleId;
     ghostBody[0].dataOffset = GHSS_SIZE;
-    ghostBody[1].dataOffset = ghostBody[0].dataOffset + sp30;
+    ghostBody[1].dataOffset = ghostBody[0].dataOffset + slotSize;
     for (i = 1; i < 7; i++) {
         ghostBody[i].levelID = 0xFF;
         ghostBody[i].dataOffset = ghostBody[1].dataOffset;
     }
 
-    ghost_header_fill((GhostHeader *) (AS_BYTES(ghost) + ghostBody[0].dataOffset), ghostCharacterId, ghostTime, ghostNodeCount,
-                  dest);
-    pakStatus = write_controller_pak_file(controllerIndex, -1, "DKRACING-GHOSTS", "", (u8 *) ghost, sp24 + GHSS_SIZE);
+    ghost_header_fill((GhostHeader *) (AS_BYTES(ghost) + ghostBody[0].dataOffset), ghostCharacterId, ghostTime,
+                      ghostNodeCount, dest);
+    pakStatus =
+        write_controller_pak_file(controllerIndex, -1, "DKRACING-GHOSTS", "", (u8 *) ghost, ghostsSize + GHSS_SIZE);
     mempool_free(ghost);
     return pakStatus;
 }
 
 /** Saves a time-trial ghost to the controller pak, replacing an older one for the same track. */
 SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 ghostCharacterId, s16 ghostTime,
-                             s16 ghostNodeCount, GhostPakDirEntry *ghostData) {
+                          s16 ghostNodeCount, GhostPakDirEntry *ghostData) {
     GhostPakFile *fileData;
-    GhostPakDirEntry *sp70;
+    GhostPakDirEntry *newDir;
     GhostPakDirEntry *ghostFileData;
     GhostPakFile *fileDataToWrite;
     s32 ghostSize;
@@ -1325,7 +1319,7 @@ SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 g
     } i;
 
     s32 ghostIndex;
-    s32 sp58;
+    s32 sizeGrowth;
     s32 fileSize;
     SIDeviceStatus pakStatus;
     s32 fileNumber;
@@ -1341,7 +1335,7 @@ SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 g
     if (pakStatus == CONTROLLER_PAK_CHANGED) {
         start_reading_controller_data(controllerIndex);
         return ghost_file_create(controllerIndex, levelId, vehicleId, ghostCharacterId, ghostTime, ghostNodeCount,
-                             &ghostData->levelID);
+                                 &ghostData->levelID);
     }
     if (pakStatus != CONTROLLER_PAK_GOOD) {
         start_reading_controller_data(controllerIndex);
@@ -1388,28 +1382,29 @@ SIDeviceStatus ghost_save(s32 controllerIndex, s16 levelId, s16 vehicleId, s16 g
                     } else if (ghostIndex == -1) {
                         pakStatus = CONTROLLER_PAK_NO_ROOM_FOR_GHOSTS;
                     } else {
-                        sp58 = ghostSize - (ghostFileData[ghostIndex + 1].dataOffset - ghostFileData[ghostIndex].dataOffset);
+                        sizeGrowth = ghostSize -
+                                     (ghostFileData[ghostIndex + 1].dataOffset - ghostFileData[ghostIndex].dataOffset);
                         fileDataToWrite = mempool_alloc_safe(fileSize + GHSS_SIZE, COLOUR_TAG_BLACK);
                         fileDataToWrite->signature = GHSS;
-                        sp70 = &fileDataToWrite->data[0];
+                        newDir = &fileDataToWrite->data[0];
                         fileDataToWrite->data[6].levelID = 0xFF;
-                        fileDataToWrite->data[6].dataOffset = (s16) (ghostFileData[6].dataOffset + sp58);
+                        fileDataToWrite->data[6].dataOffset = (s16) (ghostFileData[6].dataOffset + sizeGrowth);
                         for (i.w = 0; i.w < 6; i.w++) {
-                            sp70[i.w].levelID = ghostFileData[i.w].levelID;
-                            sp70[i.w].vehicleID = ghostFileData[i.w].vehicleID;
+                            newDir[i.w].levelID = ghostFileData[i.w].levelID;
+                            newDir[i.w].vehicleID = ghostFileData[i.w].vehicleID;
                             if (ghostIndex >= i.w) {
-                                sp70[i.w].dataOffset = ghostFileData[i.w].dataOffset;
+                                newDir[i.w].dataOffset = ghostFileData[i.w].dataOffset;
                             } else {
-                                sp70[i.w].dataOffset = (ghostFileData[i.w].dataOffset + sp58);
+                                newDir[i.w].dataOffset = (ghostFileData[i.w].dataOffset + sizeGrowth);
                             }
                             bcopy(AS_BYTES(fileData) + ghostFileData[i.w].dataOffset,
-                                  AS_BYTES(fileDataToWrite) + sp70[i.w].dataOffset,
+                                  AS_BYTES(fileDataToWrite) + newDir[i.w].dataOffset,
                                   ghostFileData[i.w + 1].dataOffset - ghostFileData[i.w].dataOffset);
                         }
-                        ghost_header_fill((GhostHeader *) (AS_BYTES(fileDataToWrite) + sp70[ghostIndex].dataOffset),
-                                      ghostCharacterId, ghostTime, ghostNodeCount, &ghostData->levelID);
-                        sp70[ghostIndex].levelID = levelId;
-                        sp70[ghostIndex].vehicleID = vehicleId;
+                        ghost_header_fill((GhostHeader *) (AS_BYTES(fileDataToWrite) + newDir[ghostIndex].dataOffset),
+                                          ghostCharacterId, ghostTime, ghostNodeCount, &ghostData->levelID);
+                        newDir[ghostIndex].levelID = levelId;
+                        newDir[ghostIndex].vehicleID = vehicleId;
                         pakStatus = write_controller_pak_file(controllerIndex, fileNumber, "DKRACING-GHOSTS", "",
                                                               AS_BYTES(fileDataToWrite), fileSize);
                         mempool_free(fileDataToWrite);
@@ -1485,11 +1480,11 @@ s32 ghost_delete_for_world(s32 controllerIndex, s32 worldId) {
 SIDeviceStatus ghost_list(s32 controllerIndex, u8 *levelIDs, u8 *vehicleIDs, u8 *characterIDs, u16 *checksumIDs) {
     s32 i;
     u8 *fileData;
-    s32 ret; // sp64
-    GhostHeaderAlt *var_s1;
+    s32 ret;
+    GhostHeaderAlt *dirEntries;
     s32 fileNumber;
     s32 fileSize;
-    u8 temp_v0_2;
+    u8 cleared;
 
     ret = get_si_device_status(controllerIndex);
     if (ret != CONTROLLER_PAK_GOOD) {
@@ -1499,9 +1494,9 @@ SIDeviceStatus ghost_list(s32 controllerIndex, u8 *levelIDs, u8 *vehicleIDs, u8 
     for (i = 0; i < 6; i++) {
         levelIDs[i] = 0xFF;
         checksumIDs[i] = 0;
-        temp_v0_2 = checksumIDs[i];
-        characterIDs[i] = temp_v0_2;
-        vehicleIDs[i] = temp_v0_2;
+        cleared = checksumIDs[i];
+        characterIDs[i] = cleared;
+        vehicleIDs[i] = cleared;
     }
     ret = get_file_number(controllerIndex, "DKRACING-GHOSTS", "", &fileNumber);
     if (ret == CONTROLLER_PAK_GOOD) {
@@ -1510,17 +1505,17 @@ SIDeviceStatus ghost_list(s32 controllerIndex, u8 *levelIDs, u8 *vehicleIDs, u8 
             fileData = mempool_alloc_safe(fileSize + GHSS_SIZE, COLOUR_TAG_BLACK);
             ret = read_data_from_controller_pak(controllerIndex, fileNumber, (u8 *) fileData, fileSize);
             if (ret == CONTROLLER_PAK_GOOD) {
-                for (i = 0, var_s1 = (GhostHeaderAlt *) (&fileData[4]); i < 6; i++) {
-                    if (var_s1[i].levelVehicle.levelID != 0xFF) {
-                        if (calculate_ghost_header_checksum((GhostHeader *) &fileData[var_s1[i].dataOffset]) !=
-                            ((GhostHeaderAlt *) &fileData[var_s1[i].dataOffset])->checksum) {
+                for (i = 0, dirEntries = (GhostHeaderAlt *) (&fileData[4]); i < 6; i++) {
+                    if (dirEntries[i].levelVehicle.levelID != 0xFF) {
+                        if (calculate_ghost_header_checksum((GhostHeader *) &fileData[dirEntries[i].dataOffset]) !=
+                            ((GhostHeaderAlt *) &fileData[dirEntries[i].dataOffset])->checksum) {
                             ret = CONTROLLER_PAK_BAD_DATA;
                             break;
                         } else {
-                            levelIDs[i] = var_s1[i].levelVehicle.levelID;
-                            vehicleIDs[i] = var_s1[i].levelVehicle.vehicleID;
-                            characterIDs[i] = fileData[var_s1[i].dataOffset + 2];
-                            checksumIDs[i] = ((GhostHeaderAlt *) &fileData[var_s1[i].dataOffset] + 1)->checksum;
+                            levelIDs[i] = dirEntries[i].levelVehicle.levelID;
+                            vehicleIDs[i] = dirEntries[i].levelVehicle.vehicleID;
+                            characterIDs[i] = fileData[dirEntries[i].dataOffset + 2];
+                            checksumIDs[i] = ((GhostHeaderAlt *) &fileData[dirEntries[i].dataOffset] + 1)->checksum;
                         }
                     }
                 }
@@ -1869,9 +1864,7 @@ s32 delete_file(s32 controllerIndex, s32 fileNum) {
 // Copies a file from one controller pak to the other
 /* Official Name: packCopyFile */
 s32 copy_controller_pak_data(s32 controllerIndex, s32 fileNumber, s32 secondControllerIndex) {
-    UNUSED s32 pad;
     char fileName[PFS_FILE_NAME_LEN];
-    UNUSED s32 pad2;
     char fileExt[PFS_FILE_EXT_LEN];
     OSPfsState state;
     s32 status;
@@ -1918,9 +1911,7 @@ s32 copy_controller_pak_data(s32 controllerIndex, s32 fileNumber, s32 secondCont
 SIDeviceStatus get_file_number(s32 controllerIndex, char *fileName, char *fileExt, s32 *fileNumber) {
     u32 gameCode;
     char fileNameAsFontCodes[PFS_FILE_NAME_LEN];
-    UNUSED s32 pad;
     char fileExtAsFontCodes[PFS_FILE_EXT_LEN];
-    UNUSED s32 pad2;
     s32 ret;
 
     string_to_font_codes(fileName, fileNameAsFontCodes, PFS_FILE_NAME_LEN);
@@ -1982,9 +1973,9 @@ SIDeviceStatus read_data_from_controller_pak(s32 controllerIndex, s32 fileNum, u
 /* Official name: packWriteFile */
 SIDeviceStatus write_controller_pak_file(s32 controllerIndex, s32 fileNumber, char *fileName, char *fileExt,
                                          u8 *dataToWrite, s32 fileSize) {
-    s32 temp;
+    s32 remainder;
+    s32 pfsStatus;
     u8 fileNameAsFontCodes[PFS_FILE_NAME_LEN];
-    UNUSED s32 temp2;
     u8 fileExtAsFontCodes[PFS_FILE_EXT_LEN];
     SIDeviceStatus ret;
     s32 file_number;
@@ -1998,9 +1989,9 @@ SIDeviceStatus write_controller_pak_file(s32 controllerIndex, s32 fileNumber, ch
     }
 
     bytesToSave = fileSize;
-    temp = fileSize & 0xFF;
-    if (temp != 0) {
-        bytesToSave = (fileSize - temp) + GHSS_SIZE;
+    remainder = fileSize & 0xFF;
+    if (remainder != 0) {
+        bytesToSave = (fileSize - remainder) + GHSS_SIZE;
     }
 
     string_to_font_codes(fileName, (char *) fileNameAsFontCodes, PFS_FILE_NAME_LEN);
@@ -2023,11 +2014,11 @@ SIDeviceStatus write_controller_pak_file(s32 controllerIndex, s32 fileNumber, ch
         if (fileNumber != -1) {
             ret = CONTROLLER_PAK_BAD_DATA;
         } else {
-            temp = pc_pfs_allocate_file(&pfs[controllerIndex], COMPANY_CODE, game_code, fileNameAsFontCodes,
-                                        fileExtAsFontCodes, bytesToSave, &file_number);
-            if (temp == 0) {
+            pfsStatus = pc_pfs_allocate_file(&pfs[controllerIndex], COMPANY_CODE, game_code, fileNameAsFontCodes,
+                                             fileExtAsFontCodes, bytesToSave, &file_number);
+            if (pfsStatus == 0) {
                 ret = CONTROLLER_PAK_GOOD;
-            } else if (temp == PFS_DATA_FULL || temp == PFS_DIR_FULL) {
+            } else if (pfsStatus == PFS_DATA_FULL || pfsStatus == PFS_DIR_FULL) {
                 ret = CONTROLLER_PAK_FULL;
             } else {
                 ret = CONTROLLER_PAK_BAD_DATA;
@@ -2036,14 +2027,14 @@ SIDeviceStatus write_controller_pak_file(s32 controllerIndex, s32 fileNumber, ch
     }
 
     if (ret == CONTROLLER_PAK_GOOD) {
-        temp = pc_pfs_read_write_file(&pfs[controllerIndex], file_number, PFS_WRITE, 0, bytesToSave, dataToWrite);
-        if (temp == 0) {
+        pfsStatus = pc_pfs_read_write_file(&pfs[controllerIndex], file_number, PFS_WRITE, 0, bytesToSave, dataToWrite);
+        if (pfsStatus == 0) {
             ret = CONTROLLER_PAK_GOOD;
-        } else if ((temp == PFS_ERR_NOPACK) || (temp == PFS_ERR_DEVICE)) {
+        } else if ((pfsStatus == PFS_ERR_NOPACK) || (pfsStatus == PFS_ERR_DEVICE)) {
             ret = CONTROLLER_PAK_NOT_FOUND;
-        } else if (temp == PFS_ERR_INCONSISTENT) {
+        } else if (pfsStatus == PFS_ERR_INCONSISTENT) {
             ret = CONTROLLER_PAK_INCONSISTENT;
-        } else if (temp == PFS_ERR_ID_FATAL) {
+        } else if (pfsStatus == PFS_ERR_ID_FATAL) {
             ret = CONTROLLER_PAK_WITH_BAD_ID;
         } else {
             ret = CONTROLLER_PAK_BAD_DATA;
@@ -2158,7 +2149,6 @@ char *string_to_font_codes(char *inString, char *outString, s32 stringLength) {
  */
 SaveFileType get_file_type(s32 controllerIndex, s32 fileNum) {
     s32 *data;
-    UNUSED s32 pad;
     s32 ret;
 
     ret = SAVE_FILE_TYPE_CPAK_OTHER;
