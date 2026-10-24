@@ -61,26 +61,26 @@ static FadeTransition gFadeTitleScreenDemo = FADE_TRANSITION(FADE_FULLSCREEN, FA
  * Sets some things needed after the title screen from the save buffer.
  */
 void init_title_screen_variables(void) {
-    if (gRaceSetup.eepromSettings & 2) {
+    if (gRaceSetup.eepromSettings & EEPROM_DRUMSTICK_UNLOCKED) {
         set_magic_code_flags(CHEAT_CONTROL_DRUMSTICK);
     }
-    if ((gRaceSetup.eepromSettings & 0xFFFFF0) == 0xFFFFF0) {
+    if ((gRaceSetup.eepromSettings & EEPROM_STAFF_TIMES) == EEPROM_STAFF_TIMES) {
         set_magic_code_flags(CHEAT_CONTROL_TT);
     }
-    if (gRaceSetup.eepromSettings & 1) {
+    if (gRaceSetup.eepromSettings & EEPROM_ADVENTURE_TWO_UNLOCKED) {
         gRaceSetup.isInAdventureTwo = TRUE;
     } else {
         gRaceSetup.isInAdventureTwo = FALSE;
     }
-    if ((gRaceSetup.eepromSettings & 0x2000000) == 0) {
+    if ((gRaceSetup.eepromSettings & EEPROM_SUBTITLES) == 0) {
         set_subtitles(0);
     }
     load_menu_text(get_language());
 }
 
 void menu_intro_names_update(f32 updateRateF) {
-    f32 temp;
-    f32 temp2;
+    f32 elapsed;
+    f32 duration;
     s32 didUpdate;
     s32 xPos;
     s32 yPos;
@@ -126,10 +126,10 @@ void menu_intro_names_update(f32 updateRateF) {
 
     if (introCharData->slideInStartTime <= sIntroNameTimer) {
         if (sIntroNameTimer < introCharData->slideInEndTime) {
-            temp = (sIntroNameTimer - introCharData->slideInStartTime);
-            temp2 = (introCharData->slideInEndTime - introCharData->slideInStartTime);
-            xPos = (introCharData->startX + (((introCharData->centreX - introCharData->startX) * temp) / temp2));
-            yPos = (introCharData->startY + (((introCharData->centreY - introCharData->startY) * temp) / temp2));
+            elapsed = (sIntroNameTimer - introCharData->slideInStartTime);
+            duration = (introCharData->slideInEndTime - introCharData->slideInStartTime);
+            xPos = (introCharData->startX + (((introCharData->centreX - introCharData->startX) * elapsed) / duration));
+            yPos = (introCharData->startY + (((introCharData->centreY - introCharData->startY) * elapsed) / duration));
             text = introCharData->text;
             didUpdate = TRUE;
         } else if (sIntroNameTimer <= introCharData->holdEndTime) {
@@ -138,10 +138,10 @@ void menu_intro_names_update(f32 updateRateF) {
             text = introCharData->text;
             didUpdate = TRUE;
         } else if (sIntroNameTimer < introCharData->slideOutEndTime) {
-            temp = (sIntroNameTimer - introCharData->holdEndTime);
-            temp2 = (introCharData->slideOutEndTime - introCharData->holdEndTime);
-            xPos = (introCharData->centreX + (((introCharData->endX - introCharData->centreX) * temp) / temp2));
-            yPos = (introCharData->centreY + (((introCharData->endY - introCharData->centreY) * temp) / temp2));
+            elapsed = (sIntroNameTimer - introCharData->holdEndTime);
+            duration = (introCharData->slideOutEndTime - introCharData->holdEndTime);
+            xPos = (introCharData->centreX + (((introCharData->endX - introCharData->centreX) * elapsed) / duration));
+            yPos = (introCharData->centreY + (((introCharData->endY - introCharData->centreY) * elapsed) / duration));
             text = introCharData->text;
             didUpdate = TRUE;
         } else {
@@ -218,7 +218,6 @@ void menu_title_screen_init(void) {
  * Also render the selection options.
  */
 void render_title_screen(UNUSED s32 updateRate, f32 updateRateF) {
-    UNUSED u32 foo[2];
     s32 alpha;
     f32 scale;
     s32 i;
@@ -261,50 +260,29 @@ void render_title_screen(UNUSED s32 updateRate, f32 updateRateF) {
 }
 
 /**
- * Handle the countdown when the title screen starts to show the logo coming in.
- * Fade music to make voice clips more audible.
+ * Count down the current demo, fading out a second before the end, then load the next demo
+ * once it ends or its animation finishes. The first demo also restarts the intro names.
  */
-s32 menu_title_screen_loop(s32 updateRate) {
-    UNUSED s32 temp_v0_5;
-    s32 sp28;
+static void titlescreen_update_demo(s32 updateRate) {
+    s32 demoTimedOut;
     s8 *demo;
-    s32 contrIndex;
-    f32 updateRateF;
-    Camera *sp18;
     s8 playerCount;
 
-    sp18 = cam_get_active_camera();
-    gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
-    menu_input();
-    if (osTvType == OS_TV_TYPE_PAL) {
-        updateRateF = (f32) updateRate / 50.0f;
-    } else {
-        updateRateF = (f32) updateRate / 60.0f;
-    }
-    if (gMenuInput.delay < 20) {
-        render_title_screen(updateRate, updateRateF);
-    }
-    if (gMenuInput.delay) {
-        gMenuInput.delay += updateRate;
-    }
-    if (sTitleScreenDemoIds[gTitleDemoIndex] == sTitleScreenDemoIds[0]) {
-        gMenuFlow.opacityDecayTimer += updateRate;
-    }
-    sp28 = 0;
+    demoTimedOut = 0;
     if (gTitleDemoTimer > 0) {
         gTitleDemoTimer -= updateRate;
         if (gTitleDemoTimer < 60 && gTitleDemoTimer + updateRate >= 60) {
             music_fade(-768);
-            sp28 = 0;
+            demoTimedOut = 0;
             transition_begin(&gFadeTitleScreenDemo);
         }
         if (gTitleDemoTimer <= 0) {
-            sp28 = 1;
+            demoTimedOut = 1;
         }
     } else {
         gTitleDemoTimer = 0;
     }
-    if (gMenuInput.delay == 0 && (anim_prev_frame_state() || sp28)) {
+    if (gMenuInput.delay == 0 && (anim_prev_frame_state() || demoTimedOut)) {
         if (gTitleDemoTimer) {} // Fakematch
         gTitleDemoIndex += DEMO_INDEX_SIZE;
         demo = &sTitleScreenDemoIds[gTitleDemoIndex];
@@ -329,6 +307,13 @@ s32 menu_title_screen_loop(s32 updateRate) {
             gMenuFlow.opacityDecayTimer = 0;
         }
     }
+}
+
+/**
+ * Drop the title in with a whoosh and a camera shake, then play T.T.'s "Diddy Kong Racing"
+ * and "Press Start" lines. Lower the music while he speaks.
+ */
+static void titlescreen_update_reveal(s32 updateRate, f32 updateRateF, Camera *camera) {
     if (gTitleRevealTimer) {
         if (gTitleRevealTimer < 32) {
             if (gTitleRevealTimer == 1) {
@@ -337,7 +322,7 @@ s32 menu_title_screen_loop(s32 updateRate) {
             gTitleRevealTimer += updateRate;
             if (gTitleRevealTimer >= 32) {
                 gTitleRevealTimer = 32;
-                sp18->shakeMagnitude = 8.0f;
+                camera->shakeMagnitude = 8.0f;
                 sound_play(SOUND_EXPLOSION, NULL);
             }
         } else {
@@ -368,12 +353,21 @@ s32 menu_title_screen_loop(s32 updateRate) {
             music_volume_set((u8) gTrackSelect.musicVolume);
         }
     }
+}
+
+/**
+ * Before the title is shown, A or Start reveals it. After, move between the two options and
+ * select one with A or Start, giving menu control to whoever pressed it.
+ */
+static void titlescreen_input(void) {
+    s32 contrIndex;
+
     if (gTitleRevealTimer == 0) {
         if (gMenuInput.buttons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
             gTitleRevealTimer = 1;
         }
     } else if ((gMenuInput.delay == 0) && !is_controller_missing()) {
-        s32 temp0 = gTitleScreenCurrentOption;
+        s32 prevOption = gTitleScreenCurrentOption;
         // gMenuInput.stickY[PLAYER_MENU] = +1 when going up, and -1 when going down.
         if (gMenuInput.stickY[PLAYER_MENU] < 0 && gTitleScreenCurrentOption < 1) {
             gTitleScreenCurrentOption++;
@@ -381,7 +375,7 @@ s32 menu_title_screen_loop(s32 updateRate) {
         if (gMenuInput.stickY[PLAYER_MENU] > 0 && gTitleScreenCurrentOption > 0) {
             gTitleScreenCurrentOption--;
         }
-        if (temp0 != gTitleScreenCurrentOption) {
+        if (prevOption != gTitleScreenCurrentOption) {
             sound_play(SOUND_MENU_PICK2, NULL);
         }
         if (gMenuInput.buttons[PLAYER_MENU] & (A_BUTTON | START_BUTTON)) {
@@ -394,18 +388,49 @@ s32 menu_title_screen_loop(s32 updateRate) {
             sound_play(SOUND_SELECT2, NULL);
         }
     }
+}
+
+/**
+ * Handle the countdown when the title screen starts to show the logo coming in.
+ * Fade music to make voice clips more audible.
+ */
+s32 menu_title_screen_loop(s32 updateRate) {
+    s32 cutsceneId;
+    f32 updateRateF;
+    Camera *camera;
+
+    camera = cam_get_active_camera();
+    gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
+    menu_input();
+    if (osTvType == OS_TV_TYPE_PAL) {
+        updateRateF = (f32) updateRate / 50.0f;
+    } else {
+        updateRateF = (f32) updateRate / 60.0f;
+    }
+    if (gMenuInput.delay < 20) {
+        render_title_screen(updateRate, updateRateF);
+    }
+    if (gMenuInput.delay) {
+        gMenuInput.delay += updateRate;
+    }
+    if (sTitleScreenDemoIds[gTitleDemoIndex] == sTitleScreenDemoIds[0]) {
+        gMenuFlow.opacityDecayTimer += updateRate;
+    }
+    titlescreen_update_demo(updateRate);
+    titlescreen_update_reveal(updateRate, updateRateF, camera);
+    titlescreen_input();
     if (gMenuInput.delay > 30) {
         titlescreen_free();
         disable_new_screen_transitions();
         if (gTitleScreenCurrentOption == 0) {
-            sp28 = 0;
+            cutsceneId = 0;
             if (is_drumstick_unlocked()) {
-                sp28 = 1;
+                cutsceneId = 1;
             }
             if (is_tt_unlocked()) {
-                sp28 ^= 3;
+                cutsceneId ^= 3;
             }
-            load_level_for_menu(ASSET_LEVEL_CHARACTERSELECT, -1, sp28);
+            load_level_for_menu(ASSET_LEVEL_CHARACTERSELECT, -1, cutsceneId);
             charselect_prev(0, NULL);
             menu_init(MENU_CHARACTER_SELECT);
             return MENU_RESULT_CONTINUE;

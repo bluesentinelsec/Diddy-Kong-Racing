@@ -85,10 +85,10 @@ void menu_pause_init(void) {
  */
 void pausemenu_render(UNUSED s32 updateRate) {
     ColourRGBA *colour;
-    s32 halfTemp;
+    s32 halfHeight;
     s32 halfX;
     s32 x;
-    s32 temp;
+    s32 boxHeight;
     s32 textWidth;
     s32 i;
     s32 y;
@@ -100,7 +100,7 @@ void pausemenu_render(UNUSED s32 updateRate) {
             x = textWidth;
         }
     }
-    temp = (gMenuFlow.optionCap * 16) + 28;
+    boxHeight = (gMenuFlow.optionCap * 16) + 28;
     if (osTvType == OS_TV_TYPE_PAL) {
         y = SCREEN_HEIGHT_HALF_PAL;
     } else {
@@ -108,10 +108,10 @@ void pausemenu_render(UNUSED s32 updateRate) {
     }
     clear_dialogue_box_open_flag(7);
     dialogue_clear(7);
-    halfTemp = temp >> 1;
+    halfHeight = boxHeight >> 1;
     halfX = x >> 1;
-    set_current_dialogue_box_coords(7, SCREEN_WIDTH_HALF - halfX, y - halfTemp, SCREEN_WIDTH_HALF + halfX,
-                                    halfTemp + y);
+    set_current_dialogue_box_coords(7, SCREEN_WIDTH_HALF - halfX, y - halfHeight, SCREEN_WIDTH_HALF + halfX,
+                                    halfHeight + y);
     colour = &gPlayerPauseBgColour[input_player_id(gLastPlayerWhoPaused)];
     set_current_dialogue_background_colour(7, colour->r, colour->g, colour->b, colour->a);
     set_dialogue_font(7, ASSET_FONTS_FUNFONT);
@@ -123,7 +123,7 @@ void pausemenu_render(UNUSED s32 updateRate) {
         alpha = 511 - alpha;
     }
     if (gMenuFlow.subOption != 0) {
-        i = halfTemp - 26;
+        i = halfHeight - 26;
         if (gRaceSetup.trophyRaceWorldId != 0) {
             render_dialogue_text(7, POS_CENTRED, i + 8, gMenuLoaded.text[ASSET_MENU_TEXT_QUITTROPHYRACETITLE], 1,
                                  ALIGN_MIDDLE_CENTER);
@@ -165,7 +165,7 @@ void pausemenu_render(UNUSED s32 updateRate) {
  * making the main game loop do different things.
  */
 s32 menu_pause_loop(UNUSED Gfx **dl, s32 updateRate) {
-    s8 temp;
+    s8 prevOption;
     s32 playerId;
     s32 buttonsPressed;
 
@@ -196,12 +196,12 @@ s32 menu_pause_loop(UNUSED Gfx **dl, s32 updateRate) {
                 sound_play(SOUND_SELECT2, NULL);
                 gMenuFlow.subOption = 0;
             } else {
-                temp = gMenuFlow.subOption;
+                prevOption = gMenuFlow.subOption;
                 playerId = gLastPlayerWhoPaused;
                 if (gMenuInput.yAxisDirection[playerId] != 0) {
                     gMenuFlow.subOption = 3 - gMenuFlow.subOption;
                 }
-                if (temp != gMenuFlow.subOption) {
+                if (prevOption != gMenuFlow.subOption) {
                     sound_play(SOUND_MENU_PICK2, NULL);
                 }
             }
@@ -215,7 +215,7 @@ s32 menu_pause_loop(UNUSED Gfx **dl, s32 updateRate) {
                 gMenuInput.delay = 1;
             }
         } else {
-            temp = gMenuFlow.option;
+            prevOption = gMenuFlow.option;
             playerId = gLastPlayerWhoPaused;
             buttonsPressed = gMenuInput.yAxisDirection[playerId];
             if (buttonsPressed < 0) {
@@ -230,7 +230,7 @@ s32 menu_pause_loop(UNUSED Gfx **dl, s32 updateRate) {
             if (gMenuFlow.option >= gMenuFlow.optionCap) {
                 gMenuFlow.option = 0;
             }
-            if (temp != gMenuFlow.option) {
+            if (prevOption != gMenuFlow.option) {
                 sound_play(SOUND_MENU_PICK2, NULL);
             }
         }

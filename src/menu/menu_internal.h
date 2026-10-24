@@ -242,6 +242,16 @@ typedef struct RaceSetup {
     s32 cpakGhostData;
     s32 viewingCreditsFromCheat;
 } RaceSetup;
+
+// Bits of gRaceSetup.eepromSettings (see RaceSetup above).
+#define EEPROM_ADVENTURE_TWO_UNLOCKED 0x1
+#define EEPROM_DRUMSTICK_UNLOCKED 0x2
+#define EEPROM_LANGUAGE_MASK 0xC
+#define EEPROM_LANGUAGE_GERMAN 4
+#define EEPROM_LANGUAGE_FRENCH 8
+#define EEPROM_LANGUAGE_JAPANESE 12
+#define EEPROM_STAFF_TIMES 0xFFFFF0 // One bit per track whose staff time has been beaten (0x10 << track).
+#define EEPROM_SUBTITLES 0x2000000
 /** State the track select screen shares with the results screen and the drawing helpers. */
 typedef struct TrackSelectState {
     s32 viewportX;

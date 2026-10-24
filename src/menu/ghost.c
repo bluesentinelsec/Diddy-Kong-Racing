@@ -80,7 +80,6 @@ void ghostmenu_generate(void) {
     u16 validIDs[4];
     u16 swap;
     u16 swapByte;
-    UNUSED s32 pad;
 
     gGhostMenuTotal = 0;
     mainTrackIds = (u8 *) get_misc_asset(ASSET_MISC_MAIN_TRACKS_IDS);
@@ -122,17 +121,17 @@ void ghostmenu_generate(void) {
  * Move further entries forward to fill in the new gap.
  */
 s32 ghostmenu_erase(s32 id) {
-    s32 temp_s0;
+    s32 worldId;
     s32 result;
     s32 i;
 
     result = CONTROLLER_PAK_GOOD;
     if (id >= 0 && id < gGhostMenuTotal) {
         sound_play(SOUND_SELECT2, NULL);
-        temp_s0 = gGhostWorldIDs[id];
-        result = ghost_delete_for_world(gRaceSetup.cpakGhostData, temp_s0);
+        worldId = gGhostWorldIDs[id];
+        result = ghost_delete_for_world(gRaceSetup.cpakGhostData, worldId);
         if (result == CONTROLLER_PAK_GOOD) {
-            gGhostLevelIDsPak[temp_s0] = 0xFF;
+            gGhostLevelIDsPak[worldId] = 0xFF;
             gGhostMenuTotal--;
             for (i = id; i < gGhostMenuTotal; i++) {
                 gGhostWorldIDs[i] = gGhostWorldIDs[i + 1];
@@ -142,7 +141,7 @@ s32 ghostmenu_erase(s32 id) {
                 gGhostChecksumIDsMenu[i] = gGhostChecksumIDsMenu[i + 1];
             }
             for (i = 0; i < gGhostMenuTotal; i++) {
-                if (temp_s0 < gGhostWorldIDs[i]) {
+                if (worldId < gGhostWorldIDs[i]) {
                     gGhostWorldIDs[i]--;
                 }
             }
@@ -361,7 +360,6 @@ s32 menu_ghost_data_loop(s32 updateRate) {
     s32 xStick;
     s32 yStick;
     s32 prevOption;
-    UNUSED s32 unused;
 
     gMenuFlow.blinkTimer = (gMenuFlow.blinkTimer + updateRate) & 0x3F;
 
