@@ -119,7 +119,7 @@ static void hovercraft_land(Object *obj, Object_Racer *racer) {
 static void hovercraft_update_camera_yaw(Object *obj, Object_Racer *racer, s32 updateRate) {
     f32 speed;
     f32 blend;
-    f32 var_f6;
+    f32 yawScale;
     s32 diff;
     s32 step;
 
@@ -164,8 +164,8 @@ static void hovercraft_update_camera_yaw(Object *obj, Object_Racer *racer, s32 u
     if (diff < -0x8000) {
         diff += 0xFFFF;
     }
-    var_f6 = 1.0f;
-    diff = ((s32) ((((f32) diff) * 1.75) * var_f6));
+    yawScale = 1.0f;
+    diff = ((s32) ((((f32) diff) * 1.75) * yawScale));
     step = (diff * updateRate);
     racer->cameraYaw += step >> 6;
 }
@@ -177,14 +177,14 @@ static void hovercraft_update_camera_yaw(Object *obj, Object_Racer *racer, s32 u
 static void hovercraft_apply_forces(Object *obj, Object_Racer *racer, f32 updateRateF, f32 throttleForce,
                                     f32 brakeForce, f32 accel, f32 drag) {
     f32 slip;
-    f32 temp;
+    f32 force;
     f32 pitchForce;
     f32 rollForce;
     f32 velSquared;
 
     if (gCurrentPlayerIndex == PLAYER_COMPUTER && !racer->raceFinished) {
-        temp = racer->lateral_velocity * 0.25;
-        slip = temp * 0.35;
+        force = racer->lateral_velocity * 0.25;
+        slip = force * 0.35;
         if (slip < 0.0) {
             slip = -slip;
         }
@@ -195,22 +195,22 @@ static void hovercraft_apply_forces(Object *obj, Object_Racer *racer, f32 update
         obj->y_velocity += racer->oy1 * slip;
         obj->z_velocity += racer->oz1 * slip;
     } else {
-        temp = racer->lateral_velocity * 0.07;
+        force = racer->lateral_velocity * 0.07;
         if (gCurrentRacerInput & R_TRIG) {
-            temp *= 2;
+            force *= 2;
             if (gCurrentStickX > -40 && gCurrentStickX < 40) {
                 throttleForce *= 0.8;
             } else if (racer->lateral_velocity > 2.5 || racer->lateral_velocity < -2.5) {
                 throttleForce *= 1.5;
             }
             if (gCurrentRacerInput & B_BUTTON) {
-                temp *= 2;
+                force *= 2;
             }
         }
     }
-    obj->x_velocity -= racer->ox3 * temp;
-    obj->y_velocity -= racer->oy3 * temp;
-    obj->z_velocity -= racer->oz3 * temp;
+    obj->x_velocity -= racer->ox3 * force;
+    obj->y_velocity -= racer->oy3 * force;
+    obj->z_velocity -= racer->oz3 * force;
     throttleForce *= accel;
     obj->x_velocity -= racer->ox1 * throttleForce;
     obj->y_velocity -= racer->oy1 * throttleForce;
@@ -232,13 +232,13 @@ static void hovercraft_apply_forces(Object *obj, Object_Racer *racer, f32 update
         velSquared = -velSquared;
     }
     if (velSquared < 1.0f && (!(gCurrentRacerInput & A_BUTTON))) {
-        temp = racer->velocity * drag * 8.0f;
+        force = racer->velocity * drag * 8.0f;
     } else {
-        temp = velSquared * drag;
+        force = velSquared * drag;
     }
-    obj->x_velocity -= racer->ox1 * temp;
-    obj->y_velocity -= racer->oy1 * temp;
-    obj->z_velocity -= racer->oz1 * temp;
+    obj->x_velocity -= racer->ox1 * force;
+    obj->y_velocity -= racer->oy1 * force;
+    obj->z_velocity -= racer->oz1 * force;
     if (racer->magnetTimer != 0) {
         obj->x_velocity = gRacerMagnetVelX;
         obj->z_velocity = gRacerMagnetVelZ;
@@ -760,50 +760,47 @@ void update_camera_hovercraft(f32 updateRate, Object *obj, Object_Racer *racer) 
     f32 yVel;
     s32 numViewports;
     u8 tempZoom;
-    UNUSED s32 pad[2];
-    f32 phi_f14;
-    f32 phi_f18;
+    f32 targetBoom;
+    f32 targetHeight;
     f32 xVel;
     f32 zVel;
-    UNUSED s32 pad2;
-    f32 sp34;
-    UNUSED s32 pad3;
+    f32 pitchSin;
     f32 brakeVar;
     f32 baseSpeed;
-    s32 sp24 = 0x400;
+    s32 basePitch = 0x400;
     s32 tempUpdateRate;
     s32 angle;
     s32 segmentIndex;
     s32 tempAngle;
 
-    phi_f14 = 165.0f;
-    phi_f18 = 65.0f;
-    sp24 = 0x400;
+    targetBoom = 165.0f;
+    targetHeight = 65.0f;
+    basePitch = 0x400;
     tempUpdateRate = (s32) updateRate;
     // Place the camera a bit closer with 2+ players to help visibility.
     numViewports = cam_get_viewport_layout();
     if (numViewports == 1) {
-        phi_f14 = 200.0f;
-        phi_f18 = 51.0f;
-        sp24 = 0x280;
+        targetBoom = 200.0f;
+        targetHeight = 51.0f;
+        basePitch = 0x280;
     } else if (numViewports > 1) {
-        phi_f14 = 130.0f;
-        phi_f18 = 50.0f;
+        targetBoom = 130.0f;
+        targetHeight = 50.0f;
     }
     brakeVar = racer->brake;
     tempZoom = gCameraObject->zoom;
     baseSpeed = racer->forwardVel;
     switch (gCameraObject->zoom) {
         case 1:
-            phi_f14 += 35.0f;
+            targetBoom += 35.0f;
             break;
         case 2:
-            phi_f14 -= 35.0f;
-            phi_f18 -= 10.0f;
+            targetBoom -= 35.0f;
+            targetHeight -= 10.0f;
             break;
         case 3:
-            phi_f14 -= 53.0f;
-            phi_f18 -= 5.0f;
+            targetBoom -= 53.0f;
+            targetHeight -= 5.0f;
             baseSpeed *= 0.250;
             brakeVar = 0.0f;
             break;
@@ -822,7 +819,7 @@ void update_camera_hovercraft(f32 updateRate, Object *obj, Object_Racer *racer) 
                 angle = 0;
             }
         }
-        angle = sp24 - angle;
+        angle = basePitch - angle;
         tempAngle = angle - (u16) gCameraObject->trans.rotation.x_rotation;
         WRAP(tempAngle, -0x8000, 0x8000);
         gCameraObject->trans.rotation.x_rotation += (tempAngle * tempUpdateRate) >> 4;
@@ -834,25 +831,25 @@ void update_camera_hovercraft(f32 updateRate, Object *obj, Object_Racer *racer) 
         if (yVel > 65.0) {
             yVel = 65.0f;
         }
-        phi_f14 -= yVel;
+        targetBoom -= yVel;
     }
-    phi_f14 += baseSpeed * 30.0f;
+    targetBoom += baseSpeed * 30.0f;
     if (gRaceStartTimer == 0) {
         if (normalise_time(36) < racer->boostTimer) {
-            phi_f14 = -30.0f;
+            targetBoom = -30.0f;
         } else if (racer->boostTimer > 0) {
-            phi_f14 = 180.0f;
+            targetBoom = 180.0f;
         }
     }
     if (gRaceStartTimer > 80) {
-        gCameraObject->boomLength = phi_f14;
-        gCameraObject->cam_unk_20 = phi_f18;
+        gCameraObject->boomLength = targetBoom;
+        gCameraObject->cam_unk_20 = targetHeight;
     }
-    gCameraObject->boomLength += (phi_f14 - gCameraObject->boomLength) * 0.125; //!@Delta
-    gCameraObject->cam_unk_20 += (phi_f18 - gCameraObject->cam_unk_20) * 0.125; //!@Delta
-    sp34 = sins_f(gCameraObject->trans.rotation.x_rotation - sp24);
-    phi_f18 = coss_f(gCameraObject->trans.rotation.x_rotation - sp24);
-    phi_f18 = (gCameraObject->boomLength * sp34) + (gCameraObject->cam_unk_20 * phi_f18);
+    gCameraObject->boomLength += (targetBoom - gCameraObject->boomLength) * 0.125;   //!@Delta
+    gCameraObject->cam_unk_20 += (targetHeight - gCameraObject->cam_unk_20) * 0.125; //!@Delta
+    pitchSin = sins_f(gCameraObject->trans.rotation.x_rotation - basePitch);
+    targetHeight = coss_f(gCameraObject->trans.rotation.x_rotation - basePitch);
+    targetHeight = (gCameraObject->boomLength * pitchSin) + (gCameraObject->cam_unk_20 * targetHeight);
     xVel = sins_f(-racer->cameraYaw + 0x8000) * gCameraObject->boomLength;
     zVel = coss_f(-racer->cameraYaw + 0x8000) * gCameraObject->boomLength;
     yVel = (1.0 - (gDialogueCameraAngle / 10240.0f)); // Goes between 0-1
@@ -862,7 +859,7 @@ void update_camera_hovercraft(f32 updateRate, Object *obj, Object_Racer *racer) 
     racer->cameraLateralOffset -= (racer->cameraLateralOffset - yVel) * 0.25;
     yVel = sins_f(racer->cameraYaw + 0x4000) * racer->cameraLateralOffset;
     gCameraObject->trans.x_position = obj->trans.x_position + xVel + yVel;
-    yVel = gCameraObject->trans.y_position - (obj->trans.y_position + phi_f18);
+    yVel = gCameraObject->trans.y_position - (obj->trans.y_position + targetHeight);
     if (yVel > 0.0f) {
         yVel *= 0.5;
     } else {
@@ -878,7 +875,7 @@ void update_camera_hovercraft(f32 updateRate, Object *obj, Object_Racer *racer) 
     gCameraObject->trans.y_position -= yVel;
     gCameraObject->trans.rotation.z_rotation = 0;
     if (gRaceStartTimer) {
-        gCameraObject->trans.y_position = obj->trans.y_position + phi_f18;
+        gCameraObject->trans.y_position = obj->trans.y_position + targetHeight;
     }
 
     coss_f(racer->cameraYaw + 0x4000); // Unused function call that wasn't fully optimised out.

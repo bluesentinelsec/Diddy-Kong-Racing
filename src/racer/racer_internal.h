@@ -106,7 +106,8 @@ void racer_velocity_to_local(Object *obj, Object_Racer *racer, s32 includeRoll);
 void racer_collide_keeping_bump(Object *obj, Object_Racer *racer, s32 updateRate);
 void update_hovercraft(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *racer);
 void update_camera_hovercraft(f32 updateRate, Object *obj, Object_Racer *racer);
-f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 arg3, s32 updateRate, s32 arg5, f32 arg6);
+f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 waveType, s32 updateRate, s32 steerX,
+                          f32 driftScale);
 void update_plane(s32 updateRate, f32 updateRateF, Object *obj, Object_Racer *racer);
 void update_camera_plane(f32 updateRate, Object *obj, Object_Racer *racer);
 void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Object_Racer *racer);

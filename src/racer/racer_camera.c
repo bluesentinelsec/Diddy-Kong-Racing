@@ -346,7 +346,7 @@ void update_camera_car(f32 updateRate, Object *obj, Object_Racer *racer) {
  */
 void update_camera_finish_challenge(UNUSED f32 updateRate, Object *obj, Object_Racer *racer) {
     s32 segmentIndex;
-    f32 temp_f12;
+    f32 heightDiff;
     f32 zOffset;
     f32 xOffset;
 
@@ -358,11 +358,11 @@ void update_camera_finish_challenge(UNUSED f32 updateRate, Object *obj, Object_R
     xOffset = sins_f(0x8000 - gCameraObject->trans.rotation.y_rotation) * gCameraObject->boomLength;
     zOffset = coss_f(0x8000 - gCameraObject->trans.rotation.y_rotation) * gCameraObject->boomLength;
     gCameraObject->trans.x_position = obj->trans.x_position + xOffset;
-    temp_f12 = (gCameraObject->trans.y_position - (obj->trans.y_position + 45.0f)) * 0.25;
-    if (temp_f12 < -2.0) {
-        gCameraObject->trans.y_position = (gCameraObject->trans.y_position - (temp_f12 + 2.0));
+    heightDiff = (gCameraObject->trans.y_position - (obj->trans.y_position + 45.0f)) * 0.25;
+    if (heightDiff < -2.0) {
+        gCameraObject->trans.y_position = (gCameraObject->trans.y_position - (heightDiff + 2.0));
     }
-    if (temp_f12 > 0.0f) {
+    if (heightDiff > 0.0f) {
         gCameraObject->trans.y_position = obj->trans.y_position + 45.0f;
     }
     gCameraObject->trans.z_position = obj->trans.z_position + zOffset;

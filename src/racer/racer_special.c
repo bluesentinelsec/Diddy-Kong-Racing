@@ -257,8 +257,7 @@ void update_loop_de_loop(s32 updateRate, f32 updateRateF, Object *racerObj, Obje
  * The camera's rotation follows the players exactly, in order to stay levelled.
  */
 void update_camera_loop(f32 updateRateF, Object *obj, Object_Racer *racer) {
-    s32 UpdateRate;
-    UNUSED f32 pad;
+    s32 updateRateInt;
     s32 segmentIndex;
     s32 angle;
     f32 targetBoomLength;
@@ -268,7 +267,7 @@ void update_camera_loop(f32 updateRateF, Object *obj, Object_Racer *racer) {
     MtxF mtx;
     s32 angleDiff;
 
-    UpdateRate = (s32) updateRateF;
+    updateRateInt = (s32) updateRateF;
     targetBoomLength = 120.0f;
     if (gRaceStartTimer > 60) {
         targetBoomLength += (gRaceStartTimer - 60) * 4.0f;
@@ -308,11 +307,11 @@ void update_camera_loop(f32 updateRateF, Object *obj, Object_Racer *racer) {
     angleDiff = (u16) (-obj->trans.rotation.z_rotation);
     angle = angleDiff - ((u16) gCameraObject->trans.rotation.z_rotation);
     WRAP(angle, -0x8000, 0x8000);
-    gCameraObject->trans.rotation.z_rotation += ((angle * UpdateRate) >> 4);
+    gCameraObject->trans.rotation.z_rotation += ((angle * updateRateInt) >> 4);
     angleDiff = -obj->trans.rotation.x_rotation;
     angle = angleDiff - (u16) gCameraObject->trans.rotation.x_rotation;
     WRAP(angle, -0x8000, 0x8000);
-    gCameraObject->trans.rotation.x_rotation += ((angle * UpdateRate) >> 4);
+    gCameraObject->trans.rotation.x_rotation += ((angle * updateRateInt) >> 4);
     gCameraObject->trans.rotation.y_rotation = racer->cameraYaw;
     segmentIndex = get_level_segment_index_from_position(
         gCameraObject->trans.x_position, gCameraObject->trans.y_position, gCameraObject->trans.z_position);

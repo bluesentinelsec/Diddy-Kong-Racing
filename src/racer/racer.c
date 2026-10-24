@@ -331,7 +331,8 @@ void racer_collide_keeping_bump(Object *obj, Object_Racer *racer, s32 updateRate
 /**
  * When on water, apply a rotation effect based on the movement of the waves and turning direction.
  */
-f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 arg3, s32 updateRate, s32 arg5, f32 arg6) {
+f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 waveType, s32 updateRate, s32 steerX,
+                          f32 driftScale) {
     MtxF mtxF;
     f32 velocity;
     s32 angle;
@@ -339,7 +340,7 @@ f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 arg3,
     f32 updateRateF;
 
     updateRateF = updateRate;
-    if (arg3 == SURFACE_WATER_WAVY) {
+    if (waveType == SURFACE_WATER_WAVY) {
         velocity = racer->velocity;
         if (velocity < 0.0f) {
             velocity = -velocity;
@@ -349,8 +350,8 @@ f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 arg3,
             velocity = 0.0f;
         }
     } else {
-        obj->trans.x_position += pos->x * updateRateF * arg6;
-        obj->trans.z_position += pos->z * updateRateF * arg6;
+        obj->trans.x_position += pos->x * updateRateF * driftScale;
+        obj->trans.z_position += pos->z * updateRateF * driftScale;
         velocity = 1.0f;
     }
     gCurrentRacerTransform.rotation.y_rotation = -obj->trans.rotation.y_rotation;
@@ -363,7 +364,7 @@ f32 rotate_racer_in_water(Object *obj, Object_Racer *racer, Vec3f *pos, s8 arg3,
     mtxf_from_inverse_transform(&mtxF, &gCurrentRacerTransform);
     mtxf_transform_point(mtxF, pos->x, pos->y, pos->z, &pos->x, &pos->y, &pos->z);
     angle = -((s16) (u16) arctan2_f(pos->x, pos->y)) * velocity;
-    angle = (u16) (angle - (arg5 << 6)) - (u16) racer->x_rotation_vel;
+    angle = (u16) (angle - (steerX << 6)) - (u16) racer->x_rotation_vel;
     angle = angle > 0x8000 ? angle - 0xffff : angle;
     angle = angle < -0x8000 ? angle + 0xffff : angle;
     racer->x_rotation_vel += (angle * updateRate) >> 4;
@@ -804,9 +805,9 @@ static void racer_autopilot_hub(Object *obj, Object_Racer *racer) {
  * and notes whether the throttle was released.
  */
 static void racer_read_input(Object *obj, Object_Racer *tempRacer, s32 updateRate) {
-    s32 tempVar;
+    s32 controllerIndex;
 
-    tempVar = tempRacer->playerIndex;
+    controllerIndex = tempRacer->playerIndex;
     if (tempRacer->playerIndex != PLAYER_COMPUTER && tempRacer->exitObj == 0 && pc_trace_autopilot()) {
         // A scripted trace holding AUTO: the human racer drives itself (linux/input.c), until a
         // hub door takes over the steering below.
@@ -816,18 +817,18 @@ static void racer_read_input(Object *obj, Object_Racer *tempRacer, s32 updateRat
     } else if (tempRacer->playerIndex != PLAYER_COMPUTER) {
         if (tempRacer->exitObj == 0) {
             if (is_race_started_by_player_two()) {
-                tempVar = 1 - tempVar;
+                controllerIndex = 1 - controllerIndex;
             }
             // Cap the joystick tilt and write the button inputs to the current buffer.
-            gCurrentStickX = input_clamp_stick_x(tempVar);
+            gCurrentStickX = input_clamp_stick_x(controllerIndex);
             // Flip the steering for adventure 2.
             if (get_filtered_cheats() & CHEAT_MIRRORED_TRACKS) {
                 gCurrentStickX = -gCurrentStickX;
             }
-            gCurrentStickY = input_clamp_stick_y(tempVar);
-            gCurrentRacerInput = input_held(tempVar);
-            gCurrentButtonsPressed = input_pressed(tempVar);
-            gCurrentButtonsReleased = input_released(tempVar);
+            gCurrentStickY = input_clamp_stick_y(controllerIndex);
+            gCurrentRacerInput = input_held(controllerIndex);
+            gCurrentButtonsPressed = input_pressed(controllerIndex);
+            gCurrentButtonsReleased = input_released(controllerIndex);
         } else {
             racer_enter_door(tempRacer, updateRate);
         }
@@ -859,7 +860,7 @@ static void racer_block_input(Object_Racer *tempRacer) {
  * Applies the bubble trap slowdown, the stun steering wobble and the magnet pull.
  */
 static void racer_apply_status_effects(Object *obj, Object_Racer *tempRacer, s32 updateRate) {
-    s32 tempVar;
+    s32 prevWobblePhase;
 
     if (tempRacer->bubbleTrapTimer > 0) {
         tempRacer->bubbleTrapTimer -= updateRate;
@@ -875,9 +876,9 @@ static void racer_apply_status_effects(Object *obj, Object_Racer *tempRacer, s32
         tempRacer->stunTimer -= updateRate;
     }
     if (tempRacer->steerWobbleTimer > 0) {
-        tempVar = tempRacer->steerWobbleTimer & 0xF;
+        prevWobblePhase = tempRacer->steerWobbleTimer & 0xF;
         tempRacer->steerWobbleTimer -= updateRate;
-        if (tempVar < (tempRacer->steerWobbleTimer & 0xF)) {
+        if (prevWobblePhase < (tempRacer->steerWobbleTimer & 0xF)) {
             tempRacer->steerJitter = rand_range(-80, 80);
         }
         gCurrentStickX += tempRacer->steerJitter;
@@ -1067,15 +1068,15 @@ static void racer_place_challenge_marker(Object_Racer *tempRacer) {
  */
 static void racer_update_checkpoints(Object *obj, Object_Racer *tempRacer, LevelHeader *header, f32 xTemp, f32 yTemp,
                                      f32 zTemp) {
-    s32 tempVar;
+    s32 passResult;
     s32 checkpointCount;
     f32 lastCheckpointDist;
     CheckpointNode *checkpointNode;
 
     lastCheckpointDist = tempRacer->checkpoint_distance;
-    tempVar = checkpoint_is_passed(tempRacer->nextCheckpoint, obj, xTemp, yTemp, zTemp, &tempRacer->checkpoint_distance,
-                                   &tempRacer->isOnAlternateRoute);
-    if (tempVar == -100) {
+    passResult = checkpoint_is_passed(tempRacer->nextCheckpoint, obj, xTemp, yTemp, zTemp,
+                                      &tempRacer->checkpoint_distance, &tempRacer->isOnAlternateRoute);
+    if (passResult == -100) {
         racer_update_progress(tempRacer);
     }
     checkpointNode = find_next_checkpoint_node(tempRacer->nextCheckpoint, tempRacer->isOnAlternateRoute);
@@ -1086,7 +1087,7 @@ static void racer_update_checkpoints(Object *obj, Object_Racer *tempRacer, Level
     if (checkpointNode->laneAction[tempRacer->aiLane] == 6) {
         tempRacer->lap = header->laps + 1;
     }
-    if (tempVar == 0) {
+    if (passResult == 0) {
         if (tempRacer->playerIndex == PLAYER_COMPUTER && checkpointNode->laneAction[tempRacer->aiLane] == 2) {
             tempRacer->isOnAlternateRoute = TRUE;
         }
@@ -1116,7 +1117,7 @@ static void racer_update_checkpoints(Object *obj, Object_Racer *tempRacer, Level
         if (tempRacer->playerIndex == PLAYER_COMPUTER && lastCheckpointDist < tempRacer->checkpoint_distance) {
             tempRacer->checkpoint_distance = lastCheckpointDist;
         }
-        tempRacer->checkpointRank = tempVar;
+        tempRacer->checkpointRank = passResult;
     }
 }
 
@@ -1183,11 +1184,11 @@ static void racer_update_stretch(Object_Racer *tempRacer, f32 updateRateF) {
  * Turns the character's head toward its target angle, then tracks double taps of the R button.
  */
 static void racer_update_head_and_r_tap(Object_Racer *tempRacer, s32 updateRate) {
-    s32 tempVar;
+    s32 turnStep;
 
-    tempVar = ((tempRacer->headAngleTarget - tempRacer->headAngle) * updateRate) >> 3;
-    CLAMP(tempVar, -0x800, 0x800);
-    tempRacer->headAngle += tempVar;
+    turnStep = ((tempRacer->headAngleTarget - tempRacer->headAngle) * updateRate) >> 3;
+    CLAMP(turnStep, -0x800, 0x800);
+    tempRacer->headAngle += turnStep;
     if ((gCurrentButtonsPressed & R_TRIG) && tempRacer->tapTimerR) {
         tempRacer->tappedR = TRUE;
         tempRacer->tapTimerR = 0;
@@ -1750,7 +1751,6 @@ void handle_base_steering(Object_Racer *racer, UNUSED s32 updateRate, f32 update
  */
 void racer_update_checkpoint_progress(Object *obj, Object_Racer *racer, s32 updateRate) {
     f32 ftemp;
-    UNUSED s32 pad;
     s32 checkpointCount;
     CheckpointNode *tempCheckpointNode;
     f32 posX[5];

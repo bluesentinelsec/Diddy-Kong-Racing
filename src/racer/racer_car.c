@@ -1180,11 +1180,11 @@ void update_car_drive_animation(Object *obj, Object_Racer *racer, s32 updateRate
 /**
  * Starts or advances a racer animation: blends out of the idle pose first
  * when flags & 1, holds the last frame or plays back out when flags & 2, and
- * never holds when flags & 4. arg5 is the frame step, scaled by arg7.
+ * never holds when flags & 4. frameStep is the frame step, scaled by updateRate.
  */
-void racer_set_animation(Object *obj, Object_Racer *racer, s32 action, s32 arg3, s32 duration, s32 arg5, s32 flags,
-                         s32 arg7) {
-    arg5 *= arg7;
+void racer_set_animation(Object *obj, Object_Racer *racer, s32 action, s32 startFrame, s32 duration, s32 frameStep,
+                         s32 flags, s32 updateRate) {
+    frameStep *= updateRate;
 
     if (gCurrentPlayerIndex == PLAYER_COMPUTER && action >= 3) {
         obj->animationID = 0;
@@ -1192,27 +1192,27 @@ void racer_set_animation(Object *obj, Object_Racer *racer, s32 action, s32 arg3,
     } else if (obj->animationID == 0) {
         if (flags & 1) {
             if (obj->animFrame > 40) {
-                obj->animFrame -= arg7 * 4;
+                obj->animFrame -= updateRate * 4;
                 if (obj->animFrame <= 40) {
                     obj->animationID = action;
-                    obj->animFrame = arg3;
+                    obj->animFrame = startFrame;
                 }
             } else {
-                obj->animFrame += arg7 * 4;
+                obj->animFrame += updateRate * 4;
                 if (obj->animFrame >= 40) {
                     obj->animationID = action;
-                    obj->animFrame = arg3;
+                    obj->animFrame = startFrame;
                 }
             }
         } else {
             obj->animationID = action;
-            obj->animFrame = arg3;
+            obj->animFrame = startFrame;
             racer->driveAnimFlags &= ~0x80;
         }
     } else if (obj->animationID == action) {
         if (flags & 2) {
             if (racer->driveAnimFlags & 0x80) {
-                obj->animFrame -= arg5; //!@Delta
+                obj->animFrame -= frameStep; //!@Delta
                 if (obj->animFrame <= 0) {
                     obj->animationID = 0;
                     racer->driveAnimState = 0;
@@ -1220,7 +1220,7 @@ void racer_set_animation(Object *obj, Object_Racer *racer, s32 action, s32 arg3,
                     racer->driveAnimFlags = 0;
                 }
             } else {
-                obj->animFrame += arg5; //!@Delta
+                obj->animFrame += frameStep; //!@Delta
                 if (obj->animFrame >= duration) {
                     obj->animFrame = duration - 1;
                     if (!(flags & 4)) {
@@ -1229,7 +1229,7 @@ void racer_set_animation(Object *obj, Object_Racer *racer, s32 action, s32 arg3,
                 }
             }
         } else {
-            obj->animFrame += arg5; //!@Delta
+            obj->animFrame += frameStep; //!@Delta
             if (obj->animFrame >= duration) {
                 obj->animationID = 0;
                 racer->driveAnimState = 0;
@@ -1238,7 +1238,7 @@ void racer_set_animation(Object *obj, Object_Racer *racer, s32 action, s32 arg3,
             }
         }
     } else {
-        obj->animFrame = arg3;
+        obj->animFrame = startFrame;
         obj->animationID = action;
     }
 }
@@ -1510,9 +1510,9 @@ void handle_car_velocity_control(Object_Racer *racer) {
  */
 void update_car_wheels(Object *objRacer, Object_Racer *racer, f32 updateRateF) {
     Object *someObj;
-    f64 temp_f0;
+    f64 wheelY;
     f32 velocity;
-    s32 temp_v1;
+    s32 wheelCount;
     s32 flags;
     s32 isNotHardBraking;
     s32 i;
@@ -1520,14 +1520,14 @@ void update_car_wheels(Object *objRacer, Object_Racer *racer, f32 updateRateF) {
     if (objRacer->attachPoints == NULL) {
         return;
     }
-    temp_v1 = objRacer->attachPoints->count;
-    if (temp_v1 == 2) {
+    wheelCount = objRacer->attachPoints->count;
+    if (wheelCount == 2) {
         someObj = objRacer->attachPoints->obj[0];
         someObj->trans.rotation.y_rotation = 0x4000;
         someObj = objRacer->attachPoints->obj[1];
         someObj->trans.rotation.y_rotation = 0x4000;
     }
-    if (temp_v1 >= 4) {
+    if (wheelCount >= 4) {
         velocity = racer->velocity;
         if (velocity > 5.0) {
             velocity = 5.0;
@@ -1611,8 +1611,8 @@ void update_car_wheels(Object *objRacer, Object_Racer *racer, f32 updateRateF) {
                     someObj->trans.scale += (((someObj->header->scale * 1.4) - someObj->trans.scale) * 0.1);
                 }
             } else {
-                temp_f0 = someObj->trans.y_position;
-                someObj->trans.y_position = (temp_f0 - (temp_f0 * 0.125));
+                wheelY = someObj->trans.y_position;
+                someObj->trans.y_position = (wheelY - (wheelY * 0.125));
                 someObj->trans.scale += ((someObj->header->scale - someObj->trans.scale) * 0.1);
             }
             flags <<= 1;
@@ -1711,10 +1711,9 @@ void update_car_velocity_ground(Object *obj, Object_Racer *racer, s32 updateRate
     s32 xStick;
     s32 stickMultiplier;
     s32 surfaceType;
-    s32 sp38;
-    f32 temp_f0_2;
+    s32 isSliding;
+    f32 speedFrac;
     f32 velSquare;
-    UNUSED f32 pad;
     f32 traction;
     f32 forwardVel;
     f32 weight;
@@ -1722,8 +1721,8 @@ void update_car_velocity_ground(Object *obj, Object_Racer *racer, s32 updateRate
     f32 multiplier;
     s32 rawStick;
     s32 velocityS;
-    s32 temp;
-    u16 temp2;
+    s32 steerTurn;
+    u16 steerTurnU16;
 
     velSquare = racer->velocity * racer->velocity;
     racer->pushVelX = 0.0f;
@@ -1731,10 +1730,10 @@ void update_car_velocity_ground(Object *obj, Object_Racer *racer, s32 updateRate
     if (racer->velocity < 0.0f) {
         velSquare = -velSquare;
     }
-    sp38 = 0;
+    isSliding = 0;
     multiplier = handle_racer_top_speed(obj, racer);
     if (racer->y_rotation_vel > 0x1C00 || racer->y_rotation_vel < -0x1C00) {
-        sp38 = 1;
+        isSliding = 1;
     }
     rawStick = gCurrentStickX;
     stickMultiplier = 6;
@@ -1752,9 +1751,9 @@ void update_car_velocity_ground(Object *obj, Object_Racer *racer, s32 updateRate
         xStick = -rawStick * stickMultiplier;
     }
     xStick *= updateRate;
-    temp = (s32) ((xStick >> 1) * gCurrentRacerHandlingStat);
-    temp2 = temp;
-    racer->steerVisualRotation -= temp2; //!@Delta
+    steerTurn = (s32) ((xStick >> 1) * gCurrentRacerHandlingStat);
+    steerTurnU16 = steerTurn;
+    racer->steerVisualRotation -= steerTurnU16; //!@Delta
     handle_car_steering(racer);
     racer->lateral_velocity *= 0.9; //!@Delta
     surfaceType = SURFACE_DEFAULT;
@@ -1780,14 +1779,14 @@ void update_car_velocity_ground(Object *obj, Object_Racer *racer, s32 updateRate
         racer->boostType = BOOST_UNK3;
     }
     racer->velocity -= velSquare * traction; //!@Delta
-    if (sp38) {
+    if (isSliding) {
         if (racer->slideFrames < 16) {
             racer->slideFrames++;
         }
     } else {
         racer->slideFrames = 0;
     }
-    if (cam_get_viewport_layout() < 2 && sp38 && racer->velocity < -2.0) {
+    if (cam_get_viewport_layout() < 2 && isSliding && racer->velocity < -2.0) {
         if (racer->wheel_surfaces[2] < SURFACE_NONE) {
             obj->particleEmittersEnabled |= 1 << (racer->wheel_surfaces[2] * 2);
         }
@@ -1803,9 +1802,9 @@ void update_car_velocity_ground(Object *obj, Object_Racer *racer, s32 updateRate
         vel = 12.0f;
     }
     velocityS = (s32) vel;
-    temp_f0_2 = vel - (f32) velocityS;
-    vel = (gCurrentRacerMiscAssetPtr[velocityS + 1] * temp_f0_2) +
-          (gCurrentRacerMiscAssetPtr[velocityS] * (1.0 - temp_f0_2));
+    speedFrac = vel - (f32) velocityS;
+    vel = (gCurrentRacerMiscAssetPtr[velocityS + 1] * speedFrac) +
+          (gCurrentRacerMiscAssetPtr[velocityS] * (1.0 - speedFrac));
     vel *= 1.7;
     vel *= multiplier;
     if (racer->boostTimer > 0) {

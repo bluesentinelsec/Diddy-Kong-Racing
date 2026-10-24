@@ -335,7 +335,6 @@ Object *racer_find_weapon_target(Object *racerObj, Object_Racer *racer, f32 *out
     s32 i;
     f32 curDistance;
     f32 racerOx1;
-    UNUSED s32 pad;
     f32 racerOy1;
     Object *savedRacerObj;
     Object *curRacerObj;
