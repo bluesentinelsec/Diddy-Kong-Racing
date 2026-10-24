@@ -1,5 +1,15 @@
 #include "objects_internal.h"
 
+// Settings::cutsceneFlags bit set once the post-race balloon cutscene has been watched; after that A skips it.
+#define CUTSCENE_BALLOON_SEEN 0x40000
+// Settings racer best_times bit for a new course record (the low bits mark record laps).
+#define BEST_TIMES_COURSE_RECORD 0x80
+// A time trial is only kept as the player ghost if the course took under three minutes (in frames).
+#define GHOST_SAVE_TIME_LIMIT 10800
+// EEPROM settings: one "staff ghost beaten" bit per main track, starting at bit 4.
+#define EEPROM_TT_BEATEN_FIRST 16
+#define EEPROM_TT_BEATEN_ALL 0xFFFFF0
+
 static FadeTransition gTajChallengeTransition =
     FADE_TRANSITION(FADE_FULLSCREEN, FADE_FLAG_OUT, FADE_COLOR_BLACK, 30, 15);
 static FadeTransition gBalloonCutsceneTransition =
@@ -512,7 +522,7 @@ s8 set_course_finish_flags(Settings *settings) {
 void race_finish_adventure(UNUSED s32 unusedArg) {
     gRaceEndTimer = 300;
     gRaceEndStage = 0;
-    unused_D_8011AD52 = unusedArg;
+    gRaceFinishUnusedArg = unusedArg;
 }
 
 /**
@@ -524,27 +534,27 @@ void race_transition_adventure(s32 updateRate) {
     s32 i;
     Object_Racer *racer;
     Object *prevPort0Racer;
-    s32 sp30;
+    s32 winnerIndex; // holds the timer before this frame until the winner is searched for
     Object *prevRacer0Obj;
     Settings *settings;
     u32 cutsceneTimerLimit;
 
     set_pause_lockout_timer(1);
-    sp30 = gRaceEndTimer;
+    winnerIndex = gRaceEndTimer;
     gRaceEndTimer -= updateRate;
     if (gRaceEndTimer <= 0) {
         gRaceEndTimer = -1;
     }
-    if (sp30 > 50 && gRaceEndTimer <= 50) {
+    if (winnerIndex > 50 && gRaceEndTimer <= 50) {
         transition_begin(&gRaceEndFade);
     }
-    sp30 = 0;
+    winnerIndex = 0;
     if (gRaceEndStage == 0 && gRaceEndTimer == -1) {
         for (i = 0; i < gNumRacers; i++) {
             racer = (*gRacers)[i]->racer;
             racer->magnetTargetObj = NULL;
             if (racer->playerIndex != PLAYER_COMPUTER && racer->finishPosition == 1) {
-                sp30 = i;
+                winnerIndex = i;
             }
             if (racer->magnetSoundMask != NULL) {
                 sndp_stop(racer->magnetSoundMask);
@@ -554,8 +564,8 @@ void race_transition_adventure(s32 updateRate) {
             }
         }
         prevPort0Racer = (*gRacers)[0];
-        (*gRacers)[0] = (*gRacers)[sp30];
-        (*gRacers)[sp30] = prevPort0Racer;
+        (*gRacers)[0] = (*gRacers)[winnerIndex];
+        (*gRacers)[winnerIndex] = prevPort0Racer;
         racer_sound_free((*gRacers)[0]);
         hud_audio_init();
         reset_rocket_sound_timer();
@@ -631,7 +641,7 @@ void race_transition_adventure(s32 updateRate) {
         }
         i = input_pressed(PLAYER_ONE) & A_BUTTON;
         settings = get_settings();
-        if (!(settings->cutsceneFlags & 0x40000)) {
+        if (!(settings->cutsceneFlags & CUTSCENE_BALLOON_SEEN)) {
             i = 0;
         }
         if (anim_prev_frame_state() != 0 || (i != 0 && check_fadeout_transition() == 0)) {
@@ -640,7 +650,7 @@ void race_transition_adventure(s32 updateRate) {
             }
             level_transition_begin(2);
             gRaceEndStage = 5;
-            settings->cutsceneFlags |= 0x40000;
+            settings->cutsceneFlags |= CUTSCENE_BALLOON_SEEN;
         }
     }
 }
@@ -731,13 +741,14 @@ void race_finish_time_trial(void) {
             if ((settings->courseTimesPtr[vehicleID][settings->courseId] == NULL) ||
                 (bestCourseTime < settings->courseTimesPtr[vehicleID][settings->courseId])) {
                 settings->courseTimesPtr[vehicleID][settings->courseId] = bestCourseTime;
-                settings->racers[settings->timeTrialRacer].best_times |= 0x80;
+                settings->racers[settings->timeTrialRacer].best_times |= BEST_TIMES_COURSE_RECORD;
             }
         }
         if (((!vehicleID) && (!vehicleID)) && (!vehicleID)) {} // Fakematch
         if (settings->timeTrialRacer == 0) {
-            if (bestCourseTime < 10800 && (vehicleID != gTimeTrialVehicle || timetrial_map_id() != level_id() ||
-                                           bestCourseTime < gTimeTrialTime)) {
+            if (bestCourseTime < GHOST_SAVE_TIME_LIMIT &&
+                (vehicleID != gTimeTrialVehicle || timetrial_map_id() != level_id() ||
+                 bestCourseTime < gTimeTrialTime)) {
                 gTimeTrialTime = bestCourseTime;
                 gTimeTrialVehicle = gPrevTimeTrialVehicle;
                 gTimeTrialCharacter = settings->racers[0].character;
@@ -837,7 +848,7 @@ s32 timetrial_staff_ghost_check(Object *obj) {
  * Check if the player has beaten every time and unlock TT.
  * Otherwise, tell them to try another track.
  */
-void tt_ghost_beaten(s32 arg0, s16 *playerId) {
+void tt_ghost_beaten(s32 levelId, s16 *playerId) {
     s32 trackIdCount;
     s8 *mainTrackIds;
 
@@ -846,14 +857,14 @@ void tt_ghost_beaten(s32 arg0, s16 *playerId) {
     gTimeTrialStaffGhost = FALSE;
     mainTrackIds = (s8 *) get_misc_asset(ASSET_MISC_MAIN_TRACKS_IDS);
     trackIdCount = 0;
-    while (mainTrackIds[trackIdCount] != -1 && mainTrackIds[trackIdCount] != arg0) {
+    while (mainTrackIds[trackIdCount] != -1 && mainTrackIds[trackIdCount] != levelId) {
         trackIdCount++;
     }
     if (gBeatStaffGhost) {
         // Save that TT has been beaten for this track.
-        set_eeprom_settings_value(16 << trackIdCount);
+        set_eeprom_settings_value(EEPROM_TT_BEATEN_FIRST << trackIdCount);
         // Check if TT has been beaten for all tracks.
-        if ((get_eeprom_settings() & 0xFFFFF0) == 0xFFFFF0) {
+        if ((get_eeprom_settings() & EEPROM_TT_BEATEN_ALL) == EEPROM_TT_BEATEN_ALL) {
             set_magic_code_flags(CHEAT_CONTROL_TT);
             sound_play(SOUND_VOICE_TT_BEAT_ALL_TIMES, NULL);
             sound_play_delayed(SOUND_VOICE_TT_UNLOCKED, NULL, 1.5f);
@@ -891,7 +902,7 @@ u8 timetrial_init_staff_ghost(s32 trackId) {
         if (mainTrackIds[i] != -1) {
             if (staffTime[i] >= settings->courseTimesPtr[gPrevTimeTrialVehicle][trackId]) {
                 // Check if TT has been beaten?
-                if (!(get_eeprom_settings() & ((1 << 4) << i))) {
+                if (!(get_eeprom_settings() & (EEPROM_TT_BEATEN_FIRST << i))) {
                     gBeatStaffGhost = TRUE;
                 }
                 if (timetrial_load_staff_ghost(trackId) == 0) {
@@ -987,7 +998,6 @@ void init_racer_for_challenge(s32 vehicleID) {
  */
 void mode_init_taj_race(void) {
     CheckpointNode *checkpointNode;
-    UNUSED s32 pad;
     s32 j;
     s32 i;
     s32 lvlSeg;

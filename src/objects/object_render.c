@@ -57,7 +57,7 @@ void render_3d_billboard(Object *obj) {
         flags |= RENDER_SEMI_TRANSPARENT;
         hasPrimCol = TRUE;
     }
-    if ((obj->behaviorId == 5) && (obj->trans.scale == 6.0f)) {
+    if ((obj->behaviorId == BHV_WEAPON) && (obj->trans.scale == 6.0f)) {
         gDPSetPrimColor(gObjectCurrDisplayList++, 0, 0, (intensity * 3) >> 2, intensity, intensity >> 1, alpha);
         hasPrimCol = TRUE;
     } else if (obj->behaviorId == BHV_WIZPIG_GHOSTS) { // If the behavior is a wizpig ghost
@@ -433,31 +433,30 @@ void render_object(Gfx **dList, Mtx **mtx, Vertex **verts, Object *obj) {
  * Official Name: objDoPlayerTumble
  */
 void object_do_player_tumble(Object *this) {
-    UNUSED s32 unused1;
-    Object_Racer *sp_20;
-    f32 tmp_f2;
+    Object_Racer *racer;
+    f32 rollCos;
     f32 offsetY;
-    f32 tmp_f0;
-    f32 temp;
+    f32 upright;
+    f32 tumbleOffsetY;
 
     if (this->behaviorId == BHV_RACER) {
 
-        sp_20 = this->racer;
-        this->trans.rotation.y_rotation += sp_20->y_rotation_offset;
-        this->trans.rotation.x_rotation += sp_20->x_rotation_offset;
-        this->trans.rotation.z_rotation += sp_20->z_rotation_offset;
+        racer = this->racer;
+        this->trans.rotation.y_rotation += racer->y_rotation_offset;
+        this->trans.rotation.x_rotation += racer->x_rotation_offset;
+        this->trans.rotation.z_rotation += racer->z_rotation_offset;
         offsetY = 0.0f;
-        if (sp_20->vehicleIDPrev < VEHICLE_BOSSES) {
+        if (racer->vehicleIDPrev < VEHICLE_BOSSES) {
 
-            offsetY = coss_f(sp_20->z_rotation_offset);
-            tmp_f2 = offsetY;
-            tmp_f0 = coss_f(sp_20->x_rotation_offset - sp_20->xRotationOffsetTarget) * tmp_f2;
+            offsetY = coss_f(racer->z_rotation_offset);
+            rollCos = offsetY;
+            upright = coss_f(racer->x_rotation_offset - racer->xRotationOffsetTarget) * rollCos;
 
-            tmp_f0 = (tmp_f0 < 0.0f) ? 0.0f : tmp_f0 * tmp_f0;
+            upright = (upright < 0.0f) ? 0.0f : upright * upright;
 
-            temp = (1.0f - tmp_f0) * 24.0f + sp_20->bodyOffsetY;
+            tumbleOffsetY = (1.0f - upright) * 24.0f + racer->bodyOffsetY;
             if (0) {} // Fakematch
-            offsetY = temp;
+            offsetY = tumbleOffsetY;
         }
         this->trans.y_position = this->trans.y_position + offsetY;
         gObjectOffsetY = offsetY;
@@ -480,30 +479,28 @@ void object_undo_player_tumble(Object *obj) {
 void set_temp_model_transforms(Object *obj) {
     s32 batchNum;
     ObjectModel *objModel;
-    s32 var_v1;
+    s32 lodDistance;
     ModelInstance **modInstList;
     ModelInstance *modInst;
     u8 *bossAsset;
-    f32 var_f0;
-    u8 *var_a1;
-    f32 ret2;
-    UNUSED s32 pad;
+    f32 distanceScale;
+    f32 lightIntensity;
     Object_Racer *objRacer;
-    f32 ret1;
+    f32 modelScaleY;
     s32 firstNonEmptyModelIndex;
     s32 modelIndex;
     s32 numberOfModels;
 
-    ret1 = 1.0f;
-    ret2 = 1.0f;
+    modelScaleY = 1.0f;
+    lightIntensity = 1.0f;
     if (!(obj->trans.flags & OBJ_FLAGS_PARTICLE)) {
         if (obj->header->behaviorId == BHV_RACER) {
             objRacer = obj->racer;
             objRacer->aiPhysicsTimer = 30;
             if (objRacer->stunTimer > 0) {
-                ret2 = 1.0f - (objRacer->stunTimer * 0.05f);
-                if (ret2 < 0.2f) {
-                    ret2 = 0.2f;
+                lightIntensity = 1.0f - (objRacer->stunTimer * 0.05f);
+                if (lightIntensity < 0.2f) {
+                    lightIntensity = 0.2f;
                 }
             }
             if (objRacer->playerIndex != PLAYER_COMPUTER && objRacer->raceFinished) {
@@ -525,35 +522,35 @@ void set_temp_model_transforms(Object *obj) {
                     if (get_current_viewport() != objRacer->playerIndex) {
                         bossAsset += 5;
                     }
-                    var_f0 = obj->distanceToCamera;
-                    var_v1 = (s32) var_f0 >> 3;
+                    distanceScale = obj->distanceToCamera;
+                    lodDistance = (s32) distanceScale >> 3;
                     if (obj->distanceToCamera < 0.0f) {
-                        var_f0 = 0.0f;
-                    } else if (var_f0 > 3500.0f) {
-                        var_f0 = 3500.0f;
+                        distanceScale = 0.0f;
+                    } else if (distanceScale > 3500.0f) {
+                        distanceScale = 3500.0f;
                     }
-                    var_f0 /= 2700.0f;
-                    var_f0 += 1.0f;
-                    obj->trans.scale *= var_f0;
-                    var_v1 *= ((f32 *) get_misc_asset(ASSET_MISC_4))[objRacer->characterId];
+                    distanceScale /= 2700.0f;
+                    distanceScale += 1.0f;
+                    obj->trans.scale *= distanceScale;
+                    lodDistance *= ((f32 *) get_misc_asset(ASSET_MISC_4))[objRacer->characterId];
                     // ASSET_MISC_4 is just 10 floats of 1.0f. One for each playable character.
-                    if (var_v1 < -50) {
+                    if (lodDistance < -50) {
                         modelIndex = 5;
                     } else {
-                        var_v1 >>= 1;
-                        if (var_v1 < 0) {
-                            var_v1 = 0;
+                        lodDistance >>= 1;
+                        if (lodDistance < 0) {
+                            lodDistance = 0;
                         }
 
-                        if (var_v1 < bossAsset[0]) {
+                        if (lodDistance < bossAsset[0]) {
                             modelIndex = 0;
-                        } else if (var_v1 < bossAsset[1]) {
+                        } else if (lodDistance < bossAsset[1]) {
                             modelIndex = 1;
-                        } else if (var_v1 < bossAsset[2]) {
+                        } else if (lodDistance < bossAsset[2]) {
                             modelIndex = 2;
-                        } else if (var_v1 < bossAsset[3]) {
+                        } else if (lodDistance < bossAsset[3]) {
                             modelIndex = 3;
-                        } else if (var_v1 < bossAsset[4]) {
+                        } else if (lodDistance < bossAsset[4]) {
                             modelIndex = 4;
                         } else {
                             modelIndex = 5;
@@ -616,13 +613,13 @@ void set_temp_model_transforms(Object *obj) {
             obj->trans.x_position += objRacer->carBobX;
             obj->trans.y_position += objRacer->carBobY;
             obj->trans.z_position += objRacer->carBobZ;
-            ret1 = objRacer->stretch_height;
+            modelScaleY = objRacer->stretch_height;
         } else if (obj->behaviorId == BHV_FROG) {
-            ret1 = obj->frog->scaleY;
+            modelScaleY = obj->frog->scaleY;
         }
     }
-    gObjectModelScaleY = ret1;
-    gCurrentLightIntensity = ret2;
+    gObjectModelScaleY = modelScaleY;
+    gCurrentLightIntensity = lightIntensity;
 }
 
 /**
@@ -692,7 +689,7 @@ void render_boost_effect(Object *boostObj) {
     objTransform.trans.z_position = boostData->position.z;
     objTransform.trans.scale =
         boostData->spriteScaleBase + (boostData->spriteScalePulse * coss_f(boost->pulseTimer << 12));
-    if (boost->effectState < 2) {
+    if (boost->effectState < BOOST_FX_ACTIVE) {
         objTransform.trans.scale *= boost->effectScale;
     }
     if (gBoostTypes[racerIndex] != 0) {
@@ -707,7 +704,7 @@ void render_boost_effect(Object *boostObj) {
     render_sprite_billboard(&gObjectCurrDisplayList, &gObjectCurrMatrix, &gObjectCurrVertexList,
                             (Object *) &objTransform, asset->sprite,
                             (RENDER_Z_COMPARE | RENDER_FOG_ACTIVE | RENDER_Z_UPDATE));
-    if (boost->effectState == 2) {
+    if (boost->effectState == BOOST_FX_ACTIVE) {
         material_set(&gObjectCurrDisplayList, asset->tex,
                      (RENDER_Z_COMPARE | RENDER_SEMI_TRANSPARENT | RENDER_FOG_ACTIVE), 0);
         if (asset->tex != NULL) {
@@ -784,7 +781,7 @@ void render_racer_shield(Gfx **dList, Mtx **mtx, Vertex **vtxList, Object *obj) 
             vehicleID = VEHICLE_CAR;
         }
         shield = (RacerShieldGfx *) get_misc_asset(ASSET_MISC_SHIELD_DATA);
-        vehicleID = (vehicleID * 10) + racerIndex;
+        vehicleID = (vehicleID * NUMBER_OF_CHARACTERS) + racerIndex;
         shield = shield + vehicleID;
         gShieldEffectObject->trans.x_position = shield->x_position;
         gShieldEffectObject->trans.y_position = shield->y_position;
@@ -840,7 +837,6 @@ void render_racer_magnet(Gfx **dList, Mtx **mtx, Vertex **vtxList, Object *obj) 
     s32 racerIndex;
     s32 opacity;
     f32 shear;
-    UNUSED s32 pad;
 
     racer = obj->racer;
     racerIndex = racer->racerIndex;
@@ -890,8 +886,8 @@ void render_racer_magnet(Gfx **dList, Mtx **mtx, Vertex **vtxList, Object *obj) 
     }
 }
 
-/** Offsets the texture coordinates of an object's model by the header's scroll rates times arg1. */
-void object_scroll_texture(Object *obj, s32 arg1) {
+/** Offsets the texture coordinates of an object's model by the header's scroll rates times updateRate. */
+void object_scroll_texture(Object *obj, s32 updateRate) {
     ObjectHeader *objHeader;
     s16 width;
     s16 height;
@@ -899,39 +895,39 @@ void object_scroll_texture(Object *obj, s32 arg1) {
     s32 j;
     s32 k;
     s32 end;
-    s16 objHeader72;
-    s16 objHeader73;
+    s16 texIndex;
+    s16 modelIndex;
     ObjectModel *objMdl;
     ModelInstance *modInst;
     TextureInfo *texInfo;
     Triangle *tri;
-    s16 temp;
-    s16 temp2;
+    s16 scrollU;
+    s16 scrollV;
     s16 newU1;
     s16 newU2;
     s16 newV1;
     s16 newV2;
 
     objHeader = obj->header;
-    objHeader73 = objHeader->texScrollModelIndex;
-    objHeader72 = objHeader->texScrollTextureIndex;
-    temp = (s16) (objHeader->texScrollSpeedU * arg1);
-    temp2 = (s16) (objHeader->texScrollSpeedV * arg1);
-    if ((objHeader73 == 0xFF) || (objHeader73 < objHeader->numberOfModelIds)) {
-        if (objHeader73 == 0xFF) {
+    modelIndex = objHeader->texScrollModelIndex;
+    texIndex = objHeader->texScrollTextureIndex;
+    scrollU = (s16) (objHeader->texScrollSpeedU * updateRate);
+    scrollV = (s16) (objHeader->texScrollSpeedV * updateRate);
+    if ((modelIndex == 0xFF) || (modelIndex < objHeader->numberOfModelIds)) {
+        if (modelIndex == 0xFF) {
             end = objHeader->numberOfModelIds;
-            objHeader73 = 0;
+            modelIndex = 0;
         } else {
-            end = objHeader73 + 1;
+            end = modelIndex + 1;
         }
-        for (i = objHeader73; i < end; i++) {
+        for (i = modelIndex; i < end; i++) {
             modInst = obj->modelInstances[i];
             objMdl = modInst->objModel;
-            if (objHeader72 < objMdl->numberOfTextures) {
-                width = objMdl->textures[objHeader72].texture->width << 5;
-                height = objMdl->textures[objHeader72].texture->height << 5;
+            if (texIndex < objMdl->numberOfTextures) {
+                width = objMdl->textures[texIndex].texture->width << 5;
+                height = objMdl->textures[texIndex].texture->height << 5;
                 for (j = 0; j < objMdl->numberOfBatches; j++) {
-                    if (objHeader72 == objMdl->batches[j].textureIndex) {
+                    if (texIndex == objMdl->batches[j].textureIndex) {
                         for (k = objMdl->batches[j].facesOffset; k < objMdl->batches[j + 1].facesOffset; k++) {
                             tri = &objMdl->triangles[k];
                             newU1 = (tri->uv1.u - tri->uv0.u);
@@ -939,8 +935,8 @@ void object_scroll_texture(Object *obj, s32 arg1) {
                             newU2 = (tri->uv2.u - tri->uv0.u);
                             newV2 = (tri->uv2.v - tri->uv0.v);
                             // s16 casts required
-                            tri->uv0.u = (tri->uv0.u + temp) & (s16) (width - 1);
-                            tri->uv0.v = (tri->uv0.v + temp2) & (s16) (height - 1);
+                            tri->uv0.u = (tri->uv0.u + scrollU) & (s16) (width - 1);
+                            tri->uv0.v = (tri->uv0.v + scrollV) & (s16) (height - 1);
                             tri->uv1.u = tri->uv0.u + newU1;
                             tri->uv1.v = tri->uv0.v + newV1;
                             tri->uv2.u = tri->uv0.u + newU2;

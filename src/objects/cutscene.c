@@ -289,13 +289,13 @@ void anim_objects_spawn_targets(void) {
         if (obj->animTarget == NULL && animation->order == 0 && animation->objectIdToSpawn != -1) {
             anim_object_spawn_target(obj, animation);
         }
-        if (D_8011AD26 || animation->channel != 20) {
+        if (gAnimInitAllChannels || animation->channel != 20) {
             if (obj->animTarget != NULL) {
                 obj_init_animobject(obj, obj->animTarget);
             }
         }
     }
-    D_8011AD26 = FALSE;
+    gAnimInitAllChannels = FALSE;
 }
 
 void obj_init_animobject(Object *animationObj, Object *animatedObj) {

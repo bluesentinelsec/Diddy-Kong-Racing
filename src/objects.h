@@ -178,7 +178,8 @@ enum ObjectSpawnFlags {
     OBJECT_SPAWN_UNK02 = (1 << 1),
     OBJECT_SPAWN_UNK04 = (1 << 2),
     OBJECT_SPAWN_UNK08 = (1 << 3),
-    OBJECT_SPAWN_NO_LODS = (1 << 4) // Forces the object to have 1 model associate. Used to prevent LoD models of player model racers spawning.
+    OBJECT_SPAWN_NO_LODS = (1 << 4) // Forces the object to have 1 model associate. Used to prevent LoD models of player
+                                    // model racers spawning.
 };
 
 enum ObjectHeaderFlags {
@@ -247,7 +248,7 @@ typedef struct CheckpointNode {
     /* 0x2E */ s8 laneOffsetX[4];
     /* 0x32 */ s8 laneOffsetY[4];
     /* 0x36 */ s8 laneAction[4]; // Appear to be flags of some sort?
-    /* 0x3A */ s8 altRouteID; // -1 if there's none to be found.
+    /* 0x3A */ s8 altRouteID;    // -1 if there's none to be found.
     /* 0x3B */ u8 indicatorType; // HUD arrow shown to racers passing this checkpoint, 0 for none
 } CheckpointNode;
 
@@ -309,13 +310,13 @@ void set_time_trial_enabled(s32 status);
 u8 is_time_trial_enabled(void);
 u8 is_in_time_trial(void);
 Object *get_object(s32 index);
-Object **objGetObjList(s32 *arg0, s32 *cnt);
+Object **objGetObjList(s32 *listStart, s32 *cnt);
 s32 obj_count(void);
 s32 particle_count(void);
 void add_particle_to_entity_list(Object *obj);
 void free_object(Object *);
 s32 obj_table_ids(void);
-s32 obj_id_valid(s32 arg0);
+s32 obj_id_valid(s32 objectID);
 void path_enable(void);
 s32 get_race_countdown(void);
 s32 get_race_start_timer(void);
@@ -359,8 +360,8 @@ void ainode_tail_set(s32 nodeID);
 Object *ainode_tail(s32 *nodeID);
 Object *ainode_get(s32 nodeID);
 void set_world_shading(f32 ambient, f32 diffuse, s16 angleX, s16 angleY, s16 angleZ);
-void set_shading_properties(ShadeProperties *arg0, f32 ambient, f32 diffuse, s16 angleX, s16 angleY, s16 angleZ);
-void obj_shade_fancy(ObjectModel *model, Object *object, s32 arg2, f32 intensity);
+void set_shading_properties(ShadeProperties *shading, f32 ambient, f32 diffuse, s16 angleX, s16 angleY, s16 angleZ);
+void obj_shade_fancy(ObjectModel *model, Object *object, s32 cameraRelative, f32 intensity);
 s32 *get_misc_asset(s32 index);
 void pc_swap_misc_f32_once(s32 index);
 s32 is_bridge_raised(s32 index);
@@ -371,9 +372,9 @@ void cutscene_id_set(s32 cutsceneID);
 void cutscene_set(s32 cutsceneID);
 s32 get_object_list_index(void);
 s8 anim_group_get(void);
-void anim_group_set(s32 arg0);
+void anim_group_set(s32 group);
 void cutscene_skip_request(void);
-s32 anim_stage_reached(s8 arg0);
+s32 anim_stage_reached(s8 stage);
 s8 anim_prev_frame_state(void);
 f32 lerp(f32 *data, u32 index, f32 t);
 void func_800228DC(s32 arg0, s32 arg1, s32 arg2);
@@ -392,12 +393,12 @@ s16 *readout_log_get(s32 *currentCount, s32 *maxCount);
 enum ObjectStackTraceID { OBJECT_CLEAR = -1, OBJECT_SPAWN, OBJECT_UPDATE, OBJECT_DRAW };
 
 void update_object_stack_trace(s32 index, s32 value);
-void readout_log_push(s16 arg0);
+void readout_log_push(s16 value);
 void object_do_player_tumble(Object *this);
 f32 catmull_rom_interpolation(f32 *data, s32 index, f32 x);
 f32 cubic_spline_interpolation(f32 *data, s32 index, f32 x, f32 *derivative);
 s16 obj_elevation(f32 yPos);
-void anim_actor_trigger(s32 arg0);
+void anim_actor_trigger(s32 actorIndex);
 s32 timetrial_init_player_ghost(s32 playerID);
 s32 move_object(Object *obj, f32 xPos, f32 yPos, f32 zPos);
 Object *get_racer_object_by_port(s32 index);
@@ -418,7 +419,7 @@ s32 obj_init_collision(Object *obj, ObjectCollision *colData);
 void func_8000E4E8(s32 index);
 void objFreeAssets(Object *obj, s32 count, s32 objType);
 void obj_collision_transform(Object *obj);
-s32 play_footstep_sounds(Object *obj, s32 arg1, s32 frame, s32 oddSoundId, s32 evenSoundId);
+s32 play_footstep_sounds(Object *obj, s32 miscAssetIndex, s32 frame, s32 oddSoundId, s32 evenSoundId);
 void render_3d_misc(Object *obj);
 Object *spectate_nearest(Object *obj, s32 *cameraId);
 s32 init_object_shadow(Object *obj, ShadowData *shadow);
@@ -434,13 +435,14 @@ void light_setup_light_sources(Object *obj);
 s32 init_object_interaction_data(Object *obj, ObjectInteraction *interactObj);
 s32 obj_init_emitter(Object *obj, ParticleEmitter *emitter);
 s32 obj_init_property_flags(s32 behaviorId);
-void tt_ghost_beaten(s32 arg0, s16 *playerId);
+void tt_ghost_beaten(s32 levelId, s16 *playerId);
 void obj_init_animobject(Object *, Object *);
 Object *obj_butterfly_node(f32 x, f32 y, f32 z, f32 maxDistCheck, s32 dontCheckYAxis);
-void anim_actor_apply_entry(Object *obj, LevelObjectEntry_Animation *entry, Object_AnimatedObject *animObj, UNUSED s32 index);
+void anim_actor_apply_entry(Object *obj, LevelObjectEntry_Animation *entry, Object_AnimatedObject *animObj,
+                            UNUSED s32 index);
 void anim_actor_init(Object *obj, Object_AnimatedObject *animObj, LevelObjectEntry_Animation *entry);
-s32 homing_rocket_get_next_direction(Object *obj, s32 checkpoint, u8 isOnAlternateRoute, s32 arg3, s32 arg4,
-                                     f32 checkpointDist, f32 *outX, f32 *outY, f32 *outZ);
+s32 homing_rocket_get_next_direction(Object *obj, s32 checkpoint, u8 isOnAlternateRoute, s32 trackOffsetX,
+                                     s32 trackOffsetY, f32 checkpointDist, f32 *outX, f32 *outY, f32 *outZ);
 void racer_update_local_velocity(Object *obj, Object_Racer *racer);
 void track_spawn_objects(s32, s32);
 u8 timetrial_init_staff_ghost(s32 trackId);
@@ -449,7 +451,7 @@ void process_object_interactions(void);
 void render_3d_model(Object *obj);
 void mode_end_taj_race(s32 reason);
 void ainode_update(void);
-void override_pos_apply(s8);
+void override_pos_apply(s8 collidablePass);
 Object *obj_spawn_attachment(s32 objID);
 void sort_objects_by_dist(s32 startIndex, s32 lastIndex);
 void object_collide_with_object(Object *obj0, Object *obj1);
@@ -463,7 +465,7 @@ void anim_objects_prepare(void);
 void racerfx_alloc(s32 numberOfVertices, s32 numberOfTriangles);
 s32 func_80014B50(s32 arg0, s32 arg1, f32 arg2, u32 arg3);
 s32 ainode_find_next(s32 nodeId, s32 nextNodeId, s32 direction);
-CollisionPair *collision_pair_take(Object *arg0, Object *arg1);
+CollisionPair *collision_pair_take(Object *obj1, Object *obj2);
 CollisionPair *collision_pair_add(Object *obj1, Object *obj2);
 s8 anim_actor_update(Object *obj, s32 updateRate);
 f32 lerp_and_get_derivative(f32 *data, u32 index, f32 t, f32 *derivative);
@@ -486,7 +488,7 @@ void decrypt_magic_codes(s32 *data, s32 length);
 s32 get_first_active_object(s32 *);
 Object *spawn_object(LevelObjectEntryCommon *entry, s32);
 s32 anim_object_follow_path(Object *, s32, Object *);
-void racer_set_boost_effect(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev, s32 boostType, s32 arg4);
+void racer_set_boost_effect(Object *racerObj, s32 racerIndex, s32 vehicleIDPrev, s32 boostType, s32 keepActive);
 void update_midi_fade_points(Object *racerObj, f32 xPos, f32 yPos, f32 zPos, s32 updateRate);
 s32 checkpoint_is_passed(s32 checkpointIndex, Object *obj, f32 objX, f32 objY, f32 objZ, f32 *checkpointDistance,
                          u8 *isOnAlternateRoute);
@@ -501,16 +503,18 @@ void checkpoint_update_all(void);
 void spectate_update(void);
 void anim_objects_update(void);
 void func_80019808(s32 updateRate);
-void object_scroll_texture(Object *, s32);
+void object_scroll_texture(Object *obj, s32 updateRate);
 void audspat_update_all(Object **, s32, s32);
 void override_pos_update(void);
 CheckpointNode *racer_find_start_node(Object *, Object_Racer *);
 void obj_update(s32 updateRate);
 void object_apply_interaction(Object *, Object *);
 void obj_door_number(ObjectModel *, Object *);
-s16 ainode_pick_next(s32 arg0, s32 arg1, s32 arg2, s32 arg3);
+s16 ainode_pick_next(s32 startNodeId, s32 target, s32 excludeNodeId, s32 direction);
 f32 npc_follow_ai_nodes(Object_NPC *, Object *, f32, f32, s32);
-s32 collision_objectmodel(Object *obj, s32 arg1, s32* arg2, Vec3f *arg3, f32* arg4, f32* arg5, s8* surface);
-s32 model_resolve_collisions(ObjectModel *arg0, s32 arg1, s32 *numCollisions, f32 *originPointsX, f32 *originPointsY, f32 *originPointsZ, f32 *targetPointsX, f32 *targetPointsY,
-                  f32 *targetPointsZ, f32 *collisionRadii, s8 *surfaces, f32 scale);
+s32 collision_objectmodel(Object *obj, s32 numPoints, s32 *numCollisions, Vec3f *originPoints, f32 *targetPoints,
+                          f32 *collisionRadii, s8 *surface);
+s32 model_resolve_collisions(ObjectModel *model, s32 numPoints, s32 *numCollisions, f32 *originPointsX,
+                             f32 *originPointsY, f32 *originPointsZ, f32 *targetPointsX, f32 *targetPointsY,
+                             f32 *targetPointsZ, f32 *collisionRadii, s8 *surfaces, f32 scale);
 #endif

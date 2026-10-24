@@ -4,6 +4,19 @@
 #define _ALIGN16(a) (((uintptr_t) (a) & ~0xF) + 0x10)
 #endif
 
+// A spawn-list entry's second byte: low 6 bits are the entry's length in bytes, the top bit is bit 8 of its object id.
+#define LEVEL_ENTRY_SIZE_MASK 0x3F
+#define LEVEL_ENTRY_ID_MSB 0x80
+
+#define DRAWBRIDGE_COUNT 8 // entries in gDrawbridgeTimers
+
+// Level doors hold one set of models per adventure; Adventure Two uses the second set.
+#define DOOR_MODELS_PER_ADVENTURE 5
+
+// spawn_layout_properties failure stages (also the stage spawn_abort prints).
+#define SPAWN_FAIL_SHADOW 5
+#define SPAWN_FAIL_WATER_EFFECT 6 // the shadow's texture is already loaded and must be freed too
+
 /************ .data ************/
 
 s32 gReadoutLogIndex = 0;
@@ -53,7 +66,9 @@ s8 gNonDefaultVehicle;
 s8 gAnimFrameParity;
 s8 gAnimFrameState[2];
 s8 gBossRaceIds[2];
-s8 D_8011AD26;
+// Set when the level's objects are reset; the next anim_objects_spawn_targets then re-inits every
+// animation object's target (channel 20 ones too, which it otherwise skips) and clears it.
+s8 gAnimInitAllChannels;
 f32 gObjectModelScaleY;
 f32 gCurrentLightIntensity;
 Object *gGhostObjPlayer;
@@ -71,7 +86,7 @@ s16 gTransformAngleY;
 s16 gRaceEndTimer;
 s8 gRaceEndStage;
 s8 gNumRacersSaved;
-UNUSED s8 unused_D_8011AD52;
+UNUSED s8 gRaceFinishUnusedArg;
 s8 gCutsceneSkipRequested;
 s32 *gSpawnObjectHeap;
 s32 *gAssetsObjectHeadersTable;
@@ -92,7 +107,7 @@ s32 gNumFinishedRacers;
 s8 gFirstTimeFinish;
 s8 gSetupPointVehicle;
 u32 gBalloonCutsceneTimer;
-s8 (*gDrawbridgeTimers)[8];
+s8 (*gDrawbridgeTimers)[DRAWBRIDGE_COUNT];
 f32 gObjectOffsetY;
 s8 gAnimGroup;
 s8 gOverrideDoors;
@@ -229,8 +244,8 @@ void allocate_object_pools(void) {
     gRacersByPort = mempool_alloc_safe(sizeof(uintptr_t) * 10, COLOUR_TAG_BLUE);
     gRacersByPosition = mempool_alloc_safe(sizeof(uintptr_t) * 10, COLOUR_TAG_BLUE);
     gAINodes = mempool_alloc_safe(sizeof(uintptr_t) * AINODE_COUNT, COLOUR_TAG_BLUE);
-    gDrawbridgeTimers = mempool_alloc_safe(8, COLOUR_TAG_BLUE);
-    gCollisionPairs = mempool_alloc_safe(sizeof(CollisionPair) * 16, COLOUR_TAG_BLUE);
+    gDrawbridgeTimers = mempool_alloc_safe(DRAWBRIDGE_COUNT, COLOUR_TAG_BLUE);
+    gCollisionPairs = mempool_alloc_safe(sizeof(CollisionPair) * COLLISION_PAIR_COUNT, COLOUR_TAG_BLUE);
     gAssetsLvlObjTranslationTable = (s16 *) asset_table_load(ASSET_LEVEL_OBJECT_TRANSLATION_TABLE);
     {
         // Big-endian asset offset tables (helpers in linux/reimpl.c).
@@ -352,25 +367,25 @@ void decrypt_magic_codes(s32 *data, s32 length) {
     s32 i;
     s32 j;
     u8 *ptr = (u8 *) data;
-    u8 temp[4];
+    u8 interleaved[4];
 
     for (i = 0; i < (length >> 2); i++) {
         // Swap bits according to the following pattern:
         // AABBCCDD EEFFGGHH IIJJKKLL MMNNOOPP -> AAEEIIMM BBFFJJNN CCGGKKOO DDHHLLPP
         // clang-format off
-        temp[0] = ((ptr[0] & 0xC0)     ) |
+        interleaved[0] = ((ptr[0] & 0xC0)     ) |
                   ((ptr[1] & 0xC0) >> 2) |
                   ((ptr[2] & 0xC0) >> 4) |
                   ((ptr[3] & 0xC0) >> 6);
-        temp[1] = ((ptr[0] & 0x30) << 2) |
+        interleaved[1] = ((ptr[0] & 0x30) << 2) |
                   ((ptr[1] & 0x30)     ) |
                   ((ptr[2] & 0x30) >> 2) |
                   ((ptr[3] & 0x30) >> 4);
-        temp[2] = ((ptr[0] & 0x0C) << 4) |
+        interleaved[2] = ((ptr[0] & 0x0C) << 4) |
                   ((ptr[1] & 0x0C) << 2) |
                   ((ptr[2] & 0x0C)     ) |
                   ((ptr[3] & 0x0C) >> 2);
-        temp[3] = ((ptr[0] & 0x03) << 6) |
+        interleaved[3] = ((ptr[0] & 0x03) << 6) |
                   ((ptr[1] & 0x03) << 4) |
                   ((ptr[2] & 0x03) << 2) |
                   ((ptr[3] & 0x03)     );
@@ -378,7 +393,7 @@ void decrypt_magic_codes(s32 *data, s32 length) {
 
         // Swap the odd and even bits
         for (j = 0; j < 4; j++) {
-            *ptr++ = (((temp[j] & 0xAA) >> 1) | ((temp[j] & 0x55) << 1));
+            *ptr++ = (((interleaved[j] & 0xAA) >> 1) | ((interleaved[j] & 0x55) << 1));
         }
     }
 
@@ -408,7 +423,7 @@ void decrypt_magic_codes(s32 *data, s32 length) {
 void clear_object_pointers(void) {
     s32 i;
 
-    D_8011AD26 = TRUE;
+    gAnimInitAllChannels = TRUE;
     gFreeListCount = 0;
     gCollisionObjectCount = 0;
     gNumberOfMainCheckpoints = 0;
@@ -422,20 +437,20 @@ void clear_object_pointers(void) {
     for (i = 0; i < AINODE_COUNT; i++) {
         (*gAINodes)[i] = NULL;
     }
-    for (i = 0; i < 8; i++) {
+    for (i = 0; i < DRAWBRIDGE_COUNT; i++) {
         (*gDrawbridgeTimers)[i] = 0;
     }
-    for (i = 0; i < 16; i++) {
+    for (i = 0; i < COLLISION_PAIR_COUNT; i++) {
         gCollisionPairs[i].ttl = 0;
     }
 
-    gAINodeTail[0] = 0xFF;
-    gAINodeTail[1] = 0xFF;
+    gAINodeTail[0] = NODE_NONE;
+    gAINodeTail[1] = NODE_NONE;
     gObjectCount = 0;
     gObjectListStart = 0;
     gParticleCount = 0;
     gAnimGroup = 0;
-    gCutsceneID = 0;
+    gCutsceneID = CUTSCENE_NONE;
     gCutsceneChanged = TRUE;
     gFirstActiveObjectId = 0;
     gTransformTimer = 0;
@@ -570,7 +585,7 @@ s32 normalise_time(s32 timer) {
 // pass through here and stay host-order.
 static void pc_swap_spawn_entry_fields(u8 *entryBytes) {
     LevelObjectEntry *entry = (LevelObjectEntry *) entryBytes;
-    s32 objType = entryBytes[0] | ((entryBytes[1] & 0x80) << 1);
+    s32 objType = entryBytes[0] | ((entryBytes[1] & LEVEL_ENTRY_ID_MSB) << 1);
     s16 headerType = gAssetsLvlObjTranslationTable[objType];
     u8 tmpHeader[OBJECT_HEADER_DISK_SIZE];
     s8 behavior;
@@ -662,12 +677,11 @@ void track_spawn_objects(s32 mapID, s32 index) {
     Settings *settings;
     s32 i;
     s32 *mem;
-    s32 var_s0;
+    s32 spawnOffset;
     u32 assetOffset;
     u32 *objMapTable;
-    UNUSED s32 pad;
     u8 *compressedAsset;
-    s32 temp_t3;
+    s32 spawnEntrySize;
 
     settings = get_settings();
     assetOffset = settings->bosses | 0x820; // 0x820 = Wizpig 2 and some unknown 0x800 boss bit
@@ -731,7 +745,7 @@ void track_spawn_objects(s32 mapID, s32 index) {
             for (entryOffset = 0; entryOffset < *mem; entryOffset += entrySize) {
                 pc_swap16_buf(entry + 2, 6); // LevelObjectEntryCommon x, y, z
                 pc_swap_spawn_entry_fields(entry);
-                entrySize = entry[1] & 0x3F;
+                entrySize = entry[1] & LEVEL_ENTRY_SIZE_MASK;
                 entry += entrySize;
             }
         }
@@ -739,9 +753,10 @@ void track_spawn_objects(s32 mapID, s32 index) {
         gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + 4);
         gObjectMapSize[index] = *mem;
         gObjectMapIndex = index;
-        for (var_s0 = 0; var_s0 < gObjectMapSize[index]; var_s0 += temp_t3) {
+        for (spawnOffset = 0; spawnOffset < gObjectMapSize[index]; spawnOffset += spawnEntrySize) {
             spawn_object((LevelObjectEntryCommon *) gObjectMapSpawnList[index], OBJECT_SPAWN_UNK01);
-            gObjectMapSpawnList[index] = &gObjectMapSpawnList[index][temp_t3 = gObjectMapSpawnList[index][1] & 0x3F];
+            gObjectMapSpawnList[index] =
+                &gObjectMapSpawnList[index][spawnEntrySize = gObjectMapSpawnList[index][1] & LEVEL_ENTRY_SIZE_MASK];
         }
         gObjectMapSpawnList[index] = (u8 *) (gObjectMap[index] + 4);
         gCollisionObjectCount = 0;
@@ -792,48 +807,47 @@ s32 object_id_alloc(Object *obj) {
 }
 
 /** Removes an entry from the level's object spawn list, shifting what follows and fixing object pointers into it. */
-void level_entry_remove(LevelObjectEntryCommon *arg0) {
+void level_entry_remove(LevelObjectEntryCommon *removedEntry) {
     u8 *src;
     u8 *dst;
     ptrint_t end;
-    ptrint_t sp30[2];
+    ptrint_t listEnds[2];
     s32 size;
     s32 i;
-    s32 pad;
-    s32 sp1C;
+    s32 listIndex;
 
-    size = arg0->size & 0x3F;
+    size = removedEntry->size & LEVEL_ENTRY_SIZE_MASK;
 
-    sp30[0] = (ptrint_t) gObjectMapSpawnList[0] + gObjectMapSize[0];
-    sp30[1] = (ptrint_t) gObjectMapSpawnList[1] + gObjectMapSize[1];
+    listEnds[0] = (ptrint_t) gObjectMapSpawnList[0] + gObjectMapSize[0];
+    listEnds[1] = (ptrint_t) gObjectMapSpawnList[1] + gObjectMapSize[1];
 
-    if ((ptrint_t) arg0 >= (ptrint_t) gObjectMapSpawnList[0] && (ptrint_t) arg0 < sp30[0]) {
-        sp1C = 0;
-    } else if ((ptrint_t) arg0 >= (ptrint_t) gObjectMapSpawnList[1] && (ptrint_t) arg0 < sp30[1]) {
-        sp1C = 1;
+    if ((ptrint_t) removedEntry >= (ptrint_t) gObjectMapSpawnList[0] && (ptrint_t) removedEntry < listEnds[0]) {
+        listIndex = 0;
+    } else if ((ptrint_t) removedEntry >= (ptrint_t) gObjectMapSpawnList[1] && (ptrint_t) removedEntry < listEnds[1]) {
+        listIndex = 1;
     }
 #ifdef AVOID_UB
     else {
-        sp1C = 0;
+        listIndex = 0;
     }
 #endif
 
-    dst = (u8 *) arg0;
-    src = (u8 *) ((ptrint_t) arg0 + size);
-    end = sp30[sp1C];
+    dst = (u8 *) removedEntry;
+    src = (u8 *) ((ptrint_t) removedEntry + size);
+    end = listEnds[listIndex];
     if ((uintptr_t) src < (uintptr_t) end) {
         do {
             *dst++ = *src++;
         } while ((uintptr_t) src != (uintptr_t) end);
     }
-    gObjectMapSize[sp1C] -= size;
+    gObjectMapSize[listIndex] -= size;
 
     for (i = 0; i < gObjectCount; i++) {
         Object *obj = gObjPtrList[i];
         if (obj != NULL && obj->level_entry != NULL) {
-            if ((ptrint_t) arg0 < (ptrint_t) obj->level_entry && (ptrint_t) obj->level_entry < end) {
+            if ((ptrint_t) removedEntry < (ptrint_t) obj->level_entry && (ptrint_t) obj->level_entry < end) {
                 obj->level_entry = (LevelObjectEntry *) ((ptrint_t) obj->level_entry - size);
-            } else if ((ptrint_t) arg0 == (ptrint_t) obj->level_entry) {
+            } else if ((ptrint_t) removedEntry == (ptrint_t) obj->level_entry) {
                 obj->level_entry = NULL;
             }
         }
@@ -841,53 +855,52 @@ void level_entry_remove(LevelObjectEntryCommon *arg0) {
 }
 
 /** Replaces one spawn-list entry with another of a possibly different size. */
-void level_entry_replace(u8 *arg0, u8 *arg1) {
-    s32 arg0Value;
-    s32 arg0Value2;
-    s32 arg1Value;
-    u8 *var_a3;
-    u8 *var_t0;
-    u8 *temp_t2;
-    u8 *var_a2;
+void level_entry_replace(u8 *oldEntry, u8 *newEntry) {
+    s32 oldSize;
+    s32 oldSizeCopy;
+    s32 newSize;
+    u8 *mapEnd;
+    u8 *src;
+    u8 *dst;
     s32 i;
     s32 j;
     uintptr_t k;
 
-    arg0Value = arg0[1] & 0x3F;
-    arg0Value2 = arg0Value;
-    arg1Value = arg1[1] & 0x3F;
+    oldSize = oldEntry[1] & LEVEL_ENTRY_SIZE_MASK;
+    oldSizeCopy = oldSize;
+    newSize = newEntry[1] & LEVEL_ENTRY_SIZE_MASK;
     i = gObjectMapIndex;
-    var_a3 = (u8 *) gObjectMap[i] + gObjectMapSize[i];
-    var_a3 += 16;
+    mapEnd = (u8 *) gObjectMap[i] + gObjectMapSize[i];
+    mapEnd += 16;
 
-    if (arg1Value < arg0Value2) {
-        var_a2 = arg0 + arg1Value;
-        var_t0 = arg0 + arg0Value2;
-        k = (uintptr_t) var_a3;
-        while (((uintptr_t) var_t0) < k) {
-            *var_a2 = *var_t0;
-            var_a2++;
-            var_t0++;
+    if (newSize < oldSizeCopy) {
+        dst = oldEntry + newSize;
+        src = oldEntry + oldSizeCopy;
+        k = (uintptr_t) mapEnd;
+        while (((uintptr_t) src) < k) {
+            *dst = *src;
+            dst++;
+            src++;
         }
-    } else if (arg0Value2 < arg1Value) {
-        var_a2 = var_a3 + arg1Value;
-        var_a2 -= arg0Value2;
-        var_t0 = var_a3;
-        k = (uintptr_t) (arg0 + arg1Value);
-        while (k < ((uintptr_t) var_a2)) {
-            var_a2--;
-            var_t0--;
-            *var_a2 = *var_t0;
+    } else if (oldSizeCopy < newSize) {
+        dst = mapEnd + newSize;
+        dst -= oldSizeCopy;
+        src = mapEnd;
+        k = (uintptr_t) (oldEntry + newSize);
+        while (k < ((uintptr_t) dst)) {
+            dst--;
+            src--;
+            *dst = *src;
         }
     }
 
     j = 0;
     do {
-        arg0[j] = arg1[j];
+        oldEntry[j] = newEntry[j];
         j++;
-    } while (j < arg1Value);
+    } while (j < newSize);
 
-    gObjectMapSize[i] += arg1Value - arg0Value;
+    gObjectMapSize[i] += newSize - oldSize;
 }
 
 /**
@@ -905,8 +918,8 @@ Object *get_object(s32 index) {
 /**
  * Return the standard object list index and how many objects are in that list.
  */
-Object **objGetObjList(s32 *arg0, s32 *cnt) {
-    *arg0 = gObjectListStart;
+Object **objGetObjList(s32 *listStart, s32 *cnt) {
+    *listStart = gObjectListStart;
     *cnt = gObjectCount;
     return gObjPtrList;
 }
@@ -1000,12 +1013,12 @@ static void spawn_pick_models(Object *obj, Settings *settings, s32 spawnFlags, s
                 break;
             case ASSET_OBJECT_ID_LEVELDOOR:
                 if (is_in_adventure_two()) {
-                    for (i = 0; i < 5; i++) {
-                        obj->header->modelIds[i] = obj->header->modelIds[i + 5];
+                    for (i = 0; i < DOOR_MODELS_PER_ADVENTURE; i++) {
+                        obj->header->modelIds[i] = obj->header->modelIds[i + DOOR_MODELS_PER_ADVENTURE];
                     }
                 }
-                *modelCount = 5;
-                obj->header->numberOfModelIds = 5;
+                *modelCount = DOOR_MODELS_PER_ADVENTURE;
+                obj->header->numberOfModelIds = DOOR_MODELS_PER_ADVENTURE;
                 i = 0;
                 break;
         }
@@ -1084,7 +1097,7 @@ static u8 *spawn_layout_properties(Object *obj, u8 *address, s32 behaviourFlags,
         size = init_object_shadow(obj, (ShadowData *) address);
         address += size;
         if (size == 0) {
-            *failStage = 5;
+            *failStage = SPAWN_FAIL_SHADOW;
             return NULL;
         }
     }
@@ -1092,7 +1105,7 @@ static u8 *spawn_layout_properties(Object *obj, u8 *address, s32 behaviourFlags,
         size = init_object_water_effect(obj, (WaterEffect *) address);
         address += size;
         if (size == 0) {
-            *failStage = 6;
+            *failStage = SPAWN_FAIL_WATER_EFFECT;
             return NULL;
         }
     }
@@ -1181,7 +1194,7 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
     s32 assetCount;
 
     settings = get_settings();
-    objType = entry->objectID | ((entry->size & 0x80) << 1);
+    objType = entry->objectID | ((entry->size & LEVEL_ENTRY_ID_MSB) << 1);
     update_object_stack_trace(OBJECT_SPAWN, objType);
     if (spawnFlags & OBJECT_SPAWN_UNK02) {
         headerType = objType;
@@ -1242,7 +1255,7 @@ Object *spawn_object(LevelObjectEntryCommon *entry, s32 spawnFlags) {
     address = spawn_layout_properties(curObj, (u8 *) &curObj->modelInstances[curObj->header->numberOfModelIds],
                                       behaviourFlags, &failStage);
     if (address == NULL) {
-        spawn_abort(curObj, assetCount, objType, headerType, failStage == 6 ? 1 : 0, failStage);
+        spawn_abort(curObj, assetCount, objType, headerType, failStage == SPAWN_FAIL_WATER_EFFECT ? 1 : 0, failStage);
         return NULL;
     }
 
@@ -1577,8 +1590,8 @@ UNUSED s32 obj_table_ids(void) {
 /**
  * Return true if the object ID is not higher than the header table length.
  */
-UNUSED s32 obj_id_valid(s32 arg0) {
-    return (gAssetsLvlObjTranslationTable[arg0] < gAssetsObjectHeadersTableLength);
+UNUSED s32 obj_id_valid(s32 objectID) {
+    return (gAssetsLvlObjTranslationTable[objectID] < gAssetsObjectHeadersTableLength);
 }
 
 /*
@@ -1736,7 +1749,7 @@ static void obj_update_scenery(s32 updateRate, s32 objectCount) {
         if (obj->behaviorId == BHV_LIGHT_RGBA || obj->behaviorId == BHV_WEAPON || obj->behaviorId == BHV_FOG_CHANGER) {
             continue;
         }
-        if (obj->interactObj == NULL || obj->interactObj->hitboxKind != 2) {
+        if (obj->interactObj == NULL || obj->interactObj->hitboxKind != HITBOX_KIND_MODEL) {
             run_object_loop_func(obj, updateRate);
         }
         if (obj->header->modelType == OBJECT_MODEL_TYPE_3D_MODEL) {
@@ -1987,7 +2000,7 @@ void obj_door_number(ObjectModel *model, Object *obj) {
 /**
  * Do nothing. Unused.
  */
-UNUSED void do_nothing_func_80011364(UNUSED s32 unused) {
+UNUSED void obj_do_nothing(UNUSED s32 unused) {
 }
 
 /**
@@ -2031,7 +2044,7 @@ s32 get_race_start_timer(void) {
  * When the object reaches a certain anim frame, play a sound and shake the camera to emphasise the effect of their
  * movement.
  */
-s32 play_footstep_sounds(Object *obj, s32 arg1, s32 frame, s32 oddSoundId, s32 evenSoundId) {
+s32 play_footstep_sounds(Object *obj, s32 miscAssetIndex, s32 frame, s32 oddSoundId, s32 evenSoundId) {
     s8 *asset;
     f32 shakeDist;
     f32 shakeMagnitude;
@@ -2043,8 +2056,8 @@ s32 play_footstep_sounds(Object *obj, s32 arg1, s32 frame, s32 oddSoundId, s32 e
     s32 soundId;
 
     ret = 0;
-    if (arg1 < obj->header->miscAssetCount) {
-        asset = (s8 *) get_misc_asset(obj->header->miscAssetIds[arg1]);
+    if (miscAssetIndex < obj->header->miscAssetCount) {
+        asset = (s8 *) get_misc_asset(obj->header->miscAssetIds[miscAssetIndex]);
         asset0 = asset[0];
         shakeDist = (asset[1] & 0xFF) * 8.0f;
         shakeMagnitude = asset[2];
@@ -2090,46 +2103,45 @@ void render_misc_model(Object *obj, Vertex *verts, u32 numVertices, Triangle *tr
 }
 
 /** Resolves a set of moving points against an object model's collision facets. */
-s32 model_resolve_collisions(ObjectModel *arg0, s32 arg1, s32 *numCollisions, f32 *originPointsX, f32 *originPointsY,
-                             f32 *originPointsZ, f32 *targetPointsX, f32 *targetPointsY, f32 *targetPointsZ,
-                             f32 *collisionRadii, s8 *surfaces, f32 scale) {
+s32 model_resolve_collisions(ObjectModel *model, s32 numPoints, s32 *numCollisions, f32 *originPointsX,
+                             f32 *originPointsY, f32 *originPointsZ, f32 *targetPointsX, f32 *targetPointsY,
+                             f32 *targetPointsZ, f32 *collisionRadii, s8 *surfaces, f32 scale) {
     f32 *planes;
     s32 i, j, k;
     f32 sum1, sum2;
     f32 t;
-    u32 var_a2;
+    u32 insideFacet;
     s32 counter;
-    s32 spF8;
-    s32 var_s6;
+    s32 hitMask;
+    s32 pointBit;
     CollisionFacetPlanes *node;
-    UNUSED s32 pad;
     s32 closestTri;
     f32 A, B, C, D;
     f32 A1, B1, C1, D1;
     s32 redoLoop;
-    f32 spC0;
+    f32 radius;
     f32 x1, y1, z1;
     f32 x3, y3, z3;
     f32 x2, y2, z2;
 
-    spF8 = 0;
-    planes = arg0->collisionPlanes;
-    var_s6 = 1;
+    hitMask = 0;
+    planes = model->collisionPlanes;
+    pointBit = 1;
 
-    for (i = 0; i < arg1; i++) {
+    for (i = 0; i < numPoints; i++) {
         x1 = targetPointsX[i];
         y1 = targetPointsY[i];
         z1 = targetPointsZ[i];
         x2 = originPointsX[i];
         y2 = originPointsY[i];
         z2 = originPointsZ[i];
-        spC0 = collisionRadii[i] * scale;
+        radius = collisionRadii[i] * scale;
 
         counter = 0;
         do {
             redoLoop = FALSE;
-            for (j = 0; j < arg0->collisionFacetCount; j++) {
-                node = &arg0->collisionFacets[j];
+            for (j = 0; j < model->collisionFacetCount; j++) {
+                node = &model->collisionFacets[j];
                 closestTri = node->basePlaneIndex;
 
                 A = planes[4 * closestTri + 0];
@@ -2138,8 +2150,8 @@ s32 model_resolve_collisions(ObjectModel *arg0, s32 arg1, s32 *numCollisions, f3
                 D = planes[4 * closestTri + 3];
                 sum1 = A * x2 + B * y2 + C * z2 + D;
                 sum2 = A * x1 + B * y1 + C * z1 + D;
-                sum1 -= spC0;
-                sum2 -= spC0;
+                sum1 -= radius;
+                sum2 -= radius;
                 if (sum1 >= -0.1 && sum2 < -0.1) {
                     x3 = (x1 - x2);
                     y3 = (y1 - y2);
@@ -2150,12 +2162,12 @@ s32 model_resolve_collisions(ObjectModel *arg0, s32 arg1, s32 *numCollisions, f3
                         t = 0.0f;
                     }
 
-                    var_a2 = TRUE;
+                    insideFacet = TRUE;
                     x3 = x3 * t + x2;
                     y3 = y3 * t + y2;
                     z3 = z3 * t + z2;
 
-                    for (k = 0; k < 3 && var_a2 == TRUE; k++) {
+                    for (k = 0; k < 3 && insideFacet == TRUE; k++) {
                         closestTri = node->edgeBisectorPlane[k];
 
                         A1 = planes[4 * closestTri + 0];
@@ -2164,14 +2176,14 @@ s32 model_resolve_collisions(ObjectModel *arg0, s32 arg1, s32 *numCollisions, f3
                         D1 = planes[4 * closestTri + 3];
                         t = A1 * x3 + B1 * y3 + C1 * z3 + D1;
                         if (t > 4.0f) {
-                            var_a2 = FALSE;
+                            insideFacet = FALSE;
                         }
                     }
 
-                    if (var_a2) {
+                    if (insideFacet) {
                         redoLoop = TRUE;
                         if (B > 0.707) {
-                            y1 = (spC0 - (A * x1 + C * z1 + D)) / B;
+                            y1 = (radius - (A * x1 + C * z1 + D)) / B;
                         } else {
                             x1 -= sum2 * A;
                             y1 -= sum2 * B;
@@ -2189,7 +2201,7 @@ s32 model_resolve_collisions(ObjectModel *arg0, s32 arg1, s32 *numCollisions, f3
                         targetPointsY[i] = y1;
                         targetPointsZ[i] = z1;
 
-                        j = arg0->collisionFacetCount; // break
+                        j = model->collisionFacetCount; // break
                     }
                 }
             }
@@ -2197,12 +2209,12 @@ s32 model_resolve_collisions(ObjectModel *arg0, s32 arg1, s32 *numCollisions, f3
 
         if (counter > 0) {
             (*numCollisions)++;
-            spF8 |= var_s6;
+            hitMask |= pointBit;
         }
-        var_s6 <<= 1;
+        pointBit <<= 1;
     }
 
-    return spF8;
+    return hitMask;
 }
 
 /**
@@ -2224,8 +2236,8 @@ UNUSED s16 get_taj_challenge_type(void) {
  * Calculates the direction a homing rocket takes toward the next checkpoint.
  * Returns true if a direction was calculated, or false if there are no checkpoints.
  */
-s32 homing_rocket_get_next_direction(Object *obj, s32 checkpoint, u8 isOnAlternateRoute, s32 arg3, s32 arg4,
-                                     f32 checkpointDist, f32 *outX, f32 *outY, f32 *outZ) {
+s32 homing_rocket_get_next_direction(Object *obj, s32 checkpoint, u8 isOnAlternateRoute, s32 trackOffsetX,
+                                     s32 trackOffsetY, f32 checkpointDist, f32 *outX, f32 *outY, f32 *outZ) {
     s32 numCheckpoints;
     s32 checkpointIndex;
     s32 i;
@@ -2251,9 +2263,9 @@ s32 homing_rocket_get_next_direction(Object *obj, s32 checkpoint, u8 isOnAlterna
     }
     for (i = 0; i < 4; i++) {
         checkpointNode = find_next_checkpoint_node(checkpointIndex, isOnAlternateRoute);
-        xData[i] = checkpointNode->x + (checkpointNode->scale * checkpointNode->rotationZFrac * arg3);
-        yData[i] = checkpointNode->y + (checkpointNode->scale * arg4);
-        zData[i] = checkpointNode->z + (checkpointNode->scale * -checkpointNode->rotationXFrac * arg3);
+        xData[i] = checkpointNode->x + (checkpointNode->scale * checkpointNode->rotationZFrac * trackOffsetX);
+        yData[i] = checkpointNode->y + (checkpointNode->scale * trackOffsetY);
+        zData[i] = checkpointNode->z + (checkpointNode->scale * -checkpointNode->rotationXFrac * trackOffsetX);
         checkpointIndex += 1;
         if (checkpointIndex == numCheckpoints) {
             checkpointIndex = 0;
@@ -2373,7 +2385,7 @@ void pc_swap_misc_f32_once(s32 index) {
  * If the bridge is raised, decrement its timer and return the remaining time.
  */
 s32 is_bridge_raised(s32 index) {
-    if (index >= 0 && index < 8) {
+    if (index >= 0 && index < DRAWBRIDGE_COUNT) {
         if (gDrawbridgeTimers[0][index] > 0) {
             gDrawbridgeTimers[0][index]--;
         }
@@ -2386,7 +2398,7 @@ s32 is_bridge_raised(s32 index) {
  * Starts the bridge timer when a racer hits the bell switch.
  */
 void start_bridge_timer(s32 index) {
-    if (index >= 0 && index < 8) {
+    if (index >= 0 && index < DRAWBRIDGE_COUNT) {
         gDrawbridgeTimers[0][index] = 8;
     }
 }
@@ -2495,8 +2507,8 @@ s16 *readout_log_get(s32 *currentCount, s32 *maxCount) {
     return gReadoutLog;
 }
 
-void readout_log_push(s16 arg0) {
-    gReadoutLog[gReadoutLogIndex++] = arg0;
+void readout_log_push(s16 value) {
+    gReadoutLog[gReadoutLogIndex++] = value;
     if (gReadoutLogIndex >= ARRAY_COUNT(gReadoutLog)) {
         gReadoutLogIndex = 0;
     }

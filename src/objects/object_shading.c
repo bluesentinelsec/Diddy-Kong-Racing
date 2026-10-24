@@ -47,16 +47,16 @@ UNUSED void add_shading_properties(Object *obj, f32 ambientChange, f32 diffuseCh
     }
 }
 
-void set_shading_properties(ShadeProperties *arg0, f32 ambient, f32 diffuse, s16 angleX, s16 angleY, s16 angleZ) {
+void set_shading_properties(ShadeProperties *shading, f32 ambient, f32 diffuse, s16 angleX, s16 angleY, s16 angleZ) {
     Vec3s angle;
     Vec3f velocityPos;
 
-    arg0->shadeAngleX = angleX;
-    arg0->ambient = ambient;
-    arg0->diffuse = diffuse;
-    arg0->brightness = 1.0f;
-    arg0->shadeAngleY = angleY;
-    arg0->shadeAngleZ = angleZ;
+    shading->shadeAngleX = angleX;
+    shading->ambient = ambient;
+    shading->diffuse = diffuse;
+    shading->brightness = 1.0f;
+    shading->shadeAngleY = angleY;
+    shading->shadeAngleZ = angleZ;
     angle.z_rotation = angleX;
     angle.y_rotation = angleZ;
     angle.x_rotation = angleY;
@@ -64,12 +64,12 @@ void set_shading_properties(ShadeProperties *arg0, f32 ambient, f32 diffuse, s16
     velocityPos.x = 0.0f;
     velocityPos.y = 0.0f;
     vec3f_rotate(&angle, &velocityPos);
-    arg0->shadowDirX = -velocityPos.x;
-    arg0->shadowDirY = -velocityPos.y;
-    arg0->shadowDirZ = -velocityPos.z;
-    arg0->shadowR = 0;
-    arg0->shadowG = 0;
-    arg0->shadowB = 0;
+    shading->shadowDirX = -velocityPos.x;
+    shading->shadowDirY = -velocityPos.y;
+    shading->shadowDirZ = -velocityPos.z;
+    shading->shadowR = 0;
+    shading->shadowG = 0;
+    shading->shadowB = 0;
 }
 
 /**
@@ -93,8 +93,9 @@ void update_envmap_position(f32 x, f32 y, f32 z) {
 /**
  * If the triangle batch allows for it, compute envmap normals for the mesh.
  * Some objects will prefer some extra additions on top before calculating, like light intensity.
+ * cameraRelative turns the light through the projection matrix first; the HUD stopwatch passes FALSE.
  */
-void obj_shade_fancy(ObjectModel *model, Object *object, s32 arg2, f32 intensity) {
+void obj_shade_fancy(ObjectModel *model, Object *object, s32 cameraRelative, f32 intensity) {
     s16 environmentMappingEnabled;
     s32 dynamicLightingEnabled;
     s16 i;
@@ -115,10 +116,10 @@ void obj_shade_fancy(ObjectModel *model, Object *object, s32 arg2, f32 intensity
         // Calculates dynamic lighting for the object
         if (object->header->directionalPointLighting) {
             // Dynamic directional lighting for some objects (Intro diddy, Taj, T.T., Bosses)
-            calc_dynamic_lighting_for_object_1(object, model, arg2, object, intensity, 1.0f);
+            calc_dynamic_lighting_for_object_1(object, model, cameraRelative, object, intensity, 1.0f);
         } else {
             // Dynamic ambient lighting for other objects (Racers, Rare logo, Wizpig face, etc.)
-            calc_dynamic_lighting_for_object_2(object, model, arg2, intensity);
+            calc_dynamic_lighting_for_object_2(object, model, cameraRelative, intensity);
         }
     }
 
@@ -129,13 +130,13 @@ void obj_shade_fancy(ObjectModel *model, Object *object, s32 arg2, f32 intensity
     }
 }
 
-void calc_dynamic_lighting_for_object_1(Object *object, ObjectModel *model, s16 arg2, Object *anotherObject,
-                                        f32 intensity, f32 arg5) {
+void calc_dynamic_lighting_for_object_1(Object *object, ObjectModel *model, s16 cameraRelative, Object *anotherObject,
+                                        f32 intensity, f32 unusedScale) {
     s16 normIdx;
     s16 j;
     s16 i;
     Vec3s objRot;
-    s32 s6;
+    s32 lightStrength;
     s32 lightDirX, lightDirY, lightDirZ;    // 16.16 fixed point, normalized
     s32 shadowDirX, shadowDirY, shadowDirZ; // 16.16 fixed point, normalized
     s32 diffuseFactor;
@@ -162,20 +163,20 @@ void calc_dynamic_lighting_for_object_1(Object *object, ObjectModel *model, s16 
     objRot.z_rotation = -object->trans.rotation.z_rotation;
     vec3f_rotate_ypr(&objRot, &direction);
 
-    if (object->header->shadeIntensityy != 0 && arg2) {
+    if (object->header->shadeIntensityy != 0 && cameraRelative) {
         mtxf_transform_dir(get_projection_matrix_f32(), &direction, &direction);
     }
 
     lightDirX = -direction.x;
     lightDirY = -direction.y;
     lightDirZ = -direction.z;
-    s6 = object->shading->lightIntensity;
+    lightStrength = object->shading->lightIntensity;
 
     direction.x = object->shading->shadowDirX << 2;
     direction.y = object->shading->shadowDirY << 2;
     direction.z = object->shading->shadowDirZ << 2;
 
-    if (arg2) {
+    if (cameraRelative) {
         mtxf_transform_dir(get_projection_matrix_f32(), &direction, &direction);
     }
     vec3f_rotate_ypr(&objRot, &direction);
@@ -195,7 +196,7 @@ void calc_dynamic_lighting_for_object_1(Object *object, ObjectModel *model, s16 
                                   normals[normIdx].z * lightDirZ) >>
                                  13;
                 if (lightIntensity > 0) {
-                    lightIntensity = (lightIntensity * s6) >> 16;
+                    lightIntensity = (lightIntensity * lightStrength) >> 16;
                     if (lightIntensity > 255) {
                         lightIntensity = 255;
                     }
@@ -236,8 +237,8 @@ void calc_env_mapping_for_object(ObjectModel *model, s16 zRot, s16 xRot, s16 yRo
     s16 k;
     s16 count;
     Triangle *triangles;
-    Vec3s *model40Entries;
-    s32 sp70;
+    Vec3s *normals;
+    s32 skipReflect;
     TextureHeader *tex;
     s16 shiftS;
     s16 maskS;
@@ -245,12 +246,12 @@ void calc_env_mapping_for_object(ObjectModel *model, s16 zRot, s16 xRot, s16 yRo
     s16 maskT;
     s16 i;
     s16 j;
-    s16 var_v0;
-    s16 var_v1;
+    s16 texU;
+    s16 texV;
 
     count = 0;
     triangles = model->triangles;
-    model40Entries = model->normals;
+    normals = model->normals;
     objTrans.rotation.z_rotation = zRot;
     objTrans.rotation.x_rotation = xRot;
     objTrans.rotation.y_rotation = yRot;
@@ -262,7 +263,7 @@ void calc_env_mapping_for_object(ObjectModel *model, s16 zRot, s16 xRot, s16 yRo
     mtxf_to_mtxs(&objRotMtxF32, &objRotMtxS32);
     for (i = 0; i < model->numberOfBatches; i++) {
         if (model->batches[i].flags & RENDER_ENVMAP) {
-            sp70 = ((model->batches[i].flags & RENDER_UNK_0020000) | RENDER_ENVMAP) ^ RENDER_ENVMAP;
+            skipReflect = ((model->batches[i].flags & RENDER_UNK_0020000) | RENDER_ENVMAP) ^ RENDER_ENVMAP;
             tex = model->textures[model->batches[i].textureIndex].texture;
             k = 0;
 
@@ -296,26 +297,26 @@ void calc_env_mapping_for_object(ObjectModel *model, s16 zRot, s16 xRot, s16 yRo
             }
 
             for (j = model->batches[i].verticesOffset; j < model->batches[i + 1].verticesOffset; j++, k++) {
-                gEnvmapPos[1].x = model40Entries[count].x;
-                gEnvmapPos[1].y = model40Entries[count].y;
-                gEnvmapPos[1].z = model40Entries[count].z;
+                gEnvmapPos[1].x = normals[count].x;
+                gEnvmapPos[1].y = normals[count].y;
+                gEnvmapPos[1].z = normals[count].z;
                 mtxs_transform_dir(&objRotMtxS32, &gEnvmapPos[1]);
-                if (sp70 == 0) {
+                if (skipReflect == 0) {
                     vec3s_reflect(&gEnvmapPos[0], &gEnvmapPos[1]);
                 }
                 count++;
-                var_v0 = gEnvmapPos[1].x;
-                var_v1 = gEnvmapPos[1].y;
-                if (var_v0 > 0) {
-                    var_v0--;
+                texU = gEnvmapPos[1].x;
+                texV = gEnvmapPos[1].y;
+                if (texU > 0) {
+                    texU--;
                 }
-                if (var_v1 > 0) {
-                    var_v1--;
+                if (texV > 0) {
+                    texV--;
                 }
-                var_v0 = (var_v0 << 2) + 0x8000;
-                var_v1 = (var_v1 << 2) + 0x8000;
-                gTexCoordScratch[k].u = (var_v0 >> shiftS) & maskS;
-                gTexCoordScratch[k].v = (var_v1 >> shiftT) & maskT;
+                texU = (texU << 2) + 0x8000;
+                texV = (texV << 2) + 0x8000;
+                gTexCoordScratch[k].u = (texU >> shiftS) & maskS;
+                gTexCoordScratch[k].v = (texV >> shiftT) & maskT;
             }
 
             for (j = model->batches[i].facesOffset; j < model->batches[i + 1].facesOffset; j++) {
