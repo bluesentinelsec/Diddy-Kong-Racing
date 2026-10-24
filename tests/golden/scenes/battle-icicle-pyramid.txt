@@ -1,8 +1,10 @@
-# frames 3000
+# frames 15600
 # save 100
 # level 27
-# Icicle Pyramid, the weapons battle arena, started straight from the title
-# menu (# level, DKR_TRACE_LEVEL) on the 100% save and driven by the autopilot (AUTO).
-# Added from the coverage report (make coverage): no other scene reaches this level's code.
+# adventure
+# Icicle Pyramid, the weapons battle arena, started straight from the title menu
+# (# level, DKR_TRACE_LEVEL) on the 100% save in adventure mode, so three AI rivals join
+# (the battle AI needs all four racers), and driven by the autopilot (AUTO): hits cost
+# lives, two rivals are knocked out and the player is knocked out in 2nd (about frame 15250).
 # Format: <frame> <buttons> <stickX> <stickY> [p<N>], held until the next line (DKR_INPUT_SCRIPT).
 150 AUTO 0 0

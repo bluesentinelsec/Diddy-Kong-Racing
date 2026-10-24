@@ -913,6 +913,13 @@ void mode_menu(s32 updateRate) {
         s32 traceLevel = pc_trace_level_request(gfx_frame_count());
 
         if (traceLevel >= 0) {
+            // The request comes while the logo screen is up: drop its letterboxed view as the
+            // logo screen does when it hands over to the title (menu_logo_screen_loop).
+            camDisableUserView(0, FALSE);
+            set_viewport_properties(0, VIEWPORT_AUTO, VIEWPORT_AUTO, VIEWPORT_AUTO, VIEWPORT_AUTO);
+            // Give each racer its character slot, as Game Select and the file menu do; skipping the
+            // menus otherwise leaves every racer as character 0.
+            init_racer_headers();
             gSettingsPtr->gNumRacers = pc_trace_players();
             if (pc_trace_adventure()) {
                 enable_tracks_mode(FALSE);

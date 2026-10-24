@@ -206,7 +206,9 @@ the port honest:
   the pause menu, a race driven to the finish and through the results menu, a
   two-player split-screen race joined through the menus, a race against each
   boss (Tricky, Bluey, Bubbler, Smokey and both Wizpig races), the three battle
-  arenas, an adventure-mode race, Diddy on the character select screen, eight
+  arenas played to scoring against three AI rivals (eggs hatched, racers knocked
+  out, bananas counted), the Dino Domain trophy race through all four rounds and
+  the rankings, an adventure-mode race, Diddy on the character select screen, eight
   more tracks picked by coverage (the loop-de-loop, bridges, lava, snowballs,
   weapons, the pirate ship), the Future Fun Land hub, Taj's car challenge, the
   Options and Magic Codes menus (through to the credits), and a drive around the central hub (doors, Taj, the music fade
@@ -214,7 +216,9 @@ the port honest:
   `# save 100` to start from the 100%-completion save image, `# level N` to
   start level N straight from the title menu (for the places the menus cannot
   reach by script), `# adventure` to start that level in adventure mode
-  rather than Tracks mode, and `# players N`. A script line may end in `p2`..`p4` to
+  rather than Tracks mode, and `# players N`. The level shortcut does what the
+  skipped menus would have: it clears the logo screen's letterboxed view and gives
+  each racer its own character. A script line may end in `p2`..`p4` to
   drive another controller, which plugs it in, and the `AUTO` token hands a
   human racer to the AI's driving so a scene can finish a race (in a time
   trial, where the AI's race tactics never run, the autopilot holds the throttle
@@ -240,7 +244,7 @@ the port honest:
   function coverage per game file, lowest first) and `unexecuted.txt` (every
   game function no trace enters). Code listed there can change without a
   trace noticing, so give it a scene before rewriting it. The traces execute
-  about 71% of the game's lines today.
+  about 75% of the game's lines today.
 - `make golden-asan` runs every trace on an AddressSanitizer build, so an
   out-of-bounds read or use after free on any traced path stops the run with
   a report. The game is also built with pointer truncation as an error
