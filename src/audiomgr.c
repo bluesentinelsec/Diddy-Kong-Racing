@@ -332,7 +332,6 @@ static ALDMAAddr __amDMA(s32 addr, s32 len, UNUSED void *state) {
     void *foundBuffer;
     s32 delta, addrEnd, buffEnd;
     AMDMABuffer *dmaPtr, *lastDmaPtr;
-    UNUSED s32 pad;
 
     lastDmaPtr = NULL;
     delta = addr & 1;

@@ -90,7 +90,6 @@ void audio_init(void) {
     s32 *addrPtr;
     u32 seqfSize;
     u32 seqLength;
-    UNUSED u32 pad;
     audioMgrConfig audConfig;
 
     seqLength = 0;
@@ -99,7 +98,8 @@ void audio_init(void) {
     addrPtr = (s32 *) asset_table_load(ASSET_AUDIO_TABLE);
     pc_swap32_buf(addrPtr, asset_table_size(ASSET_AUDIO_TABLE)); // big-endian sub-table
     gSoundBank = (ALBankFile *) mempool_alloc_safe(addrPtr[ASSET_AUDIO_2] - addrPtr[ASSET_AUDIO_1], COLOUR_TAG_CYAN);
-    asset_load(ASSET_AUDIO, (uintptr_t) gSoundBank, addrPtr[ASSET_AUDIO_1], addrPtr[ASSET_AUDIO_2] - addrPtr[ASSET_AUDIO_1]);
+    asset_load(ASSET_AUDIO, (uintptr_t) gSoundBank, addrPtr[ASSET_AUDIO_1],
+               addrPtr[ASSET_AUDIO_2] - addrPtr[ASSET_AUDIO_1]);
     alBnkfNew(gSoundBank, asset_rom_offset(ASSET_AUDIO, addrPtr[ASSET_AUDIO_2]));
 
     gSoundTableSize = addrPtr[ASSET_AUDIO_7] - addrPtr[ASSET_AUDIO_6];
@@ -134,7 +134,6 @@ void audio_init(void) {
     gSeqLengthTable = (u32 *) mempool_alloc_safe((gSequenceTable->seqCount) * 4, COLOUR_TAG_CYAN);
 
     for (i = 0; i < gSequenceTable->seqCount; i++) {
-        pad = (u32) (uintptr_t) (gSequenceTable + 8 + i * 8); // Fakematch
         gSeqLengthTable[i] = gSequenceTable->seqArray[i].len;
         if (gSeqLengthTable[i] & 1) {
             gSeqLengthTable[i]++;
@@ -301,7 +300,6 @@ void music_voicelimit_change_on(void) {
 void music_jingle_voicelimit_set(u8 voiceLimit) {
     set_voice_limit(gJinglePlayer, voiceLimit);
 }
-
 
 /**
  * Enables the timer to start fading in or out the background music.
@@ -519,7 +517,6 @@ void music_channel_reset_all(void) {
     }
 }
 
-
 /**
  * Retrieves the FX mix levels of all audio channels.
  */
@@ -572,7 +569,7 @@ u8 music_is_playing(void) {
  * Loops itself round, so the final result will return 0.0f - 1.0f.
  */
 f32 music_animation_fraction(void) {
-    f32 tmp;
+    f32 period;
     u32 cnt = pc_clock_count();
     if ((u32) audioPrevCount < cnt) {
         gMusicAnimationTick += (f32) (cnt - audioPrevCount) / 46875.0f;
@@ -582,11 +579,11 @@ f32 music_animation_fraction(void) {
     if (gMusicPlaying == FALSE) {
         sMusicTempo = 182;
     }
-    for (tmp = 120000.0f / (f32) sMusicTempo; tmp < gMusicAnimationTick; gMusicAnimationTick -= tmp) {
+    for (period = 120000.0f / (f32) sMusicTempo; period < gMusicAnimationTick; gMusicAnimationTick -= period) {
         ;
     }
     audioPrevCount = (s32) cnt;
-    return gMusicAnimationTick / tmp;
+    return gMusicAnimationTick / period;
 }
 
 /**
@@ -740,8 +737,8 @@ s32 music_volume_config(void) {
  * The jingle player scales with sfx volume rather than music volume.
  * Official Name: amAmbientSetVolume
  */
-void music_jingle_volume_set(u8 arg0) {
-    sfxRelativeVolume = arg0;
+void music_jingle_volume_set(u8 volume) {
+    sfxRelativeVolume = volume;
     alCSPSetVol(gJinglePlayer, (s16) (sndp_get_global_volume() * sfxRelativeVolume));
 }
 
@@ -889,9 +886,9 @@ void sound_volume_set_relative(u16 soundID, SoundHandle soundHandle, u8 volume) 
 /**
  * Updates the volume of the given sound mask.
  */
-UNUSED void sound_volume_set(SoundHandle soundHandle, u8 arg1) {
+UNUSED void sound_volume_set(SoundHandle soundHandle, u8 volume) {
     if (soundHandle != NULL) {
-        sndp_set_param(soundHandle, AL_SNDP_VOL_EVT, arg1 * 256);
+        sndp_set_param(soundHandle, AL_SNDP_VOL_EVT, volume * 256);
     }
 }
 

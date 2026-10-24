@@ -16,14 +16,14 @@ enum AudioVolumeBehaviour {
 
 /* Size: 0x0A bytes */
 typedef struct SoundData {
- u16 soundBite; // Audio file index.
- u8 volume; // Multiplied by 256. 128 = 32768, max volume.
- u8 minVolume;
- u8 pitch; // Fractional. 100 = 1.0f.
- u8 unused5;
- u16 range; // Ingame units distance, same as any other.
- u8 priority;
- u8 unused9;
+    u16 soundBite; // Audio file index.
+    u8 volume;     // Multiplied by 256. 128 = 32768, max volume.
+    u8 minVolume;
+    u8 pitch; // Fractional. 100 = 1.0f.
+    u8 unused5;
+    u16 range; // Ingame units distance, same as any other.
+    u8 priority;
+    u8 unused9;
 } SoundData;
 
 /* Size: 0x03 bytes */
@@ -41,10 +41,10 @@ typedef struct DelayedSound {
 } DelayedSound;
 
 // These are all functions in libultra that seem to have been created by Rare, so they're not in the standard headers.
-extern void set_voice_limit(ALCSPlayer *seqp, u8 voiceLimit); // seqplayer.c
+extern void set_voice_limit(ALCSPlayer *seqp, u8 voiceLimit);     // seqplayer.c
 extern void alCSPSetFadeIn(ALCSPlayer *seqp, u8 chan, ALPan pan); // cspsetfadein.c
-extern void alFxReverbSet(u8 setting); // reverb.c
-extern u8 alCSPGetFadeIn(ALCSPlayer *seqp, u8 chan); // cspgetfadein.c
+extern void alFxReverbSet(u8 setting);                            // reverb.c
+extern u8 alCSPGetFadeIn(ALCSPlayer *seqp, u8 chan);              // cspgetfadein.c
 
 void audio_init(void);
 void sound_volume_reset(u8 skipReset);
@@ -86,7 +86,7 @@ void music_volume_set(u8 volume);
 void music_volume_config_set(u32 slider_val);
 u8 music_volume(void);
 s32 music_volume_config(void);
-void music_jingle_volume_set(u8 arg0);
+void music_jingle_volume_set(u8 volume);
 void music_jingle_pan_set(ALPan pan);
 void music_jingle_play(u8 seqID);
 u32 music_jingle_playing(void);
@@ -104,7 +104,7 @@ void sound_reverb_set(u8 setting);
 void func_80063A90(ALCSPlayer *seqp, u8 channel);
 void sound_volume_set_relative(u16 soundID, SoundHandle soundHandle, u8 volume);
 void music_sequence_init(ALCSPlayer *seqp, void *sequence, u8 *seqID, ALCSeq *seq);
-void sound_play(u16 soundID, SoundHandle* handlePtr);
+void sound_play(u16 soundID, SoundHandle *handlePtr);
 f32 music_animation_fraction(void);
 
 #endif
